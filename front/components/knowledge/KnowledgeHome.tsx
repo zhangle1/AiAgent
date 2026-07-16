@@ -361,7 +361,7 @@ export function KnowledgeHome() {
 
   if (selectedProvider) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-8">
+      <main className="mx-auto max-w-7xl px-6 py-10">
         <button
           type="button"
           onClick={() => {
@@ -430,10 +430,10 @@ export function KnowledgeHome() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-9">
+    <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-[26px] font-semibold leading-tight">{t("knowledge.title")}</h1>
+          <h1 className="text-[28px] font-semibold leading-tight tracking-tight">{t("knowledge.title")}</h1>
           <p className="mt-2 text-[13px] text-[var(--muted-foreground)]">{t("knowledge.description")}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -472,12 +472,12 @@ function EngineGrid({ providers, onSelect }: { providers: KnowledgeProvider[]; o
   return (
     <section>
       <SectionTitle icon={Cpu} title={t("knowledge.retrievalEngines")} />
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         {providers.map((engine) => {
           const Icon = engineIcons[engine.id] ?? Boxes;
           const tone = engine.configured ? "emerald" : engine.status === "needs_setup" ? "amber" : "zinc";
           return (
-            <button key={engine.id} type="button" onClick={() => onSelect(engine.id)} className="group flex min-h-[116px] flex-col justify-between rounded-lg border border-[var(--border)] bg-white p-4 text-left transition hover:border-blue-300">
+            <button key={engine.id} type="button" onClick={() => onSelect(engine.id)} className="group flex min-h-[132px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Icon size={17} strokeWidth={1.7} className="shrink-0 text-[var(--muted-foreground)]" />
@@ -510,9 +510,9 @@ function KnowledgeBaseList({ busy, loading, knowledgeBases, onDelete, onOpen, on
           <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">{t("knowledge.noKnowledgeBasesDesc")}</p>
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           {knowledgeBases.map((kb) => (
-            <div key={kb.id} className="rounded-lg border border-[var(--border)] bg-white p-4">
+            <div key={kb.id} className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
               <button type="button" onClick={() => onOpen(kb)} className="block w-full text-left">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

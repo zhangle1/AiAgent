@@ -16,8 +16,8 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const currentService = MODEL_SERVICE_CONFIGS.find((item) => item.href === pathname);
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-8">
-      <nav className="mb-6 flex flex-wrap items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
+    <main className="mx-auto min-h-screen max-w-7xl px-6 py-9">
+      <nav className="mb-8 flex flex-wrap items-center gap-1 rounded-xl border border-[var(--border)] bg-white/80 px-2 py-1.5 text-[12px] text-[var(--muted-foreground)] shadow-sm">
         <Link href="/settings" className="inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-[var(--muted)] hover:text-[var(--foreground)]">
           <Home size={14} />
           {t("settings.title")}
@@ -73,9 +73,9 @@ export function SettingsPageHeader({
   const { t } = useI18n();
 
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 className="font-serif text-[26px] font-semibold leading-tight">{title}</h1>
+        <h1 className="font-serif text-[28px] font-semibold leading-tight tracking-tight">{title}</h1>
         <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-[var(--muted-foreground)]">{description}</p>
       </div>
       {action === null ? null : action ?? (

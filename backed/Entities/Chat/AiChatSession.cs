@@ -17,6 +17,18 @@ public sealed class AiChatSession
     [SugarColumn(ColumnDataType = "nvarchar(max)", IsNullable = true)]
     public string? PreferencesJson { get; set; }
 
+    [SugarColumn(IsNullable = true)]
+    public long? CodeProjectId { get; set; }
+
+    [SugarColumn(IsNullable = true)]
+    public int? SortOrder { get; set; }
+
+    [SugarColumn(Length = 16, IsNullable = true)]
+    public string? Priority { get; set; }
+
+    [SugarColumn(IsNullable = true)]
+    public bool? IsPinned { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public bool IsDeleted { get; set; }

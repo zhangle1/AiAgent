@@ -39,7 +39,7 @@ export function ModelsSettingsPage() {
             <Link
               key={config.key}
               href={config.href}
-              className="flex min-h-[106px] items-start justify-between gap-4 rounded-xl border border-[var(--border)] bg-white p-5 transition hover:border-zinc-300 hover:shadow-[0_12px_26px_-22px_rgba(0,0,0,0.5)]"
+              className="flex min-h-[122px] items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
             >
               <div className="flex min-w-0 gap-4">
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${config.tileClass}`}>

@@ -30,9 +30,9 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
 
   return (
     <section className="min-w-0">
-      <div className="mb-8 flex items-start justify-between gap-4">
+      <div className="mb-9 flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-serif text-[26px] font-semibold leading-tight">{t("settings.title")}</h1>
+          <h1 className="font-serif text-[28px] font-semibold leading-tight tracking-tight">{t("settings.title")}</h1>
           <p className="mt-2 text-[13px] text-[var(--muted-foreground)]">{t("settings.description")}</p>
         </div>
         <button className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-[12px] text-[var(--muted-foreground)]">
@@ -41,7 +41,7 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
         </button>
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-x-7 gap-y-3 rounded-2xl border border-[var(--border)] bg-white px-5 py-4">
+      <div className="mb-5 flex flex-wrap gap-x-7 gap-y-3 rounded-2xl border border-[var(--border)] bg-white px-5 py-4 shadow-sm">
         {statusItems.map((item) => {
           const ready = item.service ? Boolean(catalog && serviceConfigured(catalog, item.service)) : Boolean(catalog);
           return (
@@ -54,7 +54,7 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
         })}
       </div>
 
-      <section className="mb-5 rounded-2xl border border-[var(--border)] bg-white p-5">
+      <section className="mb-6 rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
           <div>
             <h2 className="text-[15px] font-semibold">{t("settings.language")}</h2>
@@ -75,13 +75,13 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-            <Link key={card.titleKey} href={card.href} className="flex min-h-[158px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 transition hover:border-[var(--foreground)]/20 hover:shadow-[0_8px_24px_-18px_rgba(0,0,0,0.35)]">
+            <Link key={card.titleKey} href={card.href} className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Icon size={19} strokeWidth={1.6} className="text-[var(--muted-foreground)]" />
                   <h2 className="text-[15px] font-semibold leading-snug">{t(card.titleKey)}</h2>
                 </div>
-                <ChevronRight size={18} className="text-[var(--muted-foreground)]" />
+                <ChevronRight size={18} className="text-[var(--muted-foreground)] transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
               </div>
               <p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{t(card.descKey)}</p>
             </Link>

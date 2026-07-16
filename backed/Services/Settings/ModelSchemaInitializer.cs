@@ -30,6 +30,8 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
     /// </summary>
     public void Initialize()
     {
+        EnsureChatSessionColumns();
+        EnsureChatProjectPreferenceTable();
         _db.CodeFirst.InitTables(
             typeof(AiModelProvider),
             typeof(AiModelProfile),
@@ -47,6 +49,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiUser),
             typeof(AiUserSession),
             typeof(AiChatSession),
+            typeof(AiChatProjectPreference),
             typeof(AiChatMessage),
             typeof(AiGitAccount));
 
@@ -63,6 +66,53 @@ IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
 
 IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
     ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;
+
+""");
+    }
+
+    private void EnsureChatSessionColumns()
+    {
+        ExecuteIndexSql("""
+IF OBJECT_ID(N'dbo.ai_chat_session', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.ai_chat_session', N'CodeProjectId') IS NULL
+        ALTER TABLE dbo.ai_chat_session ADD CodeProjectId BIGINT NULL;
+    ELSE IF COLUMNPROPERTY(OBJECT_ID(N'dbo.ai_chat_session'), N'CodeProjectId', 'AllowsNull') = 0
+        ALTER TABLE dbo.ai_chat_session ALTER COLUMN CodeProjectId BIGINT NULL;
+
+    IF COL_LENGTH(N'dbo.ai_chat_session', N'SortOrder') IS NULL
+        ALTER TABLE dbo.ai_chat_session ADD SortOrder INT NULL;
+    ELSE IF COLUMNPROPERTY(OBJECT_ID(N'dbo.ai_chat_session'), N'SortOrder', 'AllowsNull') = 0
+        ALTER TABLE dbo.ai_chat_session ALTER COLUMN SortOrder INT NULL;
+
+    IF COL_LENGTH(N'dbo.ai_chat_session', N'Priority') IS NULL
+        ALTER TABLE dbo.ai_chat_session ADD Priority NVARCHAR(16) NULL;
+    ELSE IF COLUMNPROPERTY(OBJECT_ID(N'dbo.ai_chat_session'), N'Priority', 'AllowsNull') = 0
+        ALTER TABLE dbo.ai_chat_session ALTER COLUMN Priority NVARCHAR(16) NULL;
+
+    IF COL_LENGTH(N'dbo.ai_chat_session', N'IsPinned') IS NULL
+        ALTER TABLE dbo.ai_chat_session ADD IsPinned BIT NULL;
+    ELSE IF COLUMNPROPERTY(OBJECT_ID(N'dbo.ai_chat_session'), N'IsPinned', 'AllowsNull') = 0
+        ALTER TABLE dbo.ai_chat_session ALTER COLUMN IsPinned BIT NULL;
+END
+""");
+    }
+
+    private void EnsureChatProjectPreferenceTable()
+    {
+        ExecuteIndexSql("""
+IF OBJECT_ID(N'dbo.ai_chat_proj_pref', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ai_chat_proj_pref
+    (
+        Id BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_ai_chat_proj_pref PRIMARY KEY,
+        UserId NVARCHAR(64) NOT NULL,
+        CodeProjectId BIGINT NOT NULL,
+        IsPinned BIT NOT NULL CONSTRAINT DF_ai_chat_proj_pref_IsPinned DEFAULT 0,
+        SortMode NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_chat_proj_pref_SortMode DEFAULT N'updated',
+        UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_ai_chat_proj_pref_UpdatedAt DEFAULT SYSUTCDATETIME()
+    );
+END
 """);
     }
 
@@ -147,6 +197,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_session_Token
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_session_User_Updated' AND object_id = OBJECT_ID(N'dbo.ai_chat_session'))
     CREATE INDEX IX_ai_chat_session_User_Updated ON dbo.ai_chat_session(UserId, UpdatedAt DESC) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_session_User_Project_Sort' AND object_id = OBJECT_ID(N'dbo.ai_chat_session'))
+    CREATE INDEX IX_ai_chat_session_User_Project_Sort ON dbo.ai_chat_session(UserId, CodeProjectId, SortOrder DESC, UpdatedAt DESC) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_session_User_Pinned_Priority' AND object_id = OBJECT_ID(N'dbo.ai_chat_session'))
+    CREATE INDEX IX_ai_chat_session_User_Pinned_Priority ON dbo.ai_chat_session(UserId, IsPinned DESC, Priority, UpdatedAt DESC) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_proj_pref_User_Project' AND object_id = OBJECT_ID(N'dbo.ai_chat_proj_pref'))
+    CREATE UNIQUE INDEX UX_ai_chat_proj_pref_User_Project ON dbo.ai_chat_proj_pref(UserId, CodeProjectId);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_message_Session_Id' AND object_id = OBJECT_ID(N'dbo.ai_chat_message'))

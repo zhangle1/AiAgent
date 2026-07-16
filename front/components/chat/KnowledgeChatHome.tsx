@@ -7,11 +7,11 @@ import { streamCompleteChat, type ChatStreamEvent } from "@/lib/chat-api";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
-import { getCodeRepositories } from "@/lib/code-repository-api";
+import { getCodeProjects } from "@/lib/code-repository-api";
 import { activeModel, activeProfile, type Catalog, type CatalogModel } from "@/lib/settings-types";
 import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
-import type { CodeRepository } from "@/lib/code-repository-types";
+import type { CodeProject } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getSession } from "@/lib/session-api";
 
@@ -45,13 +45,14 @@ export function KnowledgeChatHome() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedSessionId = searchParams.get("session");
+  const requestedProjectId = Number(searchParams.get("project")) || null;
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-  const [codeRepositories, setCodeRepositories] = useState<CodeRepository[]>([]);
+  const [codeProjects, setCodeProjects] = useState<CodeProject[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [selectedKbNames, setSelectedKbNames] = useState<string[]>([]);
-  const [selectedCodeRepositoryNames, setSelectedCodeRepositoryNames] = useState<string[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(requestedProjectId);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
-  const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "code" | null>(null);
+  const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [mode, setMode] = useState<ChatMode>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -69,11 +70,17 @@ export function KnowledgeChatHome() {
   );
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
   const currentKnowledgeBase = readyKnowledgeBases.find((kb) => kb.name === selectedKbNames[0]);
+  const selectedProject = codeProjects.find((project) => project.id === selectedProjectId) ?? null;
+  const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
 
   useEffect(() => {
     void loadBootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
+  }, [requestedProjectId, requestedSessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +96,7 @@ export function KnowledgeChatHome() {
     void getSession(requestedSessionId).then((session) => {
       if (cancelled) return;
       setActiveSessionId(session.id);
+      setSelectedProjectId(session.project_id ?? null);
       setMessages(session.messages.map((message) => ({
         id: String(message.id), role: message.role, content: message.content, thinking: message.thinking ?? undefined,
         citations: message.citations ?? undefined, model: message.metadata?.model ?? null, status: "done",
@@ -116,9 +124,10 @@ export function KnowledgeChatHome() {
     setLoading(true);
     setError(null);
     try {
-      const [kbRows, repositoryRows, settings] = await Promise.all([getKnowledgeBases(), getCodeRepositories(), getSettings()]);
+      const [kbRows, projectRows, settings] = await Promise.all([getKnowledgeBases(), getCodeProjects(), getSettings()]);
       setKnowledgeBases(kbRows);
-      setCodeRepositories(repositoryRows);
+      setCodeProjects(projectRows);
+      setSelectedProjectId((current) => current ?? requestedProjectId ?? null);
       setCatalog(settings.catalog);
 
       const active = activeModel(settings.catalog, "llm");
@@ -186,6 +195,7 @@ export function KnowledgeChatHome() {
         knowledge_base_name: selectedKbNames[0],
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
+        code_project_id: selectedProjectId ?? undefined,
         model_id: selectedModelId || undefined,
         top_k: 6,
         mode,
@@ -272,32 +282,34 @@ export function KnowledgeChatHome() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-white">
-      <header className="flex h-14 items-center justify-between border-b border-[var(--border)] px-5">
+    <main className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
+      <header className="flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-3">
-          <h1 className="font-serif text-[18px] font-semibold">{t("chat.newChat")}</h1>
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600"><Sparkles size={16}/></div>
+          <div><h1 className="text-sm font-semibold text-slate-950">{t("chat.newChat")}</h1><p className="text-[11px] text-slate-400">AI 工作台</p></div>
           {currentKnowledgeBase && (
             <span className="hidden rounded-full bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 sm:inline-flex">
               {currentKnowledgeBase.display_name || currentKnowledgeBase.name}
             </span>
           )}
+          {selectedProject && <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex"><Braces size={12}/>{selectedProject.display_name}</span>}
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={startNewChat} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] hover:border-blue-300" aria-label={t("chat.new")}>
+          <button type="button" onClick={startNewChat} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-600" aria-label={t("chat.new")}>
             <Plus size={15} />
           </button>
-          <button type="button" onClick={() => void loadBootstrap()} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] hover:border-blue-300" aria-label={t("knowledge.refresh")}>
+          <button type="button" onClick={() => void loadBootstrap()} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600" aria-label={t("knowledge.refresh")}>
             <RefreshCw size={14} />
           </button>
         </div>
       </header>
 
-      <section className="flex flex-1 flex-col px-4 py-6">
-        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col">
+      <section className="flex flex-1 flex-col px-4 py-5 sm:px-7">
+        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col">
           {messages.length === 0 ? (
             <EmptyState title={t("chat.heroTitle")} />
           ) : (
-            <div className="flex-1 space-y-4 pb-6">
+            <div className="flex-1 space-y-5 pb-6 pt-4">
               {messages.map((message, index) => (
                 <MessageBubble
                   key={message.id}
@@ -318,7 +330,7 @@ export function KnowledgeChatHome() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="sticky bottom-4 mt-auto rounded-3xl border border-[var(--border)] bg-white px-4 py-3 shadow-[0_18px_50px_rgba(15,23,42,0.10)]">
+          <form onSubmit={handleSubmit} className="sticky bottom-4 mt-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)]">
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -329,11 +341,11 @@ export function KnowledgeChatHome() {
                 }
               }}
               placeholder={t("chat.placeholderShort")}
-              className="min-h-[62px] w-full resize-none bg-transparent text-[15px] leading-6 outline-none placeholder:text-zinc-400"
+              className="min-h-[56px] w-full resize-none bg-transparent px-1 pt-1 text-[14px] leading-6 text-slate-800 outline-none placeholder:text-slate-400"
             />
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5">
               <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
-                <label className="inline-flex h-8 items-center gap-1.5 rounded-md px-1.5 text-[13px] font-medium hover:bg-zinc-100">
+                <label className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100">
                   <Bot size={16} />
                   <select value={mode} onChange={(event) => setMode(event.target.value as ChatMode)} className="bg-transparent outline-none">
                     <option value="chat">{t("chat.modeChat")}</option>
@@ -341,7 +353,7 @@ export function KnowledgeChatHome() {
                     <option value="write">{t("chat.modeWrite")}</option>
                   </select>
                 </label>
-                <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("chat.addAttachment")}>
+                <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={t("chat.addAttachment")}>
                   <Plus size={17} />
                 </button>
               </div>
@@ -360,15 +372,15 @@ export function KnowledgeChatHome() {
                 />
                 <ContextMultiSelect
                   icon={<Braces size={15} />}
-                  label={t("nav.codeRepositories")}
-                  items={codeRepositories.map((repository) => ({ id: repository.name, label: repository.display_name || repository.name, description: repository.languages.join(" / ") || repository.root_path }))}
-                  selectedIds={selectedCodeRepositoryNames}
-                  open={openContextPicker === "code"}
-                  emptyText={t("codeRepository.empty")}
-                  onToggleOpen={() => setOpenContextPicker((current) => current === "code" ? null : "code")}
-                  onToggle={(name) => setSelectedCodeRepositoryNames((current) => toggleSelection(current, name))}
+                  label="项目"
+                  items={codeProjects.map((project) => ({ id: String(project.id), label: project.display_name, description: `${project.root_path} · ${project.repository_count} 个代码库` }))}
+                  selectedIds={selectedProjectId ? [String(selectedProjectId)] : []}
+                  open={openContextPicker === "project"}
+                  emptyText="暂无已配置项目"
+                  onToggleOpen={() => setOpenContextPicker((current) => current === "project" ? null : "project")}
+                  onToggle={(id) => setSelectedProjectId((current) => current === Number(id) ? null : Number(id))}
                 />
-                <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[12px] hover:bg-zinc-100 sm:inline-flex">
+                <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 sm:inline-flex">
                   <PanelRight size={15} />
                   <select
                     value={selectedModelId}
@@ -385,13 +397,13 @@ export function KnowledgeChatHome() {
                     ))}
                   </select>
                 </label>
-                <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("chat.voiceInput")}>
+                <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={t("chat.voiceInput")}>
                   <Mic size={16} />
                 </button>
                 <button
                   type="submit"
                   disabled={sending || !input.trim()}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-zinc-300"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300"
                   aria-label={t("chat.send")}
                 >
                   {sending ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={17} />}
@@ -450,7 +462,7 @@ function ContextMultiSelect({
         type="button"
         disabled={disabled}
         onClick={onToggleOpen}
-        className="inline-flex h-8 max-w-[154px] items-center gap-1.5 rounded-md px-2 text-[12px] hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+        className="inline-flex h-8 max-w-[164px] items-center gap-1.5 rounded-lg border border-transparent px-2 text-[12px] text-slate-600 transition hover:border-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
         aria-haspopup="listbox"
         aria-expanded={open}
         title={selectedIds.length > 0 ? selectedIds.join(", ") : label}
@@ -461,7 +473,7 @@ function ContextMultiSelect({
       </button>
 
       {open && (
-        <div className="absolute bottom-10 right-0 z-30 w-[276px] overflow-hidden rounded-xl border border-zinc-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.18)]">
+        <div className="absolute bottom-10 right-0 z-30 w-[290px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.18)]">
           <div className="flex items-center justify-between px-2.5 py-2 text-[11px] font-semibold text-zinc-500">
             <span>{label}</span>
             <span>{selectedIds.length}</span>
@@ -509,11 +521,15 @@ function toggleSelection(items: string[], value: string) {
 
 function EmptyState({ title }: { title: string }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center pb-14 text-center">
-      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--border)] bg-zinc-50">
-        <Sparkles size={24} strokeWidth={1.6} />
+    <div className="flex flex-1 flex-col items-center justify-center pb-8 pt-6 text-center sm:pb-14">
+      <div className="relative rounded-3xl border border-slate-200 bg-white/80 px-8 py-8 shadow-[0_18px_48px_rgba(15,23,42,0.06)] sm:px-14">
+        <div className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-200">
+          <Sparkles size={23} strokeWidth={1.8} />
+        </div>
+        <p className="mb-2 text-[11px] font-semibold tracking-[0.18em] text-blue-600">AIAGENT WORKSPACE</p>
+        <h2 className="font-serif text-[30px] font-semibold tracking-normal text-slate-950 sm:text-[40px]">{title}</h2>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">选择项目后，AI 会基于该项目下已登记的代码库协助你阅读、分析和修改代码。</p>
       </div>
-      <h2 className="font-serif text-[32px] font-semibold tracking-normal text-zinc-950 sm:text-[42px]">{title}</h2>
     </div>
   );
 }
