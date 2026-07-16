@@ -1,0 +1,2 @@
+llama-index>=0.12.0
+llama-index-embeddings-openai>=0.3.0

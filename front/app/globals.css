@@ -1,0 +1,73 @@
+@import "react-pdf/dist/Page/TextLayer.css";
+@import "react-pdf/dist/Page/AnnotationLayer.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  min-height: 100%;
+}
+body {
+  margin: 0;
+  background: #f8fafc;
+  color: #0f172a;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Keep dense workstation panels readable without browser-default wide scrollbars. */
+.workspace-scroll,
+.dashboard-layout * {
+  scrollbar-width: thin;
+  scrollbar-color: #52657e transparent;
+}
+.workspace-scroll::-webkit-scrollbar,
+.dashboard-layout *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.workspace-scroll::-webkit-scrollbar-track,
+.dashboard-layout *::-webkit-scrollbar-track {
+  background: transparent;
+}
+.workspace-scroll::-webkit-scrollbar-thumb,
+.dashboard-layout *::-webkit-scrollbar-thumb {
+  background: #52657e;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.workspace-scroll::-webkit-scrollbar-thumb:hover,
+.dashboard-layout *::-webkit-scrollbar-thumb:hover {
+  background-color: #7f97b6;
+}
+
+.dashboard-studio-shell {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  min-height: 100vh;
+  background: #111318;
+}
+
+.dashboard-layout {
+  display: grid;
+  height: calc(100% - 48px);
+  min-height: 0;
+  grid-template-columns: var(--left-size) 6px minmax(360px, 1fr) 6px var(
+      --right-size
+    );
+  contain: layout paint;
+}

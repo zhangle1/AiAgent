@@ -1,0 +1,35 @@
+# Build and package output
+[Bb]in/
+[Oo]bj/
+front/node_modules/
+front/.next/
+front/out/
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# Runtime data, generated indexes, local workspaces and logs
+backed/data/
+backed/logs/
+backed/dashboard-workspaces/
+backed/dashboard-samples/
+backed/.vs/
+backed/.verify-*/
+
+# Local secrets and environment overrides
+backed/appsettings.json
+backed/appsettings.*.json
+!backed/appsettings.example.json
+front/.env
+front/.env.*
+!front/.env.example
+
+# IDE and operating system files
+.vs/
+.vscode/
+*.user
+*.suo
+*.log
+*.tsbuildinfo
+Thumbs.db
+.DS_Store
