@@ -58,6 +58,9 @@ public sealed class CodeRepositoryDto
     [JsonPropertyName("publish_output_path")]
     public string PublishOutputPath { get; set; } = "artifacts/publish";
 
+    [JsonPropertyName("publish_command")]
+    public string? PublishCommand { get; set; }
+
     [JsonPropertyName("is_git_repository")]
     public bool IsGitRepository { get; set; }
 
@@ -117,6 +120,9 @@ public sealed class CodeRepositorySaveRequest
 
     [JsonPropertyName("publish_output_path")]
     public string? PublishOutputPath { get; set; }
+
+    [JsonPropertyName("publish_command")]
+    public string? PublishCommand { get; set; }
 }
 
 public sealed class CodeProjectSaveRequest
@@ -162,6 +168,144 @@ public sealed class CodeProjectDto
 
     [JsonPropertyName("updated_at")]
     public DateTime? UpdatedAt { get; set; }
+}
+
+public sealed class CodeRuntimeProfileSaveRequest
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("entry_path")]
+    public string? EntryPath { get; set; }
+
+    [JsonPropertyName("run_script")]
+    public string? RunScript { get; set; }
+
+    [JsonPropertyName("health_path")]
+    public string? HealthPath { get; set; }
+
+    [JsonPropertyName("is_enabled")]
+    public bool IsEnabled { get; set; } = true;
+
+    [JsonPropertyName("is_preview_enabled")]
+    public bool IsPreviewEnabled { get; set; }
+}
+
+public sealed class CodeRuntimeProfileDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("project_id")]
+    public long ProjectId { get; set; }
+
+    [JsonPropertyName("repository_id")]
+    public long RepositoryId { get; set; }
+
+    [JsonPropertyName("repository_name")]
+    public string? RepositoryName { get; set; }
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("entry_path")]
+    public string? EntryPath { get; set; }
+
+    [JsonPropertyName("run_script")]
+    public string? RunScript { get; set; }
+
+    [JsonPropertyName("health_path")]
+    public string? HealthPath { get; set; }
+
+    [JsonPropertyName("is_enabled")]
+    public bool IsEnabled { get; set; }
+
+    [JsonPropertyName("is_preview_enabled")]
+    public bool IsPreviewEnabled { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public sealed class CodeRuntimeStartRequest
+{
+    [JsonPropertyName("profile_ids")]
+    public List<long>? ProfileIds { get; set; }
+}
+
+public sealed class CodeRuntimeRunDto
+{
+    [JsonPropertyName("run_id")]
+    public string RunId { get; set; } = string.Empty;
+
+    [JsonPropertyName("project_id")]
+    public long ProjectId { get; set; }
+
+    [JsonPropertyName("profile_id")]
+    public long ProfileId { get; set; }
+
+    [JsonPropertyName("repository_id")]
+    public long RepositoryId { get; set; }
+
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("port")]
+    public int Port { get; set; }
+
+    [JsonPropertyName("preview_url")]
+    public string? PreviewUrl { get; set; }
+
+    [JsonPropertyName("command")]
+    public string? Command { get; set; }
+
+    [JsonPropertyName("exit_code")]
+    public int? ExitCode { get; set; }
+
+    [JsonPropertyName("started_at")]
+    public DateTime StartedAt { get; set; }
+
+    [JsonPropertyName("completed_at")]
+    public DateTime? CompletedAt { get; set; }
+}
+
+public sealed class CodeRuntimeLogDto
+{
+    [JsonPropertyName("sequence")]
+    public long Sequence { get; set; }
+
+    [JsonPropertyName("stream")]
+    public string Stream { get; set; } = string.Empty;
+
+    [JsonPropertyName("line")]
+    public string Line { get; set; } = string.Empty;
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class CodeProjectRuntimeDto
+{
+    [JsonPropertyName("project_id")]
+    public long ProjectId { get; set; }
+
+    [JsonPropertyName("profiles")]
+    public List<CodeRuntimeProfileDto> Profiles { get; set; } = [];
+
+    [JsonPropertyName("runs")]
+    public List<CodeRuntimeRunDto> Runs { get; set; } = [];
 }
 
 /// <summary>
@@ -303,4 +447,16 @@ public sealed class CodeRepositoryDirectoryBrowserDto
 
     [JsonPropertyName("directories")]
     public List<string> Directories { get; set; } = [];
+
+    [JsonPropertyName("files")]
+    public List<CodeRepositoryBrowserFileDto> Files { get; set; } = [];
+}
+
+public sealed class CodeRepositoryBrowserFileDto
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
 }

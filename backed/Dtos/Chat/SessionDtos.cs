@@ -10,6 +10,11 @@ public class ChatSessionSummaryDto
     [JsonPropertyName("updated_at")] public DateTime UpdatedAt { get; set; }
     [JsonPropertyName("message_count")] public int MessageCount { get; set; }
     [JsonPropertyName("last_message")] public string LastMessage { get; set; } = string.Empty;
+    [JsonPropertyName("project_id")] public long? ProjectId { get; set; }
+    [JsonPropertyName("project_name")] public string? ProjectName { get; set; }
+    [JsonPropertyName("sort_order")] public int SortOrder { get; set; }
+    [JsonPropertyName("priority")] public string Priority { get; set; } = "normal";
+    [JsonPropertyName("is_pinned")] public bool IsPinned { get; set; }
 }
 
 public sealed class ChatSessionDetailDto : ChatSessionSummaryDto
@@ -32,4 +37,28 @@ public sealed class ChatSessionMessageDto
 public sealed class RenameChatSessionRequest
 {
     [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+}
+
+public sealed class ReorderChatSessionsRequest
+{
+    [JsonPropertyName("session_ids")] public List<string> SessionIds { get; set; } = [];
+}
+
+public sealed class UpdateChatSessionMetaRequest
+{
+    [JsonPropertyName("priority")] public string? Priority { get; set; }
+    [JsonPropertyName("is_pinned")] public bool? IsPinned { get; set; }
+}
+
+public sealed class ChatProjectPreferenceDto
+{
+    [JsonPropertyName("project_id")] public long ProjectId { get; set; }
+    [JsonPropertyName("is_pinned")] public bool IsPinned { get; set; }
+    [JsonPropertyName("sort_mode")] public string SortMode { get; set; } = "updated";
+}
+
+public sealed class UpdateChatProjectPreferenceRequest
+{
+    [JsonPropertyName("is_pinned")] public bool? IsPinned { get; set; }
+    [JsonPropertyName("sort_mode")] public string? SortMode { get; set; }
 }

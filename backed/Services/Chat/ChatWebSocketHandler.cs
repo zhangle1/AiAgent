@@ -1,5 +1,6 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
+using AiAgent.Backend.Services.Auth;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -18,13 +19,17 @@ public sealed class ChatWebSocketHandler
     };
 
     private readonly IChatOrchestrator _orchestrator;
+    private readonly IAuthService _authService;
+    private readonly IChatSessionService _sessions;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions)
     {
         _orchestrator = orchestrator;
+        _authService = authService;
+        _sessions = sessions;
     }
 
     /// <summary>
@@ -47,11 +52,25 @@ public sealed class ChatWebSocketHandler
             var requestText = await ReceiveTextAsync(socket, cancellationToken);
             var request = JsonSerializer.Deserialize<ChatCompleteRequest>(requestText, JsonOptions)
                 ?? throw new InvalidOperationException("Invalid chat request.");
+            var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
+                ?? throw new UnauthorizedAccessException();
+            await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+            var content = new StringBuilder();
+            var thinking = new StringBuilder();
+            object? citations = null;
+            string? modelId = null;
+            string? model = null;
 
             await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
             {
+                if (streamEvent.Type == "content") content.Append(streamEvent.Content);
+                if (streamEvent.Type == "thinking") thinking.Append(streamEvent.Content);
+                if (streamEvent.Type == "sources") citations = streamEvent.Citations;
+                modelId ??= streamEvent.ModelId;
+                model ??= streamEvent.Model;
                 await SendEventAsync(socket, streamEvent, token);
             }, cancellationToken);
+            await _sessions.RecordAssistantMessageAsync(user, request, content.ToString(), thinking.ToString(), citations, modelId, model, cancellationToken);
 
             if (socket.State == WebSocketState.Open)
             {

@@ -18,14 +18,16 @@ async function parseJson<T>(response: Response): Promise<T> {
     try {
       payload = JSON.parse(text) as unknown;
     } catch {
-      throw new Error(`Request returned non-JSON response: HTTP ${response.status} ${text.slice(0, 160)}`);
+      const detail = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      const suffix = detail && !/^internal server error$/i.test(detail) ? ` 原因：${detail.slice(0, 160)}` : " 服务端未返回详细错误，请查看后端日志。";
+      throw new Error(`请求失败（HTTP ${response.status}）。${suffix}`);
     }
   }
 
   if (!response.ok) {
     const message = typeof payload === "object" && payload && "message" in payload
       ? String((payload as { message?: string }).message)
-      : `Request failed with HTTP ${response.status}`;
+      : `请求失败（HTTP ${response.status}）。服务端未返回详细错误，请查看后端日志。`;
     throw new Error(message);
   }
 
@@ -56,6 +58,14 @@ export async function browseCodeRepositoryDirectories(path?: string): Promise<Co
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
   return parseJson<CodeRepositoryDirectoryBrowser>(
     await fetch(`/api/v1/code-repositories/browse${query}`, { cache: "no-store" }),
+  );
+}
+
+export async function browseCodeRepositoryFiles(rootPath: string, kind: "solution" | "configuration", path?: string): Promise<CodeRepositoryDirectoryBrowser> {
+  const query = new URLSearchParams({ root_path: rootPath, kind });
+  if (path) query.set("path", path);
+  return parseJson<CodeRepositoryDirectoryBrowser>(
+    await fetch(`/api/v1/code-repositories/browse/files?${query.toString()}`, { cache: "no-store" }),
   );
 }
 
@@ -101,7 +111,7 @@ export async function indexCodeRepository(name: string): Promise<{ ok: boolean; 
   );
 }
 export type CodeRepositoryCloneEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; destination_path?: string; repository?: CodeRepository };
-export type CodeRepositoryPackageEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; target_path?: string; output_path?: string };
+export type CodeRepositoryPackageEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; target_path?: string; output_path?: string; archive_name?: string | null };
 
 export function cloneCodeRepositoryViaWebSocket(request: { project_id?: number; repository_url: string; destination_parent_path?: string; git_account_id: number }, onEvent: (event: CodeRepositoryCloneEvent) => void): Promise<CodeRepositoryCloneEvent> {
   return new Promise((resolve, reject) => {

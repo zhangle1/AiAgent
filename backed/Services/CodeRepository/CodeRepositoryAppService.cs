@@ -57,6 +57,12 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         return _manager.Browse(path);
     }
 
+    [HttpGet("browse/files")]
+    public CodeRepositoryDirectoryBrowserDto BrowseFiles([FromQuery(Name = "root_path")] string rootPath, [FromQuery] string? path, [FromQuery] string kind)
+    {
+        return _manager.BrowseFiles(rootPath, path, kind);
+    }
+
     [HttpGet("{name}/tree")]
     public object Tree([FromRoute] string name, [FromQuery] string? path) => _indexService.BrowseTree(name, path);
 
@@ -73,9 +79,28 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     }
 
     [HttpPost("create")]
-    public CodeRepositoryDto Create([FromBody] CodeRepositorySaveRequest request)
+    public IActionResult Create([FromBody] CodeRepositorySaveRequest request)
     {
-        return _manager.Create(request);
+        try
+        {
+            return new OkObjectResult(_manager.Create(request));
+        }
+        catch (ArgumentException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"挂载代码库失败：{ex.Message}" });
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"挂载代码库失败：{ex.Message}" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"挂载代码库失败：{ex.Message}" });
+        }
+        catch (Exception ex)
+        {
+            return new ObjectResult(new { message = $"挂载代码库时服务器发生异常：{ex.Message}" }) { StatusCode = StatusCodes.Status500InternalServerError };
+        }
     }
 
     [HttpPut("{name}")]
@@ -106,6 +131,13 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
 
     [HttpPut("{name}/configured-file")]
     public object WriteConfiguredFile([FromRoute] string name, [FromBody] CodeRepositoryFileWriteRequest request) => _manager.WriteConfiguredFile(name, request);
+
+    [HttpGet("{name}/packages/{archiveName}")]
+    public IActionResult DownloadPackage([FromRoute] string name, [FromRoute] string archiveName)
+    {
+        var archive = _manager.GetPackageArchive(name, archiveName);
+        return new PhysicalFileResult(archive.FilePath, "application/zip") { EnableRangeProcessing = true, FileDownloadName = archive.DownloadName };
+    }
 
     [HttpGet("{name}/git/status")]
     public Task<GitWorkspaceStatus> GitStatus([FromRoute] string name, CancellationToken cancellationToken) => _git.StatusAsync(name, cancellationToken);

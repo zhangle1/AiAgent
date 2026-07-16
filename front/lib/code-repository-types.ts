@@ -16,6 +16,7 @@ export type CodeRepository = {
   publish_configuration: string;
   publish_runtime?: string | null;
   publish_output_path: string;
+  publish_command?: string | null;
   is_git_repository: boolean;
   branch?: string | null;
   last_scanned_at?: string | null;
@@ -54,6 +55,7 @@ export type CodeRepositoryDirectoryBrowser = {
   parent_path?: string | null;
   allowed_roots: string[];
   directories: string[];
+  files?: Array<{ name: string; path: string }>;
 };
 
 export type CodeRepositorySaveRequest = {
@@ -69,6 +71,7 @@ export type CodeRepositorySaveRequest = {
   publish_configuration?: string;
   publish_runtime?: string;
   publish_output_path?: string;
+  publish_command?: string;
 };
 
 export type CodeProjectSaveRequest = {

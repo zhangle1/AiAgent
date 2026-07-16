@@ -222,6 +222,8 @@ public sealed class CodeRepositoryIndexService : ICodeRepositoryIndexService
     {
         var position = file.Content.IndexOf(query, StringComparison.OrdinalIgnoreCase); if (position < 0) position = 0;
         var start = Math.Max(0, position - 500); var text = file.Content.Substring(start, Math.Min(1600, file.Content.Length - start));
-        return new KnowledgeCitationDto { Text = text, Metadata = { ["repository_name"] = repositoryName, ["file_path"] = file.RelativePath, ["source"] = "code_index" } };
+        var line = 1;
+        for (var index = 0; index < position; index++) if (file.Content[index] == '\n') line++;
+        return new KnowledgeCitationDto { Text = text, Metadata = { ["repository_name"] = repositoryName, ["file_path"] = file.RelativePath, ["line"] = line, ["source"] = "code_index" } };
     }
 }

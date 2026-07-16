@@ -31,6 +31,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - Target framework：`.NET 9`。
 - 使用 Furion Dynamic API；领域入口通常位于 `backed/Services/<Domain>/*AppService.cs`。
+- SqlSugar 的 `Queryable` 排序不要使用 LINQ 的 `ThenBy`/`ThenByDescending`；多字段排序使用 `.OrderBy(x => new { x.Field1, x.Field2 })`，需要倒序时使用 SqlSugar 对应的 `OrderBy` 重载。
 - DTO JSON 字段使用 `[JsonPropertyName]` 并与前端类型保持一致。
 - 文件修改采用临时文件 + 原子替换；所有工作区路径必须验证仍在允许的根目录内。
 - 不把业务逻辑塞进 `Program.cs`；仅在其中完成依赖注入与中间件配置。

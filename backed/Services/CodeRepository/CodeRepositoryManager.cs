@@ -26,6 +26,8 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryDirectoryBrowserDto Browse(string? path);
 
+    CodeRepositoryDirectoryBrowserDto BrowseFiles(string rootPath, string? path, string kind);
+
     CodeRepositoryInspectionDto Inspect(string rootPath);
 
     CodeRepositoryDto Create(CodeRepositorySaveRequest request);
@@ -39,6 +41,8 @@ public interface ICodeRepositoryManager
     object ReadConfiguredFile(string name, string path);
 
     object WriteConfiguredFile(string name, CodeRepositoryFileWriteRequest request);
+
+    (string FilePath, string DownloadName) GetPackageArchive(string name, string archiveName);
 
     void Delete(string name);
 }
@@ -188,6 +192,50 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     }
 
     /// <summary>
+    /// Browses a repository's directories and selectable files without allowing traversal outside that repository.
+    /// </summary>
+    public CodeRepositoryDirectoryBrowserDto BrowseFiles(string rootPath, string? path, string kind)
+    {
+        var root = NormalizeAndValidatePath(rootPath);
+        var currentPath = string.IsNullOrWhiteSpace(path) ? root : Path.GetFullPath(path);
+        if (!Directory.Exists(currentPath) || !IsPathWithin(root, currentPath))
+        {
+            throw new InvalidOperationException("The selected directory is outside the code repository.");
+        }
+
+        var parent = Directory.GetParent(currentPath)?.FullName;
+        if (!string.IsNullOrWhiteSpace(parent) && !IsPathWithin(root, parent))
+        {
+            parent = null;
+        }
+
+        var directories = Directory.EnumerateDirectories(currentPath)
+            .Where(path => !IsIgnoredDirectory(path))
+            .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+            .Take(200)
+            .ToList();
+        var files = Directory.EnumerateFiles(currentPath)
+            .Where(path => IsSelectableFile(path, kind))
+            .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+            .Take(200)
+            .Select(path => new CodeRepositoryBrowserFileDto
+            {
+                Name = Path.GetFileName(path),
+                Path = Path.GetRelativePath(root, path).Replace('\\', '/')
+            })
+            .ToList();
+
+        return new CodeRepositoryDirectoryBrowserDto
+        {
+            Path = currentPath,
+            ParentPath = parent,
+            AllowedRoots = [root],
+            Directories = directories,
+            Files = files
+        };
+    }
+
+    /// <summary>
     /// Checks a directory and detects its basic repository metadata without indexing source files.
     /// </summary>
     public CodeRepositoryInspectionDto Inspect(string rootPath)
@@ -331,6 +379,24 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         entity.UpdatedAt = DateTime.UtcNow;
         _db.Updateable(entity).UpdateColumns(item => item.UpdatedAt).ExecuteCommand();
         return new { ok = true, path = normalized, sha256 = ComputeSha256(request.Content) };
+    }
+
+    public (string FilePath, string DownloadName) GetPackageArchive(string name, string archiveName)
+    {
+        var repository = Find(name);
+        var fileName = Path.GetFileName(archiveName);
+        if (!fileName.Equals(archiveName, StringComparison.Ordinal) || !fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The package archive name is invalid.");
+        }
+
+        var filePath = Path.Combine(AppContext.BaseDirectory, "App_Data", "code-packages", repository.Name, fileName);
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException("The package archive does not exist.");
+        }
+
+        return (filePath, fileName);
     }
 
     private AiCodeRepository Find(string name)
@@ -509,6 +575,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             PublishConfiguration = metadata.PublishConfiguration,
             PublishRuntime = metadata.PublishRuntime,
             PublishOutputPath = metadata.PublishOutputPath,
+            PublishCommand = metadata.PublishCommand,
             IsGitRepository = metadata.IsGitRepository,
             Branch = metadata.Branch,
             LastScannedAt = entity.LastScannedAt,
@@ -524,21 +591,28 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
 
     private static CodeRepositoryMetadata CreateMetadata(CodeRepositorySaveRequest request, CodeRepositoryInspectionDto inspection, CodeRepositoryMetadata? existing = null)
     {
-        var solutionFiles = NormalizeSelectedFiles(inspection.RootPath, request.SolutionFiles, inspection.SolutionFiles);
-        var publishTarget = NormalizePublishTarget(request.PublishTarget, solutionFiles, existing?.PublishTarget);
+        var solutionFiles = NormalizeSelectedFiles(inspection.RootPath, request.SolutionFiles);
+        var configurationFiles = NormalizeSelectedFiles(inspection.RootPath, request.ConfigurationFiles);
+        var languages = NormalizeSelection(request.Languages, inspection.Languages);
+        var isNpmProject = languages.Contains("TypeScript/JavaScript", StringComparer.OrdinalIgnoreCase) || languages.Contains("React", StringComparer.OrdinalIgnoreCase);
+        var publishFiles = isNpmProject
+            ? configurationFiles.Where(path => Path.GetFileName(path).Equals("package.json", StringComparison.OrdinalIgnoreCase)).ToList()
+            : solutionFiles;
+        var publishTarget = NormalizePublishTarget(request.PublishTarget, publishFiles, existing?.PublishTarget);
         return new CodeRepositoryMetadata
         {
-            Languages = NormalizeSelection(request.Languages, inspection.Languages),
+            Languages = languages,
             BuildSystems = inspection.BuildSystems,
             IsGitRepository = inspection.IsGitRepository,
             Branch = inspection.Branch,
             MarkerFiles = inspection.MarkerFiles,
             SolutionFiles = solutionFiles,
-            ConfigurationFiles = NormalizeSelectedFiles(inspection.RootPath, request.ConfigurationFiles, inspection.ConfigurationFiles),
+            ConfigurationFiles = configurationFiles,
             PublishTarget = publishTarget,
             PublishConfiguration = NormalizeBuildConfiguration(request.PublishConfiguration, existing?.PublishConfiguration),
             PublishRuntime = NormalizeOptional(request.PublishRuntime) ?? existing?.PublishRuntime,
-            PublishOutputPath = NormalizePublishOutputPath(request.PublishOutputPath, existing?.PublishOutputPath)
+            PublishOutputPath = NormalizePublishOutputPath(request.PublishOutputPath, existing?.PublishOutputPath),
+            PublishCommand = isNpmProject ? NormalizeNpmBuildCommand(request.PublishCommand, existing?.PublishCommand) : null
         };
     }
 
@@ -593,9 +667,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         return source.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToList();
     }
 
-    private static List<string> NormalizeSelectedFiles(string rootPath, List<string>? requested, List<string> detected)
+    private static List<string> NormalizeSelectedFiles(string rootPath, List<string>? requested)
     {
-        var source = requested is null ? detected : requested;
+        var source = requested ?? [];
         var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var result = new List<string>();
         foreach (var value in source.Where(value => !string.IsNullOrWhiteSpace(value)).Take(50))
@@ -624,6 +698,17 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         return value[..Math.Min(value.Length, 64)];
     }
 
+    private static string NormalizeNpmBuildCommand(string? requested, string? existing)
+    {
+        var value = NormalizeOptional(requested) ?? NormalizeOptional(existing) ?? "npm run build";
+        var arguments = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (arguments.Length < 3 || !arguments[0].Equals("npm", StringComparison.OrdinalIgnoreCase) || !arguments[1].Equals("run", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("React build command must use the format: npm run <script>.");
+        if (arguments.Length > 20 || arguments.Any(argument => argument.Length > 128 || argument.Any(character => !(char.IsLetterOrDigit(character) || character is '-' or '_' or ':' or '.' or '/' or '='))))
+            throw new InvalidOperationException("React build command contains unsupported characters.");
+        return string.Join(' ', arguments);
+    }
+
     private static string NormalizePublishOutputPath(string? requested, string? existing)
     {
         var value = (NormalizeOptional(requested) ?? NormalizeOptional(existing) ?? "artifacts/publish").Replace('\\', '/').Trim('/');
@@ -647,6 +732,34 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             catch (UnauthorizedAccessException) { }
         }
         return result.Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToList();
+    }
+
+    private static bool IsIgnoredDirectory(string path) => Path.GetFileName(path) is ".git" or "node_modules" or "bin" or "obj";
+
+    private static bool IsSelectableFile(string path, string kind)
+    {
+        var name = Path.GetFileName(path);
+        if (string.Equals(kind, "package", StringComparison.OrdinalIgnoreCase))
+            return name.Equals("package.json", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(kind, "solution", StringComparison.OrdinalIgnoreCase))
+        {
+            var extension = Path.GetExtension(name);
+            return extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".slnf", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!string.Equals(kind, "configuration", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Unsupported file selection kind.", nameof(kind));
+        }
+
+        return name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".config", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".pubxml", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith(".env", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("package.json", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("docker-compose", StringComparison.OrdinalIgnoreCase) && (name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeName(string? value, string fallback)
@@ -687,5 +800,6 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         public string PublishConfiguration { get; set; } = "Release";
         public string? PublishRuntime { get; set; }
         public string PublishOutputPath { get; set; } = "artifacts/publish";
+        public string? PublishCommand { get; set; }
     }
 }

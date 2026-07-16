@@ -7,6 +7,11 @@
 
 :root {
   color-scheme: light;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
 }
 * {
   box-sizing: border-box;
@@ -17,8 +22,8 @@ body {
 }
 body {
   margin: 0;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--background);
+  color: var(--foreground);
 }
 button,
 input,

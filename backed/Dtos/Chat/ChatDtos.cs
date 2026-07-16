@@ -36,6 +36,12 @@ public sealed class ChatCompleteRequest
     public List<string> CodeRepositoryNames { get; set; } = [];
 
     /// <summary>
+    /// Selected code project. Its registered repositories become this chat's code context.
+    /// </summary>
+    [JsonPropertyName("code_project_id")]
+    public long? CodeProjectId { get; set; }
+
+    /// <summary>
     /// Optional constrained dashboard workspace for agent file-write tools.
     /// </summary>
     [JsonPropertyName("dashboard_application_id")]

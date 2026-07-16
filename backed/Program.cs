@@ -32,6 +32,11 @@ builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = maxUploadBodyBytes;
 });
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient("CodeRuntimePreview").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false,
+    UseProxy = false
+});
 builder.Services.AddDataProtection();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddEndpointsApiExplorer();
@@ -93,6 +98,7 @@ builder.Services.AddSingleton<IAgentLoop, AgentLoop>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 builder.Services.AddSingleton<ChatWebSocketHandler>();
 builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
+builder.Services.AddSingleton<ICodeRuntimeManager, CodeRuntimeManager>();
 builder.Services.AddSingleton<IGitWorkspaceService, GitWorkspaceService>();
 builder.Services.AddSingleton<ICodeRepositoryGitService, CodeRepositoryGitService>();
 builder.Services.AddSingleton<IDashboardApplicationWorkspace, DashboardApplicationWorkspace>();
