@@ -1,6 +1,8 @@
 using AiAgent.Backend.Dtos.CodeRepository;
 using AiAgent.Backend.Entities.CodeRepository;
 using SqlSugar;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace AiAgent.Backend.Services.CodeRepository;
@@ -12,13 +14,31 @@ public interface ICodeRepositoryManager
 {
     List<CodeRepositoryDto> List();
 
+    List<CodeProjectDto> ListProjects();
+
+    CodeProjectDto GetProject(long projectId);
+
+    CodeProjectDto CreateProject(CodeProjectSaveRequest request);
+
+    CodeProjectDto UpdateProject(long projectId, CodeProjectSaveRequest request);
+
+    void DeleteProject(long projectId);
+
     CodeRepositoryDirectoryBrowserDto Browse(string? path);
 
     CodeRepositoryInspectionDto Inspect(string rootPath);
 
     CodeRepositoryDto Create(CodeRepositorySaveRequest request);
 
+    CodeRepositoryDto Get(string name);
+
     CodeRepositoryDto Update(string name, CodeRepositorySaveRequest request);
+
+    CodeRepositoryHealthDto CheckHealth(string name);
+
+    object ReadConfiguredFile(string name, string path);
+
+    object WriteConfiguredFile(string name, CodeRepositoryFileWriteRequest request);
 
     void Delete(string name);
 }
@@ -47,13 +67,96 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     /// </summary>
     public List<CodeRepositoryDto> List()
     {
+        var projects = _db.Queryable<AiCodeProject>()
+            .Where(x => !x.IsDeleted)
+            .ToList()
+            .ToDictionary(x => x.Id);
         return _db.Queryable<AiCodeRepository>()
             .Where(x => !x.IsDeleted)
             .OrderByDescending(x => x.UpdatedAt)
             .OrderByDescending(x => x.CreatedAt)
             .ToList()
-            .Select(ToDto)
+            .Select(item => ToDto(item, projects.GetValueOrDefault(item.ProjectId ?? 0)))
             .ToList();
+    }
+
+    public List<CodeProjectDto> ListProjects()
+    {
+        var repositories = List().Where(x => x.ProjectId.HasValue).GroupBy(x => x.ProjectId!.Value).ToDictionary(x => x.Key, x => x.ToList());
+        return _db.Queryable<AiCodeProject>()
+            .Where(x => !x.IsDeleted)
+            .OrderByDescending(x => x.UpdatedAt)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToList()
+            .Select(project => ToProjectDto(project, repositories.GetValueOrDefault(project.Id) ?? []))
+            .ToList();
+    }
+
+    public CodeProjectDto GetProject(long projectId)
+    {
+        var project = FindProject(projectId);
+        var repositories = List().Where(item => item.ProjectId == projectId).ToList();
+        return ToProjectDto(project, repositories);
+    }
+
+    public CodeProjectDto CreateProject(CodeProjectSaveRequest request)
+    {
+        var rootPath = NormalizeAndValidatePath(request.RootPath);
+        var name = NormalizeName(request.Name, Path.GetFileName(rootPath));
+        if (_db.Queryable<AiCodeProject>().Any(x => x.Name == name && !x.IsDeleted))
+        {
+            throw new InvalidOperationException($"Code project '{name}' already exists.");
+        }
+        if (_db.Queryable<AiCodeProject>().Any(x => x.RootPath == rootPath && !x.IsDeleted))
+        {
+            throw new InvalidOperationException("This project folder is already registered.");
+        }
+        var now = DateTime.UtcNow;
+        var project = new AiCodeProject
+        {
+            Name = name,
+            DisplayName = FirstNonEmpty(request.DisplayName, Path.GetFileName(rootPath), name),
+            RootPath = rootPath,
+            Description = NormalizeOptional(request.Description),
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        project.Id = _db.Insertable(project).ExecuteReturnIdentity();
+        return ToProjectDto(project, []);
+    }
+
+    public CodeProjectDto UpdateProject(long projectId, CodeProjectSaveRequest request)
+    {
+        var project = FindProject(projectId);
+        var rootPath = NormalizeAndValidatePath(request.RootPath);
+        if (_db.Queryable<AiCodeProject>().Any(x => x.Id != projectId && x.RootPath == rootPath && !x.IsDeleted))
+        {
+            throw new InvalidOperationException("This project folder is already registered.");
+        }
+        var attached = _db.Queryable<AiCodeRepository>().Where(x => x.ProjectId == projectId && !x.IsDeleted).ToList();
+        if (attached.Any(repository => !IsPathWithin(rootPath, repository.RootPath)))
+        {
+            throw new InvalidOperationException("The new project folder must include every attached code repository.");
+        }
+        project.DisplayName = FirstNonEmpty(request.DisplayName, project.DisplayName, Path.GetFileName(rootPath));
+        project.RootPath = rootPath;
+        project.Description = NormalizeOptional(request.Description);
+        project.UpdatedAt = DateTime.UtcNow;
+        _db.Updateable(project).ExecuteCommand();
+        return ToProjectDto(project, attached.Select(repository => ToDto(repository, project)).ToList());
+    }
+
+    public void DeleteProject(long projectId)
+    {
+        var project = FindProject(projectId);
+        if (_db.Queryable<AiCodeRepository>().Any(x => x.ProjectId == projectId && !x.IsDeleted))
+        {
+            throw new InvalidOperationException("Remove or move the project's code repositories before deleting the project.");
+        }
+        _db.Updateable<AiCodeProject>()
+            .SetColumns(x => new AiCodeProject { IsDeleted = true, DeletedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow })
+            .Where(x => x.Id == project.Id)
+            .ExecuteCommand();
     }
 
     /// <summary>
@@ -100,6 +203,8 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     {
         var inspection = Inspect(request.RootPath);
         var name = NormalizeName(request.Name, inspection.SuggestedName);
+        var project = request.ProjectId.HasValue ? FindProject(request.ProjectId.Value) : null;
+        EnsureProjectContainsRepository(project, inspection.RootPath);
         if (_db.Queryable<AiCodeRepository>().Any(x => x.Name == name && !x.IsDeleted))
         {
             throw new InvalidOperationException($"Code repository '{name}' already exists.");
@@ -108,26 +213,27 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         var now = DateTime.UtcNow;
         var entity = new AiCodeRepository
         {
+            ProjectId = project?.Id,
             Name = name,
             DisplayName = FirstNonEmpty(request.DisplayName, inspection.SuggestedDisplayName, name),
             RootPath = inspection.RootPath,
             Description = NormalizeOptional(request.Description),
             Status = "configured",
-            TechStackJson = JsonSerializer.Serialize(new CodeRepositoryMetadata
-            {
-                Languages = inspection.Languages,
-                BuildSystems = inspection.BuildSystems,
-                IsGitRepository = inspection.IsGitRepository,
-                Branch = inspection.Branch,
-                MarkerFiles = inspection.MarkerFiles
-            }, JsonOptions),
+            TechStackJson = JsonSerializer.Serialize(CreateMetadata(request, inspection), JsonOptions),
             CreatedAt = now,
             UpdatedAt = now,
             LastScannedAt = now
         };
 
         entity.Id = _db.Insertable(entity).ExecuteReturnIdentity();
-        return ToDto(entity);
+        return ToDto(entity, project);
+    }
+
+    public CodeRepositoryDto Get(string name)
+    {
+        var entity = Find(name);
+        var project = entity.ProjectId.HasValue ? FindProject(entity.ProjectId.Value) : null;
+        return ToDto(entity, project);
     }
 
     /// <summary>
@@ -137,24 +243,20 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     {
         var entity = Find(name);
         var inspection = Inspect(request.RootPath);
+        var project = request.ProjectId.HasValue ? FindProject(request.ProjectId.Value) : entity.ProjectId.HasValue ? FindProject(entity.ProjectId.Value) : null;
+        EnsureProjectContainsRepository(project, inspection.RootPath);
         var now = DateTime.UtcNow;
         entity.DisplayName = FirstNonEmpty(request.DisplayName, entity.DisplayName, inspection.SuggestedDisplayName, entity.Name);
+        entity.ProjectId = project?.Id;
         entity.RootPath = inspection.RootPath;
         entity.Description = NormalizeOptional(request.Description);
         entity.Status = "configured";
-        entity.TechStackJson = JsonSerializer.Serialize(new CodeRepositoryMetadata
-        {
-            Languages = inspection.Languages,
-            BuildSystems = inspection.BuildSystems,
-            IsGitRepository = inspection.IsGitRepository,
-            Branch = inspection.Branch,
-            MarkerFiles = inspection.MarkerFiles
-        }, JsonOptions);
+        entity.TechStackJson = JsonSerializer.Serialize(CreateMetadata(request, inspection, ReadMetadata(entity)), JsonOptions);
         entity.UpdatedAt = now;
         entity.LastScannedAt = now;
 
         _db.Updateable(entity).ExecuteCommand();
-        return ToDto(entity);
+        return ToDto(entity, project);
     }
 
     /// <summary>
@@ -174,6 +276,63 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             .ExecuteCommand();
     }
 
+    public CodeRepositoryHealthDto CheckHealth(string name)
+    {
+        var entity = Find(name);
+        var metadata = ReadMetadata(entity);
+        var rootExists = Directory.Exists(entity.RootPath);
+        var project = entity.ProjectId.HasValue ? FindProject(entity.ProjectId.Value) : null;
+        var projectMatch = project is not null && rootExists && IsPathWithin(project.RootPath, entity.RootPath);
+        var health = new CodeRepositoryHealthDto
+        {
+            RootExists = rootExists,
+            ProjectMatch = projectMatch,
+            IsGitRepository = rootExists && Directory.Exists(Path.Combine(entity.RootPath, ".git")),
+            Branch = rootExists && Directory.Exists(Path.Combine(entity.RootPath, ".git")) ? ReadGitBranch(entity.RootPath) : null,
+            SolutionFiles = CheckFiles(entity.RootPath, metadata.SolutionFiles),
+            ConfigurationFiles = CheckFiles(entity.RootPath, metadata.ConfigurationFiles)
+        };
+        if (!rootExists) health.Messages.Add("代码库目录不存在或服务器无法访问。");
+        if (project is null) health.Messages.Add("代码库尚未挂载到项目文件夹。");
+        else if (!projectMatch) health.Messages.Add("代码库目录不在所属项目文件夹内。");
+        if (!health.IsGitRepository) health.Messages.Add("未检测到 .git 目录。");
+        if (health.SolutionFiles.Any(item => !item.Exists)) health.Messages.Add("部分已选解决方案或工程文件不存在。");
+        if (health.ConfigurationFiles.Any(item => !item.Exists)) health.Messages.Add("部分已选配置文件不存在。");
+        if (health.Messages.Count == 0) health.Messages.Add("目录、Git 和已选文件检查通过。");
+        return health;
+    }
+
+    public object ReadConfiguredFile(string name, string path)
+    {
+        var entity = Find(name);
+        var metadata = ReadMetadata(entity);
+        var normalized = NormalizeConfiguredPath(entity.RootPath, path, metadata.ConfigurationFiles);
+        var fullPath = Path.Combine(entity.RootPath, normalized.Replace('/', Path.DirectorySeparatorChar));
+        var info = new FileInfo(fullPath);
+        if (!info.Exists) throw new FileNotFoundException("The configured file does not exist.");
+        if (info.Length > 1024 * 1024) throw new InvalidOperationException("Only configured text files up to 1 MB can be edited.");
+        var content = File.ReadAllText(fullPath, new UTF8Encoding(false));
+        return new { path = normalized, content, sha256 = ComputeSha256(content), updated_at = info.LastWriteTimeUtc };
+    }
+
+    public object WriteConfiguredFile(string name, CodeRepositoryFileWriteRequest request)
+    {
+        var entity = Find(name);
+        var metadata = ReadMetadata(entity);
+        var normalized = NormalizeConfiguredPath(entity.RootPath, request.Path, metadata.ConfigurationFiles);
+        if (request.Content.Length > 1024 * 1024) throw new InvalidOperationException("Configured file content is limited to 1 MB.");
+        var fullPath = Path.Combine(entity.RootPath, normalized.Replace('/', Path.DirectorySeparatorChar));
+        var existing = File.ReadAllText(fullPath, new UTF8Encoding(false));
+        if (!string.IsNullOrWhiteSpace(request.ExpectedSha256) && !string.Equals(request.ExpectedSha256, ComputeSha256(existing), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The configured file changed on disk. Reload it before saving.");
+        var temporary = fullPath + ".aiagent.tmp";
+        File.WriteAllText(temporary, request.Content, new UTF8Encoding(false));
+        File.Move(temporary, fullPath, true);
+        entity.UpdatedAt = DateTime.UtcNow;
+        _db.Updateable(entity).UpdateColumns(item => item.UpdatedAt).ExecuteCommand();
+        return new { ok = true, path = normalized, sha256 = ComputeSha256(request.Content) };
+    }
+
     private AiCodeRepository Find(string name)
     {
         var normalized = NormalizeName(name, string.Empty);
@@ -181,6 +340,12 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             .Where(x => x.Name == normalized && !x.IsDeleted)
             .First();
         return entity ?? throw new InvalidOperationException($"Code repository '{name}' does not exist.");
+    }
+
+    private AiCodeProject FindProject(long projectId)
+    {
+        var project = _db.Queryable<AiCodeProject>().Where(x => x.Id == projectId && !x.IsDeleted).First();
+        return project ?? throw new InvalidOperationException("The selected code project does not exist.");
     }
 
     private CodeRepositoryInspectionDto InspectCore(string rootPath)
@@ -249,7 +414,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             BuildSystems = buildSystems.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             IsGitRepository = isGitRepository,
             Branch = branch,
-            MarkerFiles = markerFiles
+            MarkerFiles = markerFiles,
+            SolutionFiles = FindFiles(rootPath, ["*.sln", "*.csproj", "*.slnf"]),
+            ConfigurationFiles = FindFiles(rootPath, ["appsettings*.json", "*.config", "*.pubxml", ".env*", "package.json", "docker-compose*.yml", "docker-compose*.yaml"])
         };
     }
 
@@ -320,14 +487,14 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         return head.StartsWith(prefix, StringComparison.Ordinal) ? head[prefix.Length..] : null;
     }
 
-    private static CodeRepositoryDto ToDto(AiCodeRepository entity)
+    private static CodeRepositoryDto ToDto(AiCodeRepository entity, AiCodeProject? project = null)
     {
-        var metadata = string.IsNullOrWhiteSpace(entity.TechStackJson)
-            ? new CodeRepositoryMetadata()
-            : JsonSerializer.Deserialize<CodeRepositoryMetadata>(entity.TechStackJson, JsonOptions) ?? new CodeRepositoryMetadata();
+        var metadata = ReadMetadata(entity);
         return new CodeRepositoryDto
         {
             Id = entity.Id,
+            ProjectId = entity.ProjectId,
+            ProjectName = project?.DisplayName,
             Name = entity.Name,
             DisplayName = entity.DisplayName,
             RootPath = entity.RootPath,
@@ -336,6 +503,12 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             Status = entity.Status,
             Languages = metadata.Languages,
             BuildSystems = metadata.BuildSystems,
+            SolutionFiles = metadata.SolutionFiles,
+            ConfigurationFiles = metadata.ConfigurationFiles,
+            PublishTarget = metadata.PublishTarget,
+            PublishConfiguration = metadata.PublishConfiguration,
+            PublishRuntime = metadata.PublishRuntime,
+            PublishOutputPath = metadata.PublishOutputPath,
             IsGitRepository = metadata.IsGitRepository,
             Branch = metadata.Branch,
             LastScannedAt = entity.LastScannedAt,
@@ -343,6 +516,137 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
+    }
+
+    private static CodeRepositoryMetadata ReadMetadata(AiCodeRepository entity) => string.IsNullOrWhiteSpace(entity.TechStackJson)
+        ? new CodeRepositoryMetadata()
+        : JsonSerializer.Deserialize<CodeRepositoryMetadata>(entity.TechStackJson, JsonOptions) ?? new CodeRepositoryMetadata();
+
+    private static CodeRepositoryMetadata CreateMetadata(CodeRepositorySaveRequest request, CodeRepositoryInspectionDto inspection, CodeRepositoryMetadata? existing = null)
+    {
+        var solutionFiles = NormalizeSelectedFiles(inspection.RootPath, request.SolutionFiles, inspection.SolutionFiles);
+        var publishTarget = NormalizePublishTarget(request.PublishTarget, solutionFiles, existing?.PublishTarget);
+        return new CodeRepositoryMetadata
+        {
+            Languages = NormalizeSelection(request.Languages, inspection.Languages),
+            BuildSystems = inspection.BuildSystems,
+            IsGitRepository = inspection.IsGitRepository,
+            Branch = inspection.Branch,
+            MarkerFiles = inspection.MarkerFiles,
+            SolutionFiles = solutionFiles,
+            ConfigurationFiles = NormalizeSelectedFiles(inspection.RootPath, request.ConfigurationFiles, inspection.ConfigurationFiles),
+            PublishTarget = publishTarget,
+            PublishConfiguration = NormalizeBuildConfiguration(request.PublishConfiguration, existing?.PublishConfiguration),
+            PublishRuntime = NormalizeOptional(request.PublishRuntime) ?? existing?.PublishRuntime,
+            PublishOutputPath = NormalizePublishOutputPath(request.PublishOutputPath, existing?.PublishOutputPath)
+        };
+    }
+
+    private static List<CodeRepositoryFileHealth> CheckFiles(string rootPath, IEnumerable<string> paths) => paths.Select(path => new CodeRepositoryFileHealth
+    {
+        Path = path,
+        Exists = File.Exists(Path.Combine(rootPath, path.Replace('/', Path.DirectorySeparatorChar)))
+    }).ToList();
+
+    private static string NormalizeConfiguredPath(string rootPath, string value, IReadOnlyCollection<string> configured)
+    {
+        var normalized = value.Replace('\\', '/').TrimStart('/');
+        if (!configured.Contains(normalized, StringComparer.OrdinalIgnoreCase)) throw new InvalidOperationException("Only a selected configuration file can be edited.");
+        var fullPath = Path.GetFullPath(Path.Combine(rootPath, normalized));
+        if (!IsPathWithin(rootPath, fullPath) || !File.Exists(fullPath)) throw new FileNotFoundException("The configured file does not exist.");
+        return normalized;
+    }
+
+    private static string ComputeSha256(string content) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
+    private static CodeProjectDto ToProjectDto(AiCodeProject project, List<CodeRepositoryDto> repositories) => new()
+    {
+        Id = project.Id,
+        Name = project.Name,
+        DisplayName = project.DisplayName,
+        RootPath = project.RootPath,
+        Description = project.Description,
+        Repositories = repositories,
+        CreatedAt = project.CreatedAt,
+        UpdatedAt = project.UpdatedAt
+    };
+
+    private static void EnsureProjectContainsRepository(AiCodeProject? project, string repositoryPath)
+    {
+        if (project is not null && !IsPathWithin(project.RootPath, repositoryPath))
+        {
+            throw new InvalidOperationException("A code repository must be located inside its selected project folder.");
+        }
+    }
+
+    private static bool IsPathWithin(string parentPath, string childPath)
+    {
+        var parent = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var child = Path.GetFullPath(childPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return child.Equals(parent, StringComparison.OrdinalIgnoreCase)
+            || child.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> NormalizeSelection(List<string>? requested, List<string> detected)
+    {
+        var source = requested is { Count: > 0 } ? requested : detected;
+        return source.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToList();
+    }
+
+    private static List<string> NormalizeSelectedFiles(string rootPath, List<string>? requested, List<string> detected)
+    {
+        var source = requested is null ? detected : requested;
+        var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var result = new List<string>();
+        foreach (var value in source.Where(value => !string.IsNullOrWhiteSpace(value)).Take(50))
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(root, value.Trim()));
+            if (!IsPathWithin(root, fullPath) || !File.Exists(fullPath)) continue;
+            result.Add(Path.GetRelativePath(root, fullPath).Replace('\\', '/'));
+        }
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static string? NormalizePublishTarget(string? requested, IReadOnlyCollection<string> selectedFiles, string? existing)
+    {
+        var candidate = NormalizeOptional(requested) ?? NormalizeOptional(existing);
+        if (!string.IsNullOrWhiteSpace(candidate) && selectedFiles.Contains(candidate.Replace('\\', '/'), StringComparer.OrdinalIgnoreCase))
+            return candidate.Replace('\\', '/');
+        return selectedFiles.FirstOrDefault(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            ?? selectedFiles.FirstOrDefault();
+    }
+
+    private static string NormalizeBuildConfiguration(string? requested, string? existing)
+    {
+        var value = NormalizeOptional(requested) ?? NormalizeOptional(existing) ?? "Release";
+        if (!value.All(character => char.IsLetterOrDigit(character) || character is '-' or '_'))
+            throw new InvalidOperationException("Publish configuration may only contain letters, numbers, '-' and '_'.");
+        return value[..Math.Min(value.Length, 64)];
+    }
+
+    private static string NormalizePublishOutputPath(string? requested, string? existing)
+    {
+        var value = (NormalizeOptional(requested) ?? NormalizeOptional(existing) ?? "artifacts/publish").Replace('\\', '/').Trim('/');
+        if (string.IsNullOrWhiteSpace(value) || value.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(value) || value.Split('/').Any(part => part is "." or ".."))
+            throw new InvalidOperationException("Publish output path must be a safe repository-relative path.");
+        return value;
+    }
+
+    private static List<string> FindFiles(string rootPath, IReadOnlyList<string> patterns)
+    {
+        var result = new List<string>();
+        foreach (var pattern in patterns)
+        {
+            try
+            {
+                result.AddRange(Directory.EnumerateFiles(rootPath, pattern, SearchOption.AllDirectories)
+                    .Where(path => !path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(part => part is ".git" or "node_modules" or "bin" or "obj"))
+                    .Select(path => Path.GetRelativePath(rootPath, path).Replace('\\', '/'))
+                    .Take(60));
+            }
+            catch (UnauthorizedAccessException) { }
+        }
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToList();
     }
 
     private static string NormalizeName(string? value, string fallback)
@@ -377,5 +681,11 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         public bool IsGitRepository { get; set; }
         public string? Branch { get; set; }
         public List<string> MarkerFiles { get; set; } = [];
+        public List<string> SolutionFiles { get; set; } = [];
+        public List<string> ConfigurationFiles { get; set; } = [];
+        public string? PublishTarget { get; set; }
+        public string PublishConfiguration { get; set; } = "Release";
+        public string? PublishRuntime { get; set; }
+        public string PublishOutputPath { get; set; } = "artifacts/publish";
     }
 }

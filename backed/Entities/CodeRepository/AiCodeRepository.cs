@@ -11,6 +11,9 @@ public sealed class AiCodeRepository
     [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
     public long Id { get; set; }
 
+    [SugarColumn(IsNullable = true)]
+    public long? ProjectId { get; set; }
+
     [SugarColumn(Length = 128)]
     public string Name { get; set; } = string.Empty;
 

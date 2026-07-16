@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Bot,
   Brain,
-  Code2,
-  LayoutDashboard,
   ChevronLeft,
+  Code2,
   Feather,
+  GitBranch,
   HeartHandshake,
   Home,
+  LayoutDashboard,
   Library,
   LogOut,
   MessageSquare,
@@ -43,6 +44,7 @@ const bottomItems: SidebarItem[] = [
   { labelKey: "nav.memory", href: "/memory", icon: Brain },
   { labelKey: "nav.knowledgeCenter", href: "/knowledge", icon: Library },
   { labelKey: "nav.codeRepositories", href: "/settings/code-repositories", icon: Code2 },
+  { label: "Git 管理", href: "/settings/git", icon: GitBranch },
   { label: "看板应用生成", href: "/dashboard-applications", icon: LayoutDashboard },
   { labelKey: "nav.settings", href: "/settings", icon: Settings },
 ];
@@ -77,71 +79,73 @@ export function AppSidebar() {
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col border-r border-[var(--border)] bg-[#f3f3f2] lg:flex">
-      <div className="flex h-12 items-center justify-between px-4">
-        <Link href="/settings" className="flex min-w-0 items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md border border-sky-200 bg-white text-sky-500">
-            <Feather size={15} />
+    <aside className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col border-r border-slate-200/90 bg-[#fbfcff] lg:flex">
+      <div className="flex h-[62px] items-center justify-between px-3.5">
+        <Link href="/chat" className="group flex min-w-0 items-center gap-2 rounded-xl px-1.5 py-1 transition hover:bg-sky-50">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-sky-200 bg-gradient-to-br from-white to-sky-50 text-sky-500 shadow-[0_3px_10px_rgba(14,165,233,0.14)]">
+            <Feather size={17} strokeWidth={1.8} />
           </span>
-          <span className="font-serif text-[18px] font-semibold italic text-sky-500">{t("app.name")}</span>
+          <span className="font-serif text-[20px] font-semibold italic tracking-tight text-sky-500">{t("app.name")}</span>
         </Link>
-        <button className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-white" aria-label="Collapse sidebar">
-          <ChevronLeft size={14} />
+        <button className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="收起侧边栏">
+          <ChevronLeft size={16} />
         </button>
       </div>
 
-      <nav className="mt-3 space-y-1 px-2">
-        {mainItems.map((item) => (
-          <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-        ))}
+      <nav className="px-3 pb-2">
+        <SidebarSectionLabel>工作台</SidebarSectionLabel>
+        <div className="mt-1 space-y-0.5">
+          {mainItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />)}
+        </div>
       </nav>
 
-      <div className="mt-7 min-h-0 flex-1 px-4">
-        <div className="flex items-center justify-between"><p className="text-[12px] font-medium text-black">会话记录</p><Link href="/chat" className="rounded p-1 text-zinc-500 hover:bg-white hover:text-black" aria-label="新建会话"><Plus size={14} /></Link></div>
-        <div className="mt-3 space-y-2">
+      <section className="mt-4 flex min-h-0 flex-1 flex-col px-3 pb-3">
+        <div className="flex items-center justify-between px-2">
+          <SidebarSectionLabel className="mb-0">会话记录</SidebarSectionLabel>
+          <Link href="/chat" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600" aria-label="新建会话">
+            <Plus size={15} />
+          </Link>
+        </div>
+        <div className="workspace-scroll mt-2 min-h-0 space-y-0.5 overflow-y-auto pr-1">
           {sessions.map((session) => (
-            <div key={session.id} className="group flex items-center gap-1 rounded px-1 py-1 hover:bg-white">
-              <Link href={`/chat?session=${encodeURIComponent(session.id)}`} className="flex min-w-0 flex-1 items-center gap-2 text-[12px] text-[var(--muted-foreground)] hover:text-black">
-                <MessageSquare size={14} strokeWidth={1.5} />
+            <div key={session.id} className="group flex items-center gap-0.5 rounded-lg px-1 py-0.5 transition hover:bg-slate-100/90">
+              <Link href={`/chat?session=${encodeURIComponent(session.id)}`} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-slate-500 transition group-hover:text-slate-800">
+                <MessageSquare size={13} strokeWidth={1.7} className="shrink-0 text-slate-400" />
                 <span className="truncate">{session.title}</span>
               </Link>
-              <button type="button" onClick={() => void removeSession(session)} disabled={deletingSessionId === session.id} className="hidden h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 group-hover:inline-flex" aria-label={`删除会话：${session.title}`}>
+              <button type="button" onClick={() => void removeSession(session)} disabled={deletingSessionId === session.id} className="hidden h-6 w-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40 group-hover:grid" aria-label={`删除会话：${session.title}`}>
                 <Trash2 size={13} />
               </button>
             </div>
           ))}
-          {sessions.length === 0 && <p className="px-1 text-[11px] text-zinc-400">暂无历史会话</p>}
+          {sessions.length === 0 && <p className="px-2 py-3 text-[11px] leading-5 text-slate-400">暂时没有历史会话</p>}
         </div>
-      </div>
+      </section>
 
-      <nav className="mt-auto border-t border-[var(--border)] p-2">
-        {bottomItems.map((item) => (
-          <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-        ))}
-        <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px] text-black hover:bg-white/70"><LogOut size={16} strokeWidth={1.6} />退出登录</button>
-        <div className="mt-2 px-2 text-[11px] text-black">v0.1.0</div>
+      <nav className="border-t border-slate-200/80 bg-white/70 px-3 py-3">
+        <SidebarSectionLabel>工具与设置</SidebarSectionLabel>
+        <div className="mt-1 space-y-0.5">
+          {bottomItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />)}
+        </div>
+        <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="mt-2 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px] text-slate-500 transition hover:bg-red-50 hover:text-red-600">
+          <LogOut size={16} strokeWidth={1.7} />退出登录
+        </button>
+        <div className="mt-2 px-2 text-[10px] font-medium tracking-wide text-slate-400">AiAgent · v0.1.0</div>
       </nav>
     </aside>
   );
 }
 
-function SidebarLink({
-  item,
-  active,
-}: {
-  item: SidebarItem;
-  active: boolean;
-}) {
+function SidebarSectionLabel({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <p className={`mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 ${className}`}>{children}</p>;
+}
+
+function SidebarLink({ item, active }: { item: SidebarItem; active: boolean }) {
   const Icon = item.icon;
   const { t } = useI18n();
   return (
-    <Link
-      href={item.href}
-      className={`flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] transition ${
-        active ? "bg-white text-black shadow-sm" : "text-black hover:bg-white/70"
-      }`}
-    >
-      <Icon size={16} strokeWidth={1.6} />
+    <Link href={item.href} className={`flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition-all duration-150 ${active ? "bg-blue-600 text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)]" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}>
+      <Icon size={16} strokeWidth={1.75} className={active ? "text-white" : "text-slate-500"} />
       <span className="truncate">{item.label ?? t(item.labelKey!)}</span>
     </Link>
   );
@@ -149,8 +153,6 @@ function SidebarLink({
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
-  if (href === "/settings") {
-    return pathname === href || (pathname.startsWith(`${href}/`) && !pathname.startsWith("/settings/code-repositories"));
-  }
+  if (href === "/settings") return pathname === href || (pathname.startsWith(`${href}/`) && !pathname.startsWith("/settings/code-repositories") && !pathname.startsWith("/settings/git"));
   return pathname === href || pathname.startsWith(`${href}/`);
 }

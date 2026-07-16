@@ -11,7 +11,8 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const onModelsPage = pathname?.startsWith("/settings/models");
   const onCodeRepositoriesPage = pathname?.startsWith("/settings/code-repositories");
-  const onGitAccountsPage = pathname?.startsWith("/settings/git-accounts");
+  const onGitAccountsPage = pathname?.startsWith("/settings/git-accounts") || pathname?.startsWith("/settings/git/accounts");
+  const onGitWorkspacePage = pathname?.startsWith("/settings/git");
   const currentService = MODEL_SERVICE_CONFIGS.find((item) => item.href === pathname);
 
   return (
@@ -40,6 +41,12 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
           <>
             <span>/</span>
             <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><GitBranch size={14} />{t("settings.gitAccounts")}</span>
+          </>
+        )}
+        {onGitWorkspacePage && !onGitAccountsPage && (
+          <>
+            <span>/</span>
+            <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><GitBranch size={14} />Git 管理</span>
           </>
         )}
         {currentService && (

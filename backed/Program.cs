@@ -6,6 +6,7 @@ using AiAgent.Backend.Services.Chat.Prompting;
 using AiAgent.Backend.Services.Chat.Retrieval;
 using AiAgent.Backend.Services.CodeRepository;
 using AiAgent.Backend.Services.DashboardApp;
+using AiAgent.Backend.Services.Git;
 using AiAgent.Backend.Services.Knowledge;
 using AiAgent.Backend.Services.Parsing;
 using AiAgent.Backend.Services.PythonWorkers;
@@ -92,10 +93,13 @@ builder.Services.AddSingleton<IAgentLoop, AgentLoop>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 builder.Services.AddSingleton<ChatWebSocketHandler>();
 builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
+builder.Services.AddSingleton<IGitWorkspaceService, GitWorkspaceService>();
+builder.Services.AddSingleton<ICodeRepositoryGitService, CodeRepositoryGitService>();
 builder.Services.AddSingleton<IDashboardApplicationWorkspace, DashboardApplicationWorkspace>();
 builder.Services.AddSingleton<IDashboardRuntimeService, DashboardRuntimeService>();
 builder.Services.AddSingleton<IDashboardGitService, DashboardGitService>();
 builder.Services.AddSingleton<ICodeRepositoryCloneWebSocketHandler, CodeRepositoryCloneWebSocketHandler>();
+builder.Services.AddSingleton<ICodeRepositoryPackageWebSocketHandler, CodeRepositoryPackageWebSocketHandler>();
 builder.Services.AddSingleton<ISqlSugarClient>(_ =>
 {
     var connectionString = builder.Configuration.GetConnectionString("Default")
@@ -162,6 +166,11 @@ app.Map("/api/v1/chat/ws", async context =>
 app.Map("/api/v1/code-repositories/clone/ws", async context =>
 {
     var handler = context.RequestServices.GetRequiredService<ICodeRepositoryCloneWebSocketHandler>();
+    await handler.HandleClientAsync(context);
+});
+app.Map("/api/v1/code-repositories/package/ws", async context =>
+{
+    var handler = context.RequestServices.GetRequiredService<ICodeRepositoryPackageWebSocketHandler>();
     await handler.HandleClientAsync(context);
 });
 app.MapGet("/", () => Results.Redirect("/swagger"));

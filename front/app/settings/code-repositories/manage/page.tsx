@@ -1,7 +1,7 @@
 "use client";
 
-import { CodeRepositorySettingsPage } from "@/components/code-repositories/CodeRepositorySettingsPage";
+import { CodeProjectSettingsPage } from "@/components/code-repositories/CodeProjectSettingsPage";
 
 export default function CodeRepositoryManageRoute() {
-  return <CodeRepositorySettingsPage />;
+  return <CodeProjectSettingsPage />;
 }

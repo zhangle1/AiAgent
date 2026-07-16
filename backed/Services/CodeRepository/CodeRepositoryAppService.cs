@@ -1,4 +1,5 @@
 using AiAgent.Backend.Dtos.CodeRepository;
+using AiAgent.Backend.Services.Git;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,21 +16,39 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     private readonly ICodeRepositoryManager _manager;
     private readonly ICodeRepositoryIndexService _indexService;
     private readonly ICodeRepositoryIndexProgressStore _progressStore;
+    private readonly ICodeRepositoryGitService _git;
 
     /// <summary>
     /// Creates the code repository API service.
     /// </summary>
-    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore)
+    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git)
     {
         _manager = manager;
         _indexService = indexService;
         _progressStore = progressStore;
+        _git = git;
     }
 
     [HttpGet("list")]
     public List<CodeRepositoryDto> List()
     {
         return _manager.List();
+    }
+
+    [HttpGet("projects")]
+    public List<CodeProjectDto> ListProjects() => _manager.ListProjects();
+
+    [HttpPost("projects")]
+    public CodeProjectDto CreateProject([FromBody] CodeProjectSaveRequest request) => _manager.CreateProject(request);
+
+    [HttpPut("projects/{projectId:long}")]
+    public CodeProjectDto UpdateProject([FromRoute] long projectId, [FromBody] CodeProjectSaveRequest request) => _manager.UpdateProject(projectId, request);
+
+    [HttpDelete("projects/{projectId:long}")]
+    public object DeleteProject([FromRoute] long projectId)
+    {
+        _manager.DeleteProject(projectId);
+        return new { ok = true };
     }
 
     [HttpGet("browse")]
@@ -78,6 +97,24 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
 
     [HttpGet("{name}/index-progress")]
     public CodeRepositoryIndexProgress IndexProgress([FromRoute] string name) => _progressStore.Get(name);
+
+    [HttpGet("{name}/health")]
+    public CodeRepositoryHealthDto Health([FromRoute] string name) => _manager.CheckHealth(name);
+
+    [HttpGet("{name}/configured-file")]
+    public object ConfiguredFile([FromRoute] string name, [FromQuery] string path) => _manager.ReadConfiguredFile(name, path);
+
+    [HttpPut("{name}/configured-file")]
+    public object WriteConfiguredFile([FromRoute] string name, [FromBody] CodeRepositoryFileWriteRequest request) => _manager.WriteConfiguredFile(name, request);
+
+    [HttpGet("{name}/git/status")]
+    public Task<GitWorkspaceStatus> GitStatus([FromRoute] string name, CancellationToken cancellationToken) => _git.StatusAsync(name, cancellationToken);
+
+    [HttpPost("{name}/git/pull")]
+    public Task<GitOperationResult> GitPull([FromRoute] string name, CancellationToken cancellationToken) => _git.PullAsync(name, cancellationToken);
+
+    [HttpPost("{name}/git/push")]
+    public Task<GitOperationResult> GitPush([FromRoute] string name, [FromBody] CodeRepositoryGitPushRequest request, CancellationToken cancellationToken) => _git.CommitAndPushAsync(name, request.Message, cancellationToken);
 
     [HttpDelete("{name}")]
     public object Delete([FromRoute] string name)

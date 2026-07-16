@@ -2,7 +2,13 @@ import type {
   CodeRepository,
   CodeRepositoryDirectoryBrowser,
   CodeRepositoryInspection,
+  CodeProject,
+  CodeProjectSaveRequest,
   CodeRepositorySaveRequest,
+  GitOperationResult,
+  GitWorkspaceStatus,
+  CodeRepositoryHealth,
+  ConfiguredCodeFile,
 } from "@/lib/code-repository-types";
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -28,6 +34,22 @@ async function parseJson<T>(response: Response): Promise<T> {
 
 export async function getCodeRepositories(): Promise<CodeRepository[]> {
   return parseJson<CodeRepository[]>(await fetch("/api/v1/code-repositories/list", { cache: "no-store" }));
+}
+
+export async function getCodeProjects(): Promise<CodeProject[]> {
+  return parseJson<CodeProject[]>(await fetch("/api/v1/code-repositories/projects", { cache: "no-store" }));
+}
+
+export async function createCodeProject(payload: CodeProjectSaveRequest): Promise<CodeProject> {
+  return parseJson<CodeProject>(await fetch("/api/v1/code-repositories/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+}
+
+export async function updateCodeProject(id: number, payload: CodeProjectSaveRequest): Promise<CodeProject> {
+  return parseJson<CodeProject>(await fetch(`/api/v1/code-repositories/projects/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+}
+
+export async function deleteCodeProject(id: number): Promise<void> {
+  await parseJson<{ ok: boolean }>(await fetch(`/api/v1/code-repositories/projects/${id}`, { method: "DELETE" }));
 }
 
 export async function browseCodeRepositoryDirectories(path?: string): Promise<CodeRepositoryDirectoryBrowser> {
@@ -78,9 +100,10 @@ export async function indexCodeRepository(name: string): Promise<{ ok: boolean; 
     await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/index`, { method: "POST" }),
   );
 }
-export type CodeRepositoryCloneEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; destination_path?: string };
+export type CodeRepositoryCloneEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; destination_path?: string; repository?: CodeRepository };
+export type CodeRepositoryPackageEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; target_path?: string; output_path?: string };
 
-export function cloneCodeRepositoryViaWebSocket(request: { repository_url: string; destination_parent_path: string; git_account_id: number }, onEvent: (event: CodeRepositoryCloneEvent) => void): Promise<CodeRepositoryCloneEvent> {
+export function cloneCodeRepositoryViaWebSocket(request: { project_id?: number; repository_url: string; destination_parent_path?: string; git_account_id: number }, onEvent: (event: CodeRepositoryCloneEvent) => void): Promise<CodeRepositoryCloneEvent> {
   return new Promise((resolve, reject) => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     // Use the same frontend origin. Next.js forwards the upgrade to the backend,
@@ -99,8 +122,32 @@ export function cloneCodeRepositoryViaWebSocket(request: { repository_url: strin
     socket.onclose = () => { if (!completed) reject(new Error("Clone terminal disconnected before completion.")); };
   });
 }
+export function packageCodeRepositoryViaWebSocket(repositoryName: string, onEvent: (event: CodeRepositoryPackageEvent) => void): Promise<CodeRepositoryPackageEvent> {
+  return new Promise((resolve, reject) => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/api/v1/code-repositories/package/ws`);
+    let completed = false;
+    socket.onopen = () => socket.send(JSON.stringify({ repository_name: repositoryName }));
+    socket.onmessage = (message) => {
+      try {
+        const event = JSON.parse(String(message.data)) as CodeRepositoryPackageEvent;
+        onEvent(event);
+        if (event.type === "completed") { completed = true; resolve(event); }
+      } catch { reject(new Error("Invalid package terminal response.")); }
+    };
+    socket.onerror = () => { if (!completed) reject(new Error("Unable to connect to the server-side package terminal.")); };
+    socket.onclose = () => { if (!completed) reject(new Error("Package terminal disconnected before completion.")); };
+  });
+}
 export type CodeIndexProgress = { repositoryName?: string; repository_name?: string; status: string; stage: string; currentPath?: string | null; current_path?: string | null; totalFiles?: number; total_files?: number; scannedFiles?: number; scanned_files?: number; indexedFiles?: number; indexed_files?: number; skippedFiles?: number; skipped_files?: number; percent: number; error?: string | null };
 export async function getCodeIndexProgress(name: string): Promise<CodeIndexProgress> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/index-progress`, { cache: "no-store" })); }
+export async function getCodeRepositoryHealth(name: string): Promise<CodeRepositoryHealth> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/health`, { cache: "no-store" })); }
+export async function readConfiguredCodeFile(name: string, path: string): Promise<ConfiguredCodeFile> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/configured-file?path=${encodeURIComponent(path)}`, { cache: "no-store" })); }
+export async function writeConfiguredCodeFile(name: string, payload: { path: string; content: string; expected_sha256: string }): Promise<{ ok: boolean; path: string; sha256: string }> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/configured-file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })); }
+
+export async function getCodeRepositoryGitStatus(name: string): Promise<GitWorkspaceStatus> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/status`, { cache: "no-store" })); }
+export async function pullCodeRepositoryGit(name: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/pull`, { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } })); }
+export async function pushCodeRepositoryGit(name: string, message: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/push`, { method: "POST", body: JSON.stringify({ message }), headers: { "Content-Type": "application/json" } })); }
 
 export type CodeTree = { path: string; directories: Array<{ name: string; path: string }>; files: Array<{ name: string; path: string; extension: string; size: number }> };
 export type CodeFile = { path: string; extension: string; content: string; line_count: number };

@@ -300,10 +300,10 @@ public sealed class AgentLoop : IAgentLoop
             return "I could not obtain usable knowledge-base evidence for this question.";
         }
 
-        var context = dispatch.BuildToolContext();
-        return string.IsNullOrWhiteSpace(context)
+        var toolContext = dispatch.BuildToolContext();
+        return string.IsNullOrWhiteSpace(toolContext)
             ? "I could not obtain readable knowledge-base evidence for this question."
-            : $"The model did not produce a final response after tool use. Here is the available evidence for review:\n\n{context}";
+            : $"The model did not produce a final response after tool use. Here is the available evidence for review:\n\n{toolContext}";
     }
 
     private static Task EmitAsync(AgentStreamEventHandler? onEvent, AgentStreamEvent streamEvent, CancellationToken cancellationToken)

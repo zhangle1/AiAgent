@@ -11,14 +11,12 @@ front/out/
 # Runtime data, generated indexes, local workspaces and logs
 backed/data/
 backed/logs/
-backed/dashboard-workspaces/
-backed/dashboard-samples/
+
 backed/.vs/
 backed/.verify-*/
 
 # Local secrets and environment overrides
-backed/appsettings.json
-backed/appsettings.*.json
+
 !backed/appsettings.example.json
 front/.env
 front/.env.*

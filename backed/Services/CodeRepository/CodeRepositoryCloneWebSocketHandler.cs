@@ -76,7 +76,9 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
     private async Task CloneAsync(WebSocket socket, AuthenticatedUser user, CodeRepositoryCloneRequest request, CancellationToken cancellationToken)
     {
         var repositoryUrl = ValidateRepositoryUrl(request.RepositoryUrl);
-        var destinationParent = _manager.Browse(request.DestinationParentPath).Path;
+        if (request.ProjectId <= 0) throw new InvalidOperationException("Select a project before cloning a repository.");
+        var project = _manager.GetProject(request.ProjectId);
+        var destinationParent = project.RootPath;
         var directoryName = GetDirectoryName(repositoryUrl);
         var destination = Path.GetFullPath(Path.Combine(destinationParent, directoryName));
         if (!destination.StartsWith(destinationParent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
@@ -123,7 +125,19 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
             var error = PumpAsync(process.StandardError, socket, "stderr", cancellationToken);
             await Task.WhenAll(process.WaitForExitAsync(cancellationToken), output, error);
             var success = process.ExitCode == 0 && Directory.Exists(destination);
-            await SendAsync(socket, new { type = "completed", success, exit_code = process.ExitCode, destination_path = destination, message = success ? "Clone completed successfully." : "Git clone failed. Review the terminal output." }, cancellationToken);
+            object? repository = null;
+            if (success)
+            {
+                var inspection = _manager.Inspect(destination);
+                repository = _manager.Create(new CodeRepositorySaveRequest
+                {
+                    ProjectId = project.Id,
+                    Name = inspection.SuggestedName,
+                    DisplayName = inspection.SuggestedDisplayName,
+                    RootPath = destination
+                });
+            }
+            await SendAsync(socket, new { type = "completed", success, exit_code = process.ExitCode, destination_path = destination, repository, message = success ? "Clone completed and repository mounted." : "Git clone failed. Review the terminal output." }, cancellationToken);
         }
         finally
         {

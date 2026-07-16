@@ -41,6 +41,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiKnowledgeIndexVersion),
             typeof(AiKnowledgeChunk),
             typeof(AiKnowledgeJob),
+            typeof(AiCodeProject),
             typeof(AiCodeRepository),
             typeof(AiCodeRepositoryFile),
             typeof(AiUser),
@@ -59,6 +60,9 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
         ExecuteIndexSql("""
 IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
     ALTER TABLE dbo.ai_model ADD SupportedDimensions NVARCHAR(256) NULL;
+
+IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
+    ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;
 """);
     }
 
@@ -119,6 +123,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_repository_Na
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_repository_RootPath' AND object_id = OBJECT_ID(N'dbo.ai_code_repository'))
     CREATE UNIQUE INDEX UX_ai_code_repository_RootPath ON dbo.ai_code_repository(RootPath) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_project_Name' AND object_id = OBJECT_ID(N'dbo.ai_code_project'))
+    CREATE UNIQUE INDEX UX_ai_code_project_Name ON dbo.ai_code_project(Name) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_project_RootPath' AND object_id = OBJECT_ID(N'dbo.ai_code_project'))
+    CREATE UNIQUE INDEX UX_ai_code_project_RootPath ON dbo.ai_code_project(RootPath) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_code_repository_Project' AND object_id = OBJECT_ID(N'dbo.ai_code_repository'))
+    CREATE INDEX IX_ai_code_repository_Project ON dbo.ai_code_repository(ProjectId, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_Username' AND object_id = OBJECT_ID(N'dbo.ai_user'))
