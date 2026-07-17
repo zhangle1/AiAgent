@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, RefreshCw, Terminal } from "lucide-react";
+import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, X } from "lucide-react";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
 import { getCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
@@ -12,23 +12,63 @@ export type ChatCodeFileReference = {
   filePath: string;
   line?: number;
 };
+type WorkspaceTab = "preview" | "file" | "tasks" | "terminal";
+
+function terminalPanelWidth(viewportWidth: number) {
+  const minimum = Math.min(360, Math.max(280, Math.round(viewportWidth * 0.45)));
+  const maximum = Math.max(minimum, viewportWidth - 320);
+  return Math.max(minimum, Math.min(maximum, Math.round(viewportWidth / 2)));
+}
 
 export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, onClose }: { isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: "preview" | "file" | "tasks" | "terminal" | null; onClose: () => void }) {
-  const [tab, setTab] = useState<"preview" | "file" | "tasks" | "terminal">("preview");
+  const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
+  const [activeTab, setActiveTab] = useState<WorkspaceTab | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [runtime, setRuntime] = useState<CodeProjectRuntime | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [file, setFile] = useState<{ path: string; content: string; line_count: number } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runtimeLogs, setRuntimeLogs] = useState<Record<string, CodeRuntimeLog[]>>({});
+  const [panelWidth, setPanelWidth] = useState(380);
+  const [resizing, setResizing] = useState(false);
   const runtimeSequences = useRef<Record<string, number>>({});
+  const resizeStart = useRef<{ x: number; width: number } | null>(null);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
 
   const previewRuns = useMemo(() => runtime?.runs.filter((run) => run.role === "frontend" && (run.status === "starting" || run.status === "running")) ?? [], [runtime]);
   const activeRun = previewRuns.find((run) => run.run_id === activeRunId) ?? previewRuns[0] ?? null;
 
   useEffect(() => {
-    if (requestedTab) setTab(requestedTab);
+    if (!requestedTab) return;
+    setTabs((current) => current.includes(requestedTab) ? current : [...current, requestedTab]);
+    setActiveTab(requestedTab);
+    if (requestedTab === "terminal") setPanelWidth(terminalPanelWidth(window.innerWidth));
   }, [requestedTab]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const closeWhenOutside = (event: PointerEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) setAddMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeWhenOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenOutside);
+  }, [addMenuOpen]);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const resize = (event: PointerEvent) => {
+      const start = resizeStart.current;
+      if (!start) return;
+      const minimum = Math.min(360, Math.max(280, Math.round(window.innerWidth * 0.45)));
+      const maximum = Math.max(minimum, window.innerWidth - 320);
+      setPanelWidth(Math.max(minimum, Math.min(maximum, start.width + start.x - event.clientX)));
+    };
+    const stopResize = () => { resizeStart.current = null; setResizing(false); };
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize);
+    return () => { window.removeEventListener("pointermove", resize); window.removeEventListener("pointerup", stopResize); };
+  }, [resizing]);
 
   useEffect(() => {
     if (!isOpen || !project) { setRuntime(null); return; }
@@ -68,7 +108,8 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   useEffect(() => {
     if (!fileReference) return;
     let disposed = false;
-    setTab("file");
+    setTabs((current) => current.includes("file") ? current : [...current, "file"]);
+    setActiveTab("file");
     setLoadingFile(true);
     setError(null);
     void getCodeFile(fileReference.repositoryName, fileReference.filePath)
@@ -84,23 +125,47 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     return () => window.clearTimeout(timer);
   }, [file, fileReference]);
 
+  function openTab(nextTab: WorkspaceTab) {
+    setTabs((current) => current.includes(nextTab) ? current : [...current, nextTab]);
+    setActiveTab(nextTab);
+    setAddMenuOpen(false);
+    if (nextTab === "terminal" && typeof window !== "undefined") {
+      setPanelWidth(terminalPanelWidth(window.innerWidth));
+    }
+  }
+
+  function closeTab(nextTab: WorkspaceTab) {
+    const index = tabs.indexOf(nextTab);
+    const nextTabs = tabs.filter((item) => item !== nextTab);
+    setTabs(nextTabs);
+    if (activeTab === nextTab) setActiveTab(nextTabs[index] ?? nextTabs[index - 1] ?? null);
+  }
+
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    resizeStart.current = { x: event.clientX, width: panelWidth };
+    setResizing(true);
+  }
+
   if (!isOpen) return null;
   const lines = file?.content.split("\n").slice(0, 2500) ?? [];
   const line = fileReference?.line;
 
   return (
-    <aside className="flex h-full w-[380px] max-w-[48vw] shrink-0 flex-col border-l border-slate-200 bg-white shadow-[-16px_0_40px_rgba(15,23,42,0.08)]">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4">
-        <div className="flex min-w-0 items-center gap-1 rounded-lg bg-slate-100 p-1">
-          <button type="button" onClick={() => setTab("file")} className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${tab === "file" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}><FileCode2 size={14}/>文件</button>
-          <button type="button" onClick={() => setTab("tasks")} className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${tab === "tasks" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}><ListTodo size={14}/>任务</button>
-          <button type="button" onClick={() => setTab("preview")} className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${tab === "preview" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}><Globe2 size={14}/>浏览器</button>
-          <button type="button" onClick={() => setTab("terminal")} className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${tab === "terminal" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}><Terminal size={14}/>终端</button>
+    <aside style={{ width: panelWidth }} className={`relative flex h-full min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white shadow-[-16px_0_40px_rgba(15,23,42,0.08)] ${resizing ? "select-none" : ""}`}>
+      <div role="separator" aria-orientation="vertical" aria-label="调整聊天与右侧工作区宽度" onPointerDown={startResize} className="absolute -left-1.5 inset-y-0 z-20 w-3 cursor-col-resize touch-none before:absolute before:inset-y-0 before:left-1.5 before:w-px before:bg-transparent hover:before:bg-blue-400 active:before:bg-blue-500"/>
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {tabs.map((item) => <WorkspaceTabButton key={item} tab={item} active={activeTab === item} onSelect={() => setActiveTab(item)} onClose={() => closeTab(item)}/>) }
         </div>
-        <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="关闭右侧面板"><PanelRightClose size={17}/></button>
+        <div ref={addMenuRef} className="relative shrink-0">
+          <button type="button" onClick={() => setAddMenuOpen((current) => !current)} className={`grid h-8 w-8 place-items-center rounded-lg border transition ${addMenuOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="新增右侧页签" aria-expanded={addMenuOpen}><Plus size={16}/></button>
+          {addMenuOpen && <AddTabMenu tabs={tabs} onOpen={openTab}/>}
+        </div>
+        <button type="button" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="关闭右侧面板"><PanelRightClose size={17}/></button>
       </div>
 
-      {tab === "preview" ? (
+      {activeTab === null ? <EmptyWorkspace onOpen={openTab}/> : activeTab === "preview" ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <Code2 size={14} className="text-blue-600"/>
@@ -112,15 +177,37 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
           </div>
           {activeRun?.preview_url ? <iframe title={`${activeRun.repository_name} preview`} src={activeRun.preview_url} className="min-h-0 flex-1 bg-white" sandbox="allow-scripts allow-forms allow-modals allow-popups" /> : <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">启动已配置的前端程序后，会在这里通过受控同源代理显示预览。</div>}
         </div>
-      ) : tab === "file" ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
+      ) : activeTab === "file" ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-slate-100 px-4 py-3"><p className="truncate text-xs font-semibold text-slate-800">{file?.path || fileReference?.filePath || "选择代码引用以查看文件"}</p><p className="mt-1 text-[11px] text-slate-400">{file ? `${file.line_count} 行` : "代码文件仅在已注册仓库范围内读取"}</p></div>
-          {loadingFile ? <div className="flex h-32 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>读取文件中…</div> : file ? <pre className="workspace-scroll h-full overflow-auto bg-slate-950 py-3 text-[12px] leading-6 text-slate-100">{lines.map((content, index) => { const number = index + 1; const highlighted = number === line; return <div id={`chat-code-line-${number}`} key={number} className={`flex min-w-max px-4 ${highlighted ? "bg-amber-300/20 ring-1 ring-inset ring-amber-300/50" : ""}`}><span className="mr-4 w-10 select-none text-right text-slate-500">{number}</span><code className="whitespace-pre">{content || " "}</code></div>; })}{file.line_count > lines.length && <p className="px-4 pt-2 text-slate-500">为保持面板流畅，仅显示前 {lines.length} 行。</p>}</pre> : <div className="flex h-32 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">从聊天结果中的代码引用卡片打开文件。</div>}
+          {loadingFile ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>读取文件中…</div> : file ? <pre className="workspace-scroll min-h-0 flex-1 overflow-auto bg-slate-950 py-3 text-[12px] leading-6 text-slate-100">{lines.map((content, index) => { const number = index + 1; const highlighted = number === line; return <div id={`chat-code-line-${number}`} key={number} className={`flex min-w-max px-4 ${highlighted ? "bg-amber-300/20 ring-1 ring-inset ring-amber-300/50" : ""}`}><span className="mr-4 w-10 select-none text-right text-slate-500">{number}</span><code className="whitespace-pre">{content || " "}</code></div>; })}{file.line_count > lines.length && <p className="px-4 pt-2 text-slate-500">为保持面板流畅，仅显示前 {lines.length} 行。</p>}</pre> : <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">从聊天结果中的代码引用卡片打开文件。</div>}
         </div>
-      ) : tab === "tasks" ? <SideTaskTab project={project} runtime={runtime} /> : <RuntimeTerminalTab runtime={runtime} logs={runtimeLogs} />}
+      ) : activeTab === "tasks" ? <SideTaskTab project={project} runtime={runtime} /> : <RuntimeTerminalTab runtime={runtime} logs={runtimeLogs} />}
       {error && <div className="border-t border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>}
     </aside>
   );
+}
+
+function workspaceTabMeta(tab: WorkspaceTab) {
+  if (tab === "file") return { label: "文件", icon: FileCode2 };
+  if (tab === "tasks") return { label: "侧边任务", icon: ListTodo };
+  if (tab === "preview") return { label: "浏览器", icon: Globe2 };
+  return { label: "终端", icon: Terminal };
+}
+
+function WorkspaceTabButton({ tab, active, onSelect, onClose }: { tab: WorkspaceTab; active: boolean; onSelect: () => void; onClose: () => void }) {
+  const { label, icon: Icon } = workspaceTabMeta(tab);
+  return <div className={`flex h-8 shrink-0 items-center rounded-lg border transition ${active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-transparent text-slate-500 hover:bg-slate-100"}`}><button type="button" onClick={onSelect} className="inline-flex h-full items-center gap-1.5 pl-2 pr-1.5 text-xs font-medium"><Icon size={14}/>{label}</button><button type="button" onClick={onClose} className="mr-1 grid h-5 w-5 place-items-center rounded text-slate-400 hover:bg-white hover:text-slate-700" aria-label={`关闭${label}页签`}><X size={12}/></button></div>;
+}
+
+function AddTabMenu({ tabs, onOpen }: { tabs: WorkspaceTab[]; onOpen: (tab: WorkspaceTab) => void }) {
+  const options: WorkspaceTab[] = ["file", "tasks", "preview", "terminal"];
+  return <div className="absolute right-0 top-10 z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); const exists = tabs.includes(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-slate-700 transition hover:bg-slate-100"><Icon size={15} className="text-slate-500"/><span className="flex-1">{label}</span><span className="text-[10px] text-slate-400">{exists ? "切换" : "新增"}</span></button>; })}</div>;
+}
+
+function EmptyWorkspace({ onOpen }: { onOpen: (tab: WorkspaceTab) => void }) {
+  const options: WorkspaceTab[] = ["file", "tasks", "preview", "terminal"];
+  return <div className="flex min-h-0 flex-1 items-center justify-center p-6"><div className="w-full max-w-sm space-y-2">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-11 w-full items-center gap-2.5 rounded-lg bg-slate-50 px-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"><Icon size={16}/><span className="flex-1">{label}</span><Plus size={15} className="text-slate-400"/></button>; })}</div></div>;
 }
 
 function SideTaskTab({ project, runtime }: { project: CodeProject | null; runtime: CodeProjectRuntime | null }) {

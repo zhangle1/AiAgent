@@ -6,17 +6,21 @@ import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
 import { browseCodeRepositoryDirectories, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, writeConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, CodeRepositoryDirectoryBrowser, CodeRepositoryHealth, CodeRepositoryInspection } from "@/lib/code-repository-types";
 import { listGitAccounts, type GitAccount } from "@/lib/git-account-api";
+import { getCodeProjectRuntime, saveCodeRuntimeProfile } from "@/lib/code-runtime-api";
+import type { CodeRuntimeProfile } from "@/lib/code-runtime-types";
 
 type ProjectDraft = { id?: number; name: string; displayName: string; rootPath: string; description: string };
 type RepositoryDraft = { name: string; projectId: number | ""; displayName: string; rootPath: string; description: string; languages: string[]; solutionFiles: string[]; configurationFiles: string[]; publishTarget: string; publishConfiguration: string; publishRuntime: string; publishOutputPath: string };
 type ConsoleLine = { stream?: "stdout" | "stderr"; line: string };
 type CloneDraft = { projectId: number | ""; repositoryUrl: string; gitAccountId: number | "" };
 type FileDraft = { path: string; content: string; sha256: string };
+type RuntimeDraft = { id?: number; role: "frontend" | "backend"; entryPath: string; runScript: string; testScript: string; preferredPort: string; healthPath: string; isEnabled: boolean; isPreviewEnabled: boolean };
 
 const languages = ["C#", "TypeScript/JavaScript", "Python", "Java", "Go", "Rust", "Vue", "React", "SQL"];
 const emptyProject: ProjectDraft = { name: "", displayName: "", rootPath: "", description: "" };
 const emptyRepository: RepositoryDraft = { name: "", projectId: "", displayName: "", rootPath: "", description: "", languages: [], solutionFiles: [], configurationFiles: [], publishTarget: "", publishConfiguration: "Release", publishRuntime: "", publishOutputPath: "artifacts/publish" };
 const emptyClone: CloneDraft = { projectId: "", repositoryUrl: "", gitAccountId: "" };
+const emptyRuntime: RuntimeDraft = { role: "backend", entryPath: "", runScript: "dev", testScript: "dotnet test", preferredPort: "5100", healthPath: "/", isEnabled: true, isPreviewEnabled: false };
 const input = "mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
 export function CodeProjectSettingsPage() {
@@ -41,6 +45,7 @@ export function CodeProjectSettingsPage() {
   const [terminalTitle, setTerminalTitle] = useState("");
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [fileDraft, setFileDraft] = useState<FileDraft | null>(null);
+  const [runtimeDraft, setRuntimeDraft] = useState<RuntimeDraft>(emptyRuntime);
 
   const selectedProject = useMemo(() => projects.find((item) => item.id === selectedProjectId) ?? null, [projects, selectedProjectId]);
   const selectedConfigs = inspection?.configuration_files ?? repositoryDraft.configurationFiles;
@@ -66,10 +71,45 @@ export function CodeProjectSettingsPage() {
     setSelectedRepository(repository); setSelectedProjectId(repository.project_id ?? null); setMode("repository"); setHealth(null); setError("");
     setRepositoryDraft({ name: repository.name, projectId: repository.project_id ?? "", displayName: repository.display_name, rootPath: repository.root_path, description: repository.description ?? "", languages: repository.languages, solutionFiles: repository.solution_files, configurationFiles: repository.configuration_files, publishTarget: repository.publish_target ?? "", publishConfiguration: repository.publish_configuration || "Release", publishRuntime: repository.publish_runtime ?? "", publishOutputPath: repository.publish_output_path || "artifacts/publish" });
     setInspection({ root_path: repository.root_path, suggested_name: repository.name, suggested_display_name: repository.display_name, languages: repository.languages, build_systems: repository.build_systems, is_git_repository: repository.is_git_repository, branch: repository.branch, marker_files: [], solution_files: repository.solution_files, configuration_files: repository.configuration_files });
+    void loadRuntimeProfile(repository);
   }
 
   function startProject() { setMode("project"); setSelectedProjectId(null); setSelectedRepository(null); setProjectDraft(emptyProject); setHealth(null); setError(""); }
-  function startRepository(projectId = selectedProjectId ?? "") { setMode("repository"); setSelectedRepository(null); setRepositoryDraft({ ...emptyRepository, projectId }); setInspection(null); setHealth(null); setError(""); }
+  function startRepository(projectId = selectedProjectId ?? "") { setMode("repository"); setSelectedRepository(null); setRepositoryDraft({ ...emptyRepository, projectId }); setRuntimeDraft(emptyRuntime); setInspection(null); setHealth(null); setError(""); }
+
+  async function loadRuntimeProfile(repository: CodeRepository) {
+    if (!repository.project_id) return;
+    const defaultRole = repository.build_systems.includes("dotnet") || repository.languages.includes("C#") ? "backend" : "frontend";
+    const defaultEntry = defaultRole === "frontend"
+      ? repository.configuration_files.find((path) => path.endsWith("package.json")) ?? ""
+      : repository.solution_files.find((path) => path.endsWith(".csproj")) ?? "";
+    try {
+      const runtime = await getCodeProjectRuntime(repository.project_id);
+      const profile = runtime.profiles.find((item) => item.repository_id === repository.id && item.role === defaultRole);
+      setRuntimeDraft(toRuntimeDraft(profile, defaultRole, defaultEntry));
+    } catch (value) { setError(message(value)); }
+  }
+
+  async function saveRuntimeProfile() {
+    if (!selectedRepository?.project_id) return;
+    if (!runtimeDraft.entryPath) return setError("请选择调试入口文件后再保存。");
+    setBusy(true); setError("");
+    try {
+      const saved = await saveCodeRuntimeProfile(selectedRepository.project_id, {
+        repository_name: selectedRepository.name,
+        role: runtimeDraft.role,
+        entry_path: runtimeDraft.entryPath,
+        run_script: runtimeDraft.role === "frontend" ? runtimeDraft.runScript || "dev" : undefined,
+        test_script: runtimeDraft.testScript,
+        preferred_port: runtimeDraft.preferredPort.trim() ? Number(runtimeDraft.preferredPort) : undefined,
+        health_path: runtimeDraft.healthPath || "/",
+        is_enabled: runtimeDraft.isEnabled,
+        is_preview_enabled: runtimeDraft.role === "frontend" && runtimeDraft.isPreviewEnabled,
+      }, runtimeDraft.id);
+      setRuntimeDraft(toRuntimeDraft(saved, runtimeDraft.role, runtimeDraft.entryPath));
+    } catch (value) { setError(message(value)); }
+    finally { setBusy(false); }
+  }
 
   async function inspectRepository() {
     if (!repositoryDraft.rootPath.trim()) return setError("请先填写代码库目录。");
@@ -189,7 +229,7 @@ export function CodeProjectSettingsPage() {
         {!loading && projects.length === 0 && <p className="px-2 py-5 text-xs leading-5 text-slate-400">先登记一个项目文件夹，再在该文件夹内克隆或挂载代码库。</p>}
       </aside>
       <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        {mode === "project" ? <ProjectForm draft={projectDraft} busy={busy} onChange={setProjectDraft} onBrowse={() => void openBrowser("project", projectDraft.rootPath || undefined)} onSave={() => void saveProject()} onDelete={() => projectDraft.id && selectedProject && void removeProject(selectedProject)} /> : <RepositoryForm draft={repositoryDraft} projects={projects} inspection={inspection} health={health} busy={busy} editing={Boolean(selectedRepository)} canPackage={Boolean(selectedRepository)} selectedConfigs={selectedConfigs} onChange={setRepositoryDraft} onInspect={() => void inspectRepository()} onBrowse={() => void openBrowser("repository", repositoryDraft.rootPath || undefined)} onSave={() => void saveRepository()} onDelete={() => selectedRepository && void removeRepository(selectedRepository)} onHealth={() => void checkHealth()} onOpenFile={(path) => void openFile(path)} onPackage={() => void startPackage()} />}
+        {mode === "project" ? <ProjectForm draft={projectDraft} busy={busy} onChange={setProjectDraft} onBrowse={() => void openBrowser("project", projectDraft.rootPath || undefined)} onSave={() => void saveProject()} onDelete={() => projectDraft.id && selectedProject && void removeProject(selectedProject)} /> : <><RepositoryForm draft={repositoryDraft} projects={projects} inspection={inspection} health={health} busy={busy} editing={Boolean(selectedRepository)} canPackage={Boolean(selectedRepository)} selectedConfigs={selectedConfigs} onChange={setRepositoryDraft} onInspect={() => void inspectRepository()} onBrowse={() => void openBrowser("repository", repositoryDraft.rootPath || undefined)} onSave={() => void saveRepository()} onDelete={() => selectedRepository && void removeRepository(selectedRepository)} onHealth={() => void checkHealth()} onOpenFile={(path) => void openFile(path)} onPackage={() => void startPackage()} />{selectedRepository && <RuntimeDebugSection repository={selectedRepository} draft={runtimeDraft} busy={busy} onChange={setRuntimeDraft} onSave={() => void saveRuntimeProfile()} />}</>}
         {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       </div>
     </div>
@@ -211,6 +251,54 @@ function ProjectForm({ draft, busy, onChange, onBrowse, onSave, onDelete }: { dr
 function RepositoryForm({ draft, projects, inspection, health, busy, editing, canPackage, selectedConfigs, onChange, onInspect, onBrowse, onSave, onDelete, onHealth, onOpenFile, onPackage }: { draft: RepositoryDraft; projects: CodeProject[]; inspection: CodeRepositoryInspection | null; health: CodeRepositoryHealth | null; busy: boolean; editing: boolean; canPackage: boolean; selectedConfigs: string[]; onChange: (value: RepositoryDraft) => void; onInspect: () => void; onBrowse: () => void; onSave: () => void; onDelete: () => void; onHealth: () => void; onOpenFile: (path: string) => void; onPackage: () => void }) {
   const toggle = (key: "languages" | "solutionFiles" | "configurationFiles", value: string) => onChange({ ...draft, [key]: draft[key].includes(value) ? draft[key].filter((item) => item !== value) : [...draft[key], value] });
   return <><FormHeader eyebrow="二级 · 代码库配置" title={editing ? "编辑代码库" : "挂载代码库"} description="识别目录后选择 AI 入口、调试配置与发布目标。" danger={editing ? onDelete : undefined}/><div className="grid gap-4 md:grid-cols-2"><Field label="所属项目"><select className={input} value={draft.projectId} onChange={(event) => onChange({ ...draft, projectId: event.target.value ? Number(event.target.value) : "" })}><option value="">选择项目</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.display_name}</option>)}</select></Field><Field label="显示名称"><input className={input} value={draft.displayName} onChange={(event) => onChange({ ...draft, displayName: event.target.value })} placeholder="cps-api"/></Field></div><Field label="代码库目录" hint="目录必须位于所属项目文件夹内。"><div className="flex gap-2"><PathInput value={draft.rootPath} onChange={(value) => onChange({ ...draft, rootPath: value })} onBrowse={onBrowse} placeholder="E:\\项目\\manufacturing-suite\\api"/><button onClick={onInspect} disabled={busy || !draft.rootPath.trim()} className="secondary-button mt-1.5 shrink-0 text-blue-700">识别目录</button></div></Field><Field label="代码库说明"><textarea className={`${input} h-auto py-2`} rows={2} value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })}/></Field><section className="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><FileCog size={16} className="text-blue-600"/>三级 · AI、调试与发布配置</div><p className="mt-1 text-xs text-slate-500">先识别目录，再勾选需要给 AI 使用或允许调试的文件。</p><div className="mt-4 flex flex-wrap gap-2">{languages.map((language) => <button key={language} onClick={() => toggle("languages", language)} className={`rounded-md px-2.5 py-1.5 text-xs ${draft.languages.includes(language) ? "bg-blue-600 text-white" : "border border-slate-200 bg-white text-slate-600"}`}>{language}</button>)}</div><FileSelection title="解决方案与工程文件" empty="识别后会列出 .sln、.slnf 和 .csproj。" items={inspection?.solution_files ?? []} selected={draft.solutionFiles} onToggle={(value) => toggle("solutionFiles", value)}/><FileSelection title="可编辑配置文件" empty="识别后会列出 appsettings、.env、package 与 Docker 配置。" items={inspection?.configuration_files ?? []} selected={draft.configurationFiles} onToggle={(value) => toggle("configurationFiles", value)}/><div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 md:grid-cols-2"><Field label="打包目标"><select className={`${input} mt-1`} value={draft.publishTarget} onChange={(event) => onChange({ ...draft, publishTarget: event.target.value })}><option value="">选择已勾选的解决方案或工程</option>{draft.solutionFiles.map((file) => <option key={file} value={file}>{file}</option>)}</select></Field><Field label="构建配置"><select className={`${input} mt-1`} value={draft.publishConfiguration} onChange={(event) => onChange({ ...draft, publishConfiguration: event.target.value })}><option value="Release">Release</option><option value="Debug">Debug</option></select></Field><Field label="运行时（可选）"><input className={`${input} mt-1`} value={draft.publishRuntime} onChange={(event) => onChange({ ...draft, publishRuntime: event.target.value })} placeholder="win-x64"/></Field><Field label="发布输出目录" hint="相对于代码库，如 artifacts/publish。"><input className={`${input} mt-1`} value={draft.publishOutputPath} onChange={(event) => onChange({ ...draft, publishOutputPath: event.target.value })}/></Field></div></section>{editing && <section className="mt-4 grid gap-3 lg:grid-cols-2"><div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"><div className="flex items-center justify-between"><span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={15}/>挂载检查</span><button onClick={onHealth} disabled={busy} className="text-xs font-medium text-emerald-700 hover:underline">立即检查</button></div>{health ? <div className="mt-2 text-xs leading-5 text-emerald-900"><p>目录 {health.root_exists ? "✓" : "×"} · 项目 {health.project_match ? "✓" : "×"} · Git {health.is_git_repository ? "✓" : "×"}{health.branch ? ` (${health.branch})` : ""}</p>{health.messages.map((item) => <p key={item}>{item}</p>)}</div> : <p className="mt-2 text-xs text-emerald-700">检查目录、项目挂载、Git 与已选择文件。</p>}</div><div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3"><div className="flex items-center justify-between"><span className="flex items-center gap-1.5 text-xs font-semibold text-blue-800"><FilePenLine size={15}/>配置文件调试</span></div><div className="mt-2 flex flex-wrap gap-1.5">{selectedConfigs.map((path) => <button key={path} onClick={() => onOpenFile(path)} disabled={busy} className="rounded border border-blue-200 bg-white px-2 py-1 font-mono text-[11px] text-blue-700 hover:bg-blue-50">{path}</button>)}{selectedConfigs.length === 0 && <span className="text-xs text-blue-700">保存勾选的配置文件后，可在这里编辑。</span>}</div></div></section>}<div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4"><button onClick={onPackage} disabled={busy || !canPackage} className="secondary-button disabled:opacity-50"><PackageOpen size={15}/>实时打包</button><button onClick={onSave} disabled={busy} className="primary-button disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <Check size={14}/>} {editing ? "保存代码库配置" : "挂载代码库"}</button></div></>;
+}
+
+function RuntimeDebugSection({ repository, draft, busy, onChange, onSave }: { repository: CodeRepository; draft: RuntimeDraft; busy: boolean; onChange: (value: RuntimeDraft) => void; onSave: () => void }) {
+  const isFrontend = draft.role === "frontend";
+  const entryOptions = isFrontend
+    ? repository.configuration_files.filter((path) => path.endsWith("package.json"))
+    : repository.solution_files.filter((path) => path.endsWith(".csproj"));
+  const runCommand = isFrontend
+    ? `npm run ${draft.runScript || "dev"} -- --host 0.0.0.0 --port ${draft.preferredPort || "4300"}`
+    : `dotnet run --project ${draft.entryPath || "<选择 .csproj>"} -- --urls http://0.0.0.0:${draft.preferredPort || "5100"}`;
+  const testCommand = isFrontend ? `npm run ${draft.testScript || "test"}` : draft.testScript || "dotnet test";
+
+  return <section className="mt-5 rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Terminal size={16} className="text-violet-600"/>四级 · 本地调试与测试</div><p className="mt-1 text-xs leading-5 text-slate-500">此配置会在聊天顶部“项目程序运行”中展示并用于启动。服务会监听全部 IPv4 网卡，聊天中会列出本机、内网及当前访问地址；端口被占用时自动分配空闲端口。</p></div>
+      <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-700">{isFrontend ? "前端 / npm" : "C# 后端 / dotnet"}</span>
+    </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <Field label={isFrontend ? "前端启动入口" : "C# 启动工程"} hint={isFrontend ? "仅允许已选中的 package.json。" : "仅允许已选中的 .csproj；.sln 请先勾选其 Web/API 工程。"}>
+        <select className={`${input} mt-1`} value={draft.entryPath} onChange={(event) => onChange({ ...draft, entryPath: event.target.value })}><option value="">选择调试入口</option>{entryOptions.map((path) => <option key={path} value={path}>{path}</option>)}</select>
+      </Field>
+      <Field label="默认调试端口" hint={isFrontend ? "前端默认 4300；被占用会自动换端口。" : "后端默认 5100；被占用会自动换端口。"}>
+        <input type="number" min="1024" max="65535" className={`${input} mt-1`} value={draft.preferredPort} onChange={(event) => onChange({ ...draft, preferredPort: event.target.value })}/>
+      </Field>
+      {isFrontend ? <Field label="前端启动脚本" hint="填写 package.json scripts 中的名称，例如 dev、start。"><input className={`${input} mt-1 font-mono`} value={draft.runScript} onChange={(event) => onChange({ ...draft, runScript: event.target.value })} placeholder="dev"/></Field> : <Field label="后端启动命令"><input readOnly className={`${input} mt-1 bg-slate-100 font-mono text-xs text-slate-600`} value="dotnet run（由系统安全组装参数）"/></Field>}
+      <Field label={isFrontend ? "前端测试脚本" : "C# 测试命令"} hint={isFrontend ? "填写 package.json scripts 中的名称，例如 test、test:unit。" : "仅支持以 dotnet test 开头的受控命令。"}><input className={`${input} mt-1 font-mono`} value={draft.testScript} onChange={(event) => onChange({ ...draft, testScript: event.target.value })} placeholder={isFrontend ? "test" : "dotnet test"}/></Field>
+      <Field label="健康检查路径（可选）" hint="例如 /health；前端预览通常使用 /。"><input className={`${input} mt-1 font-mono`} value={draft.healthPath} onChange={(event) => onChange({ ...draft, healthPath: event.target.value })} placeholder="/"/></Field>
+      <label className="mt-4 flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={draft.isEnabled} onChange={(event) => onChange({ ...draft, isEnabled: event.target.checked })} className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"/>在聊天中允许启动此程序</label>
+      {isFrontend && <label className="mt-4 flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={draft.isPreviewEnabled} onChange={(event) => onChange({ ...draft, isPreviewEnabled: event.target.checked })} className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"/>允许在右侧浏览器预览</label>}
+    </div>
+    <div className="mt-4 grid gap-2 border-t border-violet-100 pt-3 text-[11px] leading-5 md:grid-cols-2"><div className="rounded-lg border border-violet-100 bg-white px-3 py-2"><span className="font-semibold text-violet-700">启动：</span><code className="break-all text-slate-600">{runCommand}</code></div><div className="rounded-lg border border-violet-100 bg-white px-3 py-2"><span className="font-semibold text-violet-700">测试：</span><code className="break-all text-slate-600">{testCommand}</code></div></div>
+    <div className="mt-4 flex justify-end"><button onClick={onSave} disabled={busy || !draft.entryPath} className="primary-button disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <Check size={14}/>}保存调试配置</button></div>
+  </section>;
+}
+
+function toRuntimeDraft(profile: CodeRuntimeProfile | undefined, role: "frontend" | "backend", entryPath: string): RuntimeDraft {
+  const frontend = role === "frontend";
+  return {
+    id: profile?.id,
+    role,
+    entryPath: profile?.entry_path ?? entryPath,
+    runScript: profile?.run_script ?? "dev",
+    testScript: profile?.test_script ?? (frontend ? "test" : "dotnet test"),
+    preferredPort: String(profile?.preferred_port ?? (frontend ? 4300 : 5100)),
+    healthPath: profile?.health_path ?? "/",
+    isEnabled: profile?.is_enabled ?? true,
+    isPreviewEnabled: profile?.is_preview_enabled ?? frontend,
+  };
 }
 
 function FormHeader({ eyebrow, title, description, danger }: { eyebrow: string; title: string; description: string; danger?: () => void }) { return <header className="mb-6 flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-blue-600">{eyebrow}</p><h2 className="mt-1 text-lg font-semibold text-slate-950">{title}</h2><p className="mt-1 text-xs text-slate-500">{description}</p></div>{danger && <button onClick={danger} className="secondary-button border-red-200 text-red-700 hover:bg-red-50"><Trash2 size={14}/>删除</button>}</header>; }

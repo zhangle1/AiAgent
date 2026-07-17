@@ -50,7 +50,6 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiUser),
             typeof(AiUserSession),
             typeof(AiChatSession),
-            typeof(AiChatProjectPreference),
             typeof(AiChatMessage),
             typeof(AiGitAccount));
 
@@ -67,6 +66,14 @@ IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
 
 IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
     ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;
+
+IF OBJECT_ID(N'dbo.ai_code_repo_run', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.ai_code_repo_run', N'TestScript') IS NULL
+        ALTER TABLE dbo.ai_code_repo_run ADD TestScript NVARCHAR(128) NULL;
+    IF COL_LENGTH(N'dbo.ai_code_repo_run', N'PreferredPort') IS NULL
+        ALTER TABLE dbo.ai_code_repo_run ADD PreferredPort INT NULL;
+END
 
 """);
     }
@@ -113,6 +120,22 @@ BEGIN
         SortMode NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_chat_proj_pref_SortMode DEFAULT N'updated',
         UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_ai_chat_proj_pref_UpdatedAt DEFAULT SYSUTCDATETIME()
     );
+END
+ELSE
+BEGIN
+    -- The preference table is owned by this additive migration.  Do not let
+    -- SqlSugar CodeFirst alter its existing columns: SQL Server default
+    -- constraints must be dropped before an ALTER COLUMN operation.
+    IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'UserId') IS NULL
+        ALTER TABLE dbo.ai_chat_proj_pref ADD UserId NVARCHAR(64) NULL;
+    IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'CodeProjectId') IS NULL
+        ALTER TABLE dbo.ai_chat_proj_pref ADD CodeProjectId BIGINT NULL;
+    IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'IsPinned') IS NULL
+        ALTER TABLE dbo.ai_chat_proj_pref ADD IsPinned BIT NULL;
+    IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'SortMode') IS NULL
+        ALTER TABLE dbo.ai_chat_proj_pref ADD SortMode NVARCHAR(16) NULL;
+    IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'UpdatedAt') IS NULL
+        ALTER TABLE dbo.ai_chat_proj_pref ADD UpdatedAt DATETIME2 NULL;
 END
 """);
     }

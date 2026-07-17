@@ -25,7 +25,12 @@ public sealed class CodeRuntimeAppService : IDynamicApiController
     }
 
     [HttpGet("projects/{projectId:long}")]
-    public CodeProjectRuntimeDto GetProjectRuntime([FromRoute] long projectId) => _runtime.GetProjectRuntime(projectId);
+    public CodeProjectRuntimeDto GetProjectRuntime([FromRoute] long projectId)
+    {
+        var runtime = _runtime.GetProjectRuntime(projectId);
+        AppendRequestHost(runtime.Runs);
+        return runtime;
+    }
 
     [HttpPost("projects/{projectId:long}/profiles")]
     public IActionResult CreateProfile([FromRoute] long projectId, [FromBody] CodeRuntimeProfileSaveRequest request)
@@ -48,7 +53,9 @@ public sealed class CodeRuntimeAppService : IDynamicApiController
     {
         try
         {
-            return new OkObjectResult(await _runtime.StartAsync(projectId, request, cancellationToken));
+            var runs = await _runtime.StartAsync(projectId, request, cancellationToken);
+            AppendRequestHost(runs);
+            return new OkObjectResult(runs);
         }
         catch (ArgumentException ex)
         {
@@ -132,6 +139,18 @@ public sealed class CodeRuntimeAppService : IDynamicApiController
         catch (InvalidOperationException ex)
         {
             return new ConflictObjectResult(new { message = ex.Message });
+        }
+    }
+
+    private void AppendRequestHost(IEnumerable<CodeRuntimeRunDto> runs)
+    {
+        var host = _httpContextAccessor.HttpContext?.Request.Host.Host;
+        if (string.IsNullOrWhiteSpace(host) || host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || Uri.CheckHostName(host) == UriHostNameType.Unknown) return;
+        var urlHost = host.Contains(':') ? $"[{host}]" : host;
+        foreach (var run in runs)
+        {
+            var url = $"http://{urlHost}:{run.Port}";
+            if (!run.AccessUrls.Contains(url, StringComparer.OrdinalIgnoreCase)) run.AccessUrls.Add(url);
         }
     }
 }

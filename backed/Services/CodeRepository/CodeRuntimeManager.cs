@@ -73,6 +73,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         var role = NormalizeRole(request.Role);
         var entryPath = NormalizeRelativePath(request.EntryPath);
         var runScript = NormalizeRunScript(request.RunScript, role);
+        var testScript = NormalizeTestScript(request.TestScript, role);
+        var preferredPort = NormalizePreferredPort(request.PreferredPort);
         ValidateProfileTarget(repository, role, entryPath);
         var healthPath = NormalizeHealthPath(request.HealthPath);
         var now = DateTime.UtcNow;
@@ -87,6 +89,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             profile.Role = role;
             profile.EntryPath = entryPath;
             profile.RunScript = runScript;
+            profile.TestScript = testScript;
+            profile.PreferredPort = preferredPort;
             profile.HealthPath = healthPath;
             profile.IsEnabled = request.IsEnabled;
             profile.IsPreviewEnabled = request.IsPreviewEnabled;
@@ -104,6 +108,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                 Role = role,
                 EntryPath = entryPath,
                 RunScript = runScript,
+                TestScript = testScript,
+                PreferredPort = preferredPort,
                 HealthPath = healthPath,
                 IsEnabled = request.IsEnabled,
                 IsPreviewEnabled = request.IsPreviewEnabled,
@@ -216,7 +222,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
     {
         var repository = _repositories.List().FirstOrDefault(item => item.Id == profile.RepositoryId)
             ?? throw new InvalidOperationException("The runtime profile repository is no longer available.");
-        var port = await AllocatePortAsync(profile.Role, cancellationToken);
+        var port = await AllocatePortAsync(profile.Role, profile.PreferredPort, cancellationToken);
         var run = new RunningProcess
         {
             RunId = Guid.NewGuid().ToString("N"),
@@ -226,6 +232,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             RepositoryName = repository.Name,
             Role = profile.Role,
             Port = port,
+            AccessUrls = GetAccessUrls(port),
             IsPreviewEnabled = profile.IsPreviewEnabled,
             StartedAt = DateTime.UtcNow,
             Status = "starting"
@@ -239,7 +246,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             if (!run.Process.Start()) throw new InvalidOperationException("The server process could not be started.");
             run.Status = "running";
             _runs[run.RunId] = run;
-            AppendLog(run, "system", $"Started {profile.Role} on http://127.0.0.1:{port}.");
+            AppendLog(run, "system", $"Started {profile.Role}. Available at: {string.Join(", ", run.AccessUrls)}.");
             _ = ObserveProcessAsync(run);
             return ToRunDto(run);
         }
@@ -275,6 +282,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                     Role = "frontend",
                     EntryPath = frontendTarget,
                     RunScript = ResolveFrontendRunScript(repository, frontendTarget),
+                    TestScript = "test",
+                    PreferredPort = 4300,
                     IsEnabled = true,
                     IsPreviewEnabled = true,
                     CreatedAt = now
@@ -290,6 +299,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                     RepositoryId = repository.Id,
                     Role = "backend",
                     EntryPath = backendTarget,
+                    TestScript = "dotnet test",
+                    PreferredPort = 5100,
                     IsEnabled = true,
                     IsPreviewEnabled = false,
                     CreatedAt = now
@@ -326,6 +337,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             startInfo.ArgumentList.Add("run");
             startInfo.ArgumentList.Add(runScript);
             startInfo.ArgumentList.Add("--");
+            startInfo.ArgumentList.Add("--host");
+            startInfo.ArgumentList.Add("0.0.0.0");
             startInfo.ArgumentList.Add("--port");
             startInfo.ArgumentList.Add(port.ToString());
         }
@@ -338,7 +351,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             startInfo.ArgumentList.Add(fullEntryPath);
             startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add("--urls");
-            startInfo.ArgumentList.Add($"http://127.0.0.1:{port}");
+            startInfo.ArgumentList.Add($"http://0.0.0.0:{port}");
         }
         return startInfo;
     }
@@ -379,7 +392,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         }
     }
 
-    private async Task<int> AllocatePortAsync(string role, CancellationToken cancellationToken)
+    private async Task<int> AllocatePortAsync(string role, int? preferredPort, CancellationToken cancellationToken)
     {
         var (first, last) = role == "frontend" ? (4300, 4399) : (5100, 5199);
         await _portLock.WaitAsync(cancellationToken);
@@ -389,7 +402,10 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                 .Select(endpoint => endpoint.Port)
                 .ToHashSet();
             used.UnionWith(_runs.Values.Where(item => item.IsActive).Select(item => item.Port));
-            for (var port = first; port <= last; port++)
+            var candidatePorts = preferredPort.HasValue
+                ? new[] { preferredPort.Value }.Concat(Enumerable.Range(first, last - first + 1).Where(port => port != preferredPort.Value))
+                : Enumerable.Range(first, last - first + 1);
+            foreach (var port in candidatePorts)
             {
                 if (used.Contains(port)) continue;
                 using var listener = new TcpListener(IPAddress.Loopback, port);
@@ -496,6 +512,22 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         }
     }
 
+    private static List<string> GetAccessUrls(int port)
+    {
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "127.0.0.1" };
+        foreach (var address in NetworkInterface.GetAllNetworkInterfaces()
+                     .Where(item => item.OperationalStatus == OperationalStatus.Up && item.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                     .SelectMany(item => item.GetIPProperties().UnicastAddresses)
+                     .Select(item => item.Address)
+                     .Where(address => address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address)))
+        {
+            hosts.Add(address.ToString());
+        }
+        return hosts.OrderBy(host => host == "127.0.0.1" ? $"0-{host}" : $"1-{host}", StringComparer.OrdinalIgnoreCase)
+            .Select(host => $"http://{host}:{port}")
+            .ToList();
+    }
+
     private static string NormalizeRole(string? role) => role?.Trim().ToLowerInvariant() switch
     {
         "frontend" => "frontend",
@@ -518,6 +550,26 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         if (script.Length > 80 || script.Any(character => !(char.IsLetterOrDigit(character) || character is '-' or '_' or ':')))
             throw new ArgumentException("The npm run script contains unsupported characters.");
         return script;
+    }
+
+    private static string? NormalizeTestScript(string? value, string role)
+    {
+        var script = string.IsNullOrWhiteSpace(value) ? (role == "frontend" ? "test" : "dotnet test") : value.Trim();
+        if (script.Length > 128 || script.Any(char.IsControl))
+            throw new ArgumentException("The test command is invalid.");
+        if (role == "frontend" && script.Any(character => !(char.IsLetterOrDigit(character) || character is '-' or '_' or ':')))
+            throw new ArgumentException("The npm test script contains unsupported characters.");
+        if (role == "backend" && !script.StartsWith("dotnet test", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("The C# test command must start with 'dotnet test'.");
+        return script;
+    }
+
+    private static int? NormalizePreferredPort(int? value)
+    {
+        if (!value.HasValue) return null;
+        if (value.Value is < 1024 or > 65535)
+            throw new ArgumentException("The preferred development port must be between 1024 and 65535.");
+        return value.Value;
     }
 
     private static string? NormalizeHealthPath(string? value)
@@ -555,6 +607,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         Role = profile.Role,
         EntryPath = profile.EntryPath,
         RunScript = profile.RunScript,
+        TestScript = profile.TestScript,
+        PreferredPort = profile.PreferredPort,
         HealthPath = profile.HealthPath,
         IsEnabled = profile.IsEnabled,
         IsPreviewEnabled = profile.IsPreviewEnabled,
@@ -572,6 +626,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         Role = run.Role,
         Status = run.Status,
         Port = run.Port,
+        AccessUrls = run.AccessUrls,
         PreviewUrl = run.Role == "frontend" && run.IsPreviewEnabled ? $"/api/v1/code-runtime/runs/{run.RunId}/preview/" : null,
         Command = run.Command,
         ExitCode = run.ExitCode,
@@ -590,6 +645,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         public required string Role { get; init; }
         public Process Process { get; set; } = null!;
         public int Port { get; init; }
+        public List<string> AccessUrls { get; init; } = [];
         public bool IsPreviewEnabled { get; init; }
         public required DateTime StartedAt { get; init; }
         public DateTime? CompletedAt { get; set; }

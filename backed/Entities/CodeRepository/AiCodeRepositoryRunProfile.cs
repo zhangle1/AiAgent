@@ -24,6 +24,20 @@ public sealed class AiCodeRepositoryRunProfile
     [SugarColumn(Length = 128, IsNullable = true)]
     public string? RunScript { get; set; }
 
+    /// <summary>
+    /// Optional verified test script name retained with the run profile so the
+    /// chat runtime can explain the matching test command in context.
+    /// </summary>
+    [SugarColumn(Length = 128, IsNullable = true)]
+    public string? TestScript { get; set; }
+
+    /// <summary>
+    /// Preferred local development port. The runtime falls back to its managed
+    /// range when this port is in use.
+    /// </summary>
+    [SugarColumn(IsNullable = true)]
+    public int? PreferredPort { get; set; }
+
     [SugarColumn(Length = 256, IsNullable = true)]
     public string? HealthPath { get; set; }
 

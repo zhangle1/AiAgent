@@ -184,6 +184,12 @@ public sealed class CodeRuntimeProfileSaveRequest
     [JsonPropertyName("run_script")]
     public string? RunScript { get; set; }
 
+    [JsonPropertyName("test_script")]
+    public string? TestScript { get; set; }
+
+    [JsonPropertyName("preferred_port")]
+    public int? PreferredPort { get; set; }
+
     [JsonPropertyName("health_path")]
     public string? HealthPath { get; set; }
 
@@ -216,6 +222,12 @@ public sealed class CodeRuntimeProfileDto
 
     [JsonPropertyName("run_script")]
     public string? RunScript { get; set; }
+
+    [JsonPropertyName("test_script")]
+    public string? TestScript { get; set; }
+
+    [JsonPropertyName("preferred_port")]
+    public int? PreferredPort { get; set; }
 
     [JsonPropertyName("health_path")]
     public string? HealthPath { get; set; }
@@ -264,6 +276,9 @@ public sealed class CodeRuntimeRunDto
 
     [JsonPropertyName("port")]
     public int Port { get; set; }
+
+    [JsonPropertyName("access_urls")]
+    public List<string> AccessUrls { get; set; } = [];
 
     [JsonPropertyName("preview_url")]
     public string? PreviewUrl { get; set; }

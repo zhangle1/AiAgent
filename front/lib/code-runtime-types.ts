@@ -6,6 +6,8 @@ export type CodeRuntimeProfile = {
   role: "frontend" | "backend";
   entry_path?: string | null;
   run_script?: string | null;
+  test_script?: string | null;
+  preferred_port?: number | null;
   health_path?: string | null;
   is_enabled: boolean;
   is_preview_enabled: boolean;
@@ -22,6 +24,7 @@ export type CodeRuntimeRun = {
   role: "frontend" | "backend";
   status: "starting" | "running" | "stopping" | "stopped" | "exited" | "failed";
   port: number;
+  access_urls: string[];
   preview_url?: string | null;
   command?: string | null;
   exit_code?: number | null;
@@ -36,6 +39,8 @@ export type CodeRuntimeProfileSaveRequest = {
   role: "frontend" | "backend";
   entry_path: string;
   run_script?: string;
+  test_script?: string;
+  preferred_port?: number;
   health_path?: string;
   is_enabled: boolean;
   is_preview_enabled: boolean;

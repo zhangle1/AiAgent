@@ -2,9 +2,11 @@
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Terminal, UserRound } from "lucide-react";
 import { streamCompleteChat, type ChatStreamEvent } from "@/lib/chat-api";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
+import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
+import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -16,6 +18,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { getSession } from "@/lib/session-api";
 
 type ChatMode = "chat" | "visualize" | "write";
+type InspectorTab = "preview" | "file" | "tasks" | "terminal";
 
 type ChatMessage = {
   id: string;
@@ -60,6 +63,9 @@ export function KnowledgeChatHome() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [requestedInspectorTab, setRequestedInspectorTab] = useState<InspectorTab | null>(null);
+  const [fileReference, setFileReference] = useState<ChatCodeFileReference | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
   const pendingSessionIdRef = useRef<string | null>(null);
@@ -272,18 +278,19 @@ export function KnowledgeChatHome() {
     await sendMessage(input.trim());
   }
 
-  function startNewChat() {
-    pendingSessionIdRef.current = null;
-    setActiveSessionId(null);
-    setMessages([]);
-    setInput("");
-    setError(null);
-    router.replace("/chat");
+  function openInspector(tab: InspectorTab) {
+    setRequestedInspectorTab(tab);
+    setRightPanelOpen(true);
+  }
+
+  function openCodeFile(reference: ChatCodeFileReference) {
+    setFileReference(reference);
+    openInspector("file");
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
-      <header className="flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl">
+    <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600"><Sparkles size={16}/></div>
           <div><h1 className="text-sm font-semibold text-slate-950">{t("chat.newChat")}</h1><p className="text-[11px] text-slate-400">AI 工作台</p></div>
@@ -295,29 +302,30 @@ export function KnowledgeChatHome() {
           {selectedProject && <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex"><Braces size={12}/>{selectedProject.display_name}</span>}
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={startNewChat} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-600" aria-label={t("chat.new")}>
-            <Plus size={15} />
-          </button>
+          <ChatRuntimeToolbar project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")}/>
+          <SidePanelTabLauncher onOpen={openInspector}/>
           <button type="button" onClick={() => void loadBootstrap()} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600" aria-label={t("knowledge.refresh")}>
             <RefreshCw size={14} />
           </button>
         </div>
       </header>
 
-      <section className="flex flex-1 flex-col px-4 py-5 sm:px-7">
-        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-7">
+        <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
           {messages.length === 0 ? (
             <EmptyState title={t("chat.heroTitle")} />
           ) : (
-            <div className="flex-1 space-y-5 pb-6 pt-4">
+            <div className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
               {messages.map((message, index) => (
                 <MessageBubble
                   key={message.id}
                   message={message}
-                  onRetry={message.role === "assistant" ? () => {
-                    const userMessage = findPreviousUserMessage(messages, index);
-                    if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id });
-                  } : undefined}
+                    onRetry={message.role === "assistant" ? () => {
+                      const userMessage = findPreviousUserMessage(messages, index);
+                      if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id });
+                    } : undefined}
+                    onOpenCodeFile={openCodeFile}
                 />
               ))}
               {sending && (
@@ -419,6 +427,8 @@ export function KnowledgeChatHome() {
           )}
         </div>
       </section>
+      <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} onClose={() => setRightPanelOpen(false)}/>
+      </div>
     </main>
   );
 }
@@ -428,6 +438,26 @@ type ContextPickerItem = {
   label: string;
   description?: string;
 };
+
+function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
+  const [open, setOpen] = useState(false);
+  const options: Array<{ tab: InspectorTab; label: string; shortcut: string; icon: typeof FileCode2 }> = [
+    { tab: "file", label: "文件", shortcut: "Ctrl+P", icon: FileCode2 },
+    { tab: "tasks", label: "侧边任务", shortcut: "Ctrl+Alt+S", icon: ListTodo },
+    { tab: "preview", label: "浏览器", shortcut: "Ctrl+I", icon: Globe2 },
+    { tab: "terminal", label: "终端", shortcut: "", icon: Terminal },
+  ];
+
+  return <div className="relative">
+    <button type="button" onClick={() => setOpen((current) => !current)} className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-white shadow-sm transition ${open ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="Open side panel tab" aria-expanded={open}><Plus size={16}/></button>
+    {open && <div className="absolute right-0 top-10 z-50 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
+      {options.map((option) => {
+        const Icon = option.icon;
+        return <button key={option.tab} type="button" onClick={() => { onOpen(option.tab); setOpen(false); }} className="flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-100"><Icon size={16} className="text-slate-500"/><span className="flex-1">{option.label}</span>{option.shortcut && <kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{option.shortcut}</kbd>}</button>;
+      })}
+    </div>}
+  </div>;
+}
 
 function ContextMultiSelect({
   icon,
@@ -534,7 +564,7 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
-function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: () => void }) {
+function MessageBubble({ message, onRetry, onOpenCodeFile }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
@@ -587,7 +617,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
               {t("chat.citations")}
             </div>
             {message.citations.slice(0, 5).map((citation, index) => (
-              <CitationItem key={`${index}-${citation.score ?? "score"}`} citation={citation} index={index + 1} />
+              <CitationItem key={`${index}-${citation.score ?? "score"}`} citation={citation} index={index + 1} onOpenCodeFile={onOpenCodeFile}/>
             ))}
           </div>
         )}
@@ -610,17 +640,33 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
   );
 }
 
-function CitationItem({ citation, index }: { citation: KnowledgeCitation; index: number }) {
+function CitationItem({ citation, index, onOpenCodeFile }: { citation: KnowledgeCitation; index: number; onOpenCodeFile: (reference: ChatCodeFileReference) => void }) {
   const source = formatCitationSource(citation.metadata);
+  const reference = resolveCodeFileReference(citation);
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-2">
+    <button type="button" disabled={!reference} onClick={() => reference && onOpenCodeFile(reference)} className={`block w-full rounded-lg border p-2 text-left transition ${reference ? "border-blue-200 bg-blue-50/40 hover:border-blue-400 hover:bg-blue-50" : "cursor-default border-zinc-200 bg-white"}`} title={reference ? "Open in the right file panel" : undefined}>
       <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-zinc-500">
         <span>#{index} {source}</span>
-        {typeof citation.score === "number" && <span>{citation.score.toFixed(3)}</span>}
+        <span className="flex items-center gap-1">{reference && <FileCode2 size={12} className="text-blue-600"/>}{typeof citation.score === "number" && <span>{citation.score.toFixed(3)}</span>}</span>
       </div>
       <p className="line-clamp-3 text-[12px] leading-5 text-zinc-700">{citation.text}</p>
-    </div>
+    </button>
   );
+}
+
+function resolveCodeFileReference(citation: KnowledgeCitation): ChatCodeFileReference | null {
+  const metadata = citation.metadata;
+  if (!metadata) return null;
+  const repositoryName = stringifyMeta(metadata.repository_name)
+    || stringifyMeta(metadata.code_repository_name)
+    || stringifyMeta(metadata.repository)
+    || stringifyMeta(metadata.repo_name);
+  const filePath = stringifyMeta(metadata.file_path)
+    || stringifyMeta(metadata.relative_path)
+    || stringifyMeta(metadata.source_path);
+  if (!repositoryName || !filePath) return null;
+  const rawLine = Number(metadata.line ?? metadata.line_number ?? metadata.start_line);
+  return { repositoryName, filePath, line: Number.isFinite(rawLine) && rawLine > 0 ? rawLine : undefined };
 }
 
 function resolveLlmModels(catalog: Catalog | null): CatalogModel[] {
