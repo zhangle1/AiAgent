@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Code2, Ellipsis, Feather, Flag, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Settings, SquarePen, Trash2, Wrench, X, type LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronLeft, Code2, Ellipsis, Feather, Flag, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Settings, SquarePen, Trash2, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import { getCodeProjects, updateCodeProject } from "@/lib/code-repository-api";
@@ -21,7 +21,7 @@ const tools = [
   { label: "设置", href: "/settings", icon: Settings },
 ];
 
-export function AppSidebar({ compact = false }: { compact?: boolean }) {
+export function AppSidebar() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -160,29 +160,29 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     } finally { closeMenu(); }
   }
 
-  return <aside className={`fixed inset-y-0 left-0 z-20 hidden flex-col border-r border-slate-200 bg-[#fbfcff] transition-[width] duration-200 lg:flex ${compact ? "w-[72px]" : "w-[240px]"}`}>
-    <div className={`flex h-16 items-center ${compact ? "justify-center px-2" : "px-4"}`}>
-      {compact ? <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="grid h-9 w-9 place-items-center rounded-[10px] border border-sky-200 bg-white text-sky-500 shadow-sm hover:bg-sky-50" aria-label="展开侧边栏" title="展开侧边栏"><Feather size={18}/></button> : <Link href="/chat" className="flex items-center gap-2 rounded-xl px-1 py-1 transition hover:bg-sky-50"><span className="grid h-8 w-8 place-items-center rounded-[10px] border border-sky-200 bg-white text-sky-500 shadow-sm"><Feather size={17}/></span><span className="font-serif text-xl font-semibold italic text-sky-500">{t("app.name")}</span></Link>}
+  return <aside className="fixed inset-y-0 left-0 z-20 hidden w-[240px] flex-col border-r border-slate-200 bg-[#fbfcff] lg:flex">
+    <div className="flex h-16 items-center justify-between px-4">
+      <Link href="/chat" className="flex items-center gap-2 rounded-xl px-1 py-1 transition hover:bg-sky-50"><span className="grid h-8 w-8 place-items-center rounded-[10px] border border-sky-200 bg-white text-sky-500 shadow-sm"><Feather size={17}/></span><span className="font-serif text-xl font-semibold italic text-sky-500">{t("app.name")}</span></Link>
+      <button className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="收起侧边栏"><ChevronLeft size={16}/></button>
     </div>
 
-    <nav className={`${compact ? "px-2" : "px-3"} pb-3`}>{!compact && <p className="px-2 pb-1 text-[10px] font-semibold tracking-[.15em] text-slate-400">工作台</p>}<SidebarLink href="/dashboard-applications" icon={LayoutDashboard} label="看板应用生成" active={pathname.startsWith("/dashboard-applications")} compact={compact}/><SidebarLink href="/chat" icon={MessageSquare} label="聊天" active={pathname === "/chat"} compact={compact}/></nav>
+    <nav className="px-3 pb-3"><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.15em] text-slate-400">工作台</p><SidebarLink href="/dashboard-applications" icon={LayoutDashboard} label="看板应用生成" active={pathname.startsWith("/dashboard-applications")}/><SidebarLink href="/chat" icon={MessageSquare} label="聊天" active={pathname === "/chat"}/></nav>
 
-    {!compact && <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
+    <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
       <div className="flex items-center justify-between px-2"><p className="text-[10px] font-semibold tracking-[.15em] text-slate-400">项目会话</p><span className="text-[10px] text-slate-400">仅显示我的会话</span></div>
       <div className="workspace-scroll mt-2 min-h-0 space-y-2 overflow-y-auto pr-1">
         {pinnedSessions.length > 0 && <SessionGroup group={{ key: "pinned", project: null, label: "置顶会话", sessions: pinnedSessions, pinned: true }} collapsed={false} activeSessionId={searchParams.get("session")} draggingId={draggingId} deletingId={deletingId} menuId={menuId} menuPosition={menuPosition} menuRef={menuLayerRef} onToggle={() => undefined} onMenuChange={toggleMenu} onDelete={(session) => void removeSession(session)} onRename={(session) => void renameChatSession(session)} onUpdate={(session, metadata) => void updateMetadata(session, metadata)} onDragStart={setDraggingId} onDrop={(session) => void moveSession(session)} />}
         {groups.map((group) => <SessionGroup key={group.key} group={group} collapsed={Boolean(collapsed[group.key])} activeSessionId={searchParams.get("session")} draggingId={draggingId} deletingId={deletingId} menuId={menuId} menuPosition={menuPosition} menuRef={menuLayerRef} onToggle={() => setCollapsed((value) => ({ ...value, [group.key]: !value[group.key] }))} onMenuChange={toggleMenu} onDelete={(session) => void removeSession(session)} onRename={(session) => void renameChatSession(session)} onUpdate={(session, metadata) => void updateMetadata(session, metadata)} onUpdateProjectPreference={(project, preference) => void updateProjectPreference(project, preference)} onRenameProject={(project) => void renameProject(project)} onDragStart={setDraggingId} onDrop={(session) => void moveSession(session)} />)}
         {groups.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-slate-400">项目会在你首次发起会话后显示在这里。</p>}
       </div>
-    </section>}
-    {compact && <div className="flex flex-1 border-t border-slate-200/80"/>}
+    </section>
 
-    <div className={`relative border-t border-slate-200 bg-white/80 ${compact ? "flex flex-col items-center gap-1 px-2 py-3" : "px-3 py-3"}`}>
-      <button type="button" onClick={() => setToolsOpen(true)} className={`flex h-10 items-center rounded-xl text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 ${compact ? "w-10 justify-center" : "w-full gap-3 px-3"}`} title="工具与设置"><Wrench size={16}/>{!compact && <>工具与设置<span className="ml-auto text-xs text-slate-400">选择</span></>}</button>
-      <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className={`text-slate-500 hover:bg-red-50 hover:text-red-600 ${compact ? "grid h-9 w-10 place-items-center rounded-lg" : "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px]"}`} title="退出登录"><LogOut size={16}/>{!compact && "退出登录"}</button>
-      {!compact && <div className="mt-2 px-3 text-[10px] text-slate-400">AiAgent · v0.1.0</div>}
+    <div className="relative border-t border-slate-200 bg-white/80 px-3 py-3">
+      <button type="button" onClick={() => setToolsOpen(true)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"><Wrench size={16}/>工具与设置<span className="ml-auto text-xs text-slate-400">选择</span></button>
+      <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px] text-slate-500 hover:bg-red-50 hover:text-red-600"><LogOut size={16}/>退出登录</button>
+      <div className="mt-2 px-3 text-[10px] text-slate-400">AiAgent · v0.1.0</div>
     </div>
-    {toolsOpen && <ToolDialog pathname={pathname} compact={compact} onClose={() => setToolsOpen(false)}/>}
+    {toolsOpen && <ToolDialog pathname={pathname} onClose={() => setToolsOpen(false)}/>}
   </aside>;
 }
 
@@ -212,5 +212,5 @@ function sortSessions(sessions: SessionSummary[], sortMode: ProjectSessionSortMo
 function priorityLabel(priority: SessionPriority) { return priority === "high" ? "高" : priority === "low" ? "低" : "普通"; }
 function priorityClass(priority: SessionPriority) { return priority === "high" ? "bg-rose-50 text-rose-600" : priority === "low" ? "bg-slate-100 text-slate-600" : "bg-blue-50 text-blue-700"; }
 
-function SidebarLink({ href, icon: Icon, label, active, compact = false }: { href: string; icon: LucideIcon; label: string; active: boolean; compact?: boolean }) { return <Link href={href} title={label} className={`mt-0.5 flex h-10 items-center rounded-xl text-[13px] font-medium transition ${compact ? "justify-center px-0" : "gap-3 px-3"} ${active ? "bg-blue-600 text-white shadow-[0_5px_14px_rgba(37,99,235,.22)]" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}><Icon size={16}/>{!compact && <span>{label}</span>}</Link>; }
-function ToolDialog({ pathname, compact, onClose }: { pathname: string; compact: boolean; onClose: () => void }) { return <div className="fixed inset-0 z-50 bg-slate-950/30" onMouseDown={onClose}><div className={`absolute bottom-4 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl ${compact ? "left-[84px]" : "left-[252px]"}`} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X size={15}/></button></div><div className="space-y-1">{tools.map(({ label, href, icon: Icon }) => { const active = pathname === href || (href !== "/settings" && pathname.startsWith(`${href}/`)); return <Link key={href} href={href} onClick={onClose} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon size={16}/>{label}</Link>; })}</div></div></div>; }
+function SidebarLink({ href, icon: Icon, label, active }: { href: string; icon: LucideIcon; label: string; active: boolean }) { return <Link href={href} className={`mt-0.5 flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition ${active ? "bg-blue-600 text-white shadow-[0_5px_14px_rgba(37,99,235,.22)]" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}><Icon size={16}/><span>{label}</span></Link>; }
+function ToolDialog({ pathname, onClose }: { pathname: string; onClose: () => void }) { return <div className="fixed inset-0 z-50 bg-slate-950/30" onMouseDown={onClose}><div className="absolute bottom-4 left-[252px] w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X size={15}/></button></div><div className="space-y-1">{tools.map(({ label, href, icon: Icon }) => { const active = pathname === href || (href !== "/settings" && pathname.startsWith(`${href}/`)); return <Link key={href} href={href} onClick={onClose} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon size={16}/>{label}</Link>; })}</div></div></div>; }
