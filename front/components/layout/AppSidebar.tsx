@@ -21,7 +21,7 @@ const tools = [
   { label: "设置", href: "/settings", icon: Settings },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -160,37 +160,62 @@ export function AppSidebar() {
     } finally { closeMenu(); }
   }
 
-  return <aside className="fixed inset-y-0 left-0 z-20 hidden w-[240px] flex-col border-r border-slate-200 bg-[#fbfcff] lg:flex">
-    <div className="flex h-16 items-center justify-between px-4">
-      <Link href="/chat" className="flex items-center gap-2 rounded-xl px-1 py-1 transition hover:bg-sky-50"><span className="grid h-8 w-8 place-items-center rounded-[10px] border border-sky-200 bg-white text-sky-500 shadow-sm"><Feather size={17}/></span><span className="font-serif text-xl font-semibold italic text-sky-500">{t("app.name")}</span></Link>
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="收起侧边栏"><ChevronLeft size={16}/></button>
-    </div>
-
-    <nav className="px-3 pb-3"><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.15em] text-slate-400">工作台</p><SidebarLink href="/dashboard-applications" icon={LayoutDashboard} label="看板应用生成" active={pathname.startsWith("/dashboard-applications")}/><SidebarLink href="/chat" icon={MessageSquare} label="聊天" active={pathname === "/chat"}/></nav>
-
-    <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
-      <div className="flex items-center justify-between px-2"><p className="text-[10px] font-semibold tracking-[.15em] text-slate-400">项目会话</p><span className="text-[10px] text-slate-400">仅显示我的会话</span></div>
-      <div className="workspace-scroll mt-2 min-h-0 space-y-2 overflow-y-auto pr-1">
-        {pinnedSessions.length > 0 && <SessionGroup group={{ key: "pinned", project: null, label: "置顶会话", sessions: pinnedSessions, pinned: true }} collapsed={false} activeSessionId={searchParams.get("session")} draggingId={draggingId} deletingId={deletingId} menuId={menuId} menuPosition={menuPosition} menuRef={menuLayerRef} onToggle={() => undefined} onMenuChange={toggleMenu} onDelete={(session) => void removeSession(session)} onRename={(session) => void renameChatSession(session)} onUpdate={(session, metadata) => void updateMetadata(session, metadata)} onDragStart={setDraggingId} onDrop={(session) => void moveSession(session)} />}
-        {groups.map((group) => <SessionGroup key={group.key} group={group} collapsed={Boolean(collapsed[group.key])} activeSessionId={searchParams.get("session")} draggingId={draggingId} deletingId={deletingId} menuId={menuId} menuPosition={menuPosition} menuRef={menuLayerRef} onToggle={() => setCollapsed((value) => ({ ...value, [group.key]: !value[group.key] }))} onMenuChange={toggleMenu} onDelete={(session) => void removeSession(session)} onRename={(session) => void renameChatSession(session)} onUpdate={(session, metadata) => void updateMetadata(session, metadata)} onUpdateProjectPreference={(project, preference) => void updateProjectPreference(project, preference)} onRenameProject={(project) => void renameProject(project)} onDragStart={setDraggingId} onDrop={(session) => void moveSession(session)} />)}
-        {groups.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-slate-400">项目会在你首次发起会话后显示在这里。</p>}
+  return (
+    <aside className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col border-r border-slate-200/90 bg-[#fbfcff] lg:flex">
+      <div className="flex h-[62px] items-center justify-between px-3.5">
+        <Link href="/chat" className="group flex min-w-0 items-center gap-2 rounded-xl px-1.5 py-1 transition hover:bg-sky-50">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-sky-200 bg-gradient-to-br from-white to-sky-50 text-sky-500 shadow-[0_3px_10px_rgba(14,165,233,0.14)]">
+            <Feather size={17} strokeWidth={1.8} />
+          </span>
+          <span className="font-serif text-[20px] font-semibold italic tracking-tight text-sky-500">{t("app.name")}</span>
+        </Link>
+        <button className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="收起侧边栏">
+          <ChevronLeft size={16} />
+        </button>
       </div>
-    </section>
 
-    <div className="relative border-t border-slate-200 bg-white/80 px-3 py-3">
-      <button type="button" onClick={() => setToolsOpen(true)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"><Wrench size={16}/>工具与设置<span className="ml-auto text-xs text-slate-400">选择</span></button>
-      <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px] text-slate-500 hover:bg-red-50 hover:text-red-600"><LogOut size={16}/>退出登录</button>
-      <div className="mt-2 px-3 text-[10px] text-slate-400">AiAgent · v0.1.0</div>
-    </div>
-    {toolsOpen && <ToolDialog pathname={pathname} onClose={() => setToolsOpen(false)}/>}
-  </aside>;
-}
+      <nav className="px-3 pb-2">
+        <SidebarSectionLabel>工作台</SidebarSectionLabel>
+        <div className="mt-1 space-y-0.5">
+          {mainItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />)}
+        </div>
+      </nav>
 
-function SessionGroup({ group, collapsed, activeSessionId, draggingId, deletingId, menuId, menuPosition, menuRef, onToggle, onMenuChange, onDelete, onRename, onUpdate, onUpdateProjectPreference, onRenameProject, onDragStart, onDrop }: { group: SessionGroupData; collapsed: boolean; activeSessionId: string | null; draggingId: string | null; deletingId: string | null; menuId: string | null; menuPosition: MenuPosition | null; menuRef: { current: HTMLDivElement | null }; onToggle: () => void; onMenuChange: (id: string | null, anchor?: HTMLElement | null) => void; onDelete: (session: SessionSummary) => void; onRename: (session: SessionSummary) => void; onUpdate: (session: SessionSummary, metadata: { priority?: SessionPriority; is_pinned?: boolean }) => void; onUpdateProjectPreference?: (project: CodeProject, preference: { is_pinned?: boolean; sort_mode?: ProjectSessionSortMode }) => void; onRenameProject?: (project: CodeProject) => void; onDragStart: (id: string | null) => void; onDrop: (session: SessionSummary) => void }) {
-  const label = group.label ?? group.project?.display_name ?? "未归属项目";
-  const projectMenuKey = `${group.key}:project`;
-  const manual = group.preference?.sort_mode === "manual";
-  return <div className={`rounded-xl border p-1 ${group.pinned ? "border-amber-200/80 bg-amber-50/55" : "border-slate-200/70 bg-white/70"}`}><div className="relative flex items-center"><button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100/80"><ChevronDown size={14} className={collapsed ? "-rotate-90 transition" : "transition"}/>{group.pinned ? <Pin size={13} className="text-amber-600"/> : <FolderGit2 size={14} className="text-blue-600"/>}<span className="truncate">{label}</span>{group.preference?.is_pinned && <Pin size={11} className="ml-1 text-amber-500"/>}<span className="ml-auto text-[10px] font-normal text-slate-400">{group.sessions.length}</span></button>{group.project && <><Link href={`/chat?project=${group.project.id}`} className="grid h-6 w-6 place-items-center rounded-md text-slate-400 hover:bg-blue-50 hover:text-blue-600" aria-label={`在${label}新建会话`}><Plus size={14}/></Link><button type="button" onClick={(event) => onMenuChange(menuId === projectMenuKey ? null : projectMenuKey, event.currentTarget)} className={`mr-1 grid h-6 w-6 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 ${menuId === projectMenuKey ? "bg-white text-slate-700 shadow-sm" : ""}`} aria-label={`${label}项目操作`} aria-expanded={menuId === projectMenuKey}><Ellipsis size={15}/></button>{menuId === projectMenuKey && <ProjectMenu position={menuPosition} menuRef={menuRef} preference={group.preference} onUpdate={(preference) => onUpdateProjectPreference?.(group.project!, preference)} onRename={() => onRenameProject?.(group.project!)}/>}</>}</div>{!collapsed && <div className="mt-1 space-y-0.5">{group.sessions.map((session) => { const rowKey = `${group.key}:${session.id}`; return <SessionRow key={rowKey} menuKey={rowKey} session={session} active={activeSessionId === session.id} dragging={draggingId === session.id} deleting={deletingId === session.id} manual={manual} menuOpen={menuId === rowKey} menuPosition={menuPosition} menuRef={menuRef} onMenuChange={onMenuChange} onDelete={onDelete} onRename={onRename} onUpdate={onUpdate} onDragStart={onDragStart} onDrop={onDrop}/>; })}</div>}</div>;
+      <section className="mt-4 flex min-h-0 flex-1 flex-col px-3 pb-3">
+        <div className="flex items-center justify-between px-2">
+          <SidebarSectionLabel className="mb-0">会话记录</SidebarSectionLabel>
+          <Link href="/chat" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600" aria-label="新建会话">
+            <Plus size={15} />
+          </Link>
+        </div>
+        <div className="workspace-scroll mt-2 min-h-0 space-y-0.5 overflow-y-auto pr-1">
+          {sessions.map((session) => (
+            <div key={session.id} className="group flex items-center gap-0.5 rounded-lg px-1 py-0.5 transition hover:bg-slate-100/90">
+              <Link href={`/chat?session=${encodeURIComponent(session.id)}`} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-slate-500 transition group-hover:text-slate-800">
+                <MessageSquare size={13} strokeWidth={1.7} className="shrink-0 text-slate-400" />
+                <span className="truncate">{session.title}</span>
+              </Link>
+              <button type="button" onClick={() => void removeSession(session)} disabled={deletingSessionId === session.id} className="hidden h-6 w-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40 group-hover:grid" aria-label={`删除会话：${session.title}`}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+          {sessions.length === 0 && <p className="px-2 py-3 text-[11px] leading-5 text-slate-400">暂时没有历史会话</p>}
+        </div>
+      </section>
+
+      <nav className="border-t border-slate-200/80 bg-white/70 px-3 py-3">
+        <SidebarSectionLabel>工具与设置</SidebarSectionLabel>
+        <div className="mt-1 space-y-0.5">
+          {bottomItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} />)}
+        </div>
+        <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="mt-2 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px] text-slate-500 transition hover:bg-red-50 hover:text-red-600">
+          <LogOut size={16} strokeWidth={1.7} />退出登录
+        </button>
+        <div className="mt-2 px-2 text-[10px] font-medium tracking-wide text-slate-400">AiAgent · v0.1.0</div>
+      </nav>
+    </aside>
+  );
 }
 
 function ProjectMenu({ position, menuRef, preference, onUpdate, onRename }: { position: MenuPosition | null; menuRef: { current: HTMLDivElement | null }; preference?: ProjectSessionPreference; onUpdate: (preference: { is_pinned?: boolean; sort_mode?: ProjectSessionSortMode }) => void; onRename: () => void }) {
@@ -207,10 +232,3 @@ function SessionMenu({ position, menuRef, session, deleting, onClose, onDelete, 
   if (!position) return null;
   return createPortal(<div ref={menuRef} style={position} className="fixed z-[60] w-44 rounded-xl border border-slate-200 bg-white p-1.5 text-xs text-slate-600 shadow-xl"><button type="button" onClick={() => onUpdate({ is_pinned: !session.is_pinned })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-50">{session.is_pinned ? <PinOff size={14}/> : <Pin size={14}/>} {session.is_pinned ? "取消置顶会话" : "置顶会话"}</button><button type="button" onClick={onRename} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-50"><SquarePen size={14}/>重命名会话</button><div className="my-1 border-t border-slate-100"/><p className="px-2.5 py-1 text-[10px] font-medium tracking-wide text-slate-400">优先级</p><div className="grid grid-cols-3 gap-1 px-1 pb-1">{(["low", "normal", "high"] as const).map((priority) => <button key={priority} type="button" onClick={() => onUpdate({ priority })} className={`rounded-md px-1 py-1.5 text-[10px] transition ${session.priority === priority ? priorityClass(priority) : "text-slate-500 hover:bg-slate-100"}`}>{priorityLabel(priority)}</button>)}</div><div className="my-1 border-t border-slate-100"/><button type="button" disabled={deleting} onClick={() => { onClose(); onDelete(); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={14}/>删除会话</button></div>, document.body);
 }
-
-function sortSessions(sessions: SessionSummary[], sortMode: ProjectSessionSortMode) { const priority = { high: 3, normal: 2, low: 1 } as const; return [...sessions].sort((left, right) => { if (sortMode === "manual") return right.sort_order - left.sort_order; if (sortMode === "priority" && priority[(right.priority ?? "normal") as SessionPriority] !== priority[(left.priority ?? "normal") as SessionPriority]) return priority[(right.priority ?? "normal") as SessionPriority] - priority[(left.priority ?? "normal") as SessionPriority]; return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(); }); }
-function priorityLabel(priority: SessionPriority) { return priority === "high" ? "高" : priority === "low" ? "低" : "普通"; }
-function priorityClass(priority: SessionPriority) { return priority === "high" ? "bg-rose-50 text-rose-600" : priority === "low" ? "bg-slate-100 text-slate-600" : "bg-blue-50 text-blue-700"; }
-
-function SidebarLink({ href, icon: Icon, label, active }: { href: string; icon: LucideIcon; label: string; active: boolean }) { return <Link href={href} className={`mt-0.5 flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition ${active ? "bg-blue-600 text-white shadow-[0_5px_14px_rgba(37,99,235,.22)]" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}><Icon size={16}/><span>{label}</span></Link>; }
-function ToolDialog({ pathname, onClose }: { pathname: string; onClose: () => void }) { return <div className="fixed inset-0 z-50 bg-slate-950/30" onMouseDown={onClose}><div className="absolute bottom-4 left-[252px] w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X size={15}/></button></div><div className="space-y-1">{tools.map(({ label, href, icon: Icon }) => { const active = pathname === href || (href !== "/settings" && pathname.startsWith(`${href}/`)); return <Link key={href} href={href} onClick={onClose} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon size={16}/>{label}</Link>; })}</div></div></div>; }
