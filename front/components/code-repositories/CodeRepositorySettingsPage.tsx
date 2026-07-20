@@ -186,6 +186,8 @@ export function CodeRepositorySettingsPage() {
       is_git_repository: repository.is_git_repository,
       branch: repository.branch,
       marker_files: [],
+      solution_files: repository.solution_files,
+      configuration_files: repository.configuration_files,
     });
     setError(null);
   }

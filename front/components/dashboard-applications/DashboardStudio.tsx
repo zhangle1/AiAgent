@@ -142,6 +142,7 @@ export function DashboardStudio() {
       ? `${window.location.protocol}//${window.location.hostname}:${runtime.port}`
       : "";
   const isDirty = Boolean(file && file.content !== draft);
+  const repositoryGitStatus = gitStatus?.is_repository ? gitStatus : null;
 
   useEffect(() => {
     if (id) void bootstrap();
@@ -779,22 +780,22 @@ export function DashboardStudio() {
               </button>
             </header>
             <div className="space-y-3 p-4 text-[12px]">
-              {gitStatus?.is_repository ? (
+              {repositoryGitStatus ? (
                 <>
                   <div className="rounded border border-white/10 bg-black/15 p-3 text-slate-300">
                     <div>
                       分支：
                       <span className="text-white">
-                        {gitStatus.branch || "detached"}
+                        {repositoryGitStatus!.branch || "detached"}
                       </span>
                     </div>
                     <div className="mt-1">
-                      待提交：{gitStatus.changes.length} · ↑ {gitStatus.ahead} ·
-                      ↓ {gitStatus.behind}
+                      待提交：{repositoryGitStatus!.changes.length} · ↑ {repositoryGitStatus!.ahead} ·
+                      ↓ {repositoryGitStatus!.behind}
                     </div>
-                    {gitStatus.changes.length > 0 && (
+                    {repositoryGitStatus!.changes.length > 0 && (
                       <pre className="mt-2 max-h-24 overflow-auto text-[10px] text-amber-200">
-                        {gitStatus.changes.join("\n")}
+                        {repositoryGitStatus!.changes.join("\n")}
                       </pre>
                     )}
                   </div>

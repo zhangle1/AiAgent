@@ -290,7 +290,7 @@ export function KnowledgeChatHome() {
 
   return (
     <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl">
+      <header className="relative z-[80] flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600"><Sparkles size={16}/></div>
           <div><h1 className="text-sm font-semibold text-slate-950">{t("chat.newChat")}</h1><p className="text-[11px] text-slate-400">AI 工作台</p></div>

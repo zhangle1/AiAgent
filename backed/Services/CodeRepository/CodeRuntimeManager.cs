@@ -346,9 +346,13 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         {
             startInfo.FileName = "dotnet";
             startInfo.WorkingDirectory = rootPath;
+            // Keep the VS development configuration while retaining AiAgent's managed port.
+            // launchSettings.json would otherwise override --urls with its own localhost binding.
+            startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
             startInfo.ArgumentList.Add("run");
             startInfo.ArgumentList.Add("--project");
             startInfo.ArgumentList.Add(fullEntryPath);
+            startInfo.ArgumentList.Add("--no-launch-profile");
             startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add("--urls");
             startInfo.ArgumentList.Add($"http://0.0.0.0:{port}");

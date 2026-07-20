@@ -75,7 +75,7 @@ export function CodeProjectSettingsPage() {
   }
 
   function startProject() { setMode("project"); setSelectedProjectId(null); setSelectedRepository(null); setProjectDraft(emptyProject); setHealth(null); setError(""); }
-  function startRepository(projectId = selectedProjectId ?? "") { setMode("repository"); setSelectedRepository(null); setRepositoryDraft({ ...emptyRepository, projectId }); setRuntimeDraft(emptyRuntime); setInspection(null); setHealth(null); setError(""); }
+  function startRepository(projectId: number | "" = selectedProjectId ?? "") { setMode("repository"); setSelectedRepository(null); setRepositoryDraft({ ...emptyRepository, projectId }); setRuntimeDraft(emptyRuntime); setInspection(null); setHealth(null); setError(""); }
 
   async function loadRuntimeProfile(repository: CodeRepository) {
     if (!repository.project_id) return;
@@ -275,7 +275,7 @@ function RuntimeDebugSection({ repository, draft, busy, onChange, onSave }: { re
       <Field label="默认调试端口" hint={isFrontend ? "前端默认 4300；被占用会自动换端口。" : "后端默认 5100；被占用会自动换端口。"}>
         <input type="number" min="1024" max="65535" className={`${input} mt-1`} value={draft.preferredPort} onChange={(event) => onChange({ ...draft, preferredPort: event.target.value })}/>
       </Field>
-      {isFrontend ? <Field label="前端启动脚本" hint="填写 package.json scripts 中的名称，例如 dev、start。"><input className={`${input} mt-1 font-mono`} value={draft.runScript} onChange={(event) => onChange({ ...draft, runScript: event.target.value })} placeholder="dev"/></Field> : <Field label="后端启动命令"><input readOnly className={`${input} mt-1 bg-slate-100 font-mono text-xs text-slate-600`} value="dotnet run（由系统安全组装参数）"/></Field>}
+      {isFrontend ? <Field label="前端启动脚本" hint="填写 package.json scripts 中的名称，例如 dev、start。"><input className={`${input} mt-1 font-mono`} value={draft.runScript} onChange={(event) => onChange({ ...draft, runScript: event.target.value })} placeholder="dev"/></Field> : <Field label="后端启动命令" hint="固定使用 Development 环境；上方端口会覆盖 Visual Studio launchSettings 中的 localhost 端口。"><input readOnly className={`${input} mt-1 bg-slate-100 font-mono text-xs text-slate-600`} value="dotnet run --no-launch-profile（Development）"/></Field>}
       <Field label={isFrontend ? "前端测试脚本" : "C# 测试命令"} hint={isFrontend ? "填写 package.json scripts 中的名称，例如 test、test:unit。" : "仅支持以 dotnet test 开头的受控命令。"}><input className={`${input} mt-1 font-mono`} value={draft.testScript} onChange={(event) => onChange({ ...draft, testScript: event.target.value })} placeholder={isFrontend ? "test" : "dotnet test"}/></Field>
       <Field label="健康检查路径（可选）" hint="例如 /health；前端预览通常使用 /。"><input className={`${input} mt-1 font-mono`} value={draft.healthPath} onChange={(event) => onChange({ ...draft, healthPath: event.target.value })} placeholder="/"/></Field>
       <label className="mt-4 flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={draft.isEnabled} onChange={(event) => onChange({ ...draft, isEnabled: event.target.checked })} className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"/>在聊天中允许启动此程序</label>

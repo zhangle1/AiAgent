@@ -1,7 +1,7 @@
 "use client";
 
 import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, X } from "lucide-react";
+import { ArrowRight, Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, X } from "lucide-react";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
 import { getCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
@@ -25,7 +25,9 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   const [activeTab, setActiveTab] = useState<WorkspaceTab | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [runtime, setRuntime] = useState<CodeProjectRuntime | null>(null);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [browserAddress, setBrowserAddress] = useState("");
+  const [browserUrl, setBrowserUrl] = useState("");
+  const [browserRevision, setBrowserRevision] = useState(0);
   const [file, setFile] = useState<{ path: string; content: string; line_count: number } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +39,6 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   const addMenuRef = useRef<HTMLDivElement | null>(null);
 
   const previewRuns = useMemo(() => runtime?.runs.filter((run) => run.role === "frontend" && (run.status === "starting" || run.status === "running")) ?? [], [runtime]);
-  const activeRun = previewRuns.find((run) => run.run_id === activeRunId) ?? previewRuns[0] ?? null;
 
   useEffect(() => {
     if (!requestedTab) return;
@@ -125,6 +126,18 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     return () => window.clearTimeout(timer);
   }, [file, fileReference]);
 
+  useEffect(() => {
+    setBrowserAddress("");
+    setBrowserUrl("");
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (browserAddress || previewRuns.length === 0) return;
+    const run = previewRuns[0];
+    const suggestedUrl = run.access_urls?.find((url) => !url.includes("127.0.0.1")) ?? run.access_urls?.[0] ?? run.preview_url ?? "";
+    setBrowserAddress(suggestedUrl);
+  }, [browserAddress, previewRuns]);
+
   function openTab(nextTab: WorkspaceTab) {
     setTabs((current) => current.includes(nextTab) ? current : [...current, nextTab]);
     setActiveTab(nextTab);
@@ -147,6 +160,15 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     setResizing(true);
   }
 
+  function loadBrowser() {
+    const rawAddress = browserAddress.trim();
+    if (!rawAddress) return;
+    const normalizedUrl = /^https?:\/\//i.test(rawAddress) ? rawAddress : `http://${rawAddress}`;
+    setBrowserAddress(normalizedUrl);
+    setBrowserUrl(normalizedUrl);
+    setBrowserRevision((value) => value + 1);
+  }
+
   if (!isOpen) return null;
   const lines = file?.content.split("\n").slice(0, 2500) ?? [];
   const line = fileReference?.line;
@@ -167,15 +189,13 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 
       {activeTab === null ? <EmptyWorkspace onOpen={openTab}/> : activeTab === "preview" ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+          <form onSubmit={(event) => { event.preventDefault(); loadBrowser(); }} className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <Code2 size={14} className="text-blue-600"/>
-            <select value={activeRun?.run_id ?? ""} onChange={(event) => setActiveRunId(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs font-medium text-slate-700 outline-none">
-              <option value="">{project ? "没有正在运行的前端程序" : "请先选择项目"}</option>
-              {previewRuns.map((run) => <option key={run.run_id} value={run.run_id}>{run.repository_name} · {run.status} · :{run.port}</option>)}
-            </select>
-            <button type="button" onClick={() => project && void getCodeProjectRuntime(project.id).then(setRuntime)} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="刷新运行状态"><RefreshCw size={14}/></button>
-          </div>
-          {activeRun?.preview_url ? <iframe title={`${activeRun.repository_name} preview`} src={activeRun.preview_url} className="min-h-0 flex-1 bg-white" sandbox="allow-scripts allow-forms allow-modals allow-popups" /> : <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">启动已配置的前端程序后，会在这里通过受控同源代理显示预览。</div>}
+            <input value={browserAddress} onChange={(event) => setBrowserAddress(event.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs text-slate-700 outline-none placeholder:font-sans placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder="输入 IP、域名或 URL，例如 192.168.3.199:4300" aria-label="浏览器地址"/>
+            <button type="submit" disabled={!browserAddress.trim()} className="grid h-7 w-7 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400" aria-label="加载地址"><ArrowRight size={14}/></button>
+            <button type="button" onClick={() => { if (browserUrl) setBrowserRevision((value) => value + 1); else if (project) void getCodeProjectRuntime(project.id).then(setRuntime); }} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="刷新页面"><RefreshCw size={14}/></button>
+          </form>
+          {browserUrl ? <iframe key={`${browserUrl}-${browserRevision}`} title="浏览器预览" src={browserUrl} className="min-h-0 flex-1 bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups" /> : <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">输入可访问的 IP、域名或完整 URL 后按回车加载。已启动前端时会自动填入一个可用地址。</div>}
         </div>
       ) : activeTab === "file" ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
