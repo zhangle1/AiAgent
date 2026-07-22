@@ -33,3 +33,5 @@ Thumbs.db
 .DS_Store
 /artifacts/server-package/.front-build
 /artifacts/server-package
+/backed/appsettings.dev.json
+/backed/appsettings.json
