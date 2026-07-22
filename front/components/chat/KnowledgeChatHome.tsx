@@ -2,7 +2,7 @@
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Terminal, UserRound } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound } from "lucide-react";
 import { streamCompleteChat, type ChatStreamEvent } from "@/lib/chat-api";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
@@ -28,7 +28,7 @@ type ChatMessage = {
   label?: string | null;
   citations?: KnowledgeCitation[];
   model?: string | null;
-  status?: "streaming" | "done" | "error";
+  status?: "streaming" | "done" | "stopped" | "error";
   startedAt?: number;
   elapsedSeconds?: number;
   iteration?: number;
@@ -72,6 +72,7 @@ export function KnowledgeChatHome() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
   const pendingSessionIdRef = useRef<string | null>(null);
+  const streamAbortControllerRef = useRef<AbortController | null>(null);
 
   const readyKnowledgeBases = useMemo(
     () => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"),
@@ -129,6 +130,8 @@ export function KnowledgeChatHome() {
     return () => document.removeEventListener("pointerdown", closeWhenOutside);
   }, [openContextPicker]);
 
+  useEffect(() => () => streamAbortControllerRef.current?.abort(), []);
+
   async function loadBootstrap() {
     setLoading(true);
     setError(null);
@@ -176,6 +179,8 @@ export function KnowledgeChatHome() {
 
     setSending(true);
     setError(null);
+    const streamAbortController = new AbortController();
+    streamAbortControllerRef.current = streamAbortController;
 
     const assistantId = options?.retryAssistantId ?? createClientId();
     const startedAt = Date.now();
@@ -259,7 +264,7 @@ export function KnowledgeChatHome() {
           }
           return message;
         }));
-      });
+      }, streamAbortController.signal);
 
       setMessages((items) => items.map((message) => {
         if (message.id !== assistantId) return message;
@@ -272,6 +277,20 @@ export function KnowledgeChatHome() {
       }));
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     } catch (ex) {
+      if (streamAbortController.signal.aborted) {
+        setMessages((items) => items.map((message) => (
+          message.id === assistantId
+            ? {
+              ...message,
+              content: message.content.trim() || "Generation stopped.",
+              status: "stopped",
+              elapsedSeconds: Math.max(1, Math.round((Date.now() - (message.startedAt ?? startedAt)) / 1000)),
+            }
+            : message
+        )));
+        window.dispatchEvent(new Event("aiagent:sessions-updated"));
+        return;
+      }
       setError(ex instanceof Error ? ex.message : t("chat.errorSearch"));
       setMessages((items) => items.map((message) => (
         message.id === assistantId
@@ -279,6 +298,7 @@ export function KnowledgeChatHome() {
           : message
       )));
     } finally {
+      if (streamAbortControllerRef.current === streamAbortController) streamAbortControllerRef.current = null;
       setSending(false);
     }
   }
@@ -286,6 +306,10 @@ export function KnowledgeChatHome() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await sendMessage(input.trim());
+  }
+
+  function stopGenerating() {
+    streamAbortControllerRef.current?.abort();
   }
 
   function openInspector(tab: InspectorTab) {
@@ -422,14 +446,26 @@ export function KnowledgeChatHome() {
                 <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={t("chat.voiceInput")}>
                   <Mic size={16} />
                 </button>
-                <button
-                  type="submit"
-                  disabled={sending || !input.trim()}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300"
-                  aria-label={t("chat.send")}
-                >
-                  {sending ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={17} />}
-                </button>
+                {sending ? (
+                  <button
+                    type="button"
+                    onClick={stopGenerating}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm shadow-rose-200 transition hover:bg-rose-700"
+                    aria-label="Stop generating"
+                    title="Stop generating"
+                  >
+                    <Square size={15} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!input.trim()}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300"
+                    aria-label={t("chat.send")}
+                  >
+                    <ArrowUp size={17} />
+                  </button>
+                )}
               </div>
             </div>
           </form>
@@ -588,7 +624,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile }: { message: ChatMess
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
             <span className={`font-semibold ${message.status === "error" ? "text-red-600" : "text-zinc-900"}`}>
-              {message.status === "streaming" ? (message.agent === "codex" ? "Codex working" : "Working") : message.status === "error" ? "Error" : message.modificationStatus === "completed_changed" ? "Codex 已修改完成" : message.modificationStatus === "completed_no_change" ? "Codex 已完成（未修改文件）" : "Done"}
+              {message.status === "streaming" ? (message.agent === "codex" ? "Codex working" : "Working") : message.status === "stopped" ? "Stopped" : message.status === "error" ? "Error" : message.modificationStatus === "completed_changed" ? "Codex 已修改完成" : message.modificationStatus === "completed_no_change" ? "Codex 已完成（未修改文件）" : "Done"}
             </span>
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}

@@ -183,7 +183,9 @@ function ToolDialog({ compact, pathname, onClose }: { compact: boolean; pathname
 }
 
 function isActive(pathname: string, href: string) {
-  return href === "/chat" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  return href === "/chat" || href === "/settings"
+    ? pathname === href
+    : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function sortSessions(sessions: SessionSummary[], mode: ProjectSessionSortMode) {
