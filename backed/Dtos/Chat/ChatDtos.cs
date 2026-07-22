@@ -70,6 +70,12 @@ public sealed class ChatCompleteRequest
     /// </summary>
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "chat";
+
+    /// <summary>
+    /// Optional external agent that takes over this turn. The first supported value is codex.
+    /// </summary>
+    [JsonPropertyName("agent")]
+    public string? Agent { get; set; }
 }
 
 /// <summary>

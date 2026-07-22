@@ -39,6 +39,7 @@ export type ChatCompleteRequest = {
   model_id?: string;
   top_k?: number;
   mode?: string;
+  agent?: "codex";
 };
 
 export type ChatCompleteResponse = {

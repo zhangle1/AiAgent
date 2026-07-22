@@ -105,3 +105,76 @@
 - `AiCodeProject` 是全局项目实体；项目重命名会影响所有用户。项目置顶和排序偏好则是按用户保存。
 - 如果产品要求“项目名称也按用户自定义”，不能复用 `AiCodeProject.DisplayName`，应在 `AiChatProjectPreference` 增加 `DisplayNameOverride`，并优先显示该字段。
 - 当前会话级 `IsPinned` 与项目级 `AiChatProjectPreference.IsPinned` 是两个不同概念：前者进入“置顶会话”，后者使项目分组优先显示。
+
+---
+
+## 阶段二：代码库运行、侧边工具与部署（2026-07-22）
+
+### 当前目标
+
+让已登记的 C# 后端和 TypeScript/JavaScript 前端能从聊天顶部“项目程序运行”启动、停止、查看终端输出和浏览器预览；并完成可部署的前后端打包脚本。
+
+### 已完成
+
+#### 1. 代码库文件与调试配置
+
+- 代码库配置页只保留 `C#` 和 `TypeScript/JavaScript` 两个语言选项，改为单选。
+- 恢复“选择文件”入口：
+  - C# 可选择 `.sln`、`.csproj`；
+  - 前端可选择 `package.json` 和配置文件。
+- 调试配置分为 `C# 后端` 与 `前端（TypeScript/JavaScript）`：
+  - `.sln` 仅用于组织解决方案；真正启动必须选可运行的 Web/API 或 `OutputType=Exe` 的 `.csproj`；类库不能启动。
+  - 前端必须选 `package.json`，并可填写 `dev` / `start` 等 npm 脚本和端口。
+- 文件刚被选择、但尚未保存代码库配置时，调试入口下拉框也会立即显示该文件，避免界面仍显示“选择调试入口”。
+
+关键文件：
+
+- `front/components/code-repositories/CodeProjectSettingsPage.tsx`
+- `front/lib/code-repository-api.ts`
+- `backed/Services/CodeRepository/CodeRuntimeManager.cs`
+
+#### 2. 后端运行目录与许可证
+
+- `CodeRuntimeManager` 启动 C# 项目时，工作目录已由“代码库根目录”改为“所选 `.csproj` 所在目录”。
+- 原因：目标 CPS 项目通过 `Directory.GetCurrentDirectory()` 读取 `appsettings.json` 和 `license.json`；工作目录不正确会导致读取不到项目目录的许可证，甚至创建空许可证文件。
+- C# 运行命令保留 `--no-launch-profile`，并通过 `--urls http://0.0.0.0:{port}` 由 AiAgent 管理端口；同时使用 `ASPNETCORE_ENVIRONMENT=Development`。
+
+已确认的 Visual Studio 启动项目：
+
+- 解决方案：`E:\项目\欣灵\xinlingCPS\srm-cps-api\GuoKun.CPS.SRM.XL.Api.sln`
+- API 启动工程：`E:\项目\欣灵\xinlingCPS\srm-cps-api\GuoKun.CPS.SRM.Api\GuoKun.CPS.SRM.Api.csproj`
+
+注意：最近一次日志的 Content root 是 `E:\项目\欣灵\xinlingCPS\guokun-srm-api\GuoKun.SRM.Api\`，它不是上面的 `GuoKun.CPS.SRM.Api`。若日志仍显示前者，说明当前保存的运行入口选错了代码库/项目，需要在代码库配置页重新选择正确的 `.csproj`。
+
+#### 3. npm / Umi 停止与重启
+
+- 停止运行时现在会等待 `Process.Kill(true)` 的退出结果；npm/Node 未退出时，会在 Windows 上以 `taskkill /PID <pid> /T /F` 作为进程树兜底。
+- 停止成功后立即将运行状态标记为 `stopped`，避免状态一直停在 `stopping` 并导致“此项目已有正在运行的 frontend 进程”。
+- 已手动清理过 `xinling-cps-srm-management-web` 遗留的 npm/UMI 进程树；未影响 AiAgent 自身的 Next 开发服务。
+
+#### 4. 聊天工作区与部署
+
+- 聊天顶部已加入项目运行菜单、右侧工作区面板、终端/文件/浏览器标签等交互；右侧区域可打开文件、浏览器和终端内容。
+- 部署脚本与中文部署文档已创建在 `scripts/deploy/`，用于将前后端打包为一个服务器包；前端端口可配置。
+- 前端生产构建遇到的 TypeScript 问题已逐项修正过，包括运行配置类型、可空 Git 状态和 `/login` 的 Suspense 边界。
+
+### 当前需要执行的验证
+
+1. 重新编译/重启 AiAgent 后端，使本阶段的 `CodeRuntimeManager.cs` 改动生效。
+2. 在“项目与代码库”中确认 C# 入口是：
+   `GuoKun.CPS.SRM.Api/GuoKun.CPS.SRM.Api.csproj`。
+3. 启动后在终端确认 Content root 为：
+   `...\srm-cps-api\GuoKun.CPS.SRM.Api\`。
+4. 若仍出现许可证错误，检查该目录的 `license.json` 是否与本机硬件/有效期匹配；不要修改 AiAgent 来绕过外部系统的许可证校验。
+5. 启动前端后，点击停止，再立即启动一次，确认不会出现 `This project already has a running frontend process.`。
+
+### 继续开发时的约束
+
+- 工作区有用户未提交的改动；不要使用 `git reset --hard` 或覆盖无关文件。
+- 代码库包含中文和部分历史编码文件，编辑使用局部补丁，保持原编码。
+- 除非用户明确要求，不执行 `dotnet build`、`npm run build` 等构建命令。
+- 当前 `CodeRuntimeManager.cs` 的改动属于 AiAgent 后端，必须重新编译/重启运行中的 AiAgent 才会生效。
+
+### 新会话起始提示
+
+> 请先阅读 `E:\项目\know-why\AiAgent\NEW_CHAT_HANDOFF.md` 的“阶段二”部分。当前重点是：重启 AiAgent 后端后验证 C# API 的工作目录与许可证读取、验证 npm 前端停止后可重启；不要对外部 CPS 项目的许可证逻辑做绕过修改。

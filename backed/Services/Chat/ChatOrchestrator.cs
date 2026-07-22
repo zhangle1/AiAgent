@@ -28,13 +28,15 @@ public interface IChatOrchestrator
 public sealed class ChatOrchestrator : IChatOrchestrator
 {
     private readonly IAgentLoop _agentLoop;
+    private readonly ICodexChatService _codex;
 
     /// <summary>
     /// 初始化聊天编排器。
     /// </summary>
-    public ChatOrchestrator(IAgentLoop agentLoop)
+    public ChatOrchestrator(IAgentLoop agentLoop, ICodexChatService codex)
     {
         _agentLoop = agentLoop;
+        _codex = codex;
     }
 
     /// <summary>
@@ -42,6 +44,11 @@ public sealed class ChatOrchestrator : IChatOrchestrator
     /// </summary>
     public async Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, CancellationToken cancellationToken)
     {
+        if (IsCodexRequest(request))
+        {
+            return await _codex.CompleteAsync(request, null, cancellationToken);
+        }
+
         var context = AgentContext.FromRequest(request);
         if (string.IsNullOrWhiteSpace(context.UserMessage))
         {
@@ -60,6 +67,11 @@ public sealed class ChatOrchestrator : IChatOrchestrator
         AgentStreamEventHandler? onEvent,
         CancellationToken cancellationToken)
     {
+        if (IsCodexRequest(request))
+        {
+            return await _codex.CompleteAsync(request, onEvent, cancellationToken);
+        }
+
         var context = AgentContext.FromRequest(request);
         if (string.IsNullOrWhiteSpace(context.UserMessage))
         {
@@ -83,4 +95,6 @@ public sealed class ChatOrchestrator : IChatOrchestrator
             Citations = outcome.Citations
         };
     }
+
+    private static bool IsCodexRequest(ChatCompleteRequest request) => string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
 }

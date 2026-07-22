@@ -8,6 +8,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AiAgent.Backend.Services.CodeRepository;
 
@@ -172,14 +173,14 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             run.StoppedByUser = true;
             run.Status = "stopping";
             AppendLog(run, "system", "Stop requested.");
-            try
+            if (TerminateProcessTree(run.Process))
             {
-                if (!run.Process.HasExited) run.Process.Kill(true);
+                run.ExitCode = run.Process.ExitCode;
+                run.CompletedAt = DateTime.UtcNow;
+                run.Status = "stopped";
+                AppendLog(run, "system", $"Process stopped with exit code {run.ExitCode}.");
             }
-            catch (InvalidOperationException)
-            {
-                // The process ended in the short interval after its state check.
-            }
+            else AppendLog(run, "system", "Process is still stopping; its process tree did not exit in time.");
             return true;
         }
     }
@@ -344,8 +345,12 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         }
         else
         {
+            if (!IsRunnableDotnetProject(rootPath, entryPath))
+                throw new InvalidOperationException("The selected C# project is a class library and cannot be started. Select a Web/API or Exe .csproj file.");
             startInfo.FileName = "dotnet";
-            startInfo.WorkingDirectory = rootPath;
+            // Match Visual Studio's project launch context: this application reads
+            // appsettings.json and license.json relative to the current directory.
+            startInfo.WorkingDirectory = Path.GetDirectoryName(fullEntryPath)!;
             // Keep the VS development configuration while retaining AiAgent's managed port.
             // launchSettings.json would otherwise override --urls with its own localhost binding.
             startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
@@ -384,6 +389,45 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                 AppendLog(run, "system", $"Runtime observer failed: {ex.Message}");
             }
             _logger.LogWarning(ex, "Runtime observer failed for {RunId}", run.RunId);
+        }
+    }
+
+    private static bool TerminateProcessTree(Process process)
+    {
+        try
+        {
+            if (process.HasExited) return true;
+            process.Kill(entireProcessTree: true);
+            if (process.WaitForExit(2000)) return true;
+
+            // npm.cmd can leave cmd/node descendants alive on Windows. taskkill /T
+            // targets the complete native process tree when Process.Kill alone is late.
+            if (OperatingSystem.IsWindows())
+            {
+                using var taskKill = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "taskkill",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                taskKill.StartInfo.ArgumentList.Add("/PID");
+                taskKill.StartInfo.ArgumentList.Add(process.Id.ToString());
+                taskKill.StartInfo.ArgumentList.Add("/T");
+                taskKill.StartInfo.ArgumentList.Add("/F");
+                if (taskKill.Start()) taskKill.WaitForExit(3000);
+            }
+            return process.WaitForExit(1000) || process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return process.HasExited;
         }
     }
 
@@ -458,12 +502,16 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             || (!repository.SolutionFiles.Contains(entryPath, StringComparer.OrdinalIgnoreCase)
                 && !repository.SolutionFiles.Any(path => path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))))
             throw new InvalidOperationException("A back-end runtime must use a selected .csproj file.");
+        if (!IsRunnableDotnetProject(repository.RootPath, entryPath))
+            throw new InvalidOperationException("A back-end runtime must use a selected Web/API or Exe .csproj file. Class library projects cannot be started.");
     }
 
     private static string? ResolveBackendProjectFile(CodeRepositoryDto repository)
     {
-        if (repository.PublishTarget?.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) == true) return repository.PublishTarget;
-        var selectedProject = repository.SolutionFiles.FirstOrDefault(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
+        if (repository.PublishTarget?.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) == true
+            && IsRunnableDotnetProject(repository.RootPath, repository.PublishTarget)) return repository.PublishTarget;
+        var selectedProject = repository.SolutionFiles.FirstOrDefault(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            && IsRunnableDotnetProject(repository.RootPath, path));
         if (!string.IsNullOrWhiteSpace(selectedProject)) return selectedProject;
 
         var solution = repository.SolutionFiles.FirstOrDefault(path => path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase));
@@ -477,10 +525,31 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             var projectPart = line.Split(',').Select(value => value.Trim().Trim('"')).FirstOrDefault(value => value.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
             if (string.IsNullOrWhiteSpace(projectPart)) continue;
             var projectPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(solutionPath)!, projectPart));
-            if (IsPathWithin(rootPath, projectPath) && File.Exists(projectPath))
-                return Path.GetRelativePath(rootPath, projectPath).Replace('\\', '/');
+            var relativePath = Path.GetRelativePath(rootPath, projectPath).Replace('\\', '/');
+            if (IsPathWithin(rootPath, projectPath) && File.Exists(projectPath) && IsRunnableDotnetProject(rootPath, relativePath))
+                return relativePath;
         }
         return null;
+    }
+
+    private static bool IsRunnableDotnetProject(string rootPath, string entryPath)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(rootPath, entryPath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!IsPathWithin(rootPath, fullPath) || !File.Exists(fullPath)) return false;
+            var projectText = File.ReadAllText(fullPath);
+            return projectText.Contains("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase)
+                || Regex.IsMatch(projectText, @"<OutputType>\s*(?:Exe|WinExe)\s*</OutputType>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static string ResolveFrontendRunScript(CodeRepositoryDto repository, string packagePath)

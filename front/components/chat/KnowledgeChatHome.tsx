@@ -36,6 +36,8 @@ type ChatMessage = {
   toolCalls?: number;
   totalTokens?: number;
   trace?: string[];
+  agent?: "codex";
+  modificationStatus?: string;
 };
 
 function createClientId(): string {
@@ -57,6 +59,7 @@ export function KnowledgeChatHome() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
   const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
+  const [codexEnabled, setCodexEnabled] = useState(true);
   const [mode, setMode] = useState<ChatMode>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -147,6 +150,10 @@ export function KnowledgeChatHome() {
 
   async function sendMessage(query: string, options?: { retryAssistantId?: string }) {
     if (!query || sending) return;
+    if (codexEnabled && !selectedProjectId) {
+      setError("Codex 接管需要先选择项目，以便传递项目目录。");
+      return;
+    }
 
     const sessionId = activeSessionId ?? createClientId();
     if (!activeSessionId) {
@@ -190,6 +197,7 @@ export function KnowledgeChatHome() {
           label: null,
           status: "streaming",
           startedAt,
+          agent: codexEnabled ? "codex" : undefined,
         },
       ]);
     }
@@ -205,6 +213,7 @@ export function KnowledgeChatHome() {
         model_id: selectedModelId || undefined,
         top_k: 6,
         mode,
+        agent: codexEnabled ? "codex" : undefined,
       }, (event) => {
         if (event.type === "error") {
           throw new Error(event.content || t("chat.errorSearch"));
@@ -241,6 +250,7 @@ export function KnowledgeChatHome() {
               content: message.content || event.content || "",
               citations: event.citations ?? message.citations,
               model: event.model ?? message.model,
+              modificationStatus: stringifyMeta(event.metadata?.modification_status) || message.modificationStatus,
               label: event.label ?? message.label,
               status: event.type === "done" ? "done" : message.status,
               elapsedSeconds: stats.elapsedSeconds ?? Math.max(1, Math.round((Date.now() - (message.startedAt ?? startedAt)) / 1000)),
@@ -388,6 +398,10 @@ export function KnowledgeChatHome() {
                   onToggleOpen={() => setOpenContextPicker((current) => current === "project" ? null : "project")}
                   onToggle={(id) => setSelectedProjectId((current) => current === Number(id) ? null : Number(id))}
                 />
+                <label className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "cursor-not-allowed text-slate-400"}`} title={selectedProjectId ? "将当前项目目录和问题交由本机 Codex 处理" : "请先选择项目"}>
+                  <input type="checkbox" checked={Boolean(selectedProjectId) && codexEnabled} disabled={!selectedProjectId} onChange={(event) => setCodexEnabled(event.target.checked)} className="accent-violet-600" />
+                  Codex 接管
+                </label>
                 <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 sm:inline-flex">
                   <PanelRight size={15} />
                   <select
@@ -574,7 +588,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile }: { message: ChatMess
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
             <span className={`font-semibold ${message.status === "error" ? "text-red-600" : "text-zinc-900"}`}>
-              {message.status === "streaming" ? "Working" : message.status === "error" ? "Error" : "Done"}
+              {message.status === "streaming" ? (message.agent === "codex" ? "Codex working" : "Working") : message.status === "error" ? "Error" : message.modificationStatus === "completed_changed" ? "Codex 已修改完成" : message.modificationStatus === "completed_no_change" ? "Codex 已完成（未修改文件）" : "Done"}
             </span>
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}
@@ -747,6 +761,7 @@ function formatTraceEvent(
   }
 
   if (event.type === "tool_result") {
+    if (event.content) return event.content;
     const citationCount = numberMeta(metadata.citation_count);
     return citationCount !== undefined
       ? translate("chat.traceToolResultWithCount", { count: citationCount })

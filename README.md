@@ -8,6 +8,7 @@
 - Git 账号与代码库：令牌加密保存、连接测试、克隆、代码库登记、拉取与提交推送。
 - 知识库：文档导入、解析、索引、检索与聊天问答。
 - Agent 对话：WebSocket 优先、SSE 降级，实时显示工具调用、Token 与结果。
+- Codex 接管：聊天中选择项目后可勾选“Codex 接管”，后端把项目目录与问题交给本机 `codex app-server`，并实时返回回答、执行轨迹与文件修改完成状态。
 - 看板应用工作台：从 React + Vite + ECharts 模板创建独立工作区，动态端口预览、编辑文件、运行日志和 Git 管理。
 - 可靠看板改码：Agent 先检查当前工作区与入口，再搜索、读取、基于 SHA-256 补丁写入并静态校验；不会把关联 Git 仓库作为第二个 AI 写入目标。
 
@@ -58,6 +59,10 @@ npm run dev
 默认地址：`http://localhost:3782`
 
 前端通过 Next.js rewrite 将 `/api/*` 转发到后端。开发服务器监听 `0.0.0.0`，可通过内网 IP 访问；请在防火墙和 `next.config.js` 的开发来源白名单中配置实际网段。
+
+### 3. 本机 Codex 接管（可选）
+
+后端运行账户需要能够执行 Codex CLI，且已经完成 Codex 登录。默认执行 `codex app-server --stdio`；若 `codex` 不在后端账户的 `PATH` 中，设置 `AIAGENT_CODEX_COMMAND` 为可执行文件的绝对路径，或在后端配置中设置 `Codex:Command`。聊天窗口在选择项目后会默认勾选“Codex 接管”（可手动取消）；该轮会将项目根目录作为 Codex 的工作目录，并以完整权限执行，请只选择允许 Codex 修改的项目目录。
 
 ## 看板应用与 AI 改码
 

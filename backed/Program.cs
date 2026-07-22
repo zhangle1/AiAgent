@@ -95,6 +95,7 @@ builder.Services.AddSingleton<IChatPromptBuilder, ChatPromptBuilder>();
 builder.Services.AddSingleton<ILlmChatClient, LlmChatClient>();
 builder.Services.AddSingleton<ILabeledStepRunner, LabeledStepRunner>();
 builder.Services.AddSingleton<IAgentLoop, AgentLoop>();
+builder.Services.AddSingleton<ICodexChatService, CodexChatService>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 builder.Services.AddSingleton<ChatWebSocketHandler>();
 builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
