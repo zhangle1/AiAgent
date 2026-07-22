@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Code2, Ellipsis, Feather, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Settings, Trash2, Wrench, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Code2, Ellipsis, Feather, FolderGit2, GitBranch, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Settings, Trash2, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -16,7 +16,6 @@ type SessionGroup = { key: string; label: string; project?: CodeProject; prefere
 type ProjectMenuState = { groupKey: string; top: number; left: number };
 
 const mainItems: NavItem[] = [
-  { href: "/dashboard-applications", label: "看板应用生成", icon: LayoutDashboard },
   { href: "/chat", label: "聊天", icon: MessageSquare },
 ];
 
@@ -183,7 +182,9 @@ function ToolDialog({ compact, pathname, onClose }: { compact: boolean; pathname
 }
 
 function isActive(pathname: string, href: string) {
-  return href === "/chat" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  return href === "/chat" || href === "/settings"
+    ? pathname === href
+    : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function sortSessions(sessions: SessionSummary[], mode: ProjectSessionSortMode) {

@@ -42,6 +42,10 @@ public interface ICodeRepositoryManager
 
     object WriteConfiguredFile(string name, CodeRepositoryFileWriteRequest request);
 
+    object ReadChatConfiguredFile(string name, string path);
+
+    object WriteChatConfiguredFile(string name, CodeRepositoryFileWriteRequest request);
+
     (string FilePath, string DownloadName) GetPackageArchive(string name, string archiveName);
 
     void Delete(string name);
@@ -354,7 +358,33 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     {
         var entity = Find(name);
         var metadata = ReadMetadata(entity);
-        var normalized = NormalizeConfiguredPath(entity.RootPath, path, metadata.ConfigurationFiles);
+        return ReadConfiguredFile(entity, path, metadata.ConfigurationFiles);
+    }
+
+    public object WriteConfiguredFile(string name, CodeRepositoryFileWriteRequest request)
+    {
+        var entity = Find(name);
+        var metadata = ReadMetadata(entity);
+        return WriteConfiguredFile(entity, request, metadata.ConfigurationFiles);
+    }
+
+    public object ReadChatConfiguredFile(string name, string path)
+    {
+        var entity = Find(name);
+        var metadata = ReadMetadata(entity);
+        return ReadConfiguredFile(entity, path, metadata.ChatEditableConfigurationFiles);
+    }
+
+    public object WriteChatConfiguredFile(string name, CodeRepositoryFileWriteRequest request)
+    {
+        var entity = Find(name);
+        var metadata = ReadMetadata(entity);
+        return WriteConfiguredFile(entity, request, metadata.ChatEditableConfigurationFiles);
+    }
+
+    private object ReadConfiguredFile(AiCodeRepository entity, string path, IReadOnlyCollection<string> allowedFiles)
+    {
+        var normalized = NormalizeConfiguredPath(entity.RootPath, path, allowedFiles);
         var fullPath = Path.Combine(entity.RootPath, normalized.Replace('/', Path.DirectorySeparatorChar));
         var info = new FileInfo(fullPath);
         if (!info.Exists) throw new FileNotFoundException("The configured file does not exist.");
@@ -363,11 +393,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         return new { path = normalized, content, sha256 = ComputeSha256(content), updated_at = info.LastWriteTimeUtc };
     }
 
-    public object WriteConfiguredFile(string name, CodeRepositoryFileWriteRequest request)
+    private object WriteConfiguredFile(AiCodeRepository entity, CodeRepositoryFileWriteRequest request, IReadOnlyCollection<string> allowedFiles)
     {
-        var entity = Find(name);
-        var metadata = ReadMetadata(entity);
-        var normalized = NormalizeConfiguredPath(entity.RootPath, request.Path, metadata.ConfigurationFiles);
+        var normalized = NormalizeConfiguredPath(entity.RootPath, request.Path, allowedFiles);
         if (request.Content.Length > 1024 * 1024) throw new InvalidOperationException("Configured file content is limited to 1 MB.");
         var fullPath = Path.Combine(entity.RootPath, normalized.Replace('/', Path.DirectorySeparatorChar));
         var existing = File.ReadAllText(fullPath, new UTF8Encoding(false));
@@ -571,6 +599,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             BuildSystems = metadata.BuildSystems,
             SolutionFiles = metadata.SolutionFiles,
             ConfigurationFiles = metadata.ConfigurationFiles,
+            ChatEditableConfigurationFiles = metadata.ChatEditableConfigurationFiles,
             PublishTarget = metadata.PublishTarget,
             PublishConfiguration = metadata.PublishConfiguration,
             PublishRuntime = metadata.PublishRuntime,
@@ -593,6 +622,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     {
         var solutionFiles = NormalizeSelectedFiles(inspection.RootPath, request.SolutionFiles);
         var configurationFiles = NormalizeSelectedFiles(inspection.RootPath, request.ConfigurationFiles);
+        var chatEditableConfigurationFiles = NormalizeSelectedFiles(inspection.RootPath, request.ChatEditableConfigurationFiles ?? existing?.ChatEditableConfigurationFiles);
+        if (chatEditableConfigurationFiles.Any(path => !configurationFiles.Contains(path, StringComparer.OrdinalIgnoreCase)))
+            throw new ArgumentException("Chat-editable files must also be selected configuration files.");
         var languages = NormalizeSelection(request.Languages, inspection.Languages);
         var isNpmProject = languages.Contains("TypeScript/JavaScript", StringComparer.OrdinalIgnoreCase) || languages.Contains("React", StringComparer.OrdinalIgnoreCase);
         var publishFiles = isNpmProject
@@ -608,6 +640,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             MarkerFiles = inspection.MarkerFiles,
             SolutionFiles = solutionFiles,
             ConfigurationFiles = configurationFiles,
+            ChatEditableConfigurationFiles = chatEditableConfigurationFiles,
             PublishTarget = publishTarget,
             PublishConfiguration = NormalizeBuildConfiguration(request.PublishConfiguration, existing?.PublishConfiguration),
             PublishRuntime = NormalizeOptional(request.PublishRuntime) ?? existing?.PublishRuntime,
@@ -796,6 +829,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         public List<string> MarkerFiles { get; set; } = [];
         public List<string> SolutionFiles { get; set; } = [];
         public List<string> ConfigurationFiles { get; set; } = [];
+        public List<string> ChatEditableConfigurationFiles { get; set; } = [];
         public string? PublishTarget { get; set; }
         public string PublishConfiguration { get; set; } = "Release";
         public string? PublishRuntime { get; set; }

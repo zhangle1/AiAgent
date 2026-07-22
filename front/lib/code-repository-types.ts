@@ -12,6 +12,7 @@ export type CodeRepository = {
   build_systems: string[];
   solution_files: string[];
   configuration_files: string[];
+  chat_editable_configuration_files: string[];
   publish_target?: string | null;
   publish_configuration: string;
   publish_runtime?: string | null;
@@ -67,6 +68,7 @@ export type CodeRepositorySaveRequest = {
   languages?: string[];
   solution_files?: string[];
   configuration_files?: string[];
+  chat_editable_configuration_files?: string[];
   publish_target?: string;
   publish_configuration?: string;
   publish_runtime?: string;

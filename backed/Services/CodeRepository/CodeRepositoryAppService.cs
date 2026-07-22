@@ -132,6 +132,12 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     [HttpPut("{name}/configured-file")]
     public object WriteConfiguredFile([FromRoute] string name, [FromBody] CodeRepositoryFileWriteRequest request) => _manager.WriteConfiguredFile(name, request);
 
+    [HttpGet("{name}/chat-configured-file")]
+    public object ChatConfiguredFile([FromRoute] string name, [FromQuery] string path) => _manager.ReadChatConfiguredFile(name, path);
+
+    [HttpPut("{name}/chat-configured-file")]
+    public object WriteChatConfiguredFile([FromRoute] string name, [FromBody] CodeRepositoryFileWriteRequest request) => _manager.WriteChatConfiguredFile(name, request);
+
     [HttpGet("{name}/packages/{archiveName}")]
     public IActionResult DownloadPackage([FromRoute] string name, [FromRoute] string archiveName)
     {

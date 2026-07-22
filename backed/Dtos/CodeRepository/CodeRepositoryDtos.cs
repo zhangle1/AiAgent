@@ -46,6 +46,9 @@ public sealed class CodeRepositoryDto
     [JsonPropertyName("configuration_files")]
     public List<string> ConfigurationFiles { get; set; } = [];
 
+    [JsonPropertyName("chat_editable_configuration_files")]
+    public List<string> ChatEditableConfigurationFiles { get; set; } = [];
+
     [JsonPropertyName("publish_target")]
     public string? PublishTarget { get; set; }
 
@@ -108,6 +111,9 @@ public sealed class CodeRepositorySaveRequest
 
     [JsonPropertyName("configuration_files")]
     public List<string>? ConfigurationFiles { get; set; }
+
+    [JsonPropertyName("chat_editable_configuration_files")]
+    public List<string>? ChatEditableConfigurationFiles { get; set; }
 
     [JsonPropertyName("publish_target")]
     public string? PublishTarget { get; set; }

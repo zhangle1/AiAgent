@@ -57,7 +57,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                 .Select(item => ToProfileDto(item, repositories.GetValueOrDefault(item.RepositoryId)))
                 .ToList(),
             Runs = _runs.Values
-                .Where(item => item.ProjectId == projectId)
+                .Where(item => item.ProjectId == projectId && item.IsActive)
                 .OrderByDescending(item => item.StartedAt)
                 .Select(ToRunDto)
                 .ToList()
@@ -151,8 +151,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             foreach (var profile in profiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (_runs.Values.Any(item => item.ProjectId == projectId && item.Role == profile.Role && item.IsActive))
-                    throw new InvalidOperationException($"This project already has a running {profile.Role} process.");
+                if (_runs.Values.Any(item => item.ProfileId == profile.Id && item.IsActive))
+                    throw new InvalidOperationException("This runtime profile is already running.");
                 started.Add(await StartProfileAsync(profile, cancellationToken));
             }
             return started;
@@ -169,10 +169,29 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         if (!_runs.TryGetValue(runId, out var run) || run.ProjectId != projectId) return false;
         lock (run.Sync)
         {
-            if (!run.IsActive) return false;
+            if (run.Process is null)
+            {
+                run.StoppedByUser = true;
+                run.Status = "stopped";
+                run.CompletedAt = DateTime.UtcNow;
+                AppendLog(run, "system", "Force stop requested before the command started.");
+                return true;
+            }
+            try
+            {
+                if (run.Process.HasExited) return false;
+            }
+            catch (InvalidOperationException)
+            {
+                run.StoppedByUser = true;
+                run.Status = "stopped";
+                run.CompletedAt = DateTime.UtcNow;
+                AppendLog(run, "system", "Force stop requested while the command was starting.");
+                return true;
+            }
             run.StoppedByUser = true;
             run.Status = "stopping";
-            AppendLog(run, "system", "Stop requested.");
+            AppendLog(run, "system", "Force stop requested.");
             if (TerminateProcessTree(run.Process))
             {
                 run.ExitCode = run.Process.ExitCode;
@@ -197,6 +216,10 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             catch
             {
                 // Shutdown must continue even if a child process has already exited.
+            }
+            finally
+            {
+                CleanupRuntimeArtifacts(run.ArtifactsDirectory);
             }
         }
         _portLock.Dispose();
@@ -238,15 +261,25 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             StartedAt = DateTime.UtcNow,
             Status = "starting"
         };
+        _runs[run.RunId] = run;
 
         try
         {
-            var startInfo = BuildStartInfo(repository, profile, port);
+            run.ArtifactsDirectory = profile.Role == "backend" ? CreateRuntimeArtifactsDirectory(run.RunId) : null;
+            if (profile.Role == "frontend")
+                await EnsureFrontendDependenciesAsync(repository, profile, run, cancellationToken);
+            var startInfo = BuildStartInfo(repository, profile, port, run.ArtifactsDirectory);
             run.Command = $"{startInfo.FileName} {string.Join(' ', startInfo.ArgumentList)}";
+            if (run.StoppedByUser) throw new OperationCanceledException("The runtime start was cancelled.");
+            run.Process?.Dispose();
             run.Process = new Process { StartInfo = startInfo };
             if (!run.Process.Start()) throw new InvalidOperationException("The server process could not be started.");
+            if (run.StoppedByUser)
+            {
+                TerminateProcessTree(run.Process);
+                throw new OperationCanceledException("The runtime start was cancelled.");
+            }
             run.Status = "running";
-            _runs[run.RunId] = run;
             AppendLog(run, "system", $"Started {profile.Role}. Available at: {string.Join(", ", run.AccessUrls)}.");
             _ = ObserveProcessAsync(run);
             return ToRunDto(run);
@@ -254,8 +287,51 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         catch
         {
             run.Process?.Dispose();
+            _runs.TryRemove(run.RunId, out _);
+            CleanupRuntimeArtifacts(run.ArtifactsDirectory);
             throw;
         }
+    }
+
+    private async Task EnsureFrontendDependenciesAsync(CodeRepositoryDto repository, AiCodeRepositoryRunProfile profile, RunningProcess run, CancellationToken cancellationToken)
+    {
+        var rootPath = Path.GetFullPath(repository.RootPath);
+        var entryPath = ResolveEntryPath(repository, profile);
+        var packagePath = Path.GetFullPath(Path.Combine(rootPath, entryPath.Replace('/', Path.DirectorySeparatorChar)));
+        if (!IsPathWithin(rootPath, packagePath) || !Path.GetFileName(packagePath).Equals("package.json", StringComparison.OrdinalIgnoreCase) || !File.Exists(packagePath))
+            throw new FileNotFoundException("The saved front-end package.json no longer exists.");
+
+        var workingDirectory = Path.GetDirectoryName(packagePath)!;
+        if (Directory.Exists(Path.Combine(workingDirectory, "node_modules")))
+        {
+            AppendLog(run, "system", "Front-end dependencies already exist; skipped npm install.");
+            return;
+        }
+
+        AppendLog(run, "system", "node_modules was not found; running npm install before starting the front-end program.");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = ResolveNpmExecutable(),
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("install");
+        var process = new Process { StartInfo = startInfo };
+        if (!process.Start()) throw new InvalidOperationException("Unable to start npm install.");
+        run.Process = process;
+        var stdout = PumpAsync(run, process.StandardOutput, "stdout");
+        var stderr = PumpAsync(run, process.StandardError, "stderr");
+        await Task.WhenAll(process.WaitForExitAsync(cancellationToken), stdout, stderr);
+        if (run.StoppedByUser)
+            throw new OperationCanceledException("The npm install process was stopped by the user.");
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"npm install failed with exit code {process.ExitCode}. Review the runtime output for details.");
+        AppendLog(run, "system", "npm install completed; starting the front-end program.");
     }
 
     private void EnsureSuggestedProfiles(long projectId)
@@ -311,7 +387,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         if (suggestions.Count > 0) _db.Insertable(suggestions).ExecuteCommand();
     }
 
-    private ProcessStartInfo BuildStartInfo(CodeRepositoryDto repository, AiCodeRepositoryRunProfile profile, int port)
+    private ProcessStartInfo BuildStartInfo(CodeRepositoryDto repository, AiCodeRepositoryRunProfile profile, int port, string? artifactsDirectory)
     {
         var rootPath = Path.GetFullPath(repository.RootPath);
         var entryPath = ResolveEntryPath(repository, profile);
@@ -357,6 +433,10 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             startInfo.ArgumentList.Add("run");
             startInfo.ArgumentList.Add("--project");
             startInfo.ArgumentList.Add(fullEntryPath);
+            // Isolate build output from the repository's bin/obj directories so a
+            // managed run never locks the Debug DLLs Visual Studio needs to rebuild.
+            startInfo.ArgumentList.Add("--artifacts-path");
+            startInfo.ArgumentList.Add(artifactsDirectory ?? throw new InvalidOperationException("The managed runtime artifacts directory is unavailable."));
             startInfo.ArgumentList.Add("--no-launch-profile");
             startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add("--urls");
@@ -390,6 +470,29 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             }
             _logger.LogWarning(ex, "Runtime observer failed for {RunId}", run.RunId);
         }
+        finally
+        {
+            CleanupRuntimeArtifacts(run.ArtifactsDirectory);
+        }
+    }
+
+    private static string CreateRuntimeArtifactsDirectory(string runId)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "AiAgent", "code-runtime");
+        var directory = Path.Combine(root, runId);
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static void CleanupRuntimeArtifacts(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        var root = Path.Combine(Path.GetTempPath(), "AiAgent", "code-runtime");
+        var fullDirectory = Path.GetFullPath(directory);
+        if (!IsPathWithin(root, fullDirectory) || fullDirectory.Equals(Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase)) return;
+        try { Directory.Delete(fullDirectory, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private static bool TerminateProcessTree(Process process)
@@ -724,6 +827,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         public DateTime? CompletedAt { get; set; }
         public string Status { get; set; } = "starting";
         public string? Command { get; set; }
+        public string? ArtifactsDirectory { get; set; }
         public int? ExitCode { get; set; }
         public bool StoppedByUser { get; set; }
         public long NextLogSequence { get; set; }

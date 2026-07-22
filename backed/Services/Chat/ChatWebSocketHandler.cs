@@ -45,11 +45,14 @@ public sealed class ChatWebSocketHandler
         }
 
         using var socket = await context.WebSockets.AcceptWebSocketAsync();
-        var cancellationToken = context.RequestAborted;
+        using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+        var cancellationToken = cancellationSource.Token;
+        Task? clientCloseMonitor = null;
 
         try
         {
             var requestText = await ReceiveTextAsync(socket, cancellationToken);
+            clientCloseMonitor = MonitorClientCloseAsync(socket, cancellationSource, cancellationToken);
             var request = JsonSerializer.Deserialize<ChatCompleteRequest>(requestText, JsonOptions)
                 ?? throw new InvalidOperationException("Invalid chat request.");
             var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
@@ -97,6 +100,14 @@ public sealed class ChatWebSocketHandler
                 await socket.CloseAsync(WebSocketCloseStatus.InternalServerError, "error", CancellationToken.None);
             }
         }
+        finally
+        {
+            cancellationSource.Cancel();
+            if (clientCloseMonitor != null)
+            {
+                try { await clientCloseMonitor; } catch (OperationCanceledException) { }
+            }
+        }
     }
 
     private static async Task<string> ReceiveTextAsync(WebSocket socket, CancellationToken cancellationToken)
@@ -122,6 +133,32 @@ public sealed class ChatWebSocketHandler
             {
                 return Encoding.UTF8.GetString(stream.ToArray());
             }
+        }
+    }
+
+    private static async Task MonitorClientCloseAsync(WebSocket socket, CancellationTokenSource cancellationSource, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[1024];
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    cancellationSource.Cancel();
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The response completed normally or the client requested cancellation.
+        }
+        catch (WebSocketException)
+        {
+            // A dropped browser connection must stop the agent just like an explicit stop click.
+            cancellationSource.Cancel();
         }
     }
 

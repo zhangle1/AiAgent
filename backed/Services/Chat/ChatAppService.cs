@@ -79,6 +79,10 @@ public sealed class ChatAppService : IDynamicApiController
             }, cancellationToken);
             await _sessions.RecordAssistantMessageAsync(user, request, content.ToString(), thinking.ToString(), citations, modelId, model, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The browser stopped the streaming request; no terminal error should be emitted.
+        }
         catch (Exception ex)
         {
             await WriteSseAsync(response, new AgentStreamEvent
