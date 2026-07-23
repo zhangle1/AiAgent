@@ -76,7 +76,7 @@ public sealed class CodexChatService : ICodexChatService
                 {
                     threadId,
                     clientUserMessageId = request.SessionId,
-                    input = new[] { new { type = "text", text = request.Message.Trim() } },
+                    input = BuildTurnInput(request),
                     cwd = workspacePath,
                     approvalPolicy = "never",
                     sandboxPolicy = new { type = "dangerFullAccess" }
@@ -114,7 +114,23 @@ public sealed class CodexChatService : ICodexChatService
                 }
             }, cancellationToken);
 
-            return new ChatCompleteResponse { Query = request.Message, Answer = answer, Content = answer, ModelId = "codex", Model = "Codex" };
+            var promptTokens = EstimateTokens(request.Message);
+            var completionTokens = EstimateTokens(answer);
+            return new ChatCompleteResponse
+            {
+                Query = request.Message,
+                Answer = answer,
+                Content = answer,
+                ModelId = "codex",
+                Model = "Codex",
+                Usage = new ChatTokenUsage
+                {
+                    PromptTokens = promptTokens,
+                    CompletionTokens = completionTokens,
+                    TotalTokens = promptTokens + completionTokens,
+                    IsEstimated = true
+                }
+            };
         }
         finally
         {
@@ -177,6 +193,16 @@ public sealed class CodexChatService : ICodexChatService
         {
             throw new InvalidOperationException("Unable to start the local Codex app-server. Configure a Codex CLI executable that the backend account can run.", exception);
         }
+    }
+
+    private static List<object> BuildTurnInput(ChatCompleteRequest request)
+    {
+        var input = new List<object> { new { type = "text", text = request.Message.Trim() } };
+        foreach (var path in request.LocalImagePaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            input.Add(new { type = "localImage", path, detail = "high" });
+        }
+        return input;
     }
 
     private static async Task SendAsync(Process process, object message, CancellationToken cancellationToken)
@@ -345,6 +371,7 @@ public sealed class CodexChatService : ICodexChatService
     }
 
     private static string? ReadString(JsonElement root, string property) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    private static int EstimateTokens(string value) => string.IsNullOrWhiteSpace(value) ? 0 : Math.Max(1, (int)Math.Ceiling(value.Trim().Length / 3.6));
     private static AgentStreamEvent TraceEvent(string content) => new() { Type = "tool", Content = content, ModelId = "codex", Model = "Codex", Metadata = AgentMetadata() };
     private static Dictionary<string, object?> AgentMetadata() => new() { ["agent"] = "codex" };
     private static string TrimTrace(string value)

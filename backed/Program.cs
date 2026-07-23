@@ -13,6 +13,8 @@ using AiAgent.Backend.Services.PythonWorkers;
 using AiAgent.Backend.Services.Rag;
 using AiAgent.Backend.Services.Settings;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Admin;
+using AiAgent.Backend.Services.Usage;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi.Models;
 using SqlSugar;
@@ -72,6 +74,8 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<IModelCatalogService, ModelCatalogService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();
+builder.Services.AddSingleton<IProjectAccessService, ProjectAccessService>();
+builder.Services.AddSingleton<IAdminService, AdminService>();
 builder.Services.AddSingleton<IChatSessionService, ChatSessionService>();
 builder.Services.AddSingleton<IModelProviderOptionsService, ModelProviderOptionsService>();
 builder.Services.AddSingleton<IModelSchemaInitializer, ModelSchemaInitializer>();
@@ -95,8 +99,11 @@ builder.Services.AddSingleton<IChatPromptBuilder, ChatPromptBuilder>();
 builder.Services.AddSingleton<ILlmChatClient, LlmChatClient>();
 builder.Services.AddSingleton<ILabeledStepRunner, LabeledStepRunner>();
 builder.Services.AddSingleton<IAgentLoop, AgentLoop>();
+builder.Services.AddSingleton<IAgentProviderEnvironmentService, AgentProviderEnvironmentService>();
+builder.Services.AddSingleton<IChatImageAttachmentService, ChatImageAttachmentService>();
 builder.Services.AddSingleton<ICodexChatService, CodexChatService>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
+builder.Services.AddSingleton<IUsageStatisticsService, UsageStatisticsService>();
 builder.Services.AddSingleton<ChatWebSocketHandler>();
 builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
 builder.Services.AddSingleton<ICodeRuntimeManager, CodeRuntimeManager>();
@@ -132,6 +139,15 @@ if (builder.Configuration.GetValue("Database:CodeFirst", true))
     {
         app.Logger.LogError(ex, "Model settings CodeFirst initialization failed.");
     }
+}
+
+try
+{
+    await app.Services.GetRequiredService<IAuthService>().EnsureDefaultAdministratorAsync(CancellationToken.None);
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "Default administrator initialization failed.");
 }
 
 app.UseInject();

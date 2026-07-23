@@ -23,14 +23,13 @@ public sealed class AuthAppService : IDynamicApiController
     {
         var context = _httpContextAccessor.HttpContext!;
         var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken);
-        return new AuthStatusResponse { Authenticated = user != null, UserId = user?.Id, Username = user?.Username };
+        return new AuthStatusResponse { Authenticated = user != null, UserId = user?.Id, Username = user?.Username, IsAdmin = user?.IsAdministrator == true, RegistrationEnabled = false };
     }
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
-        var result = await _authService.RegisterAsync(request.Username, request.Password, cancellationToken);
-        return result.Succeeded ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = result.Error });
+        return new ObjectResult(new { message = "Public registration is disabled." }) { StatusCode = StatusCodes.Status403Forbidden };
     }
 
     [HttpPost("login")]

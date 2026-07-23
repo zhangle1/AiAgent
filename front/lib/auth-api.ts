@@ -1,4 +1,4 @@
-export type AuthStatus = { authenticated: boolean; user_id?: string; username?: string };
+export type AuthStatus = { authenticated: boolean; user_id?: string; username?: string; is_admin?: boolean; registration_enabled?: boolean };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });

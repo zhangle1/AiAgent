@@ -2,6 +2,7 @@ using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Admin;
 using SqlSugar;
 using System.Text.Json;
 
@@ -24,16 +25,27 @@ public interface IChatSessionService
 public sealed class ChatSessionService : IChatSessionService
 {
     private readonly ISqlSugarClient _db;
-    public ChatSessionService(ISqlSugarClient db) => _db = db;
+    private readonly IChatImageAttachmentService _attachments;
+    private readonly IProjectAccessService _projectAccess;
+    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IProjectAccessService projectAccess)
+    {
+        _db = db;
+        _attachments = attachments;
+        _projectAccess = projectAccess;
+    }
 
-    public Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+    public async Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
     {
         var session = EnsureSession(user, request);
-        _db.Insertable(new AiChatMessage { SessionId = session.Id, Role = "user", Content = request.Message.Trim() }).ExecuteCommand();
+        var attachments = request.AttachmentIds.Count == 0
+            ? new List<ResolvedChatImageAttachment>()
+            : await _attachments.PersistForSessionAsync(user, session.Id, request.AttachmentIds, cancellationToken);
+        if (attachments.Count > 0) request.LocalImagePaths = attachments.Select(item => item.LocalPath).ToList();
+        var metadata = attachments.Count == 0 ? null : JsonSerializer.Serialize(new { attachments = attachments.Select(item => item.Attachment).ToList() });
+        _db.Insertable(new AiChatMessage { SessionId = session.Id, Role = "user", Content = request.Message.Trim(), MetadataJson = metadata }).ExecuteCommand();
         session.UpdatedAt = DateTime.UtcNow;
         session.SortOrder = NextSortOrder(user.Id);
         _db.Updateable(session).UpdateColumns(x => new { x.Title, x.PreferencesJson, x.CodeProjectId, x.SortOrder, x.UpdatedAt }).ExecuteCommand();
-        return Task.CompletedTask;
     }
 
     public Task RecordAssistantMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, string content, string? thinking, object? citations, string? modelId, string? model, CancellationToken cancellationToken)
@@ -150,7 +162,7 @@ public sealed class ChatSessionService : IChatSessionService
 
     public Task<bool> UpdateProjectPreferenceAsync(AuthenticatedUser user, long projectId, UpdateChatProjectPreferenceRequest request, CancellationToken cancellationToken)
     {
-        if (!_db.Queryable<AiCodeProject>().Any(x => x.Id == projectId && !x.IsDeleted)) return Task.FromResult(false);
+        if (!_projectAccess.CanAccess(user, projectId)) return Task.FromResult(false);
         var preference = _db.Queryable<AiChatProjectPreference>().First(x => x.UserId == user.Id && x.CodeProjectId == projectId);
         var isNew = preference == null;
         if (preference == null)
@@ -178,7 +190,8 @@ public sealed class ChatSessionService : IChatSessionService
         var session = _db.Queryable<AiChatSession>().First(x => x.Id == sessionId && !x.IsDeleted);
         if (session != null && session.UserId == user.Id)
         {
-            session.CodeProjectId = ResolveProjectId(request.CodeProjectId);
+            session.CodeProjectId = ResolveProjectId(user, request.CodeProjectId);
+            ValidateRepositoryScope(user, session.CodeProjectId, request.CodeRepositoryNames);
             session.PreferencesJson = SerializePreferences(request);
             return session;
         }
@@ -186,16 +199,32 @@ public sealed class ChatSessionService : IChatSessionService
             sessionId = Guid.NewGuid().ToString("N");
             request.SessionId = sessionId;
         }
-        session = new AiChatSession { Id = sessionId, UserId = user.Id, Title = MakeTitle(request.Message), CodeProjectId = ResolveProjectId(request.CodeProjectId), SortOrder = NextSortOrder(user.Id), PreferencesJson = SerializePreferences(request) };
+        var projectId = ResolveProjectId(user, request.CodeProjectId);
+        ValidateRepositoryScope(user, projectId, request.CodeRepositoryNames);
+        session = new AiChatSession { Id = sessionId, UserId = user.Id, Title = MakeTitle(request.Message), CodeProjectId = projectId, SortOrder = NextSortOrder(user.Id), PreferencesJson = SerializePreferences(request) };
         _db.Insertable(session).ExecuteCommand();
         return session;
     }
 
-    private long? ResolveProjectId(long? projectId)
+    private long? ResolveProjectId(AuthenticatedUser user, long? projectId)
     {
         if (!projectId.HasValue) return null;
-        if (!_db.Queryable<AiCodeProject>().Any(x => x.Id == projectId.Value && !x.IsDeleted)) throw new InvalidOperationException("The selected code project does not exist.");
+        if (!_projectAccess.CanAccess(user, projectId.Value)) throw new InvalidOperationException("The selected code project is unavailable for this account.");
         return projectId;
+    }
+
+    private void ValidateRepositoryScope(AuthenticatedUser user, long? projectId, IReadOnlyCollection<string> repositoryNames)
+    {
+        var requested = repositoryNames.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (requested.Count == 0) return;
+        if (!projectId.HasValue)
+        {
+            if (!user.IsAdministrator) throw new InvalidOperationException("A project must be selected before using a code repository.");
+            return;
+        }
+        var allowed = _db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == projectId.Value && !item.IsDeleted).Select(item => item.Name).ToList();
+        if (requested.Any(name => !allowed.Contains(name, StringComparer.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("A selected code repository is outside the current project.");
     }
 
     private int NextSortOrder(string userId) => (_db.Queryable<AiChatSession>().Where(x => x.UserId == userId && !x.IsDeleted).Max(x => x.SortOrder) ?? 0) + 1;

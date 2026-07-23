@@ -76,6 +76,48 @@ public sealed class ChatCompleteRequest
     /// </summary>
     [JsonPropertyName("agent")]
     public string? Agent { get; set; }
+
+    /// <summary>
+    /// Uploaded image attachment identifiers. They are resolved to server-owned local paths only for a Codex turn.
+    /// </summary>
+    [JsonPropertyName("attachment_ids")]
+    public List<string> AttachmentIds { get; set; } = [];
+
+    /// <summary>
+    /// Server-only resolved image paths. This field must never be accepted from or returned to the browser.
+    /// </summary>
+    [JsonIgnore]
+    public List<string> LocalImagePaths { get; set; } = [];
+}
+
+public sealed class ChatImageAttachmentDto
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("file_name")]
+    public string FileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("content_type")]
+    public string ContentType { get; set; } = string.Empty;
+
+    [JsonPropertyName("size_bytes")]
+    public long SizeBytes { get; set; }
+}
+
+public sealed class ChatTokenUsage
+{
+    [JsonPropertyName("prompt_tokens")]
+    public int PromptTokens { get; set; }
+
+    [JsonPropertyName("completion_tokens")]
+    public int CompletionTokens { get; set; }
+
+    [JsonPropertyName("total_tokens")]
+    public int TotalTokens { get; set; }
+
+    [JsonPropertyName("is_estimated")]
+    public bool IsEstimated { get; set; }
 }
 
 /// <summary>
@@ -124,4 +166,7 @@ public sealed class ChatCompleteResponse
     /// </summary>
     [JsonPropertyName("citations")]
     public List<KnowledgeCitationDto> Citations { get; set; } = [];
+
+    [JsonPropertyName("usage")]
+    public ChatTokenUsage? Usage { get; set; }
 }

@@ -1,6 +1,7 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Usage;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -21,15 +22,19 @@ public sealed class ChatWebSocketHandler
     private readonly IChatOrchestrator _orchestrator;
     private readonly IAuthService _authService;
     private readonly IChatSessionService _sessions;
+    private readonly IChatImageAttachmentService _attachments;
+    private readonly IUsageStatisticsService _usage;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage)
     {
         _orchestrator = orchestrator;
         _authService = authService;
         _sessions = sessions;
+        _attachments = attachments;
+        _usage = usage;
     }
 
     /// <summary>
@@ -57,6 +62,14 @@ public sealed class ChatWebSocketHandler
                 ?? throw new InvalidOperationException("Invalid chat request.");
             var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
                 ?? throw new UnauthorizedAccessException();
+            if (request.AttachmentIds.Count > 0)
+            {
+                if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Image attachments are currently supported only when Codex local agent is selected.");
+                }
+                request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
+            }
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             var content = new StringBuilder();
             var thinking = new StringBuilder();
@@ -64,7 +77,7 @@ public sealed class ChatWebSocketHandler
             string? modelId = null;
             string? model = null;
 
-            await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
+            var result = await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
             {
                 if (streamEvent.Type == "content") content.Append(streamEvent.Content);
                 if (streamEvent.Type == "thinking") thinking.Append(streamEvent.Content);
@@ -73,7 +86,11 @@ public sealed class ChatWebSocketHandler
                 model ??= streamEvent.Model;
                 await SendEventAsync(socket, streamEvent, token);
             }, cancellationToken);
-            await _sessions.RecordAssistantMessageAsync(user, request, content.ToString(), thinking.ToString(), citations, modelId, model, cancellationToken);
+            var finalContent = content.Length > 0 ? content.ToString() : result.Content;
+            var finalModelId = modelId ?? result.ModelId;
+            var finalModel = model ?? result.Model;
+            await _sessions.RecordAssistantMessageAsync(user, request, finalContent, thinking.ToString(), citations ?? result.Citations, finalModelId, finalModel, cancellationToken);
+            await _usage.RecordAsync(user, request, result, cancellationToken);
 
             if (socket.State == WebSocketState.Open)
             {

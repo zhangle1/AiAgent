@@ -1,6 +1,7 @@
 import type { KnowledgeCitation } from "@/lib/knowledge-types";
+import type { ChatImageAttachment } from "@/lib/chat-api";
 
-export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string } | null; created_at: string };
+export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string; attachments?: ChatImageAttachment[] } | null; created_at: string };
 export type SessionPriority = "high" | "normal" | "low";
 export type ProjectSessionSortMode = "updated" | "priority" | "manual";
 export type ProjectSessionPreference = { project_id: number; is_pinned: boolean; sort_mode: ProjectSessionSortMode };

@@ -29,6 +29,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 聊天图片附件必须先以不透明附件 ID 上传到后端受控临时目录；校验真实图片签名、大小、数量和当前用户归属后，才可转换为 Codex app-server 的 `localImage` 输入。发送后应将图片迁移到按用户和会话隔离的历史目录，并在聊天消息元数据保存不含真实路径的附件信息。不得接受浏览器提供的本地路径、将路径拼入 shell，也不得假定第三方 CLI 兼容该协议。
+
 - Target framework：`.NET 9`。
 - 使用 Furion Dynamic API；领域入口通常位于 `backed/Services/<Domain>/*AppService.cs`。
 - SqlSugar 的 `Queryable` 排序不要使用 LINQ 的 `ThenBy`/`ThenByDescending`；多字段排序使用 `.OrderBy(x => new { x.Field1, x.Field2 })`，需要倒序时使用 SqlSugar 对应的 `OrderBy` 重载。

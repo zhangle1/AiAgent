@@ -6,14 +6,19 @@ using System.Text;
 
 namespace AiAgent.Backend.Services.Auth;
 
-public sealed record AuthenticatedUser(string Id, string Username);
+public sealed record AuthenticatedUser(string Id, string Username, string Role = "user")
+{
+    public bool IsAdministrator => string.Equals(Role, "admin", StringComparison.OrdinalIgnoreCase);
+}
 
 public interface IAuthService
 {
     Task<(bool Succeeded, string? Error)> RegisterAsync(string username, string password, CancellationToken cancellationToken);
+    Task<(AiUser? User, string? Error)> CreateUserAsync(string username, string password, CancellationToken cancellationToken);
     Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task LogoutAsync(HttpContext context, CancellationToken cancellationToken);
+    Task EnsureDefaultAdministratorAsync(CancellationToken cancellationToken);
 }
 
 public sealed class AuthService : IAuthService
@@ -25,11 +30,14 @@ public sealed class AuthService : IAuthService
     public AuthService(ISqlSugarClient db) => _db = db;
 
     public Task<(bool Succeeded, string? Error)> RegisterAsync(string username, string password, CancellationToken cancellationToken)
+        => Task.FromResult((false, (string?)"Public registration is disabled. Please ask an administrator to create an account."));
+
+    public Task<(AiUser? User, string? Error)> CreateUserAsync(string username, string password, CancellationToken cancellationToken)
     {
         username = username.Trim();
-        if (username.Length < 3 || username.Length > 64) return Task.FromResult((false, "账号长度须为 3-64 个字符。"));
-        if (password.Length < 6) return Task.FromResult((false, "密码至少需要 6 个字符。"));
-        if (_db.Queryable<AiUser>().Any(x => x.Username == username)) return Task.FromResult((false, "该账号已存在。"));
+        if (username.Length < 3 || username.Length > 64) return Task.FromResult<(AiUser?, string?)>((null, "Username must contain 3-64 characters."));
+        if (password.Length < 6) return Task.FromResult<(AiUser?, string?)>((null, "Password must contain at least 6 characters."));
+        if (_db.Queryable<AiUser>().Any(x => x.Username == username)) return Task.FromResult<(AiUser?, string?)>((null, "The username already exists."));
 
         var salt = RandomNumberGenerator.GetBytes(16);
         var user = new AiUser
@@ -39,7 +47,7 @@ public sealed class AuthService : IAuthService
             PasswordHash = HashPassword(password, salt)
         };
         _db.Insertable(user).ExecuteCommand();
-        return Task.FromResult((true, (string?)null));
+        return Task.FromResult<(AiUser?, string?)>((user, null));
     }
 
     public Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken)
@@ -55,7 +63,7 @@ public sealed class AuthService : IAuthService
             TokenHash = HashToken(token),
             ExpiresAt = DateTime.UtcNow.AddDays(14)
         }).ExecuteCommand();
-        return Task.FromResult<(AuthenticatedUser?, string?)>((new AuthenticatedUser(user.Id, user.Username), token));
+        return Task.FromResult<(AuthenticatedUser?, string?)>((new AuthenticatedUser(user.Id, user.Username, user.Role), token));
     }
 
     public Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken)
@@ -67,7 +75,7 @@ public sealed class AuthService : IAuthService
         var session = _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.RevokedAt == null && x.ExpiresAt > now);
         if (session == null) return Task.FromResult<AuthenticatedUser?>(null);
         var user = _db.Queryable<AiUser>().First(x => x.Id == session.UserId && !x.IsDisabled);
-        return Task.FromResult(user == null ? null : new AuthenticatedUser(user.Id, user.Username));
+        return Task.FromResult(user == null ? null : new AuthenticatedUser(user.Id, user.Username, user.Role));
     }
 
     public Task LogoutAsync(HttpContext context, CancellationToken cancellationToken)
@@ -78,6 +86,24 @@ public sealed class AuthService : IAuthService
                 .Where(x => x.TokenHash == HashToken(token) && x.RevokedAt == null).ExecuteCommand();
         }
         return Task.CompletedTask;
+    }
+
+    public async Task EnsureDefaultAdministratorAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        const string username = "superadmin";
+        var user = _db.Queryable<AiUser>().First(item => item.Username == username);
+        if (user == null)
+        {
+            var (created, error) = await CreateUserAsync(username, "123456", cancellationToken);
+            if (created == null) throw new InvalidOperationException(error ?? "Failed to create the default administrator.");
+            created.Role = "admin";
+            _db.Updateable(created).UpdateColumns(item => item.Role).ExecuteCommand();
+            return;
+        }
+
+        if (!string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase))
+            _db.Updateable<AiUser>().SetColumns(item => item.Role == "admin").Where(item => item.Id == user.Id).ExecuteCommand();
     }
 
     private static string HashPassword(string password, byte[] salt) => Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, Iterations, HashAlgorithmName.SHA256, 32));

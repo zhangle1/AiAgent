@@ -44,6 +44,7 @@ public sealed class ChatOrchestrator : IChatOrchestrator
     /// </summary>
     public async Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, CancellationToken cancellationToken)
     {
+        EnsureSupportedExternalAgent(request);
         if (IsCodexRequest(request))
         {
             return await _codex.CompleteAsync(request, null, cancellationToken);
@@ -67,6 +68,7 @@ public sealed class ChatOrchestrator : IChatOrchestrator
         AgentStreamEventHandler? onEvent,
         CancellationToken cancellationToken)
     {
+        EnsureSupportedExternalAgent(request);
         if (IsCodexRequest(request))
         {
             return await _codex.CompleteAsync(request, onEvent, cancellationToken);
@@ -92,9 +94,19 @@ public sealed class ChatOrchestrator : IChatOrchestrator
             ModelId = outcome.ModelId,
             Model = outcome.Model,
             KnowledgeBaseName = outcome.KnowledgeBaseName,
-            Citations = outcome.Citations
+            Citations = outcome.Citations,
+            Usage = outcome.Usage
         };
     }
 
     private static bool IsCodexRequest(ChatCompleteRequest request) => string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
+
+    private static void EnsureSupportedExternalAgent(ChatCompleteRequest request)
+    {
+        var agent = request.Agent?.Trim();
+        if (string.IsNullOrWhiteSpace(agent) || string.Equals(agent, "codex", StringComparison.OrdinalIgnoreCase)) return;
+        if (string.Equals(agent, "codebuddy", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("CodeBuddy CLI was detected but its app-server protocol is not yet supported.");
+        throw new InvalidOperationException($"Unsupported external agent: {agent}.");
+    }
 }

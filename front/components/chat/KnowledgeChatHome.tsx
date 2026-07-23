@@ -2,8 +2,8 @@
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound } from "lucide-react";
-import { streamCompleteChat, type ChatStreamEvent } from "@/lib/chat-api";
+import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ImagePlus, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { deleteChatImage, persistedChatImageUrl, streamCompleteChat, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
@@ -16,9 +16,11 @@ import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getSession } from "@/lib/session-api";
+import { getAgentProviderEnvironments, type AgentProviderEnvironment } from "@/lib/agent-provider-api";
 
-type ChatMode = "chat" | "visualize" | "write";
 type InspectorTab = "preview" | "file" | "tasks" | "terminal";
+
+type ChatImagePreview = ChatImageAttachment & { previewUrl: string };
 
 type ChatMessage = {
   id: string;
@@ -36,8 +38,9 @@ type ChatMessage = {
   toolCalls?: number;
   totalTokens?: number;
   trace?: string[];
-  agent?: "codex";
+  agent?: "codex" | "codebuddy";
   modificationStatus?: string;
+  attachments?: ChatImagePreview[];
 };
 
 function createClientId(): string {
@@ -59,10 +62,13 @@ export function KnowledgeChatHome() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
   const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [codexEnabled, setCodexEnabled] = useState(true);
-  const [mode, setMode] = useState<ChatMode>("chat");
+  const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "codebuddy" | "">("");
+  const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [imageAttachments, setImageAttachments] = useState<ChatImagePreview[]>([]);
+  const [previewingImage, setPreviewingImage] = useState<ChatImagePreview | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +77,10 @@ export function KnowledgeChatHome() {
   const [fileReference, setFileReference] = useState<ChatCodeFileReference | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSessionIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
+  const attachmentPreviewUrlsRef = useRef(new Set<string>());
 
   const readyKnowledgeBases = useMemo(
     () => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"),
@@ -83,10 +91,22 @@ export function KnowledgeChatHome() {
   const selectedProject = codeProjects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
+  const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
 
   useEffect(() => {
     void loadBootstrap();
   }, []);
+
+  useEffect(() => {
+    void getAgentProviderEnvironments().then(setAgentProviders).catch(() => setAgentProviders([]));
+  }, []);
+
+  useEffect(() => {
+    if (agentProviders.length === 0 || !selectedAgentId) return;
+    const selected = agentProviders.find((provider) => provider.id === selectedAgentId);
+    if (selected?.chat_supported) return;
+    setSelectedAgentId(agentProviders.find((provider) => provider.id === "codex" && provider.chat_supported) ? "codex" : "");
+  }, [agentProviders, selectedAgentId]);
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
@@ -109,7 +129,9 @@ export function KnowledgeChatHome() {
       setSelectedProjectId(session.project_id ?? null);
       setMessages(session.messages.map((message) => ({
         id: String(message.id), role: message.role, content: message.content, thinking: message.thinking ?? undefined,
-        citations: message.citations ?? undefined, model: message.metadata?.model ?? null, status: "done",
+        citations: message.citations ?? undefined, model: message.metadata?.model ?? null,
+        attachments: message.metadata?.attachments?.map((attachment) => ({ ...attachment, previewUrl: persistedChatImageUrl(session.id, attachment.id) })),
+        status: "done",
       })));
     }).catch((ex) => { if (!cancelled) setError(ex instanceof Error ? ex.message : t("chat.errorLoadKnowledge")); });
     return () => { cancelled = true; };
@@ -131,6 +153,7 @@ export function KnowledgeChatHome() {
   }, [openContextPicker]);
 
   useEffect(() => () => streamAbortControllerRef.current?.abort(), []);
+  useEffect(() => () => attachmentPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
   async function loadBootstrap() {
     setLoading(true);
@@ -139,6 +162,7 @@ export function KnowledgeChatHome() {
       const [kbRows, projectRows, settings] = await Promise.all([getKnowledgeBases(), getCodeProjects(), getSettings()]);
       setKnowledgeBases(kbRows);
       setCodeProjects(projectRows);
+      setSelectedAgentId(settings.ui.preferred_agent === "codebuddy" ? "codebuddy" : settings.ui.preferred_agent === "none" ? "" : "codex");
       setSelectedProjectId((current) => current ?? requestedProjectId ?? null);
       setCatalog(settings.catalog);
 
@@ -151,12 +175,24 @@ export function KnowledgeChatHome() {
     }
   }
 
-  async function sendMessage(query: string, options?: { retryAssistantId?: string }) {
-    if (!query || sending) return;
-    if (codexEnabled && !selectedProjectId) {
-      setError("Codex 接管需要先选择项目，以便传递项目目录。");
+  async function sendMessage(query: string, options?: { retryAssistantId?: string; attachments?: ChatImagePreview[] }) {
+    const attachmentsForTurn = options?.attachments ?? imageAttachments;
+    if ((!query && attachmentsForTurn.length === 0) || sending || uploadingImages) return;
+    if (selectedAgentId && selectedAgentProvider && !selectedAgentProvider.chat_supported) {
+      setError(`${selectedAgentProvider.name} 已检测到，但当前版本尚未适配聊天接管协议。`);
       return;
     }
+    if (selectedAgentId && !selectedProjectId) {
+      setError("本地代理接管需要先选择项目，以便传递项目目录。");
+      return;
+    }
+
+    if (attachmentsForTurn.length > 0 && selectedAgentId !== "codex") {
+      setError("图片附件目前只能发送给 Codex 本地代理。");
+      return;
+    }
+
+    const messageText = query || "请分析我附上的图片。";
 
     const sessionId = activeSessionId ?? createClientId();
     if (!activeSessionId) {
@@ -171,10 +207,12 @@ export function KnowledgeChatHome() {
         {
           id: createClientId(),
           role: "user",
-          content: query,
+          content: messageText,
+          attachments: attachmentsForTurn,
         },
       ]);
       setInput("");
+      setImageAttachments([]);
     }
 
     setSending(true);
@@ -202,7 +240,7 @@ export function KnowledgeChatHome() {
           label: null,
           status: "streaming",
           startedAt,
-          agent: codexEnabled ? "codex" : undefined,
+          agent: selectedAgentId || undefined,
         },
       ]);
     }
@@ -210,15 +248,16 @@ export function KnowledgeChatHome() {
     try {
       await streamCompleteChat({
         session_id: sessionId,
-        message: query,
+        message: messageText,
         knowledge_base_name: selectedKbNames[0],
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: selectedProjectId ?? undefined,
         model_id: selectedModelId || undefined,
         top_k: 6,
-        mode,
-        agent: codexEnabled ? "codex" : undefined,
+        mode: "chat",
+        agent: selectedAgentId || undefined,
+        attachment_ids: attachmentsForTurn.map((attachment) => attachment.id),
       }, (event) => {
         if (event.type === "error") {
           throw new Error(event.content || t("chat.errorSearch"));
@@ -308,6 +347,45 @@ export function KnowledgeChatHome() {
     await sendMessage(input.trim());
   }
 
+  async function addImages(files: File[]) {
+    if (files.length === 0) return;
+    if (selectedAgentId !== "codex") {
+      setError("请先选择 Codex 本地代理，再添加图片附件。");
+      return;
+    }
+    const availableSlots = 4 - imageAttachments.length;
+    if (availableSlots <= 0) {
+      setError("每轮最多添加 4 张图片。");
+      return;
+    }
+    if (files.length > availableSlots) setError(`本轮最多添加 4 张图片，已选择前 ${availableSlots} 张。`);
+
+    setUploadingImages(true);
+    try {
+      for (const file of files.slice(0, availableSlots)) {
+        const attachment = await uploadChatImage(file);
+        const previewUrl = URL.createObjectURL(file);
+        attachmentPreviewUrlsRef.current.add(previewUrl);
+        setImageAttachments((current) => [...current, { ...attachment, previewUrl }]);
+      }
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : "图片上传失败，请重试。");
+    } finally {
+      setUploadingImages(false);
+    }
+  }
+
+  async function removeImage(attachment: ChatImagePreview) {
+    setImageAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    attachmentPreviewUrlsRef.current.delete(attachment.previewUrl);
+    URL.revokeObjectURL(attachment.previewUrl);
+    try {
+      await deleteChatImage(attachment.id);
+    } catch {
+      // The server will also clean short-lived image uploads after expiry.
+    }
+  }
+
   function stopGenerating() {
     streamAbortControllerRef.current?.abort();
   }
@@ -355,9 +433,10 @@ export function KnowledgeChatHome() {
                 <MessageBubble
                   key={message.id}
                   message={message}
+                  onPreviewImage={setPreviewingImage}
                     onRetry={message.role === "assistant" ? () => {
                       const userMessage = findPreviousUserMessage(messages, index);
-                      if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id });
+                      if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id, attachments: userMessage.attachments });
                     } : undefined}
                     onOpenCodeFile={openCodeFile}
                 />
@@ -372,7 +451,33 @@ export function KnowledgeChatHome() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="sticky bottom-4 mt-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)]">
+          <form onSubmit={handleSubmit} onPaste={(event) => {
+            const imagesFromItems = Array.from(event.clipboardData.items)
+              .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => file !== null);
+            const images = imagesFromItems.length > 0
+              ? imagesFromItems
+              : Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+            if (images.length > 0) {
+              event.preventDefault();
+              void addImages(images);
+            }
+          }} className="sticky bottom-4 mt-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)]">
+            {imageAttachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+                {imageAttachments.map((attachment) => (
+                  <div key={attachment.id} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                    <button type="button" onClick={() => setPreviewingImage(attachment)} className="block h-full w-full cursor-zoom-in" aria-label={`放大 ${attachment.file_name}`}>
+                      <img src={attachment.previewUrl} alt={attachment.file_name} className="h-full w-full object-cover" />
+                    </button>
+                    <button type="button" onClick={() => void removeImage(attachment)} className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/75 text-white opacity-0 transition group-hover:opacity-100 focus:opacity-100" aria-label={`移除 ${attachment.file_name}`}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -387,16 +492,20 @@ export function KnowledgeChatHome() {
             />
             <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5">
               <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
-                <label className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100">
-                  <Bot size={16} />
-                  <select value={mode} onChange={(event) => setMode(event.target.value as ChatMode)} className="bg-transparent outline-none">
-                    <option value="chat">{t("chat.modeChat")}</option>
-                    <option value="visualize">{t("chat.modeVisualize")}</option>
-                    <option value="write">{t("chat.modeWrite")}</option>
-                  </select>
-                </label>
-                <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={t("chat.addAttachment")}>
-                  <Plus size={17} />
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    const files = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    void addImages(files);
+                  }}
+                  ref={(element) => { imageFileInputRef.current = element; }}
+                />
+                <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={selectedAgentId === "codex" ? "添加图片（PNG、JPEG、WebP、GIF）" : "图片附件仅支持 Codex 本地代理"}>
+                  {uploadingImages ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                 </button>
               </div>
 
@@ -422,9 +531,13 @@ export function KnowledgeChatHome() {
                   onToggleOpen={() => setOpenContextPicker((current) => current === "project" ? null : "project")}
                   onToggle={(id) => setSelectedProjectId((current) => current === Number(id) ? null : Number(id))}
                 />
-                <label className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "cursor-not-allowed text-slate-400"}`} title={selectedProjectId ? "将当前项目目录和问题交由本机 Codex 处理" : "请先选择项目"}>
-                  <input type="checkbox" checked={Boolean(selectedProjectId) && codexEnabled} disabled={!selectedProjectId} onChange={(event) => setCodexEnabled(event.target.checked)} className="accent-violet-600" />
-                  Codex 接管
+                <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium sm:inline-flex ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "text-slate-400"}`} title={selectedAgentProvider?.message || "选择本地编码代理"}>
+                  <Bot size={15}/>
+                  <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "codebuddy" | "")} className="max-w-[150px] truncate bg-transparent outline-none">
+                    <option value="">不接管</option>
+                    <option value="codex">Codex 本地</option>
+                    <option value="codebuddy" disabled>CodeBuddy CLI（待适配）</option>
+                  </select>
                 </label>
                 <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 sm:inline-flex">
                   <PanelRight size={15} />
@@ -478,6 +591,7 @@ export function KnowledgeChatHome() {
         </div>
       </section>
       <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} onClose={() => setRightPanelOpen(false)}/>
+      {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)}/>}
       </div>
     </main>
   );
@@ -622,7 +736,7 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
-function MessageBubble({ message, onRetry, onOpenCodeFile }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void }) {
+function MessageBubble({ message, onRetry, onOpenCodeFile, onPreviewImage }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onPreviewImage: (attachment: ChatImagePreview) => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
@@ -641,7 +755,18 @@ function MessageBubble({ message, onRetry, onOpenCodeFile }: { message: ChatMess
           </div>
         )}
         {isUser ? (
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          <>
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {message.attachments.map((attachment) => (
+                  <button key={attachment.id} type="button" onClick={() => onPreviewImage(attachment)} className="cursor-zoom-in rounded-lg focus:outline-none focus:ring-2 focus:ring-white/80" aria-label={`放大 ${attachment.file_name}`}>
+                    <img src={attachment.previewUrl} alt={attachment.file_name} className="h-24 max-w-48 rounded-lg border border-white/30 object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">
             {message.content ? <MarkdownMessage content={message.content} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}
@@ -695,6 +820,39 @@ function MessageBubble({ message, onRetry, onOpenCodeFile }: { message: ChatMess
         )}
       </div>
     </article>
+  );
+}
+
+function ImageLightbox({ attachment, onClose }: { attachment: ChatImagePreview; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    setZoom(1);
+  }, [attachment.id]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" role="presentation" onMouseDown={onClose}>
+      <section className="w-[calc(100%-2rem)] max-w-5xl rounded-2xl border border-white/20 bg-slate-900 p-3 shadow-2xl" role="dialog" aria-modal="true" aria-label={`查看图片：${attachment.file_name}`} onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mb-3 flex items-center gap-2 text-white">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium">{attachment.file_name}</p>
+          <button type="button" onClick={() => setZoom((value) => Math.max(1, value - 0.25))} disabled={zoom <= 1} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20 disabled:opacity-40" aria-label="缩小图片"><ZoomOut size={16}/></button>
+          <span className="w-10 text-center text-xs tabular-nums text-slate-300">{Math.round(zoom * 100)}%</span>
+          <button type="button" onClick={() => setZoom((value) => Math.min(3, value + 0.25))} disabled={zoom >= 3} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20 disabled:opacity-40" aria-label="放大图片"><ZoomIn size={16}/></button>
+          <button type="button" onClick={onClose} className="ml-1 grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20" aria-label="关闭图片预览"><X size={17}/></button>
+        </div>
+        <div className="max-h-[calc(100vh-10rem)] overflow-auto rounded-xl bg-black/30">
+          <img src={attachment.previewUrl} alt={attachment.file_name} style={{ width: `${zoom * 100}%`, maxWidth: "none" }} className="block h-auto min-w-full rounded-xl" />
+        </div>
+      </section>
+    </div>
   );
 }
 

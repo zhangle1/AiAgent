@@ -39,7 +39,15 @@ export type ChatCompleteRequest = {
   model_id?: string;
   top_k?: number;
   mode?: string;
-  agent?: "codex";
+  agent?: "codex" | "codebuddy";
+  attachment_ids?: string[];
+};
+
+export type ChatImageAttachment = {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
 };
 
 export type ChatCompleteResponse = {
@@ -60,6 +68,20 @@ export async function completeChat(payload: ChatCompleteRequest): Promise<ChatCo
       body: JSON.stringify(payload),
     }),
   );
+}
+
+export async function uploadChatImage(file: File): Promise<ChatImageAttachment> {
+  const body = new FormData();
+  body.set("file", file);
+  return parseJson<ChatImageAttachment>(await fetch("/api/v1/chat/attachments/images", { method: "POST", body }));
+}
+
+export async function deleteChatImage(attachmentId: string): Promise<void> {
+  await parseJson<{ ok: boolean }>(await fetch(`/api/v1/chat/attachments/${encodeURIComponent(attachmentId)}`, { method: "DELETE" }));
+}
+
+export function persistedChatImageUrl(sessionId: string, attachmentId: string): string {
+  return `/api/v1/chat/attachments/${encodeURIComponent(sessionId)}/${encodeURIComponent(attachmentId)}`;
 }
 
 export type ChatStreamEvent = {

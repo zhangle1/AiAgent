@@ -13,4 +13,6 @@ public sealed class AuthStatusResponse
     [JsonPropertyName("authenticated")] public bool Authenticated { get; set; }
     [JsonPropertyName("user_id")] public string? UserId { get; set; }
     [JsonPropertyName("username")] public string? Username { get; set; }
+    [JsonPropertyName("is_admin")] public bool IsAdmin { get; set; }
+    [JsonPropertyName("registration_enabled")] public bool RegistrationEnabled { get; set; }
 }

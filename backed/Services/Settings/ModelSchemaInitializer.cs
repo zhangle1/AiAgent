@@ -4,6 +4,7 @@ using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Entities.Git;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Entities.Settings;
+using AiAgent.Backend.Entities.Usage;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.Settings;
@@ -48,9 +49,11 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiCodeRepositoryRunProfile),
             typeof(AiCodeRepositoryFile),
             typeof(AiUser),
+            typeof(AiUserCodeProject),
             typeof(AiUserSession),
             typeof(AiChatSession),
             typeof(AiChatMessage),
+            typeof(AiUsageRecord),
             typeof(AiGitAccount));
 
         EnsureColumns();
@@ -66,6 +69,9 @@ IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
 
 IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
     ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;
+
+IF COL_LENGTH(N'dbo.ai_user', N'Role') IS NULL
+    ALTER TABLE dbo.ai_user ADD Role NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_user_Role DEFAULT N'user';
 
 IF OBJECT_ID(N'dbo.ai_code_repo_run', N'U') IS NOT NULL
 BEGIN
@@ -223,6 +229,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_Username' AND
     CREATE UNIQUE INDEX UX_ai_user_Username ON dbo.ai_user(Username);
 """);
         ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_code_project_User_Project' AND object_id = OBJECT_ID(N'dbo.ai_user_code_project'))
+    CREATE UNIQUE INDEX UX_ai_user_code_project_User_Project ON dbo.ai_user_code_project(UserId, CodeProjectId);
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_user_code_project_Project' AND object_id = OBJECT_ID(N'dbo.ai_user_code_project'))
+    CREATE INDEX IX_ai_user_code_project_Project ON dbo.ai_user_code_project(CodeProjectId, UserId);
+""");
+        ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_session_TokenHash' AND object_id = OBJECT_ID(N'dbo.ai_user_session'))
     CREATE UNIQUE INDEX UX_ai_user_session_TokenHash ON dbo.ai_user_session(TokenHash);
 """);
@@ -245,6 +259,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_proj_pref_Use
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_message_Session_Id' AND object_id = OBJECT_ID(N'dbo.ai_chat_message'))
     CREATE INDEX IX_ai_chat_message_Session_Id ON dbo.ai_chat_message(SessionId, Id);
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_User_Time' AND object_id = OBJECT_ID(N'dbo.ai_usage_record'))
+    CREATE INDEX IX_ai_usage_record_User_Time ON dbo.ai_usage_record(UserId, CreatedAt DESC);
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_Provider_Time' AND object_id = OBJECT_ID(N'dbo.ai_usage_record'))
+    CREATE INDEX IX_ai_usage_record_Provider_Time ON dbo.ai_usage_record(ProviderKind, ProviderId, CreatedAt DESC);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_git_account_User_Provider_Username' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))

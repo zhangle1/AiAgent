@@ -17,6 +17,9 @@ public sealed class AiUser
     [SugarColumn(Length = 256)]
     public string PasswordSalt { get; set; } = string.Empty;
 
+    [SugarColumn(Length = 16, IsNullable = true)]
+    public string Role { get; set; } = "user";
+
     public bool IsDisabled { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [SugarColumn(IsNullable = true)]

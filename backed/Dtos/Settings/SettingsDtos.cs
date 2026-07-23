@@ -43,6 +43,9 @@ public sealed class UiSettings
     /// </summary>
     [JsonPropertyName("language")]
     public string Language { get; set; } = "zh-CN";
+
+    [JsonPropertyName("preferred_agent")]
+    public string PreferredAgent { get; set; } = "codex";
 }
 
 /// <summary>
@@ -61,6 +64,9 @@ public sealed class UiSettingsPayload
     /// </summary>
     [JsonPropertyName("language")]
     public string? Language { get; set; }
+
+    [JsonPropertyName("preferred_agent")]
+    public string? PreferredAgent { get; set; }
 }
 
 /// <summary>

@@ -1,3 +1,4 @@
+using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Services.Chat.Llm;
 using AiAgent.Backend.Services.Chat.Planning;
@@ -182,7 +183,14 @@ public sealed class AgentLoop : IAgentLoop
             Citations = dispatch.Citations,
             Plan = plan,
             ToolDispatch = dispatch,
-            Completed = step.Label == AgentLabels.Finish
+            Completed = step.Label == AgentLabels.Finish,
+            Usage = new ChatTokenUsage
+            {
+                PromptTokens = context.Stats.PromptTokens,
+                CompletionTokens = context.Stats.CompletionTokens,
+                TotalTokens = context.Stats.TotalTokens,
+                IsEstimated = true
+            }
         };
     }
 
@@ -361,4 +369,10 @@ public sealed class AgentLoopOutcome
     /// Whether the loop reached FINISH.
     /// </summary>
     public bool Completed { get; set; }
+
+    /// <summary>
+    /// Token usage for the completed turn. The native loop currently estimates
+    /// this from the streamed prompt and output text.
+    /// </summary>
+    public ChatTokenUsage? Usage { get; set; }
 }

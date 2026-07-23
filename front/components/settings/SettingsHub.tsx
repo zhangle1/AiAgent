@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Bot, Brain, ChevronRight, Code2, Database, GitBranch, MessageSquare, Network, Palette, Settings2, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, GitBranch, MessageSquare, Network, Palette, Settings2, ShieldCheck, Users, type LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getAuthStatus } from "@/lib/auth-api";
 import { activeModel, activeProfile, serviceConfigured, type Catalog, type ServiceName } from "@/lib/settings-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/dictionaries";
@@ -14,7 +16,8 @@ const cards: Array<{ titleKey: TranslationKey; descKey: TranslationKey; icon: Lu
   { titleKey: "settings.codeRepository", descKey: "settings.codeRepositoryDesc", icon: Code2, href: "/settings/code-repositories" },
   { titleKey: "settings.gitAccounts", descKey: "settings.gitAccountsDesc", icon: GitBranch, href: "/settings/git-accounts" },
   { titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },
-  { titleKey: "settings.partnersAgents", descKey: "settings.partnersAgentsDesc", icon: Users, href: "/settings" },
+  { titleKey: "settings.partnersAgents", descKey: "settings.partnersAgentsDesc", icon: Users, href: "/settings/agents" },
+  { titleKey: "settings.usage", descKey: "settings.usageDesc", icon: BarChart3, href: "/settings/usage" },
   { titleKey: "nav.memory", descKey: "settings.memoryDesc", icon: Brain, href: "/settings" },
 ];
 
@@ -27,6 +30,11 @@ const statusItems: Array<{ labelKey: TranslationKey; service?: ServiceName }> = 
 
 export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
   const { language, setLanguage, t } = useI18n();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    void getAuthStatus().then((status) => setIsAdmin(status.is_admin === true)).catch(() => setIsAdmin(false));
+  }, []);
 
   return (
     <section className="min-w-0">
@@ -87,6 +95,7 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
             </Link>
           );
         })}
+        {isAdmin && <Link href="/settings/admin" className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-violet-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><ShieldCheck size={19} strokeWidth={1.6} className="text-violet-600" /><h2 className="text-[15px] font-semibold leading-snug">管理配置</h2></div><ChevronRight size={18} className="text-[var(--muted-foreground)] transition group-hover:translate-x-0.5 group-hover:text-violet-600" /></div><p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">管理用户、项目访问范围、历史会话与全员流量。</p></Link>}
       </div>
     </section>
   );

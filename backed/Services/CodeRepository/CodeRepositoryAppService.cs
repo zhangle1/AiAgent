@@ -1,5 +1,7 @@
 using AiAgent.Backend.Dtos.CodeRepository;
 using AiAgent.Backend.Services.Git;
+using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Admin;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,16 +19,22 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     private readonly ICodeRepositoryIndexService _indexService;
     private readonly ICodeRepositoryIndexProgressStore _progressStore;
     private readonly ICodeRepositoryGitService _git;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IAuthService _authService;
+    private readonly IProjectAccessService _projectAccess;
 
     /// <summary>
     /// Creates the code repository API service.
     /// </summary>
-    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git)
+    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git, IHttpContextAccessor httpContextAccessor, IAuthService authService, IProjectAccessService projectAccess)
     {
         _manager = manager;
         _indexService = indexService;
         _progressStore = progressStore;
         _git = git;
+        _httpContextAccessor = httpContextAccessor;
+        _authService = authService;
+        _projectAccess = projectAccess;
     }
 
     [HttpGet("list")]
@@ -36,7 +44,12 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     }
 
     [HttpGet("projects")]
-    public List<CodeProjectDto> ListProjects() => _manager.ListProjects();
+    public async Task<List<CodeProjectDto>> ListProjects(CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        var allowedIds = _projectAccess.GetAccessibleProjectIds(user);
+        return _manager.ListProjects().Where(project => allowedIds.Contains(project.Id)).ToList();
+    }
 
     [HttpPost("projects")]
     public CodeProjectDto CreateProject([FromBody] CodeProjectSaveRequest request) => _manager.CreateProject(request);

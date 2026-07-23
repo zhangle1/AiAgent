@@ -84,6 +84,11 @@ public sealed class SettingsAppService : IDynamicApiController
             current.Language = NormalizeLanguage(payload.Language);
         }
 
+        if (!string.IsNullOrWhiteSpace(payload.PreferredAgent))
+        {
+            current.PreferredAgent = NormalizePreferredAgent(payload.PreferredAgent);
+        }
+
         SaveUiSettings(current);
         return current;
     }
@@ -138,6 +143,7 @@ public sealed class SettingsAppService : IDynamicApiController
             var settings = JsonSerializer.Deserialize<UiSettings>(row.PayloadJson) ?? new UiSettings();
             settings.Theme = string.IsNullOrWhiteSpace(settings.Theme) ? "light" : settings.Theme;
             settings.Language = NormalizeLanguage(settings.Language);
+            settings.PreferredAgent = NormalizePreferredAgent(settings.PreferredAgent);
             return settings;
         }
         catch
@@ -145,6 +151,14 @@ public sealed class SettingsAppService : IDynamicApiController
             return new UiSettings();
         }
     }
+
+    private static string NormalizePreferredAgent(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "codex" => "codex",
+        "codebuddy" => "codebuddy",
+        "none" => "none",
+        _ => "codex"
+    };
 
     private void SaveUiSettings(UiSettings settings)
     {

@@ -64,6 +64,7 @@ export type ProviderOption = {
 export type UiSettings = {
   theme: string;
   language: string;
+  preferred_agent?: "codex" | "codebuddy" | "none";
 };
 
 export type SettingsResponse = {
