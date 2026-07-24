@@ -179,10 +179,16 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             parent = null;
         }
 
-        var directories = Directory.EnumerateDirectories(currentPath)
+        var directoryEntries = Directory.EnumerateDirectories(currentPath)
             .Select(Path.GetFullPath)
             .Where(IsAllowedPath)
-            .OrderBy(x => Path.GetFileName(x), StringComparer.OrdinalIgnoreCase)
+            .Select(path => new CodeRepositoryDirectoryEntryDto
+            {
+                Name = Path.GetFileName(path),
+                Path = path,
+                ModifiedAt = GetDirectoryLastWriteTimeUtc(path)
+            })
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
             .Take(200)
             .ToList();
 
@@ -191,7 +197,8 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             Path = currentPath,
             ParentPath = parent,
             AllowedRoots = _allowedRoots,
-            Directories = directories
+            Directories = directoryEntries.Select(entry => entry.Path).ToList(),
+            DirectoryEntries = directoryEntries
         };
     }
 
@@ -692,6 +699,22 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         var child = Path.GetFullPath(childPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return child.Equals(parent, StringComparison.OrdinalIgnoreCase)
             || child.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static DateTime? GetDirectoryLastWriteTimeUtc(string path)
+    {
+        try
+        {
+            return Directory.GetLastWriteTimeUtc(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static List<string> NormalizeSelection(List<string>? requested, List<string> detected)

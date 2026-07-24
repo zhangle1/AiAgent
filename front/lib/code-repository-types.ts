@@ -56,6 +56,7 @@ export type CodeRepositoryDirectoryBrowser = {
   parent_path?: string | null;
   allowed_roots: string[];
   directories: string[];
+  directory_entries?: Array<{ name: string; path: string; modified_at?: string | null }>;
   files?: Array<{ name: string; path: string }>;
 };
 

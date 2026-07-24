@@ -469,8 +469,27 @@ public sealed class CodeRepositoryDirectoryBrowserDto
     [JsonPropertyName("directories")]
     public List<string> Directories { get; set; } = [];
 
+    /// <summary>
+    /// Directory metadata for clients that need filtering and sorting. The legacy
+    /// <see cref="Directories"/> path list remains available for compatibility.
+    /// </summary>
+    [JsonPropertyName("directory_entries")]
+    public List<CodeRepositoryDirectoryEntryDto> DirectoryEntries { get; set; } = [];
+
     [JsonPropertyName("files")]
     public List<CodeRepositoryBrowserFileDto> Files { get; set; } = [];
+}
+
+public sealed class CodeRepositoryDirectoryEntryDto
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("modified_at")]
+    public DateTime? ModifiedAt { get; set; }
 }
 
 public sealed class CodeRepositoryBrowserFileDto

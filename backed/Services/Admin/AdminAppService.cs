@@ -28,6 +28,20 @@ public sealed class AdminAppService : IDynamicApiController
         return user == null ? new BadRequestObjectResult(new { message = error }) : new OkObjectResult(user);
     }
 
+    [HttpPut("users/{userId}/alias")]
+    public async Task<IActionResult> UpdateUserAlias(string userId, [FromBody] AdminUpdateUserAliasRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _admin.UpdateUserAliasAsync(await RequireAdministrator(cancellationToken), userId, request.Alias, cancellationToken);
+        return result.Succeeded ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = result.Error });
+    }
+
+    [HttpPost("users/{userId}/reset-password")]
+    public async Task<IActionResult> ResetUserPassword(string userId, [FromBody] AdminResetUserPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _admin.ResetUserPasswordAsync(await RequireAdministrator(cancellationToken), userId, request.Password, cancellationToken);
+        return result.Succeeded ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = result.Error });
+    }
+
     [HttpPut("users/{userId}/projects")]
     public async Task<IActionResult> UpdateUserProjects(string userId, [FromBody] AdminUpdateUserProjectsRequest request, CancellationToken cancellationToken)
     {

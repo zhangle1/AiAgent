@@ -73,6 +73,9 @@ IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
 IF COL_LENGTH(N'dbo.ai_user', N'Role') IS NULL
     ALTER TABLE dbo.ai_user ADD Role NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_user_Role DEFAULT N'user';
 
+IF COL_LENGTH(N'dbo.ai_user', N'Alias') IS NULL
+    ALTER TABLE dbo.ai_user ADD Alias NVARCHAR(64) NULL;
+
 IF OBJECT_ID(N'dbo.ai_code_repo_run', N'U') IS NOT NULL
 BEGIN
     IF COL_LENGTH(N'dbo.ai_code_repo_run', N'TestScript') IS NULL

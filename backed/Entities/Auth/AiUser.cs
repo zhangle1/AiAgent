@@ -20,6 +20,9 @@ public sealed class AiUser
     [SugarColumn(Length = 16, IsNullable = true)]
     public string Role { get; set; } = "user";
 
+    [SugarColumn(Length = 64, IsNullable = true)]
+    public string? Alias { get; set; }
+
     public bool IsDisabled { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [SugarColumn(IsNullable = true)]

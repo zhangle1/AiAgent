@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Braces, Check, FileCog, FilePenLine, FolderGit2, FolderOpen, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, ShieldCheck, Terminal, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, X } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
 import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, writeConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, CodeRepositoryDirectoryBrowser, CodeRepositoryHealth, CodeRepositoryInspection } from "@/lib/code-repository-types";
@@ -400,7 +400,51 @@ function FilePicker({ browser, target, onClose, onOpen, onChoose }: { browser: C
   return <Modal title={title} onClose={onClose}><p className="truncate font-mono text-xs text-slate-500">{browser.path}</p><p className="mt-1 text-xs leading-5 text-slate-500">{target === "backendEntry" ? "只会显示 .csproj；请选择 Web/API 或 OutputType=Exe 工程。" : target === "frontendEntry" ? "只会显示 package.json。" : "进入文件夹后，单击一个文件即可选中。"}</p><div className="workspace-scroll mt-4 max-h-72 overflow-auto rounded-lg border border-slate-200 p-2">{browser.parent_path && <button type="button" onClick={() => onOpen(browser.parent_path ?? undefined)} className="block w-full rounded px-2 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}{browser.directories.map((path) => <button type="button" key={path} onClick={() => onOpen(path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-slate-50"><FolderOpen size={15} className="text-amber-500"/>{path.split(/[\\/]/).pop()}</button>)}{files.map((file) => <button type="button" key={file.path} onClick={() => onChoose(file.path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-blue-50"><FileCog size={15} className="text-blue-500"/><span className="truncate font-mono text-xs" title={file.path}>{file.name}</span></button>)}{files.length === 0 && <p className="px-2 py-4 text-xs text-slate-400">此目录没有可选文件，请进入下级目录。</p>}</div></Modal>;
 }
 
-function DirectoryPicker({ browser, onClose, onOpen, onChoose }: { browser: CodeRepositoryDirectoryBrowser; onClose: () => void; onOpen: (path?: string) => void; onChoose: () => void }) { return <Modal title="选择服务器文件夹" onClose={onClose}><p className="truncate font-mono text-xs text-slate-500">{browser.path}</p><div className="workspace-scroll mt-4 max-h-72 overflow-auto rounded-lg border border-slate-200 p-2">{browser.parent_path && <button onClick={() => onOpen(browser.parent_path ?? undefined)} className="block w-full rounded px-2 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}{browser.directories.map((path) => <button key={path} onClick={() => onOpen(path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-slate-50"><FolderOpen size={15} className="text-amber-500"/>{path.split(/[\\/]/).pop()}</button>)}</div><div className="mt-4 flex justify-end"><button onClick={onChoose} className="primary-button">选择此文件夹</button></div></Modal>; }
+function DirectoryPicker({ browser, onClose, onOpen, onChoose }: { browser: CodeRepositoryDirectoryBrowser; onClose: () => void; onOpen: (path?: string) => void; onChoose: () => void }) {
+  const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState<{ key: "name" | "modified"; direction: "asc" | "desc" }>({ key: "name", direction: "asc" });
+  useEffect(() => setFilter(""), [browser.path]);
+  const entries = useMemo(() => {
+    const source = browser.directory_entries ?? browser.directories.map((path) => ({ name: path.split(/[\\/]/).pop() ?? path, path, modified_at: null }));
+    const keyword = filter.trim().toLocaleLowerCase();
+    return [...source]
+      .filter((entry) => !keyword || entry.name.toLocaleLowerCase().includes(keyword))
+      .sort((left, right) => {
+        const value = sort.key === "name"
+          ? left.name.localeCompare(right.name, "zh-CN", { sensitivity: "base" })
+          : (left.modified_at ?? "").localeCompare(right.modified_at ?? "");
+        return sort.direction === "asc" ? value : -value;
+      });
+  }, [browser.directories, browser.directory_entries, filter, sort]);
+  const toggleSort = (key: "name" | "modified") => setSort((current) => current.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: key === "name" ? "asc" : "desc" });
+  const sortIcon = (key: "name" | "modified") => sort.key !== key ? <ArrowUpDown size={13}/> : sort.direction === "asc" ? <ChevronUp size={14}/> : <ChevronDown size={14}/>;
+  const formatModifiedAt = (value?: string | null) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
+  return <Modal title="选择服务器文件夹" onClose={onClose}>
+    <p className="truncate font-mono text-xs text-slate-500" title={browser.path}>{browser.path}</p>
+    <label className="relative mt-4 block">
+      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+      <input value={filter} onChange={(event) => setFilter(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="过滤文件夹名称" aria-label="过滤文件夹名称"/>
+    </label>
+    <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+      <div className="grid grid-cols-[minmax(0,1fr)_11rem] border-b border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-500">
+        <button type="button" onClick={() => toggleSort("name")} className="flex items-center gap-1 py-2 text-left hover:text-blue-700">名称 {sortIcon("name")}</button>
+        <button type="button" onClick={() => toggleSort("modified")} className="flex items-center justify-end gap-1 py-2 text-right hover:text-blue-700">最近修改时间 {sortIcon("modified")}</button>
+      </div>
+      <div className="workspace-scroll max-h-64 overflow-auto p-1.5">
+        {browser.parent_path && <button type="button" onClick={() => onOpen(browser.parent_path ?? undefined)} className="mb-1 block w-full rounded-md px-2.5 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}
+        {entries.map((entry) => <button type="button" key={entry.path} onClick={() => onOpen(entry.path)} className="grid w-full grid-cols-[minmax(0,1fr)_11rem] items-center rounded-md px-2.5 py-2 text-left text-sm hover:bg-slate-50"><span className="flex min-w-0 items-center gap-2"><FolderOpen size={15} className="shrink-0 text-amber-500"/><span className="truncate" title={entry.path}>{entry.name}</span></span><span className="text-right text-xs tabular-nums text-slate-400">{formatModifiedAt(entry.modified_at)}</span></button>)}
+        {entries.length === 0 && <p className="px-2.5 py-7 text-center text-xs text-slate-400">{filter.trim() ? "没有匹配的文件夹" : "此目录没有可访问的下级文件夹"}</p>}
+      </div>
+    </div>
+    <div className="mt-2 text-right text-[11px] text-slate-400">显示 {entries.length} 个文件夹</div>
+    <div className="mt-3 flex justify-end"><button onClick={onChoose} className="primary-button">选择此文件夹</button></div>
+  </Modal>;
+}
 function CloneDialog({ projects, accounts, draft, lines, busy, onChange, onClose, onSubmit }: { projects: CodeProject[]; accounts: GitAccount[]; draft: CloneDraft; lines: ConsoleLine[]; busy: boolean; onChange: (value: CloneDraft) => void; onClose: () => void; onSubmit: () => void }) { return <Modal title="克隆远程代码库" onClose={onClose}><p className="text-xs leading-5 text-slate-500">克隆会在所选项目文件夹内执行。完成后会自动识别目录，并登记为该项目的代码库。</p><Field label="目标项目"><select className={input} value={draft.projectId} onChange={(event) => onChange({ ...draft, projectId: event.target.value ? Number(event.target.value) : "" })}><option value="">选择项目</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.display_name} · {project.root_path}</option>)}</select></Field><Field label="HTTPS 仓库地址"><input className={input} value={draft.repositoryUrl} onChange={(event) => onChange({ ...draft, repositoryUrl: event.target.value })} placeholder="https://gitee.com/org/repository.git"/></Field><Field label="Git 账号"><select className={input} value={draft.gitAccountId} onChange={(event) => onChange({ ...draft, gitAccountId: event.target.value ? Number(event.target.value) : "" })}><option value="">选择已配置账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.provider} · {account.display_name} (@{account.username})</option>)}</select></Field>{accounts.length === 0 && <p className="mt-3 text-xs text-amber-700">尚未配置 Git 账号，请先前往 Git 管理添加访问令牌。</p>}{lines.length > 0 && <Console lines={lines}/>}<div className="mt-5 flex justify-end gap-2"><button onClick={onClose} disabled={busy} className="secondary-button">取消</button><button onClick={onSubmit} disabled={busy} className="primary-button">{busy && <Loader2 size={14} className="animate-spin"/>}开始克隆</button></div></Modal>; }
 function TerminalDialog({ title, lines, busy, onClose }: { title: string; lines: ConsoleLine[]; busy: boolean; onClose: () => void }) { return <Modal title={title} onClose={onClose}><Console lines={lines}/><div className="mt-4 flex items-center justify-between text-xs text-slate-500"><span>{busy ? "服务端命令正在执行…" : "命令已结束。"}</span><button onClick={onClose} disabled={busy} className="secondary-button">关闭</button></div></Modal>; }
 function Console({ lines }: { lines: ConsoleLine[] }) { return <pre className="workspace-scroll mt-4 max-h-80 overflow-auto rounded-xl bg-slate-950 p-3 font-mono text-[11px] leading-5 text-slate-100">{lines.length ? lines.map((item, index) => <span key={`${index}-${item.line}`} className={`block ${item.stream === "stderr" ? "text-amber-300" : "text-emerald-300"}`}>{item.line}</span>) : <span className="text-slate-400">等待服务端输出…</span>}</pre>; }

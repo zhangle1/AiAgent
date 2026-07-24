@@ -40,6 +40,8 @@ public interface IAdminService
 {
     Task<List<AdminUserDto>> ListUsersAsync(AuthenticatedUser administrator, CancellationToken cancellationToken);
     Task<(AdminUserDto? User, string? Error)> CreateUserAsync(AuthenticatedUser administrator, AdminCreateUserRequest request, CancellationToken cancellationToken);
+    Task<(bool Succeeded, string? Error)> UpdateUserAliasAsync(AuthenticatedUser administrator, string userId, string? alias, CancellationToken cancellationToken);
+    Task<(bool Succeeded, string? Error)> ResetUserPasswordAsync(AuthenticatedUser administrator, string userId, string password, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> UpdateUserProjectsAsync(AuthenticatedUser administrator, string userId, IReadOnlyCollection<long> projectIds, CancellationToken cancellationToken);
     Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken);
     Task<ChatSessionDetailDto?> GetSessionAsync(AuthenticatedUser administrator, string userId, string sessionId, CancellationToken cancellationToken);
@@ -71,7 +73,7 @@ public sealed class AdminService : IAdminService
         _db.Ado.BeginTran();
         try
         {
-            var (user, error) = await _auth.CreateUserAsync(request.Username, request.Password, cancellationToken);
+            var (user, error) = await _auth.CreateUserAsync(request.Username, request.Password, request.Alias, cancellationToken);
             if (user == null)
             {
                 _db.Ado.RollbackTran();
@@ -87,6 +89,26 @@ public sealed class AdminService : IAdminService
             _db.Ado.RollbackTran();
             throw;
         }
+    }
+
+    public Task<(bool Succeeded, string? Error)> UpdateUserAliasAsync(AuthenticatedUser administrator, string userId, string? alias, CancellationToken cancellationToken)
+    {
+        RequireAdministrator(administrator);
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalized = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
+        if (normalized?.Length > 64) return Task.FromResult((false, (string?)"Alias must not exceed 64 characters."));
+        var updated = _db.Updateable<AiUser>()
+            .SetColumns(item => item.Alias == normalized)
+            .SetColumns(item => item.UpdatedAt == DateTime.UtcNow)
+            .Where(item => item.Id == userId)
+            .ExecuteCommand();
+        return Task.FromResult(updated > 0 ? (true, (string?)null) : (false, (string?)"The user does not exist."));
+    }
+
+    public Task<(bool Succeeded, string? Error)> ResetUserPasswordAsync(AuthenticatedUser administrator, string userId, string password, CancellationToken cancellationToken)
+    {
+        RequireAdministrator(administrator);
+        return _auth.ResetPasswordAsync(userId, password, cancellationToken);
     }
 
     public Task<(bool Succeeded, string? Error)> UpdateUserProjectsAsync(AuthenticatedUser administrator, string userId, IReadOnlyCollection<long> projectIds, CancellationToken cancellationToken)
@@ -230,6 +252,7 @@ public sealed class AdminService : IAdminService
     {
         Id = user.Id,
         Username = user.Username,
+        Alias = user.Alias,
         Role = user.Role,
         IsDisabled = user.IsDisabled,
         CreatedAt = user.CreatedAt,

@@ -10,6 +10,7 @@
 - 默认密码仅用于首次创建；如果该账号已存在，绝不覆盖密码。
 - `/api/v1/auth/register` 固定返回 403，前端 `/register` 重定向至登录页。
 - 管理权限取自服务端 `AiUser.Role`，不可由请求参数或前端状态授予。
+- 用户可选填最长 64 个字符的别名；管理员可按账号或别名搜索。密码重置会重新生成密码哈希并撤销该用户的所有有效登录会话。
 
 ## 项目可见性
 
@@ -23,6 +24,8 @@
 | API | 用途 |
 | --- | --- |
 | `GET/POST /api/v1/admin/users` | 查询与创建用户 |
+| `PUT /api/v1/admin/users/{id}/alias` | 设置或清空用户别名 |
+| `POST /api/v1/admin/users/{id}/reset-password` | 重置密码并使旧会话失效 |
 | `PUT /api/v1/admin/users/{id}/projects` | 替换普通用户的项目授权 |
 | `GET /api/v1/admin/sessions` | 按用户筛选并查看会话摘要 |
 | `GET /api/v1/admin/users/{id}/sessions/{sessionId}` | 只读会话消息 |

@@ -6,8 +6,19 @@ namespace AiAgent.Backend.Dtos.Admin;
 public sealed class AdminCreateUserRequest
 {
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
+    [JsonPropertyName("alias")] public string? Alias { get; set; }
     [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
     [JsonPropertyName("project_ids")] public List<long> ProjectIds { get; set; } = [];
+}
+
+public sealed class AdminUpdateUserAliasRequest
+{
+    [JsonPropertyName("alias")] public string? Alias { get; set; }
+}
+
+public sealed class AdminResetUserPasswordRequest
+{
+    [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
 }
 
 public sealed class AdminUpdateUserProjectsRequest
@@ -19,6 +30,7 @@ public sealed class AdminUserDto
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
+    [JsonPropertyName("alias")] public string? Alias { get; set; }
     [JsonPropertyName("role")] public string Role { get; set; } = "user";
     [JsonPropertyName("is_disabled")] public bool IsDisabled { get; set; }
     [JsonPropertyName("created_at")] public DateTime CreatedAt { get; set; }
