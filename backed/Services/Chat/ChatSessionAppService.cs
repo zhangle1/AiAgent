@@ -33,6 +33,10 @@ public sealed class ChatSessionAppService : IDynamicApiController
     public async Task<IActionResult> Rename(string sessionId, [FromBody] RenameChatSessionRequest request, CancellationToken cancellationToken)
         => await _sessions.RenameAsync(await RequireUser(cancellationToken), sessionId, request.Title, cancellationToken) ? new OkObjectResult(new { ok = true }) : new NotFoundObjectResult(new { message = "会话不存在。" });
 
+    [HttpPost("{sessionId}/archive")]
+    public async Task<IActionResult> Archive(string sessionId, CancellationToken cancellationToken)
+        => await _sessions.ArchiveAsync(await RequireUser(cancellationToken), sessionId, cancellationToken) ? new OkObjectResult(new { archived = true }) : new NotFoundObjectResult(new { message = "会话不存在或已归档。" });
+
     [HttpPut("reorder")]
     public async Task<IActionResult> Reorder([FromBody] ReorderChatSessionsRequest request, CancellationToken cancellationToken)
         => await _sessions.ReorderAsync(await RequireUser(cancellationToken), request.SessionIds, cancellationToken) ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = "会话排序数据无效。" });

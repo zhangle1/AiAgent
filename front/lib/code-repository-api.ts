@@ -7,6 +7,9 @@ import type {
   CodeRepositorySaveRequest,
   GitOperationResult,
   GitWorkspaceStatus,
+  GitWorkspaceBranches,
+  GitWorkspaceDiff,
+  GitDiffComparison,
   CodeRepositoryHealth,
   ConfiguredCodeFile,
 } from "@/lib/code-repository-types";
@@ -42,6 +45,22 @@ export async function getCodeProjects(): Promise<CodeProject[]> {
   return parseJson<CodeProject[]>(await fetch("/api/v1/code-repositories/projects", { cache: "no-store" }));
 }
 
+export type ResolvedCodeFileReference = {
+  repository_name: string;
+  file_path: string;
+  line?: number | null;
+};
+
+export async function resolveProjectCodeFileReference(projectId: number, reference: string): Promise<ResolvedCodeFileReference> {
+  return parseJson<ResolvedCodeFileReference>(
+    await fetch(`/api/v1/code-repositories/projects/${projectId}/resolve-file-reference`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reference }),
+    }),
+  );
+}
+
 export async function createCodeProject(payload: CodeProjectSaveRequest): Promise<CodeProject> {
   return parseJson<CodeProject>(await fetch("/api/v1/code-repositories/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
 }
@@ -66,6 +85,17 @@ export async function browseCodeRepositoryFiles(rootPath: string, kind: "solutio
   if (path) query.set("path", path);
   return parseJson<CodeRepositoryDirectoryBrowser>(
     await fetch(`/api/v1/code-repositories/browse/files?${query.toString()}`, { cache: "no-store" }),
+  );
+}
+
+export async function uploadCodeRepositoryFile(rootPath: string, directoryPath: string, file: File, overwrite: boolean): Promise<{ name: string; path: string }> {
+  const body = new FormData();
+  body.set("root_path", rootPath);
+  body.set("path", directoryPath);
+  body.set("file", file);
+  body.set("overwrite", String(overwrite));
+  return parseJson<{ name: string; path: string }>(
+    await fetch("/api/v1/code-repositories/browse/files/upload", { method: "POST", body }),
   );
 }
 
@@ -158,6 +188,10 @@ export async function readChatConfiguredCodeFile(name: string, path: string): Pr
 export async function writeChatConfiguredCodeFile(name: string, payload: { path: string; content: string; expected_sha256: string }): Promise<{ ok: boolean; path: string; sha256: string }> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/chat-configured-file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })); }
 
 export async function getCodeRepositoryGitStatus(name: string): Promise<GitWorkspaceStatus> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/status`, { cache: "no-store" })); }
+export async function getCodeRepositoryGitBranches(name: string): Promise<GitWorkspaceBranches> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/branches`, { cache: "no-store" })); }
+export async function getCodeRepositoryGitDiff(name: string, comparison: GitDiffComparison): Promise<GitWorkspaceDiff> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/diff?comparison=${comparison}`, { cache: "no-store" })); }
+export async function checkoutCodeRepositoryGitBranch(name: string, branch: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/checkout`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ branch }) })); }
+export async function discardCodeRepositoryChangesAndPull(name: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/discard-and-pull`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })); }
 export async function pullCodeRepositoryGit(name: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/pull`, { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } })); }
 export async function pushCodeRepositoryGit(name: string, message: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/push`, { method: "POST", body: JSON.stringify({ message }), headers: { "Content-Type": "application/json" } })); }
 

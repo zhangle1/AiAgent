@@ -439,6 +439,7 @@ export function KnowledgeChatHome() {
                       if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id, attachments: userMessage.attachments });
                     } : undefined}
                     onOpenCodeFile={openCodeFile}
+                    projectId={selectedProjectId}
                 />
               ))}
               {sending && (
@@ -736,7 +737,7 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
-function MessageBubble({ message, onRetry, onOpenCodeFile, onPreviewImage }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onPreviewImage: (attachment: ChatImagePreview) => void }) {
+function MessageBubble({ message, onRetry, onOpenCodeFile, onPreviewImage, projectId }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
@@ -769,7 +770,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onPreviewImage }: { m
           </>
         ) : (
           <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">
-            {message.content ? <MarkdownMessage content={message.content} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}
+            {message.content ? <MarkdownMessage content={message.content} projectId={projectId} onOpenCodeFile={onOpenCodeFile} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}
           </div>
         )}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (

@@ -98,6 +98,8 @@ public sealed class CodexChatService : ICodexChatService
                     : "Codex 已完成，未检测到文件修改。";
             }
 
+            answer = AppendModifiedFileLinks(answer, result.CompletedFiles);
+
             await EmitAsync(onEvent, new AgentStreamEvent
             {
                 Type = "done",
@@ -371,6 +373,16 @@ public sealed class CodexChatService : ICodexChatService
     }
 
     private static string? ReadString(JsonElement root, string property) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    private static string AppendModifiedFileLinks(string answer, IEnumerable<string> filePaths)
+    {
+        var links = filePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path => $"- [{path.Replace('\\', '/')}](aiagent://code-file?path={Uri.EscapeDataString(path)})")
+            .ToList();
+        return links.Count == 0 ? answer : $"{answer}\n\n### Involved files\n{string.Join("\n", links)}";
+    }
+
     private static int EstimateTokens(string value) => string.IsNullOrWhiteSpace(value) ? 0 : Math.Max(1, (int)Math.Ceiling(value.Trim().Length / 3.6));
     private static AgentStreamEvent TraceEvent(string content) => new() { Type = "tool", Content = content, ModelId = "codex", Model = "Codex", Metadata = AgentMetadata() };
     private static Dictionary<string, object?> AgentMetadata() => new() { ["agent"] = "codex" };

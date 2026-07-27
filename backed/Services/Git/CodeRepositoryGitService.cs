@@ -6,6 +6,10 @@ namespace AiAgent.Backend.Services.Git;
 public interface ICodeRepositoryGitService
 {
     Task<GitWorkspaceStatus> StatusAsync(string repositoryName, CancellationToken cancellationToken);
+    Task<GitWorkspaceBranches> BranchesAsync(string repositoryName, CancellationToken cancellationToken);
+    Task<GitWorkspaceDiff> DiffAsync(string repositoryName, string? comparison, CancellationToken cancellationToken);
+    Task<GitOperationResult> CheckoutAsync(string repositoryName, string branch, CancellationToken cancellationToken);
+    Task<GitOperationResult> DiscardChangesAndPullAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitOperationResult> PullAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitOperationResult> CommitAndPushAsync(string repositoryName, string? message, CancellationToken cancellationToken);
 }
@@ -26,6 +30,30 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
     {
         var repository = Find(repositoryName);
         return await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken);
+    }
+
+    public async Task<GitWorkspaceBranches> BranchesAsync(string repositoryName, CancellationToken cancellationToken)
+    {
+        var repository = Find(repositoryName);
+        return await _git.BranchesAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken);
+    }
+
+    public async Task<GitWorkspaceDiff> DiffAsync(string repositoryName, string? comparison, CancellationToken cancellationToken)
+    {
+        var repository = Find(repositoryName);
+        return await _git.DiffAsync($"repository:{repository.Id}", repository.RootPath, comparison, cancellationToken);
+    }
+
+    public async Task<GitOperationResult> CheckoutAsync(string repositoryName, string branch, CancellationToken cancellationToken)
+    {
+        var repository = Find(repositoryName);
+        return await _git.CheckoutAsync($"repository:{repository.Id}", repository.RootPath, branch, cancellationToken);
+    }
+
+    public async Task<GitOperationResult> DiscardChangesAndPullAsync(string repositoryName, CancellationToken cancellationToken)
+    {
+        var repository = Find(repositoryName);
+        return await _git.DiscardChangesAndPullAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken);
     }
 
     public async Task<GitOperationResult> PullAsync(string repositoryName, CancellationToken cancellationToken)

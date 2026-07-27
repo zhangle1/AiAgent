@@ -22,6 +22,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export async function listSessions(): Promise<SessionSummary[]> { return (await request<{ sessions: SessionSummary[] }>("/api/v1/sessions/list?limit=100")).sessions; }
 export function getSession(id: string) { return request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(id)}`); }
 export function deleteSession(id: string) { return request<{ deleted: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+export function archiveSession(id: string) { return request<{ archived: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}/archive`, { method: "POST" }); }
 export function renameSession(id: string, title: string) { return request<{ ok: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ title }) }); }
 export function reorderSessions(sessionIds: string[]) { return request<{ ok: boolean }>("/api/v1/sessions/reorder", { method: "PUT", body: JSON.stringify({ session_ids: sessionIds }) }); }
 export function updateSessionMetadata(id: string, metadata: { priority?: SessionPriority; is_pinned?: boolean }) { return request<{ ok: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}/meta`, { method: "PATCH", body: JSON.stringify(metadata) }); }

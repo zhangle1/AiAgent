@@ -111,6 +111,9 @@ BEGIN
         ALTER TABLE dbo.ai_chat_session ADD IsPinned BIT NULL;
     ELSE IF COLUMNPROPERTY(OBJECT_ID(N'dbo.ai_chat_session'), N'IsPinned', 'AllowsNull') = 0
         ALTER TABLE dbo.ai_chat_session ALTER COLUMN IsPinned BIT NULL;
+
+    IF COL_LENGTH(N'dbo.ai_chat_session', N'IsArchived') IS NULL
+        ALTER TABLE dbo.ai_chat_session ADD IsArchived BIT NOT NULL CONSTRAINT DF_ai_chat_session_IsArchived DEFAULT 0;
 END
 """);
     }

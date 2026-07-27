@@ -344,6 +344,12 @@ public sealed class CodeRepositoryGitPushRequest
     public string? Message { get; set; }
 }
 
+public sealed class CodeRepositoryGitCheckoutRequest
+{
+    [JsonPropertyName("branch")]
+    public string Branch { get; set; } = string.Empty;
+}
+
 /// <summary>
 /// Starts an authenticated HTTPS clone into an allowed local directory.
 /// </summary>
@@ -372,6 +378,30 @@ public sealed class CodeRepositoryFileWriteRequest
 
     [JsonPropertyName("expected_sha256")]
     public string? ExpectedSha256 { get; set; }
+}
+
+/// <summary>
+/// An untrusted file reference emitted by a chat agent.
+/// </summary>
+public sealed class CodeRepositoryFileReferenceResolveRequest
+{
+    [JsonPropertyName("reference")]
+    public string Reference { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// A file reference resolved within one registered code repository.
+/// </summary>
+public sealed class CodeRepositoryFileReferenceDto
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("file_path")]
+    public string FilePath { get; set; } = string.Empty;
+
+    [JsonPropertyName("line")]
+    public int? Line { get; set; }
 }
 
 public sealed class CodeRepositoryHealthDto

@@ -15,6 +15,7 @@ public interface IChatSessionService
     Task<List<ChatSessionSummaryDto>> ListAsync(AuthenticatedUser user, int limit, CancellationToken cancellationToken);
     Task<ChatSessionDetailDto?> GetAsync(AuthenticatedUser user, string sessionId, CancellationToken cancellationToken);
     Task<bool> RenameAsync(AuthenticatedUser user, string sessionId, string title, CancellationToken cancellationToken);
+    Task<bool> ArchiveAsync(AuthenticatedUser user, string sessionId, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(AuthenticatedUser user, string sessionId, CancellationToken cancellationToken);
     Task<bool> ReorderAsync(AuthenticatedUser user, IReadOnlyList<string> sessionIds, CancellationToken cancellationToken);
     Task<bool> UpdateMetadataAsync(AuthenticatedUser user, string sessionId, UpdateChatSessionMetaRequest request, CancellationToken cancellationToken);
@@ -68,7 +69,7 @@ public sealed class ChatSessionService : IChatSessionService
 
     public Task<List<ChatSessionSummaryDto>> ListAsync(AuthenticatedUser user, int limit, CancellationToken cancellationToken)
     {
-        var sessions = _db.Queryable<AiChatSession>().Where(x => x.UserId == user.Id && !x.IsDeleted).OrderByDescending(x => x.IsPinned).OrderByDescending(x => x.SortOrder).OrderByDescending(x => x.UpdatedAt).Take(limit).ToList();
+        var sessions = _db.Queryable<AiChatSession>().Where(x => x.UserId == user.Id && !x.IsDeleted && !x.IsArchived).OrderByDescending(x => x.IsPinned).OrderByDescending(x => x.SortOrder).OrderByDescending(x => x.UpdatedAt).Take(limit).ToList();
         var ids = sessions.Select(x => x.Id).ToList();
         var messages = ids.Count == 0 ? new List<AiChatMessage>() : _db.Queryable<AiChatMessage>().Where(x => ids.Contains(x.SessionId)).OrderByDescending(x => x.Id).ToList();
         var projectIds = sessions.Where(x => x.CodeProjectId.HasValue).Select(x => x.CodeProjectId!.Value).Distinct().ToList();
@@ -117,6 +118,17 @@ public sealed class ChatSessionService : IChatSessionService
     public Task<bool> DeleteAsync(AuthenticatedUser user, string sessionId, CancellationToken cancellationToken)
     {
         var count = _db.Updateable<AiChatSession>().SetColumns(x => x.IsDeleted == true).Where(x => x.Id == sessionId && x.UserId == user.Id && !x.IsDeleted).ExecuteCommand();
+        return Task.FromResult(count > 0);
+    }
+
+    public Task<bool> ArchiveAsync(AuthenticatedUser user, string sessionId, CancellationToken cancellationToken)
+    {
+        var count = _db.Updateable<AiChatSession>()
+            .SetColumns(x => x.IsArchived == true)
+            .SetColumns(x => x.IsPinned == false)
+            .SetColumns(x => x.UpdatedAt == DateTime.UtcNow)
+            .Where(x => x.Id == sessionId && x.UserId == user.Id && !x.IsDeleted && !x.IsArchived)
+            .ExecuteCommand();
         return Task.FromResult(count > 0);
     }
 
@@ -188,7 +200,7 @@ public sealed class ChatSessionService : IChatSessionService
         if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 64) sessionId = Guid.NewGuid().ToString("N");
         request.SessionId = sessionId;
         var session = _db.Queryable<AiChatSession>().First(x => x.Id == sessionId && !x.IsDeleted);
-        if (session != null && session.UserId == user.Id)
+        if (session != null && session.UserId == user.Id && !session.IsArchived)
         {
             session.CodeProjectId = ResolveProjectId(user, request.CodeProjectId);
             ValidateRepositoryScope(user, session.CodeProjectId, request.CodeRepositoryNames);

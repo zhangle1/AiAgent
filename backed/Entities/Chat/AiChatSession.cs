@@ -29,6 +29,8 @@ public sealed class AiChatSession
     [SugarColumn(IsNullable = true)]
     public bool? IsPinned { get; set; }
 
+    public bool IsArchived { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public bool IsDeleted { get; set; }

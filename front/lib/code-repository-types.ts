@@ -84,7 +84,10 @@ export type CodeProjectSaveRequest = {
   description?: string;
 };
 
-export type GitWorkspaceStatus = { is_repository: boolean; branch?: string | null; changes: string[]; ahead: number; behind: number; output: string };
+export type GitWorkspaceStatus = { is_repository: boolean; branch?: string | null; remote_branch?: string | null; remote_name?: string | null; changes: string[]; ahead: number; behind: number; ahead_files: number; behind_files: number; remote_refresh_error?: string | null; output: string };
 export type GitOperationResult = { ok: boolean; action: string; output: string; status: GitWorkspaceStatus };
+export type GitWorkspaceBranches = { current_branch?: string | null; local_branches: string[]; remote_branches: string[] };
+export type GitDiffComparison = "working" | "push" | "pull";
+export type GitWorkspaceDiff = { comparison: GitDiffComparison; remote_branch?: string | null; file_count: number; is_truncated: boolean; content: string; message?: string | null };
 export type CodeRepositoryHealth = { root_exists: boolean; project_match: boolean; is_git_repository: boolean; branch?: string | null; solution_files: Array<{ path: string; exists: boolean }>; configuration_files: Array<{ path: string; exists: boolean }>; messages: string[] };
 export type ConfiguredCodeFile = { path: string; content: string; sha256: string; updated_at: string };

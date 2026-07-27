@@ -1,9 +1,11 @@
 using AiAgent.Backend.Dtos.CodeRepository;
 using AiAgent.Backend.Entities.CodeRepository;
+using Microsoft.AspNetCore.Http;
 using SqlSugar;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AiAgent.Backend.Services.CodeRepository;
 
@@ -28,6 +30,8 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryDirectoryBrowserDto BrowseFiles(string rootPath, string? path, string kind);
 
+    Task<CodeRepositoryBrowserFileDto> UploadFileAsync(string rootPath, string? directoryPath, IFormFile file, bool overwrite, CancellationToken cancellationToken = default);
+
     CodeRepositoryInspectionDto Inspect(string rootPath);
 
     CodeRepositoryDto Create(CodeRepositorySaveRequest request);
@@ -46,6 +50,8 @@ public interface ICodeRepositoryManager
 
     object WriteChatConfiguredFile(string name, CodeRepositoryFileWriteRequest request);
 
+    CodeRepositoryFileReferenceDto? ResolveProjectFileReference(long projectId, string reference);
+
     (string FilePath, string DownloadName) GetPackageArchive(string name, string archiveName);
 
     void Delete(string name);
@@ -57,6 +63,8 @@ public interface ICodeRepositoryManager
 public sealed class CodeRepositoryManager : ICodeRepositoryManager
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const long MaxUploadedFileBytes = 50L * 1024 * 1024;
+    private static readonly Regex TrailingLineReference = new(@"(?:(?:#L)|(?::))(?<line>[1-9]\d{0,8})$", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private readonly ISqlSugarClient _db;
     private readonly List<string> _allowedRoots;
@@ -247,6 +255,56 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     }
 
     /// <summary>
+    /// Saves a user-selected file into the currently browsed repository directory.
+    /// The target is always constrained to the supplied repository root.
+    /// </summary>
+    public async Task<CodeRepositoryBrowserFileDto> UploadFileAsync(string rootPath, string? directoryPath, IFormFile file, bool overwrite, CancellationToken cancellationToken = default)
+    {
+        if (file is null || file.Length <= 0) throw new ArgumentException("请选择一个非空文件。", nameof(file));
+        if (file.Length > MaxUploadedFileBytes) throw new ArgumentException("上传文件不能超过 50 MB。", nameof(file));
+
+        var root = NormalizeAndValidatePath(rootPath);
+        var directory = string.IsNullOrWhiteSpace(directoryPath) ? root : Path.GetFullPath(directoryPath);
+        if (!Directory.Exists(directory) || !IsPathWithin(root, directory))
+            throw new InvalidOperationException("上传目录不在当前代码库内。");
+
+        var fileName = Path.GetFileName(file.FileName);
+        if (string.IsNullOrWhiteSpace(fileName)
+            || fileName is "." or ".."
+            || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || file.FileName.Contains('/')
+            || file.FileName.Contains('\\'))
+            throw new ArgumentException("上传文件名无效。", nameof(file));
+
+        var targetPath = Path.GetFullPath(Path.Combine(directory, fileName));
+        if (!IsPathWithin(root, targetPath) || Directory.Exists(targetPath))
+            throw new InvalidOperationException("上传目标无效。");
+        if (File.Exists(targetPath) && !overwrite)
+            throw new InvalidOperationException("当前目录已有同名文件；勾选“覆盖同名文件”后再上传。");
+
+        var temporaryPath = Path.Combine(directory, $".aiagent-upload-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await file.CopyToAsync(output, cancellationToken);
+            }
+
+            File.Move(temporaryPath, targetPath, overwrite);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+
+        return new CodeRepositoryBrowserFileDto
+        {
+            Name = fileName,
+            Path = Path.GetRelativePath(root, targetPath).Replace('\\', '/')
+        };
+    }
+
+    /// <summary>
     /// Checks a directory and detects its basic repository metadata without indexing source files.
     /// </summary>
     public CodeRepositoryInspectionDto Inspect(string rootPath)
@@ -389,6 +447,58 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         return WriteConfiguredFile(entity, request, metadata.ChatEditableConfigurationFiles);
     }
 
+    /// <summary>
+    /// Resolves an agent-provided path only when it belongs to a unique repository in the selected project.
+    /// </summary>
+    public CodeRepositoryFileReferenceDto? ResolveProjectFileReference(long projectId, string reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) throw new ArgumentException("A file reference is required.", nameof(reference));
+
+        var project = FindProject(projectId);
+        var repositories = _db.Queryable<AiCodeRepository>()
+            .Where(item => item.ProjectId == projectId && !item.IsDeleted)
+            .ToList();
+        if (repositories.Count == 0) return null;
+
+        var parsed = ParseFileReference(reference);
+        if (string.IsNullOrWhiteSpace(parsed.Path)) return null;
+
+        var matches = new List<(AiCodeRepository Repository, string FullPath)>();
+        foreach (var repository in repositories)
+        {
+            var match = TryResolveFileInRepository(project.RootPath, repository.RootPath, parsed.Path);
+            if (match is not null) matches.Add((repository, match));
+        }
+
+        if (matches.Count == 0 && !parsed.Path.Contains('/') && !parsed.Path.Contains('\\'))
+        {
+            foreach (var repository in repositories)
+            {
+                foreach (var match in FindFilesByName(repository.RootPath, parsed.Path))
+                {
+                    matches.Add((repository, match));
+                    if (matches.Count > 1) break;
+                }
+                if (matches.Count > 1) break;
+            }
+        }
+
+        var distinct = matches
+            .GroupBy(item => item.FullPath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(2)
+            .ToList();
+        if (distinct.Count != 1) return null;
+
+        var resolved = distinct[0];
+        return new CodeRepositoryFileReferenceDto
+        {
+            RepositoryName = resolved.Repository.Name,
+            FilePath = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(resolved.Repository.RootPath)), resolved.FullPath).Replace('\\', '/'),
+            Line = parsed.Line
+        };
+    }
+
     private object ReadConfiguredFile(AiCodeRepository entity, string path, IReadOnlyCollection<string> allowedFiles)
     {
         var normalized = NormalizeConfiguredPath(entity.RootPath, path, allowedFiles);
@@ -447,6 +557,80 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     {
         var project = _db.Queryable<AiCodeProject>().Where(x => x.Id == projectId && !x.IsDeleted).First();
         return project ?? throw new InvalidOperationException("The selected code project does not exist.");
+    }
+
+    private static (string Path, int? Line) ParseFileReference(string reference)
+    {
+        var value = Uri.UnescapeDataString(reference.Trim()).Trim('`', '"', '\'', ' ', '\t', '\r', '\n');
+        var match = TrailingLineReference.Match(value);
+        int? line = match.Success && int.TryParse(match.Groups["line"].Value, out var parsedLine) ? parsedLine : null;
+        if (match.Success) value = value[..match.Index];
+        return (value.TrimEnd('/', '\\'), line);
+    }
+
+    private static string? TryResolveFileInRepository(string projectRootPath, string repositoryRootPath, string referencePath)
+    {
+        try
+        {
+            var repositoryRoot = GetResolvedPath(new DirectoryInfo(repositoryRootPath));
+            if (!Directory.Exists(repositoryRoot)) return null;
+
+            var candidates = Path.IsPathRooted(referencePath)
+                ? [Path.GetFullPath(referencePath)]
+                : new[]
+                {
+                    Path.GetFullPath(Path.Combine(repositoryRoot, referencePath)),
+                    Path.GetFullPath(Path.Combine(projectRootPath, referencePath))
+                };
+            foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(candidate)) continue;
+                var resolved = GetResolvedPath(new FileInfo(candidate));
+                if (IsPathWithin(repositoryRoot, resolved)) return resolved;
+            }
+        }
+        catch (ArgumentException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return null;
+    }
+
+    private static IEnumerable<string> FindFilesByName(string repositoryRootPath, string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) yield break;
+        var repositoryRoot = GetResolvedPath(new DirectoryInfo(repositoryRootPath));
+        IEnumerable<string> candidates;
+        try
+        {
+            candidates = Directory.EnumerateFiles(repositoryRoot, fileName, SearchOption.AllDirectories)
+                .Where(path => !path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(part => part is ".git" or "node_modules" or "bin" or "obj"))
+                .Take(2)
+                .ToList();
+        }
+        catch (IOException) { yield break; }
+        catch (UnauthorizedAccessException) { yield break; }
+
+        foreach (var candidate in candidates)
+        {
+            var resolved = GetResolvedPath(new FileInfo(candidate));
+            if (IsPathWithin(repositoryRoot, resolved)) yield return resolved;
+        }
+    }
+
+    private static string GetResolvedPath(FileSystemInfo item)
+    {
+        try
+        {
+            return item.ResolveLinkTarget(true)?.FullName ?? item.FullName;
+        }
+        catch (IOException)
+        {
+            return item.FullName;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return item.FullName;
+        }
     }
 
     private CodeRepositoryInspectionDto InspectCore(string rootPath)

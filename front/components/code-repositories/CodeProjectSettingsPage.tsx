@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, Upload, X } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
-import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, writeConfiguredCodeFile } from "@/lib/code-repository-api";
+import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, uploadCodeRepositoryFile, writeConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, CodeRepositoryDirectoryBrowser, CodeRepositoryHealth, CodeRepositoryInspection } from "@/lib/code-repository-types";
 import { listGitAccounts, type GitAccount } from "@/lib/git-account-api";
 import { getCodeProjectRuntime, saveCodeRuntimeProfile } from "@/lib/code-runtime-api";
@@ -52,6 +52,7 @@ export function CodeProjectSettingsPage() {
 
   const selectedProject = useMemo(() => projects.find((item) => item.id === selectedProjectId) ?? null, [projects, selectedProjectId]);
   const selectedConfigs = repositoryDraft.configurationFiles;
+  const repositoryBrowseStartPath = repositoryDraft.rootPath.trim() || projects.find((item) => item.id === repositoryDraft.projectId)?.root_path;
 
   useEffect(() => { void reload(); }, []);
 
@@ -174,7 +175,7 @@ export function CodeProjectSettingsPage() {
     try { setFileBrowser(await browseCodeRepositoryFiles(repositoryDraft.rootPath.trim(), kind, path)); } catch (value) { setError(message(value)); }
   }
 
-  function chooseFile(path: string) {
+  function addFileToDraft(path: string) {
     if (fileBrowserTarget === "solution") {
       setRepositoryDraft((item) => ({ ...item, solutionFiles: item.solutionFiles.includes(path) ? item.solutionFiles : [...item.solutionFiles, path] }));
     } else if (fileBrowserTarget === "configuration") {
@@ -186,6 +187,10 @@ export function CodeProjectSettingsPage() {
       setRepositoryDraft((item) => ({ ...item, configurationFiles: item.configurationFiles.includes(path) ? item.configurationFiles : [...item.configurationFiles, path] }));
       setRuntimeDraft((item) => ({ ...item, role: "frontend", entryPath: path, runScript: item.role === "frontend" ? item.runScript : "dev", testScript: item.role === "frontend" ? item.testScript : "test", preferredPort: item.role === "frontend" ? item.preferredPort : "4300", isPreviewEnabled: true }));
     }
+  }
+
+  function chooseFile(path: string) {
+    addFileToDraft(path);
     setFileBrowser(null);
   }
 
@@ -258,14 +263,14 @@ export function CodeProjectSettingsPage() {
       </aside>
       <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {mode === "project" ? <ProjectForm draft={projectDraft} busy={busy} onChange={setProjectDraft} onBrowse={() => void openBrowser("project", projectDraft.rootPath || undefined)} onSave={() => void saveProject()} onDelete={() => projectDraft.id && selectedProject && void removeProject(selectedProject)} /> : <>
-          <RepositoryForm draft={repositoryDraft} projects={projects} inspection={inspection} health={health} busy={busy} editing={Boolean(selectedRepository)} canPackage={Boolean(selectedRepository)} selectedConfigs={selectedConfigs} onChange={setRepositoryDraft} onInspect={() => void inspectRepository()} onBrowse={() => void openBrowser("repository", repositoryDraft.rootPath || undefined)} onBrowseFile={(target) => void openFileBrowser(target)} onSave={() => void saveRepository()} onDelete={() => selectedRepository && void removeRepository(selectedRepository)} onHealth={() => void checkHealth()} onOpenFile={(path) => void openFile(path)} onPackage={() => void startPackage()} />
+          <RepositoryForm draft={repositoryDraft} projects={projects} inspection={inspection} health={health} busy={busy} editing={Boolean(selectedRepository)} canPackage={Boolean(selectedRepository)} selectedConfigs={selectedConfigs} onChange={setRepositoryDraft} onInspect={() => void inspectRepository()} onBrowse={() => void openBrowser("repository", repositoryBrowseStartPath)} onBrowseFile={(target) => void openFileBrowser(target)} onSave={() => void saveRepository()} onDelete={() => selectedRepository && void removeRepository(selectedRepository)} onHealth={() => void checkHealth()} onOpenFile={(path) => void openFile(path)} onPackage={() => void startPackage()} />
           {selectedRepository && <RuntimeDebugSection repository={selectedRepository} draft={runtimeDraft} busy={busy} onChange={setRuntimeDraft} onSelectRole={(role) => void loadRuntimeProfile(selectedRepository, role)} onBrowseEntry={() => void openFileBrowser(runtimeDraft.role === "frontend" ? "frontendEntry" : "backendEntry")} onSave={() => void saveRuntimeProfile()} />}
         </>}
         {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       </div>
     </div>
     {browser && <DirectoryPicker browser={browser} onClose={() => setBrowser(null)} onOpen={(path) => void openBrowser(browserTarget, path)} onChoose={() => { if (browserTarget === "project") setProjectDraft((item) => ({ ...item, rootPath: browser.path })); else setRepositoryDraft((item) => ({ ...item, rootPath: browser.path })); setBrowser(null); }} />}
-    {fileBrowser && <FilePicker browser={fileBrowser} target={fileBrowserTarget} onClose={() => setFileBrowser(null)} onOpen={(path) => void openFileBrowser(fileBrowserTarget, path)} onChoose={chooseFile} />}
+    {fileBrowser && <FilePicker browser={fileBrowser} rootPath={repositoryDraft.rootPath} target={fileBrowserTarget} onClose={() => setFileBrowser(null)} onOpen={(path) => void openFileBrowser(fileBrowserTarget, path)} onRefresh={(path) => openFileBrowser(fileBrowserTarget, path)} onChoose={chooseFile} onUploaded={addFileToDraft} />}
     {cloneOpen && <CloneDialog projects={projects} accounts={accounts} draft={cloneDraft} lines={cloneLines} busy={busy} onChange={setCloneDraft} onClose={() => !busy && setCloneOpen(false)} onSubmit={() => void cloneRepository()} />}
     {terminalOpen && <TerminalDialog title={terminalTitle} lines={cloneLines} busy={busy} onClose={() => !busy && setTerminalOpen(false)} />}
     {fileDraft && <FileEditor file={fileDraft} busy={busy} onChange={setFileDraft} onClose={() => !busy && setFileDraft(null)} onSave={() => void saveFile()} />}
@@ -388,16 +393,49 @@ function toRuntimeDraft(profile: CodeRuntimeProfile | undefined, role: "frontend
 function FormHeader({ eyebrow, title, description, danger }: { eyebrow: string; title: string; description: string; danger?: () => void }) { return <header className="mb-6 flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-blue-600">{eyebrow}</p><h2 className="mt-1 text-lg font-semibold text-slate-950">{title}</h2><p className="mt-1 text-xs text-slate-500">{description}</p></div>{danger && <button onClick={danger} className="secondary-button border-red-200 text-red-700 hover:bg-red-50"><Trash2 size={14}/>删除</button>}</header>; }
 function PathInput({ value, onChange, onBrowse, placeholder }: { value: string; onChange: (value: string) => void; onBrowse: () => void; placeholder: string }) { return <div className="flex min-w-0 flex-1 gap-2"><input className={`${input} min-w-0 flex-1 font-mono`} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder}/><button onClick={onBrowse} className="secondary-button mt-1.5 shrink-0 px-3" aria-label="浏览目录"><FolderOpen size={15}/></button></div>; }
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) { return <div className="mt-4 text-xs font-medium text-slate-700"><span>{label}</span>{hint && <span className="mt-1 block font-normal leading-5 text-slate-400">{hint}</span>}{children}</div>; }
-function FileSelection({ title, empty, items, selected, onToggle, onBrowse }: { title: string; empty: string; items: string[]; selected: string[]; onToggle: (value: string) => void; onBrowse?: () => void }) { return <div className="mt-4"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-slate-700">{title}</span>{onBrowse && <button type="button" onClick={onBrowse} className="secondary-button px-2.5 py-1 text-xs"><FolderOpen size={14}/>选择文件</button>}</div>{items.length ? <div className="mt-2 grid gap-1 sm:grid-cols-2">{items.map((item) => <label key={item} className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md bg-white px-2 py-1.5 text-xs text-slate-600"><input type="checkbox" checked={selected.includes(item)} onChange={() => onToggle(item)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/><span className="truncate font-mono" title={item}>{item}</span></label>)}</div> : <p className="mt-2 text-xs text-slate-400">{empty}</p>}</div>; }
+function FileSelection({ title, empty, items, selected, onToggle, onBrowse }: { title: string; empty: string; items: string[]; selected: string[]; onToggle: (value: string) => void; onBrowse?: () => void }) {
+  const options = [...new Set([...items, ...selected])];
+  return <div className="mt-4"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-slate-700">{title}</span>{onBrowse && <button type="button" onClick={onBrowse} className="secondary-button px-2.5 py-1 text-xs"><FolderOpen size={14}/>选择文件</button>}</div>{options.length ? <div className="mt-2 grid gap-1 sm:grid-cols-2">{options.map((item) => <label key={item} className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md bg-white px-2 py-1.5 text-xs text-slate-600"><input type="checkbox" checked={selected.includes(item)} onChange={() => onToggle(item)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/><span className="truncate font-mono" title={item}>{item}</span></label>)}</div> : <p className="mt-2 text-xs text-slate-400">{empty}</p>}</div>;
+}
 function ConfigurationFileSelection({ candidates, selected, chatEditable, onBrowse, onAdd, onRemove, onChatEditable }: { candidates: string[]; selected: string[]; chatEditable: string[]; onBrowse: () => void; onAdd: (path: string) => void; onRemove: (path: string) => void; onChatEditable: (path: string, enabled: boolean) => void }) {
   const available = candidates.filter((path) => !selected.includes(path));
   return <section className="mt-5 rounded-xl border border-blue-100 bg-white p-3.5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800"><FilePenLine size={15} className="text-blue-600"/>配置文件</div><p className="mt-1 text-[11px] leading-5 text-slate-500">添加后可供运行、打包与代码库编辑使用；单独开启“聊天可修改”才会出现在聊天菜单。</p></div><button type="button" onClick={onBrowse} className="secondary-button shrink-0 px-2.5 py-1 text-xs"><FolderOpen size={14}/>添加文件</button></div>{selected.length ? <div className="mt-3 space-y-1.5">{selected.map((path) => <div key={path} className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2"><FileCog size={14} className="shrink-0 text-slate-400"/><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-700" title={path}>{path}</span><label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-blue-700"><input type="checkbox" checked={chatEditable.includes(path)} onChange={(event) => onChatEditable(path, event.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>聊天可改</label><button type="button" onClick={() => onRemove(path)} className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`移除配置文件：${path}`} title="从代码库配置中移除，不删除磁盘文件"><Trash2 size={13}/></button></div>)}</div> : <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-400">尚未添加配置文件。可选择 package.json、.env、appsettings 等。</p>}{available.length > 0 && <div className="mt-3 border-t border-slate-100 pt-3"><p className="text-[11px] text-slate-400">已识别，可快速添加</p><div className="mt-2 flex flex-wrap gap-1.5">{available.slice(0, 12).map((path) => <button type="button" key={path} onClick={() => onAdd(path)} className="max-w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title={path}>+ {path}</button>)}</div></div>}</section>;
 }
 function Footer({ busy, onSave, label }: { busy: boolean; onSave: () => void; label: string }) { return <div className="mt-6 flex justify-end border-t border-slate-100 pt-4"><button onClick={onSave} disabled={busy} className="primary-button">{busy ? <Loader2 size={14} className="animate-spin"/> : <Check size={14}/>} {label}</button></div>; }
-function FilePicker({ browser, target, onClose, onOpen, onChoose }: { browser: CodeRepositoryDirectoryBrowser; target: FileBrowserTarget; onClose: () => void; onOpen: (path?: string) => void; onChoose: (path: string) => void }) {
+function FilePicker({ browser, rootPath, target, onClose, onOpen, onRefresh, onChoose, onUploaded }: { browser: CodeRepositoryDirectoryBrowser; rootPath: string; target: FileBrowserTarget; onClose: () => void; onOpen: (path?: string) => void; onRefresh: (path?: string) => Promise<void>; onChoose: (path: string) => void; onUploaded: (path: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [overwrite, setOverwrite] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const files = (browser.files ?? []).filter((file) => target === "backendEntry" ? file.path.toLowerCase().endsWith(".csproj") : target === "frontendEntry" ? file.path.toLowerCase().endsWith("package.json") : true);
   const title = target === "backendEntry" ? "选择 C# API 启动工程" : target === "frontendEntry" ? "选择前端 package.json" : target === "solution" ? "选择解决方案或工程文件" : "选择配置文件";
-  return <Modal title={title} onClose={onClose}><p className="truncate font-mono text-xs text-slate-500">{browser.path}</p><p className="mt-1 text-xs leading-5 text-slate-500">{target === "backendEntry" ? "只会显示 .csproj；请选择 Web/API 或 OutputType=Exe 工程。" : target === "frontendEntry" ? "只会显示 package.json。" : "进入文件夹后，单击一个文件即可选中。"}</p><div className="workspace-scroll mt-4 max-h-72 overflow-auto rounded-lg border border-slate-200 p-2">{browser.parent_path && <button type="button" onClick={() => onOpen(browser.parent_path ?? undefined)} className="block w-full rounded px-2 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}{browser.directories.map((path) => <button type="button" key={path} onClick={() => onOpen(path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-slate-50"><FolderOpen size={15} className="text-amber-500"/>{path.split(/[\\/]/).pop()}</button>)}{files.map((file) => <button type="button" key={file.path} onClick={() => onChoose(file.path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-blue-50"><FileCog size={15} className="text-blue-500"/><span className="truncate font-mono text-xs" title={file.path}>{file.name}</span></button>)}{files.length === 0 && <p className="px-2 py-4 text-xs text-slate-400">此目录没有可选文件，请进入下级目录。</p>}</div></Modal>;
+  const accept = target === "solution" || target === "backendEntry" ? ".sln,.slnf,.csproj" : target === "frontendEntry" ? ".json" : undefined;
+  async function uploadSelectedFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploading(true); setUploadError("");
+    try {
+      const uploaded = await uploadCodeRepositoryFile(rootPath, browser.path, file, overwrite);
+      onUploaded(uploaded.path);
+      await onRefresh(browser.path);
+    } catch (value) {
+      setUploadError(message(value));
+    } finally {
+      setUploading(false);
+    }
+  }
+  return <Modal title={title} onClose={onClose}>
+    <p className="truncate font-mono text-xs text-slate-500">{browser.path}</p>
+    <p className="mt-1 text-xs leading-5 text-slate-500">{target === "backendEntry" ? "只会显示 .csproj；请选择 Web/API 或 OutputType=Exe 工程。" : target === "frontendEntry" ? "只会显示 package.json。" : "进入文件夹后，单击一个文件即可选中；也可上传到当前目录。"}</p>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5">
+      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>覆盖同名文件</label>
+      <input ref={inputRef} type="file" className="hidden" accept={accept} onChange={(event) => void uploadSelectedFile(event)}/>
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="secondary-button px-2.5 py-1 text-xs disabled:opacity-50">{uploading ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}上传文件</button>
+    </div>
+    {uploadError && <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">{uploadError}</p>}
+    <div className="workspace-scroll mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 p-2">{browser.parent_path && <button type="button" onClick={() => onOpen(browser.parent_path ?? undefined)} className="block w-full rounded px-2 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}{browser.directories.map((path) => <button type="button" key={path} onClick={() => onOpen(path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-slate-50"><FolderOpen size={15} className="text-amber-500"/>{path.split(/[\\/]/).pop()}</button>)}{files.map((file) => <button type="button" key={file.path} onClick={() => onChoose(file.path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-blue-50"><FileCog size={15} className="text-blue-500"/><span className="truncate font-mono text-xs" title={file.path}>{file.name}</span></button>)}{files.length === 0 && <p className="px-2 py-4 text-xs text-slate-400">此目录没有可选文件，请进入下级目录或上传文件。</p>}</div>
+  </Modal>;
 }
 
 function DirectoryPicker({ browser, onClose, onOpen, onChoose }: { browser: CodeRepositoryDirectoryBrowser; onClose: () => void; onOpen: (path?: string) => void; onChoose: () => void }) {

@@ -76,6 +76,46 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         return _manager.BrowseFiles(rootPath, path, kind);
     }
 
+    [HttpPost("projects/{projectId:long}/resolve-file-reference")]
+    public async Task<IActionResult> ResolveFileReference([FromRoute] long projectId, [FromBody] CodeRepositoryFileReferenceResolveRequest? request, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.GetAccessibleProjectIds(user).Contains(projectId)) return new ForbidResult();
+        try
+        {
+            var resolved = _manager.ResolveProjectFileReference(projectId, request?.Reference ?? string.Empty);
+            return resolved is null
+                ? new NotFoundObjectResult(new { message = "The referenced file is not available in this project." })
+                : new OkObjectResult(resolved);
+        }
+        catch (ArgumentException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("browse/files/upload")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadBrowseFile([FromForm(Name = "root_path")] string rootPath, [FromForm] string? path, IFormFile file, [FromForm] bool overwrite, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new OkObjectResult(await _manager.UploadFileAsync(rootPath, path, file, overwrite, cancellationToken));
+        }
+        catch (ArgumentException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("{name}/tree")]
     public object Tree([FromRoute] string name, [FromQuery] string? path) => _indexService.BrowseTree(name, path);
 
@@ -160,6 +200,18 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
 
     [HttpGet("{name}/git/status")]
     public Task<GitWorkspaceStatus> GitStatus([FromRoute] string name, CancellationToken cancellationToken) => _git.StatusAsync(name, cancellationToken);
+
+    [HttpGet("{name}/git/branches")]
+    public Task<GitWorkspaceBranches> GitBranches([FromRoute] string name, CancellationToken cancellationToken) => _git.BranchesAsync(name, cancellationToken);
+
+    [HttpGet("{name}/git/diff")]
+    public Task<GitWorkspaceDiff> GitDiff([FromRoute] string name, [FromQuery] string? comparison, CancellationToken cancellationToken) => _git.DiffAsync(name, comparison, cancellationToken);
+
+    [HttpPost("{name}/git/checkout")]
+    public Task<GitOperationResult> GitCheckout([FromRoute] string name, [FromBody] CodeRepositoryGitCheckoutRequest request, CancellationToken cancellationToken) => _git.CheckoutAsync(name, request.Branch, cancellationToken);
+
+    [HttpPost("{name}/git/discard-and-pull")]
+    public Task<GitOperationResult> GitDiscardAndPull([FromRoute] string name, CancellationToken cancellationToken) => _git.DiscardChangesAndPullAsync(name, cancellationToken);
 
     [HttpPost("{name}/git/pull")]
     public Task<GitOperationResult> GitPull([FromRoute] string name, CancellationToken cancellationToken) => _git.PullAsync(name, cancellationToken);
