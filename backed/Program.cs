@@ -118,8 +118,8 @@ builder.Services.AddSingleton<ICodeRepositoryCloneWebSocketHandler, CodeReposito
 builder.Services.AddSingleton<ICodeRepositoryPackageWebSocketHandler, CodeRepositoryPackageWebSocketHandler>();
 builder.Services.AddSingleton<ISqlSugarClient>(_ =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("Default")
-        ?? "server=124.70.221.213,1666;uid=jinmacps;pwd=1;database=AGENT;MultipleActiveResultSets=true;TrustServerCertificate=true";
+    var connectionString = builder.Configuration.GetConnectionString("Default");
+    
     return new SqlSugarScope(new ConnectionConfig
     {
         ConnectionString = connectionString,
