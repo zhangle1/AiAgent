@@ -24,7 +24,7 @@
 
 ### 1. 聊天中的代码文件定位
 
-规格文档：`CHAT_CODE_FILE_NAVIGATION_SPEC.md`
+规格文档：[聊天文件引用与右侧定位规格](CHAT_CODE_FILE_NAVIGATION_SPEC.md)
 
 - Codex app-server 结束任务后，会把已修改文件附加为内部 Markdown 文件链接。
 - 聊天回答中的常见源码路径、行内代码路径、以及模型错误生成的“文件名 + http 链接”，都会优先按代码文件处理。
@@ -106,7 +106,7 @@
 ## 新会话起始提示
 
 ```text
-请先完整阅读 E:\项目\know-why\AiAgent\NEW_CHAT_HANDOFF_2026-07-27.md。
+请先完整阅读 `handoff/NEW_CHAT_HANDOFF_2026-07-27.md`。
 确认当前 Git 状态、交接中的已交付功能和未验证项后，再处理新的需求。
 不要执行 build/compile，除非用户明确要求。
 ```

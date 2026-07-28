@@ -17,6 +17,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 前端目录：`front/`
 - 看板模板：`dashboard-templates/`
 - 架构与实施文档：`docs/`
+- 阶段规格与开发交接：`handoff/`
 
 ## 必须遵守的规则
 
@@ -95,3 +96,4 @@ inspect_dashboard_workspace
 - `README.md`：面向使用者的能力、启动和安全说明。
 - `AGENTS.md`：面向开发者与 Agent 的边界、契约和改码流程。
 - `docs/`：需要保留设计理由、实现记录或验收说明时新增专题文档。
+- `handoff/`：阶段性交接、实施快照和仍需对照的专题规格；新增或移动交接资料时更新 `handoff/README.md`。仓库顶层只保留项目入口文档，不新增零散规格或交接文件。

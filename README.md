@@ -42,6 +42,7 @@ AiAgent/
 │  └─ lib/                 # API 客户端与类型
 ├─ dashboard-templates/    # 可创建的看板模板
 ├─ docs/                   # 架构、Agent 与实施记录
+├─ handoff/                # 阶段规格与开发交接归档
 ├─ AGENTS.md               # 面向开发者和 AI Agent 的协作规则
 └─ backed/appsettings.example.json
 ```

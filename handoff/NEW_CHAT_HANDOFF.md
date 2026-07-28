@@ -177,4 +177,4 @@
 
 ### 新会话起始提示
 
-> 请先阅读 `E:\项目\know-why\AiAgent\NEW_CHAT_HANDOFF.md` 的“阶段二”部分。当前重点是：重启 AiAgent 后端后验证 C# API 的工作目录与许可证读取、验证 npm 前端停止后可重启；不要对外部 CPS 项目的许可证逻辑做绕过修改。
+> 请先阅读 `handoff/NEW_CHAT_HANDOFF.md` 的“阶段二”部分。当前重点是：重启 AiAgent 后端后验证 C# API 的工作目录与许可证读取、验证 npm 前端停止后可重启；不要对外部 CPS 项目的许可证逻辑做绕过修改。
