@@ -19,12 +19,29 @@
 
 以下截图记录当前工作台的主要交互页面，供产品验收、前端实现和后续交接时对照；图片不包含真实账号、令牌或业务数据。
 
-- [管理配置总览](docs/ui-reference/2026-07-28/01-admin-management-overview.png)
-- [项目与代码库列表](docs/ui-reference/2026-07-28/02-project-repository-list.png)
-- [管理配置卡片布局](docs/ui-reference/2026-07-28/03-admin-management-cards.png)
-- [Git 管理与远程状态](docs/ui-reference/2026-07-28/04-git-management.png)
-- [新建项目与挂载代码库](docs/ui-reference/2026-07-28/05-project-repository-create.png)
-- [聊天与右侧代码工作区](docs/ui-reference/2026-07-28/06-chat-code-workspace.png)
+### 管理配置总览
+
+<img src="docs/ui-reference/2026-07-28/01-admin-management-overview.png" alt="管理配置总览" width="720" />
+
+### 项目与代码库列表
+
+<img src="docs/ui-reference/2026-07-28/02-project-repository-list.png" alt="项目与代码库列表" width="720" />
+
+### 管理配置卡片布局
+
+<img src="docs/ui-reference/2026-07-28/03-admin-management-cards.png" alt="管理配置卡片布局" width="720" />
+
+### Git 管理与远程状态
+
+<img src="docs/ui-reference/2026-07-28/04-git-management.png" alt="Git 管理与远程状态" width="720" />
+
+### 新建项目与挂载代码库
+
+<img src="docs/ui-reference/2026-07-28/05-project-repository-create.png" alt="新建项目与挂载代码库" width="720" />
+
+### 聊天与右侧代码工作区
+
+<img src="docs/ui-reference/2026-07-28/06-chat-code-workspace.png" alt="聊天与右侧代码工作区" width="720" />
 
 ## 目录
 
