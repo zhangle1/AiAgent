@@ -57,30 +57,6 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 长列表、终端、聊天内容必须拥有独立滚动容器，不能撑破工作台布局。
 - 看板工作台相关代码在 `components/dashboard-applications/` 与 `lib/dashboard-application-api.ts`。
 
-## 看板 Agent 规则
-
-看板 AI 只操作 `dashboard_application_id` 指向的唯一工作区；绑定 Git 仓库仅用于 Git 管理，不作为同轮 AI 搜索/写入范围。
-
-修改现有看板文件必须遵循：
-
-```text
-inspect_dashboard_workspace
-→ search_dashboard_code
-→ read_dashboard_file
-→ apply_dashboard_patch (SHA-256)
-→ validate_dashboard_change
-```
-
-- 先读取再修改，禁止猜测路径。
-- 默认不能创建新文件；不要生成没有被入口引用的 `App.jsx`、组件或样式文件。
-- 多处联动的视觉修改可以对同一“已读取且 SHA 一致”的文件执行完整替换；否则使用最小精确替换。
-- 只有收到 `dashboard_change_applied` 后才能声称已写入文件；验证失败必须明确说明，不可假装成功。
-- 文件写后刷新树、打开文件和预览 iframe。
-
-详见：
-
-- `docs/dashboard-ai-editing-reliability-plan.md`
-- `docs/dashboard-ai-editing-implementation-log.md`
 
 ## Git 规则
 

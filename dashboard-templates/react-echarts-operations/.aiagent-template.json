@@ -1,6 +1,0 @@
-{
-  "id": "react-echarts-operations",
-  "name": "React ECharts 运营大屏",
-  "description": "React + Vite + ECharts，含数据集、指标、图表配置与实时刷新示例。",
-  "technology": "React 18 · Vite · ECharts"
-}
