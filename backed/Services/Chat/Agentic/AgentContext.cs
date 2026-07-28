@@ -96,7 +96,8 @@ public sealed class AgentContext
             DashboardFilePath = string.IsNullOrWhiteSpace(request.DashboardFilePath) ? null : request.DashboardFilePath.Trim(),
             DashboardWorkspaceRevision = string.IsNullOrWhiteSpace(request.DashboardWorkspaceRevision) ? null : request.DashboardWorkspaceRevision.Trim(),
             ModelId = string.IsNullOrWhiteSpace(request.ModelId) ? null : request.ModelId.Trim(),
-            TopK = Math.Clamp(request.TopK, 1, 12)
+            TopK = Math.Clamp(request.TopK, 1, 12),
+            MemoryContext = request.ServerMemoryContext ?? string.Empty
         };
     }
 

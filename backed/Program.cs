@@ -15,6 +15,7 @@ using AiAgent.Backend.Services.Settings;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Admin;
 using AiAgent.Backend.Services.Usage;
+using AiAgent.Backend.Services.Memory;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi.Models;
 using SqlSugar;
@@ -75,6 +76,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<IModelCatalogService, ModelCatalogService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();
 builder.Services.AddSingleton<IProjectAccessService, ProjectAccessService>();
+builder.Services.AddSingleton<IMemoryService, MemoryService>();
 builder.Services.AddSingleton<IAdminService, AdminService>();
 builder.Services.AddSingleton<IChatSessionService, ChatSessionService>();
 builder.Services.AddSingleton<IModelProviderOptionsService, ModelProviderOptionsService>();

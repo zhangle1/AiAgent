@@ -3,6 +3,7 @@ using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Admin;
+using AiAgent.Backend.Services.Memory;
 using SqlSugar;
 using System.Text.Json;
 
@@ -28,11 +29,13 @@ public sealed class ChatSessionService : IChatSessionService
     private readonly ISqlSugarClient _db;
     private readonly IChatImageAttachmentService _attachments;
     private readonly IProjectAccessService _projectAccess;
-    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IProjectAccessService projectAccess)
+    private readonly IMemoryService _memory;
+    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IProjectAccessService projectAccess, IMemoryService memory)
     {
         _db = db;
         _attachments = attachments;
         _projectAccess = projectAccess;
+        _memory = memory;
     }
 
     public async Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
@@ -47,13 +50,14 @@ public sealed class ChatSessionService : IChatSessionService
         session.UpdatedAt = DateTime.UtcNow;
         session.SortOrder = NextSortOrder(user.Id);
         _db.Updateable(session).UpdateColumns(x => new { x.Title, x.PreferencesJson, x.CodeProjectId, x.SortOrder, x.UpdatedAt }).ExecuteCommand();
+        await _memory.RecordObservationAsync(user, session.CodeProjectId, session.Id, "user_message", request.Message, cancellationToken);
     }
 
-    public Task RecordAssistantMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, string content, string? thinking, object? citations, string? modelId, string? model, CancellationToken cancellationToken)
+    public async Task RecordAssistantMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, string content, string? thinking, object? citations, string? modelId, string? model, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.SessionId)) return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(request.SessionId)) return;
         var session = _db.Queryable<AiChatSession>().First(x => x.Id == request.SessionId && x.UserId == user.Id && !x.IsDeleted);
-        if (session == null) return Task.CompletedTask;
+        if (session == null) return;
         _db.Insertable(new AiChatMessage
         {
             SessionId = session.Id,
@@ -64,7 +68,7 @@ public sealed class ChatSessionService : IChatSessionService
             MetadataJson = JsonSerializer.Serialize(new { model_id = modelId, model })
         }).ExecuteCommand();
         _db.Updateable<AiChatSession>().SetColumns(x => x.UpdatedAt == DateTime.UtcNow).Where(x => x.Id == session.Id).ExecuteCommand();
-        return Task.CompletedTask;
+        await _memory.RecordObservationAsync(user, session.CodeProjectId, session.Id, "assistant_message", content, cancellationToken);
     }
 
     public Task<List<ChatSessionSummaryDto>> ListAsync(AuthenticatedUser user, int limit, CancellationToken cancellationToken)

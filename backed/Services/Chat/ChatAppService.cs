@@ -2,6 +2,7 @@ using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Usage;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Memory;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
@@ -25,11 +26,12 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly IChatSessionService _sessions;
     private readonly IChatImageAttachmentService _attachments;
     private readonly IUsageStatisticsService _usage;
+    private readonly IMemoryService _memory;
 
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
@@ -37,6 +39,7 @@ public sealed class ChatAppService : IDynamicApiController
         _sessions = sessions;
         _attachments = attachments;
         _usage = usage;
+        _memory = memory;
     }
 
     /// <summary>
@@ -48,6 +51,7 @@ public sealed class ChatAppService : IDynamicApiController
         var user = await RequireUser(cancellationToken);
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+        request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
         var result = await _orchestrator.CompleteAsync(request, cancellationToken);
         await _sessions.RecordAssistantMessageAsync(user, request, result.Content, null, result.Citations, result.ModelId, result.Model, cancellationToken);
         await _usage.RecordAsync(user, request, result, cancellationToken);
@@ -68,6 +72,7 @@ public sealed class ChatAppService : IDynamicApiController
         var user = await RequireUser(cancellationToken);
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+        request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
         var content = new System.Text.StringBuilder();
         var thinking = new System.Text.StringBuilder();
         object? citations = null;

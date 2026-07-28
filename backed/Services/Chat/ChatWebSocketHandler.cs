@@ -2,6 +2,7 @@ using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Usage;
+using AiAgent.Backend.Services.Memory;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -24,17 +25,19 @@ public sealed class ChatWebSocketHandler
     private readonly IChatSessionService _sessions;
     private readonly IChatImageAttachmentService _attachments;
     private readonly IUsageStatisticsService _usage;
+    private readonly IMemoryService _memory;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory)
     {
         _orchestrator = orchestrator;
         _authService = authService;
         _sessions = sessions;
         _attachments = attachments;
         _usage = usage;
+        _memory = memory;
     }
 
     /// <summary>
@@ -71,6 +74,7 @@ public sealed class ChatWebSocketHandler
                 request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
             }
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+            request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             var content = new StringBuilder();
             var thinking = new StringBuilder();
             object? citations = null;

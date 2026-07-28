@@ -5,6 +5,7 @@ using AiAgent.Backend.Entities.Git;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Entities.Settings;
 using AiAgent.Backend.Entities.Usage;
+using AiAgent.Backend.Entities.Memory;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.Settings;
@@ -53,6 +54,8 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiUserSession),
             typeof(AiChatSession),
             typeof(AiChatMessage),
+            typeof(AiMemoryItem),
+            typeof(AiMemoryObservation),
             typeof(AiUsageRecord),
             typeof(AiGitAccount));
 
@@ -265,6 +268,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_proj_pref_Use
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_message_Session_Id' AND object_id = OBJECT_ID(N'dbo.ai_chat_message'))
     CREATE INDEX IX_ai_chat_message_Session_Id ON dbo.ai_chat_message(SessionId, Id);
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_Scope_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_item'))
+    CREATE INDEX IX_ai_memory_item_User_Scope_Status ON dbo.ai_memory_item(UserId, ScopeType, Status, UpdatedAt DESC) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_Project_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_item'))
+    CREATE INDEX IX_ai_memory_item_User_Project_Status ON dbo.ai_memory_item(UserId, CodeProjectId, Status, IsPinned DESC, UpdatedAt DESC) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_observation_User_Project_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_observation'))
+    CREATE INDEX IX_ai_memory_observation_User_Project_Time ON dbo.ai_memory_observation(UserId, CodeProjectId, CreatedAt DESC);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_User_Time' AND object_id = OBJECT_ID(N'dbo.ai_usage_record'))

@@ -88,6 +88,12 @@ public sealed class ChatCompleteRequest
     /// </summary>
     [JsonIgnore]
     public List<string> LocalImagePaths { get; set; } = [];
+
+    /// <summary>
+    /// Server-built, permission-filtered memory packet. It is never accepted from or returned to the browser.
+    /// </summary>
+    [JsonIgnore]
+    public string ServerMemoryContext { get; set; } = string.Empty;
 }
 
 public sealed class ChatImageAttachmentDto
