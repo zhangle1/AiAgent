@@ -15,6 +15,17 @@
 - 看板应用工作台：从 React + Vite + ECharts 模板创建独立工作区，动态端口预览、编辑文件、运行日志和 Git 管理。
 - 可靠看板改码：Agent 先检查当前工作区与入口，再搜索、读取、基于 SHA-256 补丁写入并静态校验；不会把关联 Git 仓库作为第二个 AI 写入目标。
 
+## 界面参考
+
+以下截图记录当前工作台的主要交互页面，供产品验收、前端实现和后续交接时对照；图片不包含真实账号、令牌或业务数据。
+
+- [管理配置总览](docs/ui-reference/2026-07-28/01-admin-management-overview.png)
+- [项目与代码库列表](docs/ui-reference/2026-07-28/02-project-repository-list.png)
+- [管理配置卡片布局](docs/ui-reference/2026-07-28/03-admin-management-cards.png)
+- [Git 管理与远程状态](docs/ui-reference/2026-07-28/04-git-management.png)
+- [新建项目与挂载代码库](docs/ui-reference/2026-07-28/05-project-repository-create.png)
+- [聊天与右侧代码工作区](docs/ui-reference/2026-07-28/06-chat-code-workspace.png)
+
 ## 目录
 
 ```text
