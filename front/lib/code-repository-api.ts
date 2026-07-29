@@ -80,6 +80,16 @@ export async function browseCodeRepositoryDirectories(path?: string): Promise<Co
   );
 }
 
+export async function createCodeRepositoryDirectory(parentPath: string, name: string): Promise<{ name: string; path: string; modified_at?: string | null }> {
+  return parseJson<{ name: string; path: string; modified_at?: string | null }>(
+    await fetch("/api/v1/code-repositories/browse/directories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parent_path: parentPath, name }),
+    }),
+  );
+}
+
 export async function browseCodeRepositoryFiles(rootPath: string, kind: "solution" | "configuration", path?: string): Promise<CodeRepositoryDirectoryBrowser> {
   const query = new URLSearchParams({ root_path: rootPath, kind });
   if (path) query.set("path", path);

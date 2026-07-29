@@ -56,6 +56,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiChatMessage),
             typeof(AiMemoryItem),
             typeof(AiMemoryObservation),
+            typeof(AiMemoryCandidate),
             typeof(AiUsageRecord),
             typeof(AiGitAccount));
 
@@ -280,6 +281,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_P
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_observation_User_Project_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_observation'))
     CREATE INDEX IX_ai_memory_observation_User_Project_Time ON dbo.ai_memory_observation(UserId, CodeProjectId, CreatedAt DESC);
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_observation_Session_Processed_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_observation'))
+    CREATE INDEX IX_ai_memory_observation_Session_Processed_Time ON dbo.ai_memory_observation(SessionId, IsProcessed, CreatedAt) WHERE SessionId IS NOT NULL;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_candidate_User_Status_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_candidate'))
+    CREATE INDEX IX_ai_memory_candidate_User_Status_Time ON dbo.ai_memory_candidate(UserId, Status, CreatedAt DESC) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_candidate_User_Project_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_candidate'))
+    CREATE INDEX IX_ai_memory_candidate_User_Project_Status ON dbo.ai_memory_candidate(UserId, CodeProjectId, Status, CreatedAt DESC) WHERE IsDeleted = 0;
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_User_Time' AND object_id = OBJECT_ID(N'dbo.ai_usage_record'))

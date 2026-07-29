@@ -70,6 +70,38 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         return _manager.Browse(path);
     }
 
+    [HttpPost("browse/directories")]
+    public IActionResult CreateBrowseDirectory([FromBody] CodeRepositoryDirectoryCreateRequest request)
+    {
+        try
+        {
+            return new OkObjectResult(_manager.CreateDirectory(request.ParentPath, request.Name));
+        }
+        catch (ArgumentException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (IOException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new ObjectResult(new { message = "The server account cannot create a folder in the selected directory." })
+            {
+                StatusCode = StatusCodes.Status403Forbidden
+            };
+        }
+    }
+
     [HttpGet("browse/files")]
     public CodeRepositoryDirectoryBrowserDto BrowseFiles([FromQuery(Name = "root_path")] string rootPath, [FromQuery] string? path, [FromQuery] string kind)
     {

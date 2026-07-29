@@ -28,6 +28,8 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryDirectoryBrowserDto Browse(string? path);
 
+    CodeRepositoryDirectoryEntryDto CreateDirectory(string parentPath, string name);
+
     CodeRepositoryDirectoryBrowserDto BrowseFiles(string rootPath, string? path, string kind);
 
     Task<CodeRepositoryBrowserFileDto> UploadFileAsync(string rootPath, string? directoryPath, IFormFile file, bool overwrite, CancellationToken cancellationToken = default);
@@ -207,6 +209,39 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             AllowedRoots = _allowedRoots,
             Directories = directoryEntries.Select(entry => entry.Path).ToList(),
             DirectoryEntries = directoryEntries
+        };
+    }
+
+    /// <summary>
+    /// Creates exactly one empty direct child directory under an allowed server root.
+    /// Nested paths and path traversal are rejected so the browser remains the authority
+    /// for where a project folder may be created.
+    /// </summary>
+    public CodeRepositoryDirectoryEntryDto CreateDirectory(string parentPath, string name)
+    {
+        var parent = NormalizeAndValidatePath(parentPath);
+        var normalizedName = name?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedName) || normalizedName.Length > 128)
+            throw new ArgumentException("Folder name must contain 1-128 characters.", nameof(name));
+        if (normalizedName is "." or ".."
+            || normalizedName.EndsWith(".", StringComparison.Ordinal)
+            || normalizedName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || normalizedName.Contains('/')
+            || normalizedName.Contains('\\'))
+            throw new ArgumentException("Folder name is invalid.", nameof(name));
+
+        var target = Path.GetFullPath(Path.Combine(parent, normalizedName));
+        if (!IsPathWithin(parent, target) || !IsAllowedPath(target))
+            throw new InvalidOperationException("The new folder must stay inside the selected directory.");
+        if (Directory.Exists(target) || File.Exists(target))
+            throw new InvalidOperationException("A file or folder with the same name already exists.");
+
+        Directory.CreateDirectory(target);
+        return new CodeRepositoryDirectoryEntryDto
+        {
+            Name = normalizedName,
+            Path = target,
+            ModifiedAt = GetDirectoryLastWriteTimeUtc(target)
         };
     }
 

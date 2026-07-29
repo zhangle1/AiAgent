@@ -77,6 +77,8 @@ builder.Services.AddSingleton<IModelCatalogService, ModelCatalogService>();
 builder.Services.AddSingleton<IAuthService, AuthService>();
 builder.Services.AddSingleton<IProjectAccessService, ProjectAccessService>();
 builder.Services.AddSingleton<IMemoryService, MemoryService>();
+builder.Services.AddSingleton<IMemoryCandidateService, MemoryCandidateService>();
+builder.Services.AddHostedService<MemoryCandidateHostedService>();
 builder.Services.AddSingleton<IAdminService, AdminService>();
 builder.Services.AddSingleton<IChatSessionService, ChatSessionService>();
 builder.Services.AddSingleton<IModelProviderOptionsService, ModelProviderOptionsService>();

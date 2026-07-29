@@ -266,13 +266,22 @@ UserId / ProjectId / Scope / Status 权限过滤
 - 每一条向量必须保存 `provider`、`model`、`dimension`、`content_hash` 和 `indexed_at`。模型变更时双索引或回退 FTS，后台分批重建后再切换，禁止混用不同向量空间。
 - M1 不依赖向量：先交付权限过滤、显式保存、会话 Observation、受预算 Prompt 注入和 SQL Server 普通检索；FTS、GitSync、Embedding、RRF 与 LLM consolidation 在后续里程碑加入。
 
-## 15. M1 实现状态与边界
+## 15. 已实现状态与边界
 
 本轮开始实现的范围是 SQL Server 记忆 MVP：
 
 1. `AiMemoryItem`：个人全局和项目个人的手工长期记忆，带 tier、kind、状态、置顶和来源会话。
 2. `AiMemoryObservation`：对聊天用户消息和最终助手回答的有限、脱敏观察记录；不保存 Thinking。
-3. `IMemoryService`：严格按当前用户和项目权限构建小型 MemoryPacket，供自有 Agent Loop 的 Prompt 使用。
+3. `IMemoryService`：严格按当前用户和项目权限构建小型 MemoryPacket，供自有 Agent Loop 与 Codex app-server 的 Prompt 使用。
 4. 记忆 API：创建、列表和归档个人/项目记忆。
+5. 同一 AiAgent 会话续聊时，受预算读取最近用户/助手消息；当前用户消息单独作为本轮输入，避免重复注入。
 
-本轮不把 GitSync、远程 push/pull、Markdown 导出、Embedding、FTS、RRF、共享项目记忆和自动 LLM consolidation 宣称为已完成；它们仍按 M2/M3 设计实施。
+### M2：候选审核闭环（本轮已实现）
+
+1. `AiMemoryCandidate`：保存由会话 Observation 提炼出的待审核候选，包含用户/项目作用域、类型、置信度、来源会话及 Observation ID 证据；候选不参与聊天 Prompt。
+2. `MemoryCandidateHostedService`：每 10 分钟最多扫描 5 个闲置超过 30 分钟的会话。它只调用已配置 LLM 生成 JSON 候选；提炼失败时保留未处理 Observation，绝不影响聊天链路。
+3. `IMemoryCandidateService` 与 `/api/v1/memory/candidates` API：支持手动触发提炼、按状态查看候选、确认、编辑后确认、拒绝，以及将候选合并到既有 Memory Item。
+4. 确认操作在事务中创建或更新 `AiMemoryItem`，再将候选标记为 `approved`；并发审核时仅一方可以成功。模型输出与人工编辑再次执行敏感键值脱敏。
+5. 已存在的相同内容长期记忆或待确认候选会被去重；当前实现不自动覆盖冲突记忆，也不自动激活任何候选。
+
+本轮仍不把 GitSync、远程 push/pull、Markdown 导出、Embedding、FTS、RRF、共享项目记忆、`AiMemorySource` 规范化来源表、质量仪表盘或自动长期记忆写入宣称为已完成；它们仍按后续 M2/M3 设计实施。会话原始消息只用于同会话的有限上下文回填，而候选必须经过确认才会升级为长期 Spec 记忆。

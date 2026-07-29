@@ -522,6 +522,18 @@ public sealed class CodeRepositoryDirectoryEntryDto
     public DateTime? ModifiedAt { get; set; }
 }
 
+/// <summary>
+/// Creates one empty child directory inside an allowed server-side project root.
+/// </summary>
+public sealed class CodeRepositoryDirectoryCreateRequest
+{
+    [JsonPropertyName("parent_path")]
+    public string ParentPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+}
+
 public sealed class CodeRepositoryBrowserFileDto
 {
     [JsonPropertyName("name")]

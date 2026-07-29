@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, Upload, X } from "lucide-react";
+import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, FolderPlus, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, Upload, X } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
-import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, uploadCodeRepositoryFile, writeConfiguredCodeFile } from "@/lib/code-repository-api";
+import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, createCodeRepositoryDirectory, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, uploadCodeRepositoryFile, writeConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, CodeRepositoryDirectoryBrowser, CodeRepositoryHealth, CodeRepositoryInspection } from "@/lib/code-repository-types";
 import { listGitAccounts, type GitAccount } from "@/lib/git-account-api";
 import { getCodeProjectRuntime, saveCodeRuntimeProfile } from "@/lib/code-runtime-api";
@@ -165,6 +165,12 @@ export function CodeProjectSettingsPage() {
     try { setBrowser(await browseCodeRepositoryDirectories(path)); } catch (value) { setError(message(value)); }
   }
 
+  async function createProjectDirectory(parentPath: string, name: string) {
+    const directory = await createCodeRepositoryDirectory(parentPath, name);
+    setProjectDraft((item) => ({ ...item, rootPath: directory.path }));
+    setBrowser(null);
+  }
+
   async function openFileBrowser(target: FileBrowserTarget, path?: string) {
     if (!repositoryDraft.rootPath.trim()) {
       setError("请先选择并识别代码库目录。");
@@ -269,7 +275,7 @@ export function CodeProjectSettingsPage() {
         {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       </div>
     </div>
-    {browser && <DirectoryPicker browser={browser} onClose={() => setBrowser(null)} onOpen={(path) => void openBrowser(browserTarget, path)} onChoose={() => { if (browserTarget === "project") setProjectDraft((item) => ({ ...item, rootPath: browser.path })); else setRepositoryDraft((item) => ({ ...item, rootPath: browser.path })); setBrowser(null); }} />}
+    {browser && <DirectoryPicker browser={browser} allowCreate={browserTarget === "project"} onClose={() => setBrowser(null)} onOpen={(path) => void openBrowser(browserTarget, path)} onCreate={createProjectDirectory} onChoose={() => { if (browserTarget === "project") setProjectDraft((item) => ({ ...item, rootPath: browser.path })); else setRepositoryDraft((item) => ({ ...item, rootPath: browser.path })); setBrowser(null); }} />}
     {fileBrowser && <FilePicker browser={fileBrowser} rootPath={repositoryDraft.rootPath} target={fileBrowserTarget} onClose={() => setFileBrowser(null)} onOpen={(path) => void openFileBrowser(fileBrowserTarget, path)} onRefresh={(path) => openFileBrowser(fileBrowserTarget, path)} onChoose={chooseFile} onUploaded={addFileToDraft} />}
     {cloneOpen && <CloneDialog projects={projects} accounts={accounts} draft={cloneDraft} lines={cloneLines} busy={busy} onChange={setCloneDraft} onClose={() => !busy && setCloneOpen(false)} onSubmit={() => void cloneRepository()} />}
     {terminalOpen && <TerminalDialog title={terminalTitle} lines={cloneLines} busy={busy} onClose={() => !busy && setTerminalOpen(false)} />}
@@ -406,9 +412,12 @@ function FilePicker({ browser, rootPath, target, onClose, onOpen, onRefresh, onC
   </Modal>;
 }
 
-function DirectoryPicker({ browser, onClose, onOpen, onChoose }: { browser: CodeRepositoryDirectoryBrowser; onClose: () => void; onOpen: (path?: string) => void; onChoose: () => void }) {
+function DirectoryPicker({ browser, allowCreate, onClose, onOpen, onCreate, onChoose }: { browser: CodeRepositoryDirectoryBrowser; allowCreate: boolean; onClose: () => void; onOpen: (path?: string) => void; onCreate: (parentPath: string, name: string) => Promise<void>; onChoose: () => void }) {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<{ key: "name" | "modified"; direction: "asc" | "desc" }>({ key: "name", direction: "asc" });
+  const [folderName, setFolderName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
   useEffect(() => setFilter(""), [browser.path]);
   const entries = useMemo(() => {
     const source = browser.directory_entries ?? browser.directories.map((path) => ({ name: path.split(/[\\/]/).pop() ?? path, path, modified_at: null }));
@@ -429,9 +438,19 @@ function DirectoryPicker({ browser, onClose, onOpen, onChoose }: { browser: Code
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
+  async function createFolder() {
+    if (creating) return;
+    const name = folderName.trim();
+    if (!name) return setCreateError("请输入文件夹名称。");
+    setCreating(true); setCreateError("");
+    try { await onCreate(browser.path, name); }
+    catch (value) { setCreateError(message(value)); }
+    finally { setCreating(false); }
+  }
 
   return <Modal title="选择服务器文件夹" onClose={onClose}>
     <p className="truncate font-mono text-xs text-slate-500" title={browser.path}>{browser.path}</p>
+    {allowCreate && <div className="mt-3 rounded-lg border border-dashed border-blue-200 bg-blue-50/50 p-2.5"><div className="flex flex-col gap-2 sm:flex-row"><input value={folderName} onChange={(event) => setFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createFolder(); } }} disabled={creating} className="h-9 min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50" placeholder="新建空项目文件夹名称" aria-label="新建空项目文件夹名称"/><button type="button" onClick={() => void createFolder()} disabled={creating} className="secondary-button h-9 shrink-0 px-3 text-xs disabled:opacity-50">{creating ? <Loader2 size={14} className="animate-spin"/> : <FolderPlus size={14}/>}新建文件夹</button></div>{createError && <p className="mt-2 text-xs text-red-600">{createError}</p>}<p className="mt-2 text-[11px] leading-4 text-blue-700">将在当前目录创建空文件夹，并自动作为新项目的目录。</p></div>}
     <label className="relative mt-4 block">
       <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
       <input value={filter} onChange={(event) => setFilter(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="过滤文件夹名称" aria-label="过滤文件夹名称"/>
