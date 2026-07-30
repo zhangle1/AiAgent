@@ -364,6 +364,12 @@ public sealed class CodeRepositoryCloneRequest
     [JsonPropertyName("destination_parent_path")]
     public string DestinationParentPath { get; set; } = string.Empty;
 
+    [JsonPropertyName("destination_directory_name")]
+    public string? DestinationDirectoryName { get; set; }
+
+    [JsonPropertyName("branch")]
+    public string? Branch { get; set; }
+
     [JsonPropertyName("git_account_id")]
     public long GitAccountId { get; set; }
 }

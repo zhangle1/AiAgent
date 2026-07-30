@@ -153,7 +153,7 @@ export async function indexCodeRepository(name: string): Promise<{ ok: boolean; 
 export type CodeRepositoryCloneEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; destination_path?: string; repository?: CodeRepository };
 export type CodeRepositoryPackageEvent = { type: "connected" | "started" | "output" | "completed"; message?: string; line?: string; stream?: "stdout" | "stderr"; success?: boolean; exit_code?: number; target_path?: string; output_path?: string; archive_name?: string | null };
 
-export function cloneCodeRepositoryViaWebSocket(request: { project_id?: number; repository_url: string; destination_parent_path?: string; git_account_id: number }, onEvent: (event: CodeRepositoryCloneEvent) => void): Promise<CodeRepositoryCloneEvent> {
+export function cloneCodeRepositoryViaWebSocket(request: { project_id?: number; repository_url: string; destination_parent_path?: string; destination_directory_name?: string; branch?: string; git_account_id: number }, onEvent: (event: CodeRepositoryCloneEvent) => void): Promise<CodeRepositoryCloneEvent> {
   return new Promise((resolve, reject) => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     // Use the same frontend origin. Next.js forwards the upgrade to the backend,

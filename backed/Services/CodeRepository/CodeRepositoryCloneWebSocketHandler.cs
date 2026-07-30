@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 using SqlSugar;
 using System.Diagnostics;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -79,7 +80,8 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
         if (request.ProjectId <= 0) throw new InvalidOperationException("Select a project before cloning a repository.");
         var project = _manager.GetProject(request.ProjectId);
         var destinationParent = project.RootPath;
-        var directoryName = GetDirectoryName(repositoryUrl);
+        var directoryName = GetDirectoryName(repositoryUrl, request.DestinationDirectoryName);
+        var branch = ValidateBranch(request.Branch);
         var destination = Path.GetFullPath(Path.Combine(destinationParent, directoryName));
         if (!destination.StartsWith(destinationParent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Clone destination must stay inside the selected folder.");
@@ -110,6 +112,11 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
             };
             startInfo.ArgumentList.Add("clone");
             startInfo.ArgumentList.Add("--progress");
+            if (!string.IsNullOrWhiteSpace(branch))
+            {
+                startInfo.ArgumentList.Add("--branch");
+                startInfo.ArgumentList.Add(branch);
+            }
             startInfo.ArgumentList.Add("--");
             startInfo.ArgumentList.Add(repositoryUrl.ToString());
             startInfo.ArgumentList.Add(destination);
@@ -132,8 +139,10 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
                 repository = _manager.Create(new CodeRepositorySaveRequest
                 {
                     ProjectId = project.Id,
-                    Name = inspection.SuggestedName,
-                    DisplayName = inspection.SuggestedDisplayName,
+                    // Repository names are global API identifiers. Use the project and target path
+                    // to keep multiple checkouts of the same remote independently addressable.
+                    Name = BuildMountedRepositoryName(inspection.SuggestedName, project.Id, destination),
+                    DisplayName = BuildMountedDisplayName(inspection.SuggestedDisplayName, branch),
                     RootPath = destination
                 });
             }
@@ -170,13 +179,48 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
         return uri;
     }
 
-    private static string GetDirectoryName(Uri url)
+    private static string GetDirectoryName(Uri url, string? requestedName)
     {
-        var name = Path.GetFileName(url.AbsolutePath.TrimEnd('/'));
-        if (name.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
-        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name is "." or "..")
-            throw new InvalidOperationException("The repository URL does not contain a valid folder name.");
+        var fromRepositoryUrl = string.IsNullOrWhiteSpace(requestedName);
+        var name = fromRepositoryUrl ? Path.GetFileName(url.AbsolutePath.TrimEnd('/')) : requestedName.Trim();
+        if (fromRepositoryUrl && name.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains('/') || name.Contains('\\') || name is "." or "..")
+            throw new InvalidOperationException("The clone directory name is invalid.");
         return name;
+    }
+
+    private static string? ValidateBranch(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var branch = value.Trim();
+        if (branch.Length > 255
+            || branch.StartsWith("-", StringComparison.Ordinal)
+            || branch.StartsWith("/", StringComparison.Ordinal)
+            || branch.EndsWith("/", StringComparison.Ordinal)
+            || branch.EndsWith(".", StringComparison.Ordinal)
+            || branch.Contains("..", StringComparison.Ordinal)
+            || branch.Contains("@{", StringComparison.Ordinal)
+            || branch.Any(character => char.IsControl(character) || char.IsWhiteSpace(character) || character is '~' or '^' or ':' or '?' or '*' or '[' or '\\'))
+        {
+            throw new InvalidOperationException("The branch name is invalid.");
+        }
+        return branch;
+    }
+
+    private static string BuildMountedRepositoryName(string suggestedName, long projectId, string destination)
+    {
+        var suffix = $"-p{projectId}-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(destination)))[..8].ToLowerInvariant()}";
+        var prefix = suggestedName[..Math.Min(suggestedName.Length, 128 - suffix.Length)].Trim('-');
+        return string.IsNullOrWhiteSpace(prefix) ? $"repository{suffix}" : $"{prefix}{suffix}";
+    }
+
+    private static string BuildMountedDisplayName(string suggestedName, string? branch)
+    {
+        if (string.IsNullOrWhiteSpace(branch)) return suggestedName[..Math.Min(suggestedName.Length, 256)];
+        var suffix = $" · {branch}";
+        return suffix.Length >= 256
+            ? branch[..256]
+            : $"{suggestedName[..Math.Min(suggestedName.Length, 256 - suffix.Length)]}{suffix}";
     }
 
     private static Task SendAsync(WebSocket socket, object payload, CancellationToken cancellationToken)
