@@ -10,6 +10,7 @@ import { logout } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { archiveSession, listProjectSessionPreferences, listSessions, renameSession, updateProjectSessionPreference, updateSessionMetadata, type ProjectSessionPreference, type ProjectSessionSortMode, type SessionSummary } from "@/lib/session-api";
+import { useChatStreams, type ChatStreamStatus } from "@/components/chat/ChatStreamProvider";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 type SessionGroup = { key: string; label: string; project?: CodeProject; preference?: ProjectSessionPreference; sessions: SessionSummary[] };
@@ -32,6 +33,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useI18n();
+  const { streams } = useChatStreams();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<CodeProject[]>([]);
   const [projectPreferences, setProjectPreferences] = useState<ProjectSessionPreference[]>([]);
@@ -82,6 +84,14 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     return unassigned.length ? [...projectGroups, { key: "unassigned", label: "未归属项目", sessions: sortSessions(unassigned, "updated") }] : projectGroups;
   }, [projectPreferences, projects, sessions]);
   const pinnedGroups = useMemo(() => groups.filter((group) => group.project && group.preference?.is_pinned), [groups]);
+  const sessionActivity = useMemo(() => {
+    const next: Record<string, ChatStreamStatus | "unread"> = {};
+    Object.values(streams).forEach((stream) => {
+      if (stream.status === "streaming") next[stream.sessionId] = "streaming";
+      else if (stream.unread && next[stream.sessionId] !== "streaming") next[stream.sessionId] = stream.status === "error" ? "error" : "unread";
+    });
+    return next;
+  }, [streams]);
 
   async function archiveSessionItem(session: SessionSummary) {
     try {
@@ -152,8 +162,8 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     {!compact ? <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
       <div className="flex items-center justify-between px-2"><p className="text-[10px] font-semibold tracking-[.15em] text-slate-400">会话记录</p><Link href="/chat" className="grid h-6 w-6 place-items-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" aria-label="新建会话"><Plus size={15}/></Link></div>
       <div className="workspace-scroll mt-2 min-h-0 space-y-3 overflow-y-auto pr-1">
-        {pinnedGroups.length > 0 && <PinnedProjectList groups={pinnedGroups} activeSessionId={searchParams.get("session")} onUnpin={(group) => group.project && void toggleProjectPin(group.project, group.preference)}/>}
-        <div><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.12em] text-slate-400">项目</p>{groups.map((group) => <SessionGroupList key={group.key} group={group} isCollapsed={Boolean(collapsedGroups[group.key])} activeSessionId={searchParams.get("session")} projectMenuOpen={projectMenu?.groupKey === group.key} sessionMenuId={sessionMenu?.session.id ?? null} onToggleCollapsed={() => setCollapsedGroups((items) => ({ ...items, [group.key]: !items[group.key] }))} onNewSession={(project) => router.push(`/chat?project=${project.id}`)} onOpenProjectMenu={(anchor) => openProjectMenu(group, anchor)} onOpenSessionMenu={openSessionMenu}/>)}</div>
+        {pinnedGroups.length > 0 && <PinnedProjectList groups={pinnedGroups} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} onUnpin={(group) => group.project && void toggleProjectPin(group.project, group.preference)}/>}
+        <div><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.12em] text-slate-400">项目</p>{groups.map((group) => <SessionGroupList key={group.key} group={group} isCollapsed={Boolean(collapsedGroups[group.key])} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} projectMenuOpen={projectMenu?.groupKey === group.key} sessionMenuId={sessionMenu?.session.id ?? null} onToggleCollapsed={() => setCollapsedGroups((items) => ({ ...items, [group.key]: !items[group.key] }))} onNewSession={(project) => router.push(`/chat?project=${project.id}`)} onOpenProjectMenu={(anchor) => openProjectMenu(group, anchor)} onOpenSessionMenu={openSessionMenu}/>)}</div>
         {groups.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-slate-400">暂无历史会话</p>}
       </div>
     </section> : <div className="flex-1 border-t border-slate-200/80"/>}
@@ -177,11 +187,11 @@ function SidebarLink({ item, active, compact }: { item: NavItem; active: boolean
   return <Link href={item.href} title={compact ? item.label : undefined} className={`flex h-10 items-center rounded-xl transition ${compact ? "justify-center" : "gap-3 px-3 text-sm"} ${active ? "bg-blue-600 text-white shadow-sm shadow-blue-200" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}><Icon size={17}/>{!compact && <span className="truncate">{item.label}</span>}</Link>;
 }
 
-function PinnedProjectList({ groups, activeSessionId, onUnpin }: { groups: SessionGroup[]; activeSessionId: string | null; onUnpin: (group: SessionGroup) => void }) {
-  return <section><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.12em] text-amber-600">置顶项目</p><div className="space-y-1 rounded-xl border border-amber-100 bg-amber-50/50 p-1.5">{groups.map((group) => <div key={group.key}><div className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-semibold text-slate-700"><Pin size={12} className="text-amber-600"/><span className="min-w-0 flex-1 truncate">{group.label}</span><button type="button" onClick={() => onUnpin(group)} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-amber-600 transition hover:bg-amber-100" aria-label={`取消置顶项目：${group.label}`} title="取消置顶项目"><PinOff size={13}/></button></div>{group.sessions.map((session) => <Link key={session.id} href={`/chat?session=${encodeURIComponent(session.id)}`} className={`ml-3 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs ${activeSessionId === session.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white/80"}`}><MessageSquare size={11}/><span className="truncate">{session.title}</span></Link>)}</div>)}</div></section>;
+function PinnedProjectList({ groups, activeSessionId, sessionActivity, onUnpin }: { groups: SessionGroup[]; activeSessionId: string | null; sessionActivity: Record<string, ChatStreamStatus | "unread">; onUnpin: (group: SessionGroup) => void }) {
+  return <section><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.12em] text-amber-600">置顶项目</p><div className="space-y-1 rounded-xl border border-amber-100 bg-amber-50/50 p-1.5">{groups.map((group) => <div key={group.key}><div className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-semibold text-slate-700"><Pin size={12} className="text-amber-600"/><span className="min-w-0 flex-1 truncate">{group.label}</span><button type="button" onClick={() => onUnpin(group)} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-amber-600 transition hover:bg-amber-100" aria-label={`取消置顶项目：${group.label}`} title="取消置顶项目"><PinOff size={13}/></button></div>{group.sessions.map((session) => <Link key={session.id} href={`/chat?session=${encodeURIComponent(session.id)}`} className={`ml-3 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs ${activeSessionId === session.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white/80"}`}><MessageSquare size={11}/><span className="truncate">{session.title}</span><SessionActivityIndicator status={sessionActivity[session.id]} hidden={activeSessionId === session.id && sessionActivity[session.id] !== "streaming"}/></Link>)}</div>)}</div></section>;
 }
 
-function SessionGroupList({ group, isCollapsed, activeSessionId, projectMenuOpen, sessionMenuId, onToggleCollapsed, onNewSession, onOpenProjectMenu, onOpenSessionMenu }: { group: SessionGroup; isCollapsed: boolean; activeSessionId: string | null; projectMenuOpen: boolean; sessionMenuId: string | null; onToggleCollapsed: () => void; onNewSession: (project: CodeProject) => void; onOpenProjectMenu: (anchor: HTMLElement) => void; onOpenSessionMenu: (session: SessionSummary, anchor: HTMLElement) => void }) {
+function SessionGroupList({ group, isCollapsed, activeSessionId, sessionActivity, projectMenuOpen, sessionMenuId, onToggleCollapsed, onNewSession, onOpenProjectMenu, onOpenSessionMenu }: { group: SessionGroup; isCollapsed: boolean; activeSessionId: string | null; sessionActivity: Record<string, ChatStreamStatus | "unread">; projectMenuOpen: boolean; sessionMenuId: string | null; onToggleCollapsed: () => void; onNewSession: (project: CodeProject) => void; onOpenProjectMenu: (anchor: HTMLElement) => void; onOpenSessionMenu: (session: SessionSummary, anchor: HTMLElement) => void }) {
   const projectPinned = Boolean(group.preference?.is_pinned);
   return <div className="rounded-xl border border-slate-100 bg-white/70 px-1.5 py-1 shadow-sm">
     <div className="flex h-8 items-center gap-1">
@@ -189,8 +199,15 @@ function SessionGroupList({ group, isCollapsed, activeSessionId, projectMenuOpen
       {group.project && <button type="button" onClick={() => onNewSession(group.project!)} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" aria-label={`以项目“${group.label}”新建会话`} title="以当前项目新建会话"><Plus size={14}/></button>}
       {group.project && <button type="button" onClick={(event) => onOpenProjectMenu(event.currentTarget)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md transition ${projectMenuOpen ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"}`} aria-label="项目菜单" aria-expanded={projectMenuOpen}><Ellipsis size={14}/></button>}
     </div>
-    {!isCollapsed && <div className="ml-3 border-l border-slate-100 pl-1">{group.sessions.map((session) => <div key={session.id} className={`group flex items-center gap-0.5 rounded-lg py-0.5 ${activeSessionId === session.id ? "bg-blue-50" : "hover:bg-slate-100"}`}><Link href={`/chat?session=${encodeURIComponent(session.id)}`} className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${activeSessionId === session.id ? "text-blue-700" : "text-slate-600"}`}><MessageSquare size={12} className="shrink-0"/><span className="truncate">{session.title}</span></Link><button type="button" onClick={(event) => onOpenSessionMenu(session, event.currentTarget)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md transition ${sessionMenuId === session.id ? "bg-white text-slate-700 shadow-sm" : "text-slate-300 hover:bg-white hover:text-slate-600"}`} aria-label={`会话菜单：${session.title}`} aria-expanded={sessionMenuId === session.id}><Ellipsis size={14}/></button></div>)}</div>}
+    {!isCollapsed && <div className="ml-3 border-l border-slate-100 pl-1">{group.sessions.map((session) => <div key={session.id} className={`group flex items-center gap-0.5 rounded-lg py-0.5 ${activeSessionId === session.id ? "bg-blue-50" : "hover:bg-slate-100"}`}><Link href={`/chat?session=${encodeURIComponent(session.id)}`} className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${activeSessionId === session.id ? "text-blue-700" : "text-slate-600"}`}><MessageSquare size={12} className="shrink-0"/><span className="truncate">{session.title}</span><SessionActivityIndicator status={sessionActivity[session.id]} hidden={activeSessionId === session.id && sessionActivity[session.id] !== "streaming"}/></Link><button type="button" onClick={(event) => onOpenSessionMenu(session, event.currentTarget)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md transition ${sessionMenuId === session.id ? "bg-white text-slate-700 shadow-sm" : "text-slate-300 hover:bg-white hover:text-slate-600"}`} aria-label={`会话菜单：${session.title}`} aria-expanded={sessionMenuId === session.id}><Ellipsis size={14}/></button></div>)}</div>}
   </div>;
+}
+
+function SessionActivityIndicator({ status, hidden }: { status?: ChatStreamStatus | "unread"; hidden: boolean }) {
+  if (!status || hidden) return null;
+  if (status === "streaming") return <span className="h-2 w-2 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" title="正在生成" aria-label="正在生成"/>;
+  if (status === "error") return <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" title="本会话生成失败" aria-label="本会话生成失败"/>;
+  return <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" title="本会话有新回复" aria-label="本会话有新回复"/>;
 }
 
 function SessionMenu({ position, menuRef, onClose, onTogglePin, onRename, onArchive }: { position: SessionMenuState; menuRef: { current: HTMLDivElement | null }; onClose: () => void; onTogglePin: () => void; onRename: () => void; onArchive: () => void }) {

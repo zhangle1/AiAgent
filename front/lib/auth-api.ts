@@ -1,7 +1,12 @@
 export type AuthStatus = { authenticated: boolean; user_id?: string; username?: string; is_admin?: boolean; registration_enabled?: boolean };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  } catch {
+    throw new Error("后端 API 不可达，请确认 AiAgent.Backend 已在 5000 端口启动。");
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof payload.message === "string" ? payload.message : "请求失败，请稍后重试。");
   return payload as T;

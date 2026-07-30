@@ -27,11 +27,12 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly IChatImageAttachmentService _attachments;
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
+    private readonly ICodexChatService _codex;
 
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, ICodexChatService codex)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
@@ -40,6 +41,7 @@ public sealed class ChatAppService : IDynamicApiController
         _attachments = attachments;
         _usage = usage;
         _memory = memory;
+        _codex = codex;
     }
 
     /// <summary>
@@ -49,6 +51,7 @@ public sealed class ChatAppService : IDynamicApiController
     public async Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
+        request.RuntimeUserId = user.Id;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
@@ -70,6 +73,7 @@ public sealed class ChatAppService : IDynamicApiController
         response.Headers["Cache-Control"] = "no-cache";
         response.Headers["Connection"] = "keep-alive";
         var user = await RequireUser(cancellationToken);
+        request.RuntimeUserId = user.Id;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
@@ -95,6 +99,7 @@ public sealed class ChatAppService : IDynamicApiController
             var finalModel = model ?? result.Model;
             await _sessions.RecordAssistantMessageAsync(user, request, finalContent, thinking.ToString(), citations ?? result.Citations, finalModelId, finalModel, cancellationToken);
             await _usage.RecordAsync(user, request, result, cancellationToken);
+            await WriteSseAsync(response, new AgentStreamEvent { Type = "completed" }, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -123,6 +128,14 @@ public sealed class ChatAppService : IDynamicApiController
     {
         var user = await RequireUser(cancellationToken);
         return new { ok = await _attachments.DeleteAsync(user, attachmentId, cancellationToken) };
+    }
+
+    [HttpPost("codex/heartbeat")]
+    public async Task<object> CodexHeartbeat([FromBody] CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        await _codex.HeartbeatAsync(user, request, cancellationToken);
+        return new { ok = true };
     }
 
     [HttpGet("attachments/{sessionId}/{attachmentId}")]

@@ -84,6 +84,19 @@ public sealed class ChatCompleteRequest
     public List<string> AttachmentIds { get; set; } = [];
 
     /// <summary>
+    /// Opaque browser-tab runtime identifier used only to retain a user's local Codex CLI lease.
+    /// It is not a device fingerprint and is regenerated when the tab storage is cleared.
+    /// </summary>
+    [JsonPropertyName("client_runtime_id")]
+    public string? ClientRuntimeId { get; set; }
+
+    /// <summary>
+    /// Authenticated user identity copied by the server after request authentication. Never accepted from the browser.
+    /// </summary>
+    [JsonIgnore]
+    public string? RuntimeUserId { get; set; }
+
+    /// <summary>
     /// Server-only resolved image paths. This field must never be accepted from or returned to the browser.
     /// </summary>
     [JsonIgnore]
@@ -94,6 +107,15 @@ public sealed class ChatCompleteRequest
     /// </summary>
     [JsonIgnore]
     public string ServerMemoryContext { get; set; } = string.Empty;
+}
+
+public sealed class CodexRuntimeHeartbeatRequest
+{
+    [JsonPropertyName("client_runtime_id")]
+    public string ClientRuntimeId { get; set; } = string.Empty;
+
+    [JsonPropertyName("code_project_id")]
+    public long? CodeProjectId { get; set; }
 }
 
 public sealed class ChatImageAttachmentDto

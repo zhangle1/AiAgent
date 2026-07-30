@@ -65,6 +65,7 @@ public sealed class ChatWebSocketHandler
                 ?? throw new InvalidOperationException("Invalid chat request.");
             var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
                 ?? throw new UnauthorizedAccessException();
+            request.RuntimeUserId = user.Id;
             if (request.AttachmentIds.Count > 0)
             {
                 if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
@@ -95,6 +96,7 @@ public sealed class ChatWebSocketHandler
             var finalModel = model ?? result.Model;
             await _sessions.RecordAssistantMessageAsync(user, request, finalContent, thinking.ToString(), citations ?? result.Citations, finalModelId, finalModel, cancellationToken);
             await _usage.RecordAsync(user, request, result, cancellationToken);
+            await SendEventAsync(socket, new AgentStreamEvent { Type = "completed" }, cancellationToken);
 
             if (socket.State == WebSocketState.Open)
             {

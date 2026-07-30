@@ -1,8 +1,10 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Services.Chat.Agentic;
+using AiAgent.Backend.Services.Auth;
 using Microsoft.Extensions.Configuration;
 using SqlSugar;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -12,77 +14,49 @@ namespace AiAgent.Backend.Services.Chat;
 public interface ICodexChatService
 {
     Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken);
+    Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// Runs the locally installed Codex app-server for a selected registered project.
 /// The browser never talks to Codex directly; this service owns the JSONL protocol and forwards normalized chat events.
 /// </summary>
-public sealed class CodexChatService : ICodexChatService
+public sealed class CodexChatService : ICodexChatService, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ISqlSugarClient _db;
     private readonly IConfiguration _configuration;
+    private readonly ConcurrentDictionary<string, CodexRuntimeLease> _runtimeLeases = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _activeSessionsByUser = new(StringComparer.Ordinal);
+    private readonly object _leaseSync = new();
+    private readonly Timer _leaseReaper;
+    private readonly TimeSpan _leaseTtl;
+    private readonly int _maxSessionsPerUser;
 
     public CodexChatService(ISqlSugarClient db, IConfiguration configuration)
     {
         _db = db;
         _configuration = configuration;
+        var configuredLeaseSeconds = int.TryParse(_configuration["Codex:RuntimeLeaseSeconds"], out var seconds)
+            ? Math.Clamp(seconds, 30, 600)
+            : 90;
+        _leaseTtl = TimeSpan.FromSeconds(configuredLeaseSeconds);
+        _maxSessionsPerUser = int.TryParse(_configuration["Codex:MaxSessionsPerUser"], out var configuredMaxSessions)
+            ? Math.Clamp(configuredMaxSessions, 1, 3)
+            : 3;
+        _leaseReaper = new Timer(_ => ReapExpiredLeases(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
     public async Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message)) throw new ArgumentException("Message is required.", nameof(request));
         var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
-        var codexCommand = ResolveCodexCommand();
-        var result = new CodexRunState();
-
-        using var process = StartCodex(codexCommand, workspacePath);
-        using var stdout = process.StandardOutput;
-        var stderrPump = DrainStderrAsync(process.StandardError, cancellationToken);
+        var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath);
+        var activeSession = AcquireActiveSession(request.RuntimeUserId, request.SessionId);
 
         try
         {
-            await SendAsync(process, new
-            {
-                method = "initialize",
-                id = 1,
-                @params = new { clientInfo = new { name = "aiagent", title = "AiAgent", version = "1.0" } }
-            }, cancellationToken);
-            await ReadResponseAsync(stdout, 1, result, onEvent, cancellationToken);
-            await SendAsync(process, new { method = "initialized" }, cancellationToken);
-
-            await SendAsync(process, new
-            {
-                method = "thread/start",
-                id = 2,
-                @params = new
-                {
-                    cwd = workspacePath,
-                    approvalPolicy = "never",
-                    sandbox = "danger-full-access",
-                    ephemeral = true,
-                    serviceName = "aiagent"
-                }
-            }, cancellationToken);
-            var threadResponse = await ReadResponseAsync(stdout, 2, result, onEvent, cancellationToken);
-            var threadId = ReadRequiredString(threadResponse, "thread", "id");
-
-            await SendAsync(process, new
-            {
-                method = "turn/start",
-                id = 3,
-                @params = new
-                {
-                    threadId,
-                    clientUserMessageId = request.SessionId,
-                    input = BuildTurnInput(request),
-                    cwd = workspacePath,
-                    approvalPolicy = "never",
-                    sandboxPolicy = new { type = "dangerFullAccess" }
-                }
-            }, cancellationToken);
-            await ReadTurnAsync(stdout, 3, result, onEvent, cancellationToken);
+            var result = await lease.RunAsync(request, workspacePath, onEvent, cancellationToken);
 
             if (!string.Equals(result.TurnStatus, "completed", StringComparison.OrdinalIgnoreCase))
             {
@@ -136,11 +110,86 @@ public sealed class CodexChatService : ICodexChatService
         }
         finally
         {
-            if (!process.HasExited)
+            activeSession.Dispose();
+        }
+    }
+
+    public async Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken)
+    {
+        if (!request.CodeProjectId.HasValue) return;
+        var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
+        var lease = GetLease(user.Id, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath);
+        await lease.WarmAsync(cancellationToken);
+    }
+
+    public void Dispose()
+    {
+        _leaseReaper.Dispose();
+        foreach (var lease in _runtimeLeases.Values) lease.Dispose();
+        _runtimeLeases.Clear();
+        _activeSessionsByUser.Clear();
+    }
+
+    private CodexRuntimeLease GetLease(string? userId, string? clientRuntimeId, string command, string workspacePath)
+    {
+        var normalizedUserId = string.IsNullOrWhiteSpace(userId) ? throw new UnauthorizedAccessException() : userId.Trim();
+        var normalizedRuntimeId = NormalizeRuntimeId(clientRuntimeId);
+        var key = $"{normalizedUserId.Length}:{normalizedUserId}:{normalizedRuntimeId}";
+        lock (_leaseSync)
+        {
+            RemoveExpiredLeasesUnsafe(DateTime.UtcNow);
+            if (_runtimeLeases.TryGetValue(key, out var existing))
             {
-                try { process.Kill(true); } catch (InvalidOperationException) { }
+                existing.Touch();
+                return existing;
             }
-            try { await stderrPump; } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+
+            if (_runtimeLeases.Values.Count(lease => string.Equals(lease.UserId, normalizedUserId, StringComparison.Ordinal)) >= _maxSessionsPerUser)
+            {
+                throw new InvalidOperationException($"A user can keep at most {_maxSessionsPerUser} active Codex sessions.");
+            }
+
+            var created = new CodexRuntimeLease(normalizedUserId, command, workspacePath);
+            _runtimeLeases[key] = created;
+            return created;
+        }
+    }
+
+    private IDisposable AcquireActiveSession(string? userId, string? sessionId)
+    {
+        var normalizedUserId = string.IsNullOrWhiteSpace(userId) ? throw new UnauthorizedAccessException() : userId.Trim();
+        var normalizedSessionId = string.IsNullOrWhiteSpace(sessionId) ? throw new InvalidOperationException("A Codex request requires a chat session.") : sessionId.Trim();
+        var sessions = _activeSessionsByUser.GetOrAdd(normalizedUserId, _ => new ConcurrentDictionary<string, byte>(StringComparer.Ordinal));
+        if (!sessions.TryAdd(normalizedSessionId, 0)) throw new InvalidOperationException("This Codex session is already running.");
+        if (sessions.Count > _maxSessionsPerUser)
+        {
+            sessions.TryRemove(normalizedSessionId, out _);
+            throw new InvalidOperationException($"A user can run at most {_maxSessionsPerUser} Codex sessions at the same time.");
+        }
+        return new ActiveSessionLease(_activeSessionsByUser, normalizedUserId, normalizedSessionId);
+    }
+
+    private static string NormalizeRuntimeId(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized.Length > 96 || normalized.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '-' and not '_'))
+        {
+            throw new InvalidOperationException("A valid browser runtime identifier is required for Codex.");
+        }
+        return normalized;
+    }
+
+    private void ReapExpiredLeases()
+    {
+        lock (_leaseSync) RemoveExpiredLeasesUnsafe(DateTime.UtcNow);
+    }
+
+    private void RemoveExpiredLeasesUnsafe(DateTime now)
+    {
+        foreach (var pair in _runtimeLeases)
+        {
+            if (!pair.Value.TryDisposeIfExpired(now, _leaseTtl)) continue;
+            _runtimeLeases.TryRemove(pair.Key, out _);
         }
     }
 
@@ -396,6 +445,289 @@ public sealed class CodexChatService : ICodexChatService
     }
     private static Task EmitAsync(AgentStreamEventHandler? onEvent, AgentStreamEvent streamEvent, CancellationToken cancellationToken) => onEvent == null ? Task.CompletedTask : onEvent(streamEvent, cancellationToken);
     private static async Task DrainStderrAsync(StreamReader stderr, CancellationToken cancellationToken) { while (await stderr.ReadLineAsync(cancellationToken) != null) { } }
+
+    private sealed class ActiveSessionLease : IDisposable
+    {
+        private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _sessionsByUser;
+        private readonly string _userId;
+        private readonly string _sessionId;
+        private int _disposed;
+
+        public ActiveSessionLease(ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> sessionsByUser, string userId, string sessionId)
+        {
+            _sessionsByUser = sessionsByUser;
+            _userId = userId;
+            _sessionId = sessionId;
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            if (!_sessionsByUser.TryGetValue(_userId, out var sessions)) return;
+            sessions.TryRemove(_sessionId, out _);
+            if (sessions.IsEmpty) _sessionsByUser.TryRemove(_userId, out _);
+        }
+    }
+
+    /// <summary>
+    /// A browser runtime owns one initialized app-server process while its authenticated heartbeat remains fresh.
+    /// </summary>
+    private sealed class CodexRuntimeLease : IDisposable
+    {
+        private readonly object _sync = new();
+        private readonly CodexAppServerPool _pool;
+        private DateTime _lastHeartbeatUtc = DateTime.UtcNow;
+        private bool _disposed;
+
+        public CodexRuntimeLease(string userId, string command, string workspacePath)
+        {
+            UserId = userId;
+            _pool = new CodexAppServerPool(command, workspacePath, 1);
+        }
+
+        public string UserId { get; }
+
+        public void Touch()
+        {
+            lock (_sync)
+            {
+                if (_disposed) throw new InvalidOperationException("The Codex browser runtime has expired.");
+                _lastHeartbeatUtc = DateTime.UtcNow;
+            }
+        }
+
+        public async Task WarmAsync(CancellationToken cancellationToken)
+        {
+            Touch();
+            var worker = await _pool.TryRentAsync(cancellationToken);
+            if (worker == null) return;
+            _pool.Return(worker, reusable: true);
+        }
+
+        public async Task<CodexRunState> RunAsync(ChatCompleteRequest request, string workspacePath, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
+        {
+            Touch();
+            CodexAppServerWorker? worker = null;
+            var reusable = false;
+            try
+            {
+                worker = await _pool.RentAsync(cancellationToken);
+                var result = await worker.RunAsync(request, workspacePath, onEvent, cancellationToken);
+                reusable = true;
+                return result;
+            }
+            finally
+            {
+                if (worker != null) _pool.Return(worker, reusable);
+            }
+        }
+
+        public bool TryDisposeIfExpired(DateTime now, TimeSpan ttl)
+        {
+            lock (_sync)
+            {
+                if (_disposed || _lastHeartbeatUtc > now - ttl || !_pool.IsIdle) return false;
+                _disposed = true;
+            }
+            _pool.Dispose();
+            return true;
+        }
+
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                if (_disposed) return;
+                _disposed = true;
+            }
+            _pool.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Keeps one initialized app-server process for a browser runtime. A worker is leased to exactly one turn at a time because app-server writes all JSONL responses to one stdout.
+    /// </summary>
+    private sealed class CodexAppServerPool : IDisposable
+    {
+        private readonly string _command;
+        private readonly string _workspacePath;
+        private readonly ConcurrentQueue<CodexAppServerWorker> _idleWorkers = new();
+        private readonly SemaphoreSlim _capacity;
+        private int _leasedWorkers;
+
+        public CodexAppServerPool(string command, string workspacePath, int maxWorkers)
+        {
+            _command = command;
+            _workspacePath = workspacePath;
+            _capacity = new SemaphoreSlim(maxWorkers, maxWorkers);
+        }
+
+        public async Task<CodexAppServerWorker> RentAsync(CancellationToken cancellationToken)
+        {
+            await _capacity.WaitAsync(cancellationToken);
+            return await RentReservedAsync(cancellationToken);
+        }
+
+        public async Task<CodexAppServerWorker?> TryRentAsync(CancellationToken cancellationToken)
+        {
+            if (!_capacity.Wait(0)) return null;
+            return await RentReservedAsync(cancellationToken);
+        }
+
+        private async Task<CodexAppServerWorker> RentReservedAsync(CancellationToken cancellationToken)
+        {
+            while (_idleWorkers.TryDequeue(out var worker))
+            {
+                if (worker.IsUsable)
+                {
+                    Interlocked.Increment(ref _leasedWorkers);
+                    return worker;
+                }
+                worker.Dispose();
+            }
+
+            try
+            {
+                var worker = await CodexAppServerWorker.CreateAsync(_command, _workspacePath, cancellationToken);
+                Interlocked.Increment(ref _leasedWorkers);
+                return worker;
+            }
+            catch
+            {
+                _capacity.Release();
+                throw;
+            }
+        }
+
+        public void Return(CodexAppServerWorker worker, bool reusable)
+        {
+            if (reusable && worker.IsUsable) _idleWorkers.Enqueue(worker);
+            else worker.Dispose();
+            Interlocked.Decrement(ref _leasedWorkers);
+            _capacity.Release();
+        }
+
+        public bool IsIdle => Volatile.Read(ref _leasedWorkers) == 0;
+
+        public void Dispose()
+        {
+            while (_idleWorkers.TryDequeue(out var worker)) worker.Dispose();
+            _capacity.Dispose();
+        }
+    }
+
+    private sealed class CodexAppServerWorker : IDisposable
+    {
+        private readonly Process _process;
+        private readonly StreamReader _stdout;
+        private int _nextRequestId;
+        private bool _usable = true;
+
+        private CodexAppServerWorker(Process process)
+        {
+            _process = process;
+            _stdout = process.StandardOutput;
+            _ = DrainStderrAsync(process.StandardError, CancellationToken.None);
+        }
+
+        public bool IsUsable
+        {
+            get
+            {
+                try { return _usable && !_process.HasExited; }
+                catch { return false; }
+            }
+        }
+
+        public static async Task<CodexAppServerWorker> CreateAsync(string command, string workspacePath, CancellationToken cancellationToken)
+        {
+            var worker = new CodexAppServerWorker(StartCodex(command, workspacePath));
+            try
+            {
+                var initializeRequestId = worker.NextRequestId();
+                await SendAsync(worker._process, new
+                {
+                    method = "initialize",
+                    id = initializeRequestId,
+                    @params = new { clientInfo = new { name = "aiagent", title = "AiAgent", version = "1.0" } }
+                }, cancellationToken);
+                await ReadResponseAsync(worker._stdout, initializeRequestId, new CodexRunState(), null, cancellationToken);
+                await SendAsync(worker._process, new { method = "initialized" }, cancellationToken);
+                return worker;
+            }
+            catch
+            {
+                worker._usable = false;
+                worker.Dispose();
+                throw;
+            }
+        }
+
+        public async Task<CodexRunState> RunAsync(ChatCompleteRequest request, string workspacePath, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
+        {
+            if (!IsUsable) throw new InvalidOperationException("Codex app-server worker is unavailable.");
+            var state = new CodexRunState();
+            try
+            {
+                var threadRequestId = NextRequestId();
+                await SendAsync(_process, new
+                {
+                    method = "thread/start",
+                    id = threadRequestId,
+                    @params = new
+                    {
+                        cwd = workspacePath,
+                        approvalPolicy = "never",
+                        sandbox = "danger-full-access",
+                        ephemeral = true,
+                        serviceName = "aiagent"
+                    }
+                }, cancellationToken);
+                var threadResponse = await ReadResponseAsync(_stdout, threadRequestId, state, onEvent, cancellationToken);
+                var threadId = ReadRequiredString(threadResponse, "thread", "id");
+
+                var turnRequestId = NextRequestId();
+                await SendAsync(_process, new
+                {
+                    method = "turn/start",
+                    id = turnRequestId,
+                    @params = new
+                    {
+                        threadId,
+                        clientUserMessageId = request.SessionId,
+                        input = BuildTurnInput(request),
+                        cwd = workspacePath,
+                        approvalPolicy = "never",
+                        sandboxPolicy = new { type = "dangerFullAccess" }
+                    }
+                }, cancellationToken);
+                await ReadTurnAsync(_stdout, turnRequestId, state, onEvent, cancellationToken);
+                return state;
+            }
+            catch
+            {
+                _usable = false;
+                throw;
+            }
+        }
+
+        private int NextRequestId() => Interlocked.Increment(ref _nextRequestId);
+
+        public void Dispose()
+        {
+            _usable = false;
+            try
+            {
+                if (!_process.HasExited) _process.Kill(true);
+            }
+            catch (InvalidOperationException) { }
+            finally
+            {
+                _stdout.Dispose();
+                _process.Dispose();
+            }
+        }
+    }
 
     private sealed class CodexRunState
     {

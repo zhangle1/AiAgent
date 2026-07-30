@@ -1,5 +1,7 @@
 import type { KnowledgeCitation } from "@/lib/knowledge-types";
 
+const CHAT_RUNTIME_STORAGE_KEY = "aiagent:chat-runtime-id";
+
 function directWebSocket(path: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}${path}`;
@@ -41,6 +43,7 @@ export type ChatCompleteRequest = {
   mode?: string;
   agent?: "codex" | "codebuddy";
   attachment_ids?: string[];
+  client_runtime_id?: string;
 };
 
 export type ChatImageAttachment = {
@@ -59,6 +62,25 @@ export type ChatCompleteResponse = {
   knowledge_base_name?: string | null;
   citations: KnowledgeCitation[];
 };
+
+export function getChatRuntimeId(): string {
+  const existing = sessionStorage.getItem(CHAT_RUNTIME_STORAGE_KEY);
+  if (existing) return existing;
+  const created = globalThis.crypto?.randomUUID?.().replaceAll("-", "") ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  sessionStorage.setItem(CHAT_RUNTIME_STORAGE_KEY, created);
+  return created;
+}
+
+export async function heartbeatCodexRuntime(codeProjectId?: number): Promise<void> {
+  if (!codeProjectId) return;
+  await parseJson<{ ok: boolean }>(
+    await fetch("/api/v1/chat/codex/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_runtime_id: getChatRuntimeId(), code_project_id: codeProjectId }),
+    }),
+  );
+}
 
 export async function completeChat(payload: ChatCompleteRequest): Promise<ChatCompleteResponse> {
   return parseJson<ChatCompleteResponse>(
@@ -85,7 +107,7 @@ export function persistedChatImageUrl(sessionId: string, attachmentId: string): 
 }
 
 export type ChatStreamEvent = {
-  type: "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "error";
+  type: "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
   label?: string | null;
   content?: string;
   model_id?: string | null;
@@ -120,9 +142,12 @@ async function streamCompleteChatWs(
   const socket = new WebSocket(directWebSocket("/api/v1/chat/ws"));
   let settled = false;
   let opened = false;
+  let completed = false;
+  let legacyDoneTimer: number | null = null;
 
   return await new Promise<void>((resolve, reject) => {
     const cleanup = () => {
+      if (legacyDoneTimer !== null) window.clearTimeout(legacyDoneTimer);
       signal?.removeEventListener("abort", abort);
       socket.onopen = null;
       socket.onmessage = null;
@@ -135,6 +160,14 @@ async function streamCompleteChatWs(
       settled = true;
       cleanup();
       resolve();
+    };
+
+    const scheduleLegacyDoneCompletion = () => {
+      if (legacyDoneTimer !== null || settled) return;
+      legacyDoneTimer = window.setTimeout(() => {
+        legacyDoneTimer = null;
+        finish();
+      }, 800);
     };
 
     const fail = (error: Error) => {
@@ -184,18 +217,30 @@ async function streamCompleteChatWs(
           return;
         }
         onEvent(event);
+        if (event.type === "completed") {
+          completed = true;
+          finish();
+          return;
+        }
+        if (event.type === "done") scheduleLegacyDoneCompletion();
       } catch (ex) {
         fail(ex instanceof Error ? ex : new Error("Invalid WebSocket event."));
       }
     };
 
     socket.onerror = () => {
+      if (legacyDoneTimer !== null) return;
       fail(new Error("Chat WebSocket connection failed."));
     };
 
     socket.onclose = () => {
       if (!opened) {
         fail(new Error("Chat WebSocket closed before opening."));
+        return;
+      }
+      if (!completed) {
+        if (legacyDoneTimer !== null) return;
+        fail(new Error("Chat WebSocket closed before completion."));
         return;
       }
       finish();
@@ -222,6 +267,13 @@ async function streamCompleteChatSse(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completed = false;
+  let sawDone = false;
+  const handleEvent = (event: ChatStreamEvent) => {
+    onEvent(event);
+    if (event.type === "completed") completed = true;
+    if (event.type === "done") sawDone = true;
+  };
 
   while (true) {
     const { value, done } = await reader.read();
@@ -231,14 +283,16 @@ async function streamCompleteChatSse(
     buffer = frames.pop() ?? "";
     for (const frame of frames) {
       const event = parseSseFrame(frame);
-      if (event) onEvent(event);
+      if (event) handleEvent(event);
     }
   }
 
   if (buffer.trim()) {
     const event = parseSseFrame(buffer);
-    if (event) onEvent(event);
+    if (event) handleEvent(event);
   }
+
+  if (!completed && !sawDone) throw new Error("Chat stream ended before completion.");
 }
 
 function parseSseFrame(frame: string): ChatStreamEvent | null {

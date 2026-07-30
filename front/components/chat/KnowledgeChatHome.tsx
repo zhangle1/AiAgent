@@ -3,7 +3,8 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ImagePlus, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
-import { deleteChatImage, persistedChatImageUrl, streamCompleteChat, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
+import { deleteChatImage, persistedChatImageUrl, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
+import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
@@ -15,7 +16,7 @@ import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
-import { getSession } from "@/lib/session-api";
+import { getSession, type SessionDetail } from "@/lib/session-api";
 import { getAgentProviderEnvironments, type AgentProviderEnvironment } from "@/lib/agent-provider-api";
 
 type InspectorTab = "preview" | "file" | "tasks" | "terminal";
@@ -48,6 +49,43 @@ function createClientId(): string {
     ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function toHistoryMessages(session: SessionDetail): ChatMessage[] {
+  return session.messages.map((message) => ({
+    id: String(message.id), role: message.role, content: message.content, thinking: message.thinking ?? undefined,
+    citations: message.citations ?? undefined, model: message.metadata?.model ?? null,
+    attachments: message.metadata?.attachments?.map((attachment) => ({ ...attachment, previewUrl: persistedChatImageUrl(session.id, attachment.id) })),
+    status: "done",
+  }));
+}
+
+function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key: TranslationKey) => string): ChatMessage {
+  const stats = event.metadata ? extractRunStats(event.metadata) : {};
+  if (event.type === "label") return { ...message, label: event.label ?? null, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
+  if (event.type === "thinking") return { ...message, thinking: `${message.thinking ?? ""}${event.content ?? ""}`, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
+  if (event.type === "content") return { ...message, content: `${message.content}${event.content ?? ""}`, model: event.model ?? message.model, ...stats };
+  if (event.type === "loop" || event.type === "tool" || event.type === "tool_result" || event.type === "tool_request") return { ...message, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
+  if (event.type === "sources" || event.type === "done") return { ...message, content: message.content || event.content || "", citations: event.citations ?? message.citations, model: event.model ?? message.model, modificationStatus: stringifyMeta(event.metadata?.modification_status) || message.modificationStatus, label: event.label ?? message.label, status: event.type === "done" ? "done" : message.status, elapsedSeconds: stats.elapsedSeconds ?? Math.max(1, Math.round((Date.now() - (message.startedAt ?? Date.now())) / 1000)), ...stats };
+  if (event.type === "error") return { ...message, content: message.content || event.content || t("chat.searchFailed"), status: "error" };
+  return message;
+}
+
+function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], t: (key: TranslationKey) => string): ChatMessage[] {
+  const next = [...items];
+  for (const stream of streams) {
+    const id = `stream:${stream.id}`;
+    const initial: ChatMessage = { id, role: "assistant", content: "", thinking: "", trace: [], label: null, status: "streaming", startedAt: stream.startedAt, agent: stream.agent };
+    const message = stream.events.reduce((current, event) => applyStreamEvent(current, event, t), initial);
+    const candidate = { ...message, status: stream.status === "streaming" ? message.status : stream.status, content: stream.status === "done" ? message.content.trim() || t("chat.emptyAnswer") : message.content, elapsedSeconds: message.elapsedSeconds ?? (stream.status === "streaming" ? undefined : Math.max(1, Math.round((Date.now() - stream.startedAt) / 1000))) };
+    const index = next.findIndex((item) => item.id === id);
+    if (index >= 0) next[index] = { ...next[index], ...candidate };
+    else {
+      const alreadyPersisted = stream.status === "done" && candidate.content.trim().length > 0 && next.some((item) => item.role === "assistant" && item.status === "done" && item.content.trim() === candidate.content.trim());
+      if (!alreadyPersisted) next.push(candidate);
+    }
+  }
+  return next;
+}
+
 export function KnowledgeChatHome() {
   const { t } = useI18n();
   const router = useRouter();
@@ -70,7 +108,6 @@ export function KnowledgeChatHome() {
   const [previewingImage, setPreviewingImage] = useState<ChatImagePreview | null>(null);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [requestedInspectorTab, setRequestedInspectorTab] = useState<InspectorTab | null>(null);
@@ -79,8 +116,9 @@ export function KnowledgeChatHome() {
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSessionIdRef = useRef<string | null>(null);
-  const streamAbortControllerRef = useRef<AbortController | null>(null);
+  const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const attachmentPreviewUrlsRef = useRef(new Set<string>());
+  const { streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
 
   const readyKnowledgeBases = useMemo(
     () => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"),
@@ -92,6 +130,9 @@ export function KnowledgeChatHome() {
   const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
+  const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
+  const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
+  const sending = sessionStreams.some((stream) => stream.status === "streaming");
 
   useEffect(() => {
     void loadBootstrap();
@@ -109,8 +150,14 @@ export function KnowledgeChatHome() {
   }, [agentProviders, selectedAgentId]);
 
   useEffect(() => {
+    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId);
+  }, [activateCodexRuntime, selectedAgentId, selectedProjectId]);
+
+  useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
   }, [requestedProjectId, requestedSessionId]);
+
+  useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,19 +174,34 @@ export function KnowledgeChatHome() {
       if (cancelled) return;
       setActiveSessionId(session.id);
       setSelectedProjectId(session.project_id ?? null);
-      setMessages(session.messages.map((message) => ({
-        id: String(message.id), role: message.role, content: message.content, thinking: message.thinking ?? undefined,
-        citations: message.citations ?? undefined, model: message.metadata?.model ?? null,
-        attachments: message.metadata?.attachments?.map((attachment) => ({ ...attachment, previewUrl: persistedChatImageUrl(session.id, attachment.id) })),
-        status: "done",
-      })));
+      setMessages(toHistoryMessages(session));
+      clearFinishedStreams(session.id);
     }).catch((ex) => { if (!cancelled) setError(ex instanceof Error ? ex.message : t("chat.errorLoadKnowledge")); });
     return () => { cancelled = true; };
-  }, [requestedSessionId, t]);
+  }, [clearFinishedStreams, requestedSessionId, t]);
+
+  useEffect(() => {
+    const refreshCompletedSession = (event: Event) => {
+      const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (!sessionId || sessionId !== activeSessionIdRef.current) return;
+      window.setTimeout(() => {
+        void getSession(sessionId).then((session) => {
+          if (activeSessionIdRef.current !== session.id) return;
+          setSelectedProjectId(session.project_id ?? null);
+          setMessages(toHistoryMessages(session));
+          clearFinishedStreams(session.id);
+        }).catch(() => {
+          // The live stream remains visible; the next session entry retries history loading.
+        });
+      }, 300);
+    };
+    window.addEventListener("aiagent:chat-stream-complete", refreshCompletedSession);
+    return () => window.removeEventListener("aiagent:chat-stream-complete", refreshCompletedSession);
+  }, [clearFinishedStreams]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sending]);
+  }, [displayMessages, sending]);
 
   useEffect(() => {
     if (!openContextPicker) return;
@@ -152,8 +214,11 @@ export function KnowledgeChatHome() {
     return () => document.removeEventListener("pointerdown", closeWhenOutside);
   }, [openContextPicker]);
 
-  useEffect(() => () => streamAbortControllerRef.current?.abort(), []);
   useEffect(() => () => attachmentPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
+  useEffect(() => {
+    if (!activeSessionId) return;
+    markSessionViewed(activeSessionId);
+  }, [activeSessionId, markSessionViewed, sessionStreams]);
 
   async function loadBootstrap() {
     setLoading(true);
@@ -215,11 +280,7 @@ export function KnowledgeChatHome() {
       setImageAttachments([]);
     }
 
-    setSending(true);
     setError(null);
-    const streamAbortController = new AbortController();
-    streamAbortControllerRef.current = streamAbortController;
-
     const assistantId = options?.retryAssistantId ?? createClientId();
     const startedAt = Date.now();
     if (options?.retryAssistantId) {
@@ -246,7 +307,7 @@ export function KnowledgeChatHome() {
     }
 
     try {
-      await streamCompleteChat({
+      const streamId = startStream({
         session_id: sessionId,
         message: messageText,
         knowledge_base_name: selectedKbNames[0],
@@ -258,87 +319,21 @@ export function KnowledgeChatHome() {
         mode: "chat",
         agent: selectedAgentId || undefined,
         attachment_ids: attachmentsForTurn.map((attachment) => attachment.id),
-      }, (event) => {
-        if (event.type === "error") {
-          throw new Error(event.content || t("chat.errorSearch"));
-        }
-
-        setMessages((items) => items.map((message) => {
-          if (message.id !== assistantId) return message;
-          const stats = event.metadata ? extractRunStats(event.metadata) : {};
-          if (event.type === "label") {
-            return { ...message, label: event.label ?? null, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
-          }
-          if (event.type === "thinking") {
-            return {
-              ...message,
-              thinking: `${message.thinking ?? ""}${event.content ?? ""}`,
-              trace: appendTrace(message.trace, formatTraceEvent(event, t)),
-              ...stats,
-            };
-          }
-          if (event.type === "content") {
-            return {
-              ...message,
-              content: `${message.content}${event.content ?? ""}`,
-              model: event.model ?? message.model,
-              ...stats,
-            };
-          }
-          if (event.type === "loop" || event.type === "tool" || event.type === "tool_result" || event.type === "tool_request") {
-            return { ...message, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
-          }
-          if (event.type === "sources" || event.type === "done") {
-            return {
-              ...message,
-              content: message.content || event.content || "",
-              citations: event.citations ?? message.citations,
-              model: event.model ?? message.model,
-              modificationStatus: stringifyMeta(event.metadata?.modification_status) || message.modificationStatus,
-              label: event.label ?? message.label,
-              status: event.type === "done" ? "done" : message.status,
-              elapsedSeconds: stats.elapsedSeconds ?? Math.max(1, Math.round((Date.now() - (message.startedAt ?? startedAt)) / 1000)),
-              ...stats,
-            };
-          }
-          return message;
-        }));
-      }, streamAbortController.signal);
-
-      setMessages((items) => items.map((message) => {
-        if (message.id !== assistantId) return message;
-        return {
-          ...message,
-          content: message.content.trim() || t("chat.emptyAnswer"),
-          status: "done",
-          elapsedSeconds: message.elapsedSeconds ?? Math.max(1, Math.round((Date.now() - (message.startedAt ?? startedAt)) / 1000)),
-        };
-      }));
+      });
+      setMessages((items) => {
+        const streamMessageId = `stream:${streamId}`;
+        return items.some((message) => message.id === streamMessageId)
+          ? items.filter((message) => message.id !== assistantId)
+          : items.map((message) => message.id === assistantId ? { ...message, id: streamMessageId } : message);
+      });
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     } catch (ex) {
-      if (streamAbortController.signal.aborted) {
-        setMessages((items) => items.map((message) => (
-          message.id === assistantId
-            ? {
-              ...message,
-              content: message.content.trim() || "Generation stopped.",
-              status: "stopped",
-              elapsedSeconds: Math.max(1, Math.round((Date.now() - (message.startedAt ?? startedAt)) / 1000)),
-            }
-            : message
-        )));
-        window.dispatchEvent(new Event("aiagent:sessions-updated"));
-        return;
-      }
       setError(ex instanceof Error ? ex.message : t("chat.errorSearch"));
       setMessages((items) => items.map((message) => (
         message.id === assistantId
           ? { ...message, content: message.content || t("chat.searchFailed"), status: "error" }
           : message
       )));
-    } finally {
-      if (streamAbortControllerRef.current === streamAbortController) streamAbortControllerRef.current = null;
-      setSending(false);
     }
   }
 
@@ -387,7 +382,7 @@ export function KnowledgeChatHome() {
   }
 
   function stopGenerating() {
-    streamAbortControllerRef.current?.abort();
+    sessionStreams.filter((stream) => stream.status === "streaming").forEach((stream) => cancelStream(stream.id));
   }
 
   function openInspector(tab: InspectorTab) {
@@ -425,17 +420,17 @@ export function KnowledgeChatHome() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-7">
         <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
-          {messages.length === 0 ? (
+          {displayMessages.length === 0 ? (
             <EmptyState title={t("chat.heroTitle")} />
           ) : (
             <div className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
-              {messages.map((message, index) => (
+              {displayMessages.map((message, index) => (
                 <MessageBubble
                   key={message.id}
                   message={message}
                   onPreviewImage={setPreviewingImage}
                     onRetry={message.role === "assistant" ? () => {
-                      const userMessage = findPreviousUserMessage(messages, index);
+                      const userMessage = findPreviousUserMessage(displayMessages, index);
                       if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id, attachments: userMessage.attachments });
                     } : undefined}
                     onOpenCodeFile={openCodeFile}
