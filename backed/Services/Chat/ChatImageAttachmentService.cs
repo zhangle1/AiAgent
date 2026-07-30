@@ -29,12 +29,14 @@ public sealed class ChatImageAttachmentService : IChatImageAttachmentService
     private const int HeaderLength = 16;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ChatImageAttachmentService> _logger;
+    private readonly string _rootPath;
     private readonly ConcurrentDictionary<string, StoredAttachment> _attachments = new(StringComparer.Ordinal);
 
     public ChatImageAttachmentService(IConfiguration configuration, ILogger<ChatImageAttachmentService> logger)
     {
         _configuration = configuration;
         _logger = logger;
+        _rootPath = ResolveRootPath(configuration);
     }
 
     public async Task<ChatImageAttachmentDto> SaveAsync(AuthenticatedUser user, IFormFile file, CancellationToken cancellationToken)
@@ -156,13 +158,19 @@ public sealed class ChatImageAttachmentService : IChatImageAttachmentService
         return Task.FromResult(true);
     }
 
-    private string RootPath
+    private string RootPath => _rootPath;
+
+    private static string ResolveRootPath(IConfiguration configuration)
     {
-        get
+        var configuredPath = configuration["ChatAttachments:RootPath"];
+        if (!string.IsNullOrWhiteSpace(configuredPath))
         {
-            var dataPath = _configuration["DataPath"];
-            return Path.GetFullPath(Path.Combine(string.IsNullOrWhiteSpace(dataPath) ? "data" : dataPath, "chat_attachments"));
+            return Path.GetFullPath(configuredPath.Trim());
         }
+
+        // Preserve the original storage location when RootPath is not configured.
+        var dataPath = configuration["DataPath"];
+        return Path.GetFullPath(Path.Combine(string.IsNullOrWhiteSpace(dataPath) ? "data" : dataPath, "chat_attachments"));
     }
 
     private string GetHistoryPath(string userId, string sessionId)
