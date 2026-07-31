@@ -43,6 +43,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const [sessionMenu, setSessionMenu] = useState<SessionMenuState | null>(null);
   const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const projectMenuAnchorRef = useRef<HTMLElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const sessionMenuAnchorRef = useRef<HTMLElement | null>(null);
@@ -73,6 +74,24 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     document.addEventListener("pointerdown", closeOnOutsideClick);
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
   }, [projectMenu, sessionMenu]);
+
+  useEffect(() => {
+    const toggleMobileDrawer = () => setMobileOpen((current) => !current);
+    const closeMobileDrawer = () => setMobileOpen(false);
+    window.addEventListener("aiagent:mobile-drawer-toggle", toggleMobileDrawer);
+    window.addEventListener("aiagent:mobile-drawer-close", closeMobileDrawer);
+    return () => {
+      window.removeEventListener("aiagent:mobile-drawer-toggle", toggleMobileDrawer);
+      window.removeEventListener("aiagent:mobile-drawer-close", closeMobileDrawer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [mobileOpen]);
 
   const groups = useMemo<SessionGroup[]>(() => {
     const preferences = new Map(projectPreferences.map((item) => [item.project_id, item]));
@@ -150,8 +169,11 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     setSessionMenu({ session, top: rect.bottom + 4, left: Math.max(8, rect.right - 176) });
   }
 
-  return <aside className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-slate-200 bg-[#fbfcff] transition-[width] duration-200 ${compact ? "w-[72px]" : "w-[240px]"}`}>
+  return <>
+    {mobileOpen && <button type="button" aria-label="关闭工作台抽屉" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-slate-950/35 lg:hidden" />}
+    <aside onClickCapture={(event) => { if ((event.target as HTMLElement).closest("a")) setMobileOpen(false); }} className={`fixed inset-y-0 left-0 z-50 flex w-[min(86vw,344px)] -translate-x-full flex-col border-r border-slate-200 bg-[#fbfcff] transition-[transform,width] duration-200 ${mobileOpen ? "translate-x-0" : ""} lg:z-30 lg:translate-x-0 ${compact ? "lg:w-[72px]" : "lg:w-[240px]"}`}>
     <div className={`flex h-16 shrink-0 items-center ${compact ? "justify-center px-2" : "px-4"}`}>
+      <button type="button" onClick={() => setMobileOpen(false)} className="order-2 ml-auto grid h-10 w-10 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 lg:hidden" aria-label="关闭工作台抽屉"><X size={18}/></button>
       {compact ? <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="grid h-9 w-9 place-items-center rounded-[10px] border border-sky-200 bg-white text-sky-500 shadow-sm transition hover:bg-sky-50" aria-label="展开侧边栏" title="展开侧边栏"><Feather size={18}/></button> : <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-1 text-left transition hover:bg-sky-50" aria-label="收起侧边栏" title="收起侧边栏"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-sky-200 bg-white text-sky-500 shadow-sm"><Feather size={17}/></span><span className="truncate font-serif text-xl font-semibold italic text-sky-500">{t("app.name")}</span></button>}
     </div>
 
@@ -180,7 +202,8 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     })()}
     {sessionMenu && <SessionMenu position={sessionMenu} menuRef={sessionMenuRef} onClose={() => { sessionMenuAnchorRef.current = null; setSessionMenu(null); }} onTogglePin={() => void toggleSessionPin(sessionMenu.session)} onRename={() => { setRenameTarget(sessionMenu.session); setSessionMenu(null); }} onArchive={() => { void archiveSessionItem(sessionMenu.session); setSessionMenu(null); }} />}
     {renameTarget && <RenameSessionDialog session={renameTarget} onClose={() => setRenameTarget(null)} onSave={async (title) => { await renameSession(renameTarget.id, title); setSessions((items) => items.map((item) => item.id === renameTarget.id ? { ...item, title } : item)); setRenameTarget(null); }} />}
-  </aside>;
+    </aside>
+  </>;
 }
 
 function SidebarLink({ item, active, compact }: { item: NavItem; active: boolean; compact: boolean }) {

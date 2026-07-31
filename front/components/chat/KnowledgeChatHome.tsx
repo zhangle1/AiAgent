@@ -1,13 +1,15 @@
 "use client";
 
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ImagePlus, ListTodo, Loader2, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { deleteChatImage, persistedChatImageUrl, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
+import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -107,6 +109,8 @@ export function KnowledgeChatHome() {
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [mobilePicker, setMobilePicker] = useState<"model" | "project" | null>(null);
   const [imageAttachments, setImageAttachments] = useState<ChatImagePreview[]>([]);
   const [previewingImage, setPreviewingImage] = useState<ChatImagePreview | null>(null);
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -134,6 +138,7 @@ export function KnowledgeChatHome() {
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
   const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
+  const mobileModelLabel = selectedAgentId === "codex" ? currentCodexModel?.name ?? "Auto" : currentModel?.name || currentModel?.model || "Auto";
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
@@ -301,6 +306,7 @@ export function KnowledgeChatHome() {
         },
       ]);
       setInput("");
+      setComposerExpanded(false);
       setImageAttachments([]);
     }
 
@@ -422,10 +428,11 @@ export function KnowledgeChatHome() {
 
   return (
     <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
-      <header className="relative z-[80] flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600"><Sparkles size={16}/></div>
-          <div><h1 className="text-sm font-semibold text-slate-950">{t("chat.newChat")}</h1><p className="text-[11px] text-slate-400">AI 工作台</p></div>
+      <header className="relative z-[80] flex h-14 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-3 backdrop-blur-xl lg:h-16 lg:px-5">
+        <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+          <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:mobile-drawer-toggle"))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="打开工作台抽屉"><Menu size={20}/></button>
+          <div className="hidden h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600 lg:grid"><Sparkles size={16}/></div>
+          <div className="min-w-0"><h1 className="truncate text-sm font-semibold text-slate-950">{activeSessionId ? "当前会话" : t("chat.newChat")}</h1><p className="hidden text-[11px] text-slate-400 lg:block">AI 工作台</p></div>
           {currentKnowledgeBase && (
             <span className="hidden rounded-full bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 sm:inline-flex">
               {currentKnowledgeBase.display_name || currentKnowledgeBase.name}
@@ -433,10 +440,11 @@ export function KnowledgeChatHome() {
           )}
           {selectedProject && <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex"><Braces size={12}/>{selectedProject.display_name}</span>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 lg:gap-2">
+          <ClientScanDialog />
           <ChatRuntimeToolbar project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")}/>
-          <SidePanelTabLauncher onOpen={openInspector}/>
-          <button type="button" onClick={() => void loadBootstrap()} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600" aria-label={t("knowledge.refresh")}>
+          <span className="hidden lg:contents"><SidePanelTabLauncher onOpen={openInspector}/></span>
+          <button type="button" onClick={() => void loadBootstrap()} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600 lg:inline-flex" aria-label={t("knowledge.refresh")}>
             <RefreshCw size={14} />
           </button>
         </div>
@@ -484,7 +492,7 @@ export function KnowledgeChatHome() {
               event.preventDefault();
               void addImages(images);
             }
-          }} className="sticky bottom-4 mt-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)]">
+          }} className={`sticky bottom-0 mt-auto rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}>
             {imageAttachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
                 {imageAttachments.map((attachment) => (
@@ -499,6 +507,17 @@ export function KnowledgeChatHome() {
                 ))}
               </div>
             )}
+            <div className="flex items-center gap-1 lg:hidden">
+              <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18}/></button>
+              <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
+              <textarea value={input} onFocus={() => setComposerExpanded(true)} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="发消息或按住说话" className={`min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-5 text-slate-800 outline-none placeholder:text-slate-400 ${composerExpanded ? "min-h-[52px]" : "h-9 min-h-9"}`} aria-label="聊天输入" />
+              <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || selectedAgentId !== "codex"} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
+              {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim()} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
+            </div>
+            {composerExpanded && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
+              <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600"><Braces size={14} className="shrink-0 text-blue-600"/><span className="min-w-0 flex-1 truncate">{selectedProject?.display_name || "选择项目"}</span><ChevronDown size={13} className="shrink-0"/></button>
+              <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600"><Bot size={14} className="shrink-0 text-violet-600"/><select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体"><option value="">云端模型</option><option value="codex">Codex 本地</option></select></label>
+            </div>}
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -509,9 +528,9 @@ export function KnowledgeChatHome() {
                 }
               }}
               placeholder={t("chat.placeholderShort")}
-              className="min-h-[56px] w-full resize-none bg-transparent px-1 pt-1 text-[14px] leading-6 text-slate-800 outline-none placeholder:text-slate-400"
+              className="hidden min-h-[56px] w-full resize-none bg-transparent px-1 pt-1 text-[14px] leading-6 text-slate-800 outline-none placeholder:text-slate-400 lg:block"
             />
-            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5">
+            <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
               <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                 <input
                   type="file"
@@ -620,6 +639,24 @@ export function KnowledgeChatHome() {
       <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} onClose={() => setRightPanelOpen(false)}/>
       {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)}/>}
       </div>
+      <MobileOptionSheet
+        open={mobilePicker !== null}
+        title={mobilePicker === "model" ? "选择模型" : "选择项目"}
+        items={mobilePicker === "model"
+          ? (selectedAgentId === "codex"
+            ? codexModels.map((model) => ({ id: model.id, label: model.name, description: model.description || "Codex 本地模型", badge: "推理" }))
+            : [{ id: "", label: "Auto", description: "根据任务自动选择默认模型", badge: "智能" }, ...llmModels.map((model) => ({ id: model.id, label: model.name || model.model, description: model.model, badge: "推理" }))])
+          : [{ id: "", label: "不绑定项目", description: "发起通用对话，不附带代码库上下文" }, ...codeProjects.map((project) => ({ id: String(project.id), label: project.display_name, description: `${project.repository_count} 个代码库 · ${project.root_path}` }))]}
+        selectedId={mobilePicker === "model" ? (selectedAgentId === "codex" ? selectedCodexModelId : selectedModelId) : selectedProjectId ? String(selectedProjectId) : ""}
+        onClose={() => setMobilePicker(null)}
+        onSelect={(id) => {
+          if (mobilePicker === "model") {
+            if (selectedAgentId === "codex") setSelectedCodexModelId(id);
+            else setSelectedModelId(id);
+          } else setSelectedProjectId(id ? Number(id) : null);
+          setMobilePicker(null);
+        }}
+      />
     </main>
   );
 }
@@ -648,6 +685,25 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
       })}
     </div>}
   </div>;
+}
+
+type MobileOption = { id: string; label: string; description?: string; badge?: string };
+
+function MobileOptionSheet({ open, title, items, selectedId, onClose, onSelect }: { open: boolean; title: string; items: MobileOption[]; selectedId: string; onClose: () => void; onSelect: (id: string) => void }) {
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(<div className="fixed inset-0 z-[160] flex items-end bg-slate-950/55 backdrop-blur-[2px] lg:hidden" role="presentation" onMouseDown={onClose}>
+    <section className="max-h-[78dvh] w-full overflow-y-auto rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_55px_rgba(15,23,42,0.28)]" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
+      <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200" />
+      <div className="mb-3 flex items-center justify-between"><h2 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h2><button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full text-slate-400 hover:bg-slate-100" aria-label={`关闭${title}`}><X size={19}/></button></div>
+      <div className="divide-y divide-slate-100">
+        {items.map((item) => <button key={item.id || "default"} type="button" onClick={() => onSelect(item.id)} className={`flex min-h-[72px] w-full items-center gap-3 py-3 text-left ${selectedId === item.id ? "text-blue-700" : "text-slate-800"}`}>
+          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-bold ${selectedId === item.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>{item.label.slice(0, 1).toUpperCase()}</span>
+          <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><strong className="truncate text-[15px]">{item.label}</strong>{item.badge && <em className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] not-italic font-semibold text-violet-700">{item.badge}</em>}</span>{item.description && <small className="mt-1 block truncate text-[11px] font-normal text-slate-500">{item.description}</small>}</span>
+          {selectedId === item.id && <Check size={22} className="shrink-0 text-emerald-500" />}
+        </button>)}
+      </div>
+    </section>
+  </div>, document.body);
 }
 
 function ContextMultiSelect({

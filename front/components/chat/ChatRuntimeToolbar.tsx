@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Download, FilePenLine, GitBranch, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
 import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
-import { discardCodeRepositoryChangesAndPull, getCodeRepositoryGitStatus, packageCodeRepositoryViaWebSocket, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
+import { discardCodeRepositoryChangesAndPull, getCodeRepositoryGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitWorkspaceStatus } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
@@ -19,7 +19,9 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   const [gitStatuses, setGitStatuses] = useState<Record<number, GitWorkspaceStatus>>({});
   const [packageStatus, setPackageStatus] = useState<Record<string, string>>({});
   const [configDraft, setConfigDraft] = useState<ChatConfigDraft | null>(null);
+  const [pushTarget, setPushTarget] = useState<CodeRepository | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!menuOpen || !project) return;
@@ -31,7 +33,8 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   useEffect(() => {
     if (!menuOpen) return;
     const closeOutside = (event: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !panelRef.current?.contains(target)) setMenuOpen(false);
     };
     document.addEventListener("pointerdown", closeOutside);
     return () => document.removeEventListener("pointerdown", closeOutside);
@@ -136,15 +139,30 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   }
 
   async function discardRepositoryChangesAndPull(repository: CodeRepository) {
-    if (!window.confirm(`更新“${repository.display_name}”会用服务器上的最新代码替换本机尚未保存的修改。您额外新建的文件和已提交的版本不会删除。确认更新代码库吗？`)) return;
+    if (!window.confirm(`重置更新“${repository.display_name}”会用服务器上的最新代码替换本机尚未保存的修改。您额外新建的文件和已提交的版本不会删除。确认继续吗？`)) return;
     setBusy(true);
     setError(null);
     try {
       const result = await discardCodeRepositoryChangesAndPull(repository.name);
-      if (!result.ok) throw new Error(result.output || "更新代码库失败。");
+      if (!result.ok) throw new Error(result.output || "重置更新失败。");
       await refresh();
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : "更新代码库失败。");
+      setError(ex instanceof Error ? ex.message : "重置更新失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pushRepository(repository: CodeRepository, message: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await pushCodeRepositoryGit(repository.name, message);
+      if (!result.ok) throw new Error(result.output || "提交推送失败。");
+      setPushTarget(null);
+      await refresh();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : "提交推送失败。");
     } finally {
       setBusy(false);
     }
@@ -154,11 +172,12 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
   return <>
     <div className="relative flex items-center gap-1.5">
+      {menuOpen && typeof document !== "undefined" && createPortal(<button type="button" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-[85] bg-slate-950/35 lg:hidden" aria-label="关闭项目程序运行" />, document.body)}
       <div ref={menuRef} className="relative">
-        <button type="button" onClick={() => setMenuOpen((current) => !current)} className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium shadow-sm ${menuOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-expanded={menuOpen}>
+        <button type="button" onClick={() => setMenuOpen((current) => !current)} className={`inline-flex h-9 items-center gap-1 rounded-xl border px-2 text-[11px] font-medium shadow-sm lg:h-8 lg:gap-1.5 lg:rounded-lg lg:px-2.5 lg:text-xs ${menuOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-expanded={menuOpen}>
           <Terminal size={14}/>项目程序运行<ChevronDown size={13} className={menuOpen ? "rotate-180 transition" : "transition"}/>
         </button>
-        {menuOpen && <div className="absolute right-0 top-10 z-[90] w-[390px] overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
+        {menuOpen && typeof document !== "undefined" && createPortal(<div ref={panelRef} className="fixed inset-x-0 bottom-0 z-[90] max-h-[84dvh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-4 shadow-[0_-12px_42px_rgba(15,23,42,0.2)] lg:inset-x-auto lg:right-5 lg:top-16 lg:w-[390px] lg:max-h-[calc(100dvh-5rem)] lg:rounded-xl lg:p-3 lg:shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">项目程序运行</p>
@@ -173,7 +192,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
           {project?.repositories.length ? <div className="mb-3 space-y-2">
             <p className="px-0.5 text-[11px] font-semibold text-slate-500">代码库</p>
-            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} packageStatus={packageStatus[repository.name]} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
+            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} packageStatus={packageStatus[repository.name]} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
           </div> : null}
 
           {runtime && runtime.profiles.length ? <div className="mb-2 space-y-1.5">
@@ -190,22 +209,23 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
             <button type="button" onClick={onOpenRuntimePanel} className="mt-1 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100"><Terminal size={14}/>打开实时终端</button>
           </div> : runtime && runtime.profiles.length ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">尚未启动；可点击代码库右侧的“运行”，只启动该代码库的配置。</p> : null}
           {error && <p className="mt-2 rounded-md bg-rose-50 px-2.5 py-2 text-[11px] leading-4 text-rose-700">{error}</p>}
-        </div>}
+        </div>, document.body)}
       </div>
-      <button type="button" onClick={onToggleRightPanel} className={`grid h-8 w-8 place-items-center rounded-lg border shadow-sm ${rightPanelOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="打开或关闭右侧面板">{rightPanelOpen ? <PanelLeftOpen size={15}/> : <PanelRightOpen size={15}/>}</button>
+      <button type="button" onClick={onToggleRightPanel} className={`hidden h-8 w-8 place-items-center rounded-lg border shadow-sm lg:grid ${rightPanelOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="打开或关闭右侧面板">{rightPanelOpen ? <PanelLeftOpen size={15}/> : <PanelRightOpen size={15}/>}</button>
     </div>
     {configDraft && <ChatConfigurationEditor draft={configDraft} busy={busy} onChange={setConfigDraft} onClose={() => !busy && setConfigDraft(null)} onSave={() => void saveConfiguration()} />}
+    {pushTarget && <CommitPushDialog repository={pushTarget} busy={busy} error={error} onClose={() => !busy && setPushTarget(null)} onSubmit={(message) => void pushRepository(pushTarget, message)} />}
   </>;
 }
 
-function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, onStart, onPackage, onDiscardAndPull, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; packageStatus?: string; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onDiscardAndPull: () => void; onOpenConfiguration: (path: string) => void }) {
+function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, onStart, onPackage, onDiscardAndPull, onCommitPush, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; packageStatus?: string; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onDiscardAndPull: () => void; onCommitPush: () => void; onOpenConfiguration: (path: string) => void }) {
   const repositoryProfiles = profiles.filter((profile) => profile.repository_id === repository.id && profile.is_enabled);
   return <section className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
-    <div className="flex items-center gap-1.5">
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800">{repository.display_name}</span>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800 max-lg:basis-full">{repository.display_name}</span>
       <button type="button" disabled={busy || !repositoryProfiles.length} onClick={() => onStart(repositoryProfiles)} title={repositoryProfiles.length ? "只运行此代码库的已启用配置" : "请先为代码库保存运行配置"} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 text-[11px] font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"><Play size={13}/>运行</button>
       <button type="button" disabled={busy} onClick={onPackage} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white px-2 text-[11px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"><PackageOpen size={13}/>打包</button>
-      {(gitStatus?.is_repository || repository.is_git_repository) && <button type="button" disabled={busy} onClick={onDiscardAndPull} title="使用服务器最新代码更新本机；会替换尚未保存的修改，不删除额外新建的文件" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><RotateCcw size={12}/>更新代码库</button>}
+      {(gitStatus?.is_repository || repository.is_git_repository) && <><button type="button" disabled={busy} onClick={onCommitPush} title="填写 Conventional Commit 信息后提交并推送当前代码库" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"><Upload size={12}/>提交推送</button><button type="button" disabled={busy} onClick={onDiscardAndPull} title="重置已跟踪文件的本地修改并拉取服务器最新代码；不会删除额外新建的文件" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><RotateCcw size={12}/>重置更新</button></>}
     </div>
     {gitStatus?.is_repository ? <GitSyncSummary status={gitStatus}/> : repository.is_git_repository ? <p className="mt-1.5 text-[10px] text-slate-400">Git 状态暂时不可用，点击面板刷新重试。</p> : null}
     {(repository.chat_editable_configuration_files ?? []).length ? <div className="mt-2 flex flex-wrap gap-1.5">{repository.chat_editable_configuration_files.map((path) => <button type="button" key={path} disabled={busy} onClick={() => onOpenConfiguration(path)} className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50" title={`在聊天中编辑 ${path}`}><FilePenLine size={12}/><span className="truncate">{path}</span></button>)}</div> : <p className="mt-1.5 text-[10px] text-slate-400">未开放聊天可修改的配置文件</p>}
@@ -230,6 +250,31 @@ function RunCard({ run, busy, onForceStop }: { run: CodeRuntimeRun; busy: boolea
 
 function isActiveRun(run: CodeRuntimeRun) {
   return run.status === "starting" || run.status === "running" || run.status === "stopping";
+}
+
+const commitTypes = [
+  { value: "feat", label: "新功能、新能力" },
+  { value: "fix", label: "修复 bug、纠正错误逻辑" },
+  { value: "refactor", label: "重构代码，不改变功能" },
+  { value: "perf", label: "性能优化" },
+  { value: "docs", label: "文档修改" },
+  { value: "style", label: "格式、代码风格调整" },
+  { value: "test", label: "测试相关" },
+  { value: "chore", label: "构建、工具、依赖等杂项" },
+] as const;
+
+function CommitPushDialog({ repository, busy, error, onClose, onSubmit }: { repository: CodeRepository; busy: boolean; error: string | null; onClose: () => void; onSubmit: (message: string) => void }) {
+  const [type, setType] = useState<(typeof commitTypes)[number]["value"]>("fix");
+  const [summary, setSummary] = useState("");
+  const message = summary.trim() ? `${type}: ${summary.trim()}` : "";
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="fixed inset-0 z-[140] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={onClose}>
+    <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="commit-push-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><Upload size={19}/></span><div className="min-w-0 flex-1"><h2 id="commit-push-title" className="text-base font-semibold text-slate-900">提交并推送</h2><p className="mt-1 truncate text-xs text-slate-500">{repository.display_name}</p></div><button type="button" onClick={onClose} disabled={busy} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="关闭提交推送"><X size={17}/></button></header>
+      <div className="mt-5 grid gap-3"><label className="grid gap-1.5 text-xs font-medium text-slate-700">提交类型<select value={type} onChange={(event) => setType(event.target.value as (typeof commitTypes)[number]["value"])} disabled={busy} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500">{commitTypes.map((item) => <option key={item.value} value={item.value}>{item.value} · {item.label}</option>)}</select></label><label className="grid gap-1.5 text-xs font-medium text-slate-700">提交说明<input value={summary} onChange={(event) => setSummary(event.target.value)} disabled={busy} autoFocus className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-blue-500" placeholder="例如：修复库存扣减数量计算错误"/></label><div className="rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600">{message || `${type}: 请填写提交说明`}</div>{error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}</div>
+      <footer className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={busy} className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50">取消</button><button type="button" disabled={!message || busy} onClick={() => onSubmit(message)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300">{busy ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}提交并推送</button></footer>
+    </section>
+  </div>, document.body);
 }
 
 function ChatConfigurationEditor({ draft, busy, onChange, onClose, onSave }: { draft: ChatConfigDraft; busy: boolean; onChange: (draft: ChatConfigDraft | null) => void; onClose: () => void; onSave: () => void }) {

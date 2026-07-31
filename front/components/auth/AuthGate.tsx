@@ -31,5 +31,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (isAuthPage) return <>{children}</>;
   if (!ready) return <main className="flex min-h-screen items-center justify-center text-sm text-zinc-500">正在验证登录状态…</main>;
   if (isDashboardWorkspace) return <>{children}</>;
-  return <><AppSidebar compact={sidebarCompact} /><div className={`min-h-screen transition-[padding] duration-200 ${sidebarCompact ? "pl-[72px]" : "pl-[240px]"}`}>{children}</div></>;
+  return <><AppSidebar compact={sidebarCompact} /><div className={`min-h-screen pl-0 transition-[padding] duration-200 ${sidebarCompact ? "lg:pl-[72px]" : "lg:pl-[240px]"}`}>{children}</div></>;
 }
