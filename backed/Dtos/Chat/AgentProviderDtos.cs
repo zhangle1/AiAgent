@@ -28,3 +28,42 @@ public sealed class AgentProviderEnvironmentDto
     [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
 }
+
+public sealed class CodexModelOptionDto
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+}
+
+public sealed class CodexModelPolicyDto
+{
+    [JsonPropertyName("models")]
+    public List<CodexModelOptionDto> Models { get; set; } = [];
+
+    [JsonPropertyName("allowed_model_ids")]
+    public List<string> AllowedModelIds { get; set; } = [];
+
+    [JsonPropertyName("default_model_id")]
+    public string DefaultModelId { get; set; } = string.Empty;
+
+    [JsonPropertyName("allow_chat_model_override")]
+    public bool AllowChatModelOverride { get; set; } = true;
+}
+
+public sealed class CodexModelPolicyUpdateRequest
+{
+    [JsonPropertyName("allowed_model_ids")]
+    public List<string>? AllowedModelIds { get; set; }
+
+    [JsonPropertyName("default_model_id")]
+    public string? DefaultModelId { get; set; }
+
+    [JsonPropertyName("allow_chat_model_override")]
+    public bool? AllowChatModelOverride { get; set; }
+}

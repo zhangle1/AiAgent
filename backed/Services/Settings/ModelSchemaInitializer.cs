@@ -6,6 +6,7 @@ using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Entities.Settings;
 using AiAgent.Backend.Entities.Usage;
 using AiAgent.Backend.Entities.Memory;
+using AiAgent.Backend.Entities.PromptTemplate;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.Settings;
@@ -54,6 +55,8 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiUserSession),
             typeof(AiChatSession),
             typeof(AiChatMessage),
+            typeof(AiPromptTemplate),
+            typeof(AiPromptTemplateUserState),
             typeof(AiMemoryItem),
             typeof(AiMemoryObservation),
             typeof(AiMemoryCandidate),
@@ -185,6 +188,13 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_model_diagnostic_r
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_setting_snapshot_Key_Time' AND object_id = OBJECT_ID(N'dbo.ai_setting_snapshot'))
     CREATE INDEX IX_ai_setting_snapshot_Key_Time ON dbo.ai_setting_snapshot(SettingKey, AppliedAt DESC);
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_prompt_template_Visible' AND object_id = OBJECT_ID(N'dbo.ai_prompt_template'))
+    CREATE INDEX IX_ai_prompt_template_Visible ON dbo.ai_prompt_template(IsDeleted, Visibility, Stage, UpdatedAt DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_prompt_template_user_state_User_Template' AND object_id = OBJECT_ID(N'dbo.ai_prompt_template_user_state'))
+    CREATE UNIQUE INDEX UX_ai_prompt_template_user_state_User_Template ON dbo.ai_prompt_template_user_state(UserId, TemplateId);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_knowledge_base_Name' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_base'))

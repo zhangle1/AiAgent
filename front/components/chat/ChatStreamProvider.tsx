@@ -21,7 +21,7 @@ type ChatStreamContextValue = {
   cancelStream: (streamId: string) => void;
   markSessionViewed: (sessionId: string) => void;
   clearFinishedStreams: (sessionId: string) => void;
-  activateCodexRuntime: (projectId: number) => void;
+  activateCodexRuntime: (projectId: number, codexModelId?: string) => void;
 };
 
 const ChatStreamContext = createContext<ChatStreamContextValue | null>(null);
@@ -35,6 +35,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const streamsRef = useRef(streams);
   const controllersRef = useRef(new Map<string, AbortController>());
   const codexProjectIdRef = useRef<number | null>(null);
+  const codexModelIdRef = useRef<string | undefined>(undefined);
   useEffect(() => { streamsRef.current = streams; }, [streams]);
 
   const update = useCallback((streamId: string, transform: (stream: ChatStreamRecord) => ChatStreamRecord) => {
@@ -109,10 +110,11 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     setStreams(next);
   }, []);
 
-  const activateCodexRuntime = useCallback((projectId: number) => {
+  const activateCodexRuntime = useCallback((projectId: number, codexModelId?: string) => {
     if (!Number.isFinite(projectId) || projectId <= 0) return;
     codexProjectIdRef.current = projectId;
-    void heartbeatCodexRuntime(projectId).catch(() => {
+    codexModelIdRef.current = codexModelId;
+    void heartbeatCodexRuntime(projectId, codexModelId).catch(() => {
       // Sending remains available; the stream request will surface a real Codex failure if one occurs.
     });
   }, []);
@@ -120,7 +122,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const heartbeat = () => {
       const projectId = codexProjectIdRef.current;
-      if (projectId) void heartbeatCodexRuntime(projectId).catch(() => {});
+      if (projectId) void heartbeatCodexRuntime(projectId, codexModelIdRef.current).catch(() => {});
     };
     const intervalId = window.setInterval(heartbeat, 25_000);
     document.addEventListener("visibilitychange", heartbeat);

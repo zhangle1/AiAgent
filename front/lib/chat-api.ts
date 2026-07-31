@@ -39,6 +39,7 @@ export type ChatCompleteRequest = {
   dashboard_file_path?: string;
   dashboard_workspace_revision?: string;
   model_id?: string;
+  codex_model_id?: string;
   top_k?: number;
   mode?: string;
   agent?: "codex" | "codebuddy";
@@ -71,13 +72,13 @@ export function getChatRuntimeId(): string {
   return created;
 }
 
-export async function heartbeatCodexRuntime(codeProjectId?: number): Promise<void> {
+export async function heartbeatCodexRuntime(codeProjectId?: number, codexModelId?: string): Promise<void> {
   if (!codeProjectId) return;
   await parseJson<{ ok: boolean }>(
     await fetch("/api/v1/chat/codex/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_runtime_id: getChatRuntimeId(), code_project_id: codeProjectId }),
+      body: JSON.stringify({ client_runtime_id: getChatRuntimeId(), code_project_id: codeProjectId, codex_model_id: codexModelId }),
     }),
   );
 }

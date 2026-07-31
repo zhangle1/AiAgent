@@ -60,6 +60,12 @@ public sealed class ChatCompleteRequest
     public string? ModelId { get; set; }
 
     /// <summary>
+    /// Administrator-controlled model selection for a Codex local-agent turn. This is separate from the built-in LLM model id.
+    /// </summary>
+    [JsonPropertyName("codex_model_id")]
+    public string? CodexModelId { get; set; }
+
+    /// <summary>
     /// 检索返回的引用片段数量。
     /// </summary>
     [JsonPropertyName("top_k")]
@@ -116,6 +122,9 @@ public sealed class CodexRuntimeHeartbeatRequest
 
     [JsonPropertyName("code_project_id")]
     public long? CodeProjectId { get; set; }
+
+    [JsonPropertyName("codex_model_id")]
+    public string? CodexModelId { get; set; }
 }
 
 public sealed class ChatImageAttachmentDto

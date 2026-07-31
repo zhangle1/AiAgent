@@ -17,7 +17,7 @@ import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getSession, type SessionDetail } from "@/lib/session-api";
-import { getAgentProviderEnvironments, type AgentProviderEnvironment } from "@/lib/agent-provider-api";
+import { getAgentProviderEnvironments, getCodexModelPolicy, type AgentProviderEnvironment, type CodexModelPolicy } from "@/lib/agent-provider-api";
 
 type InspectorTab = "preview" | "file" | "tasks" | "terminal";
 
@@ -91,6 +91,7 @@ export function KnowledgeChatHome() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedSessionId = searchParams.get("session");
+  const requestedTemplateHandoff = searchParams.get("template_handoff");
   const requestedProjectId = Number(searchParams.get("project")) || null;
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [codeProjects, setCodeProjects] = useState<CodeProject[]>([]);
@@ -100,8 +101,10 @@ export function KnowledgeChatHome() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
   const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
+  const [selectedCodexModelId, setSelectedCodexModelId] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "codebuddy" | "">("");
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
+  const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [imageAttachments, setImageAttachments] = useState<ChatImagePreview[]>([]);
@@ -129,6 +132,8 @@ export function KnowledgeChatHome() {
   const selectedProject = codeProjects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
+  const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
+  const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
@@ -140,6 +145,10 @@ export function KnowledgeChatHome() {
 
   useEffect(() => {
     void getAgentProviderEnvironments().then(setAgentProviders).catch(() => setAgentProviders([]));
+    void getCodexModelPolicy().then((policy) => {
+      setCodexModelPolicy(policy);
+      setSelectedCodexModelId((current) => current || policy.default_model_id);
+    }).catch(() => setCodexModelPolicy(null));
   }, []);
 
   useEffect(() => {
@@ -150,12 +159,27 @@ export function KnowledgeChatHome() {
   }, [agentProviders, selectedAgentId]);
 
   useEffect(() => {
-    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId);
-  }, [activateCodexRuntime, selectedAgentId, selectedProjectId]);
+    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId, selectedCodexModelId || undefined);
+  }, [activateCodexRuntime, selectedAgentId, selectedCodexModelId, selectedProjectId]);
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
   }, [requestedProjectId, requestedSessionId]);
+
+  useEffect(() => {
+    if (requestedSessionId || !requestedTemplateHandoff) return;
+    const raw = sessionStorage.getItem("aiagent:pending-template-turn");
+    if (!raw) return;
+    try {
+      const pending = JSON.parse(raw) as { handoff_id?: string; content?: string; project_id?: number | null };
+      if (pending.handoff_id !== requestedTemplateHandoff) return;
+      if (typeof pending.content === "string" && pending.content.trim()) setInput(pending.content);
+      if (typeof pending.project_id === "number") setSelectedProjectId(pending.project_id);
+    } catch {
+      // Invalid browser-local handoff data is ignored rather than being sent to the chat API.
+      sessionStorage.removeItem("aiagent:pending-template-turn");
+    }
+  }, [requestedSessionId, requestedTemplateHandoff]);
 
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
@@ -314,7 +338,8 @@ export function KnowledgeChatHome() {
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: selectedProjectId ?? undefined,
-        model_id: selectedModelId || undefined,
+        model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
+        codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
         top_k: 6,
         mode: "chat",
         agent: selectedAgentId || undefined,
@@ -535,7 +560,13 @@ export function KnowledgeChatHome() {
                     <option value="codebuddy" disabled>CodeBuddy CLI（待适配）</option>
                   </select>
                 </label>
-                <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 sm:inline-flex">
+                {selectedAgentId === "codex" && <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title={currentCodexModel?.description || "管理员未配置可用 Codex 模型"}>
+                  <Bot size={15} />
+                  <select value={selectedCodexModelId} onChange={(event) => setSelectedCodexModelId(event.target.value)} disabled={codexModels.length === 0 || codexModelPolicy?.allow_chat_model_override === false} className="max-w-[180px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
+                    {codexModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                  </select>
+                </label>}
+                <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 ${selectedAgentId === "codex" ? "" : "sm:inline-flex"}`}>
                   <PanelRight size={15} />
                   <select
                     value={selectedModelId}

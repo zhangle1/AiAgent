@@ -26,6 +26,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ISqlSugarClient _db;
     private readonly IConfiguration _configuration;
+    private readonly ICodexModelPolicyService _modelPolicy;
     private readonly ConcurrentDictionary<string, CodexRuntimeLease> _runtimeLeases = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _activeSessionsByUser = new(StringComparer.Ordinal);
     private readonly object _leaseSync = new();
@@ -33,10 +34,11 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     private readonly TimeSpan _leaseTtl;
     private readonly int _maxSessionsPerUser;
 
-    public CodexChatService(ISqlSugarClient db, IConfiguration configuration)
+    public CodexChatService(ISqlSugarClient db, IConfiguration configuration, ICodexModelPolicyService modelPolicy)
     {
         _db = db;
         _configuration = configuration;
+        _modelPolicy = modelPolicy;
         var configuredLeaseSeconds = int.TryParse(_configuration["Codex:RuntimeLeaseSeconds"], out var seconds)
             ? Math.Clamp(seconds, 30, 600)
             : 90;
@@ -50,17 +52,27 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     public async Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message)) throw new ArgumentException("Message is required.", nameof(request));
+        var model = _modelPolicy.ResolveModel(request.CodexModelId);
+        request.CodexModelId = model.Id;
         var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
-        var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath);
+        var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Id);
         var activeSession = AcquireActiveSession(request.RuntimeUserId, request.SessionId);
 
         try
         {
-            var result = await lease.RunAsync(request, workspacePath, onEvent, cancellationToken);
+            CodexRunState result;
+            try
+            {
+                result = await lease.RunAsync(request, workspacePath, onEvent, cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                throw new InvalidOperationException(NormalizeFailureMessage(exception.Message, model), exception);
+            }
 
             if (!string.Equals(result.TurnStatus, "completed", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException(result.TurnStatus == "interrupted" ? "Codex turn was interrupted." : result.ErrorMessage ?? "Codex turn did not complete.");
+                throw new InvalidOperationException(result.TurnStatus == "interrupted" ? "Codex turn was interrupted." : NormalizeFailureMessage(result.ErrorMessage, model));
             }
 
             var modificationStatus = result.CompletedFiles.Count > 0 ? "completed_changed" : "completed_no_change";
@@ -77,12 +89,13 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             await EmitAsync(onEvent, new AgentStreamEvent
             {
                 Type = "done",
-                ModelId = "codex",
-                Model = "Codex",
+                ModelId = model.Id,
+                Model = model.Name,
                 Content = answer,
                 Metadata = new Dictionary<string, object?>
                 {
                     ["agent"] = "codex",
+                    ["codex_model_id"] = model.Id,
                     ["codex_status"] = result.TurnStatus,
                     ["modification_status"] = modificationStatus,
                     ["modified_file_count"] = result.CompletedFiles.Count,
@@ -97,8 +110,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 Query = request.Message,
                 Answer = answer,
                 Content = answer,
-                ModelId = "codex",
-                Model = "Codex",
+                ModelId = model.Id,
+                Model = model.Name,
                 Usage = new ChatTokenUsage
                 {
                     PromptTokens = promptTokens,
@@ -118,7 +131,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     {
         if (!request.CodeProjectId.HasValue) return;
         var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
-        var lease = GetLease(user.Id, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath);
+        var model = _modelPolicy.ResolveModel(request.CodexModelId);
+        var lease = GetLease(user.Id, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Id);
         await lease.WarmAsync(cancellationToken);
     }
 
@@ -130,11 +144,11 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         _activeSessionsByUser.Clear();
     }
 
-    private CodexRuntimeLease GetLease(string? userId, string? clientRuntimeId, string command, string workspacePath)
+    private CodexRuntimeLease GetLease(string? userId, string? clientRuntimeId, string command, string workspacePath, string modelId)
     {
         var normalizedUserId = string.IsNullOrWhiteSpace(userId) ? throw new UnauthorizedAccessException() : userId.Trim();
         var normalizedRuntimeId = NormalizeRuntimeId(clientRuntimeId);
-        var key = $"{normalizedUserId.Length}:{normalizedUserId}:{normalizedRuntimeId}";
+        var key = $"{normalizedUserId.Length}:{normalizedUserId}:{normalizedRuntimeId}:{modelId}";
         lock (_leaseSync)
         {
             RemoveExpiredLeasesUnsafe(DateTime.UtcNow);
@@ -177,6 +191,16 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             throw new InvalidOperationException("A valid browser runtime identifier is required for Codex.");
         }
         return normalized;
+    }
+
+    private static string NormalizeFailureMessage(string? message, CodexModelDefinition model)
+    {
+        if (!string.IsNullOrWhiteSpace(message)
+            && message.Contains("Selected model is at capacity", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"当前 Codex 模型 {model.Name} 正在繁忙，请稍后重试，或切换到管理员已启用的其他模型。";
+        }
+        return message ?? "Codex turn did not complete.";
     }
 
     private void ReapExpiredLeases()
@@ -677,6 +701,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                     @params = new
                     {
                         cwd = workspacePath,
+                        model = request.CodexModelId,
                         approvalPolicy = "never",
                         sandbox = "danger-full-access",
                         ephemeral = true,

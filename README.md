@@ -13,6 +13,7 @@
 - 流量统计：成功完成的自有 Agent 与第三方代理轮次会写入用户隔离的 Token 账本，可按代理、模型和日期查看趋势。
 - Codex 接管：聊天中选择项目后可勾选“Codex 接管”，后端把项目目录与问题交给本机 `codex app-server`，并实时返回回答、执行轨迹与文件修改完成状态。
 - 可靠看板改码：Agent 先检查当前工作区与入口，再搜索、读取、基于 SHA-256 补丁写入并静态校验；不会把关联 Git 仓库作为第二个 AI 写入目标。
+- Prompt 模板市场：在聊天入口下按需求、设计、开发、代码理解、测试和交付阶段发现模板；支持项目范围、变量 `${field}`、点赞收藏、MD 导入导出，并可将渲染结果带入新聊天会话。
 
 ## 界面参考
 
@@ -134,6 +135,7 @@ npm run dev
 
 - [看板 AI 精准改码解决方案](docs/dashboard-ai-editing-reliability-plan.md)
 - [看板 AI 精准改码实施记录](docs/dashboard-ai-editing-implementation-log.md)
+- [Prompt 模板市场实现说明](docs/prompt-template-market.md)
 
 ## 安全与提交规则
 
