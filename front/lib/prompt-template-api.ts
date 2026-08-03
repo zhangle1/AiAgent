@@ -1,9 +1,10 @@
 import type { PromptTemplate, PromptTemplateSaveRequest, PromptTemplateUseResult } from "@/lib/prompt-template-types";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   if (response.status === 401 && typeof window !== "undefined") {
-    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    window.location.assign(buildLoginRedirect(window.location.pathname + window.location.search));
     throw new Error("请先登录。");
   }
   const raw = await response.text();

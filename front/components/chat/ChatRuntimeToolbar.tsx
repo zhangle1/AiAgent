@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Download, FilePenLine, GitBranch, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
+import { ChevronDown, Download, FileDiff, FilePenLine, GitBranch, Info, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
 import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
-import { discardCodeRepositoryChangesAndPull, getCodeRepositoryGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
-import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitWorkspaceStatus } from "@/lib/code-repository-types";
+import { discardCodeRepositoryChangesAndPull, getCodeRepositoryGitDiff, getCodeRepositoryGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
+import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceStatus } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
@@ -20,6 +20,8 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   const [packageStatus, setPackageStatus] = useState<Record<string, string>>({});
   const [configDraft, setConfigDraft] = useState<ChatConfigDraft | null>(null);
   const [pushTarget, setPushTarget] = useState<CodeRepository | null>(null);
+  const [diffTarget, setDiffTarget] = useState<CodeRepository | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,7 +185,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
               <p className="text-sm font-semibold text-slate-900">项目程序运行</p>
               <p className="mt-0.5 text-[11px] text-slate-500">{project ? `${project.display_name} · 可按代码库单独启动` : "请先在聊天底部选择项目"}</p>
             </div>
-            <button type="button" disabled={refreshing} onClick={() => void refresh()} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="刷新"><RefreshCw size={14} className={refreshing ? "animate-spin" : undefined}/></button>
+            <div className="relative flex items-center gap-1"><button type="button" onClick={() => setHelpOpen((current) => !current)} className={`grid h-7 w-7 place-items-center rounded-md transition ${helpOpen ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-100"}`} aria-label="查看操作说明" aria-expanded={helpOpen} title="查看操作说明"><Info size={15}/></button><button type="button" disabled={refreshing} onClick={() => void refresh()} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="刷新"><RefreshCw size={14} className={refreshing ? "animate-spin" : undefined}/></button>{helpOpen && <RuntimeActionHelp onClose={() => setHelpOpen(false)}/>}</div>
           </div>
 
           {project && <button type="button" disabled={busy} onClick={() => void startProfiles(runtime?.profiles ?? [], "项目")} className="mb-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300">
@@ -192,7 +194,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
           {project?.repositories.length ? <div className="mb-3 space-y-2">
             <p className="px-0.5 text-[11px] font-semibold text-slate-500">代码库</p>
-            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} packageStatus={packageStatus[repository.name]} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
+            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} packageStatus={packageStatus[repository.name]} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onOpenDiff={() => setDiffTarget(repository)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
           </div> : null}
 
           {runtime && runtime.profiles.length ? <div className="mb-2 space-y-1.5">
@@ -215,17 +217,18 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     </div>
     {configDraft && <ChatConfigurationEditor draft={configDraft} busy={busy} onChange={setConfigDraft} onClose={() => !busy && setConfigDraft(null)} onSave={() => void saveConfiguration()} />}
     {pushTarget && <CommitPushDialog repository={pushTarget} busy={busy} error={error} onClose={() => !busy && setPushTarget(null)} onSubmit={(message) => void pushRepository(pushTarget, message)} />}
+    {diffTarget && <GitDiffDialog repository={diffTarget} onClose={() => setDiffTarget(null)}/>}
   </>;
 }
 
-function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, onStart, onPackage, onDiscardAndPull, onCommitPush, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; packageStatus?: string; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onDiscardAndPull: () => void; onCommitPush: () => void; onOpenConfiguration: (path: string) => void }) {
+function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, onStart, onPackage, onOpenDiff, onDiscardAndPull, onCommitPush, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; packageStatus?: string; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onOpenDiff: () => void; onDiscardAndPull: () => void; onCommitPush: () => void; onOpenConfiguration: (path: string) => void }) {
   const repositoryProfiles = profiles.filter((profile) => profile.repository_id === repository.id && profile.is_enabled);
   return <section className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
+    <p className="mb-2 break-words text-xs font-semibold leading-5 text-slate-800" title={repository.display_name}>{repository.display_name}</p>
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800 max-lg:basis-full">{repository.display_name}</span>
       <button type="button" disabled={busy || !repositoryProfiles.length} onClick={() => onStart(repositoryProfiles)} title={repositoryProfiles.length ? "只运行此代码库的已启用配置" : "请先为代码库保存运行配置"} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 text-[11px] font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"><Play size={13}/>运行</button>
       <button type="button" disabled={busy} onClick={onPackage} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white px-2 text-[11px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"><PackageOpen size={13}/>打包</button>
-      {(gitStatus?.is_repository || repository.is_git_repository) && <><button type="button" disabled={busy} onClick={onCommitPush} title="填写 Conventional Commit 信息后提交并推送当前代码库" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"><Upload size={12}/>提交推送</button><button type="button" disabled={busy} onClick={onDiscardAndPull} title="重置已跟踪文件的本地修改并拉取服务器最新代码；不会删除额外新建的文件" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><RotateCcw size={12}/>重置更新</button></>}
+      {(gitStatus?.is_repository || repository.is_git_repository) && <><button type="button" disabled={busy} onClick={onOpenDiff} title="按文件查看工作区、待推送或待拉取的代码差异" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"><FileDiff size={12}/>差异</button><button type="button" disabled={busy} onClick={onDiscardAndPull} title="重置已跟踪文件的本地修改并拉取服务器最新代码；不会删除额外新建的文件" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><RotateCcw size={12}/>重置更新</button><button type="button" disabled={busy} onClick={onCommitPush} title="填写 Conventional Commit 信息后提交并推送当前代码库" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"><Upload size={12}/>提交推送</button></>}
     </div>
     {gitStatus?.is_repository ? <GitSyncSummary status={gitStatus}/> : repository.is_git_repository ? <p className="mt-1.5 text-[10px] text-slate-400">Git 状态暂时不可用，点击面板刷新重试。</p> : null}
     {(repository.chat_editable_configuration_files ?? []).length ? <div className="mt-2 flex flex-wrap gap-1.5">{repository.chat_editable_configuration_files.map((path) => <button type="button" key={path} disabled={busy} onClick={() => onOpenConfiguration(path)} className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50" title={`在聊天中编辑 ${path}`}><FilePenLine size={12}/><span className="truncate">{path}</span></button>)}</div> : <p className="mt-1.5 text-[10px] text-slate-400">未开放聊天可修改的配置文件</p>}
@@ -240,6 +243,75 @@ function GitSyncSummary({ status }: { status: GitWorkspaceStatus }) {
     <div className="flex min-w-0 items-center gap-1 text-slate-600" title={`本地分支 ${branch}，远程跟踪分支 ${remoteBranch}`}><GitBranch size={12} className="shrink-0 text-slate-400"/><span className="truncate font-mono">{branch}</span><span className="text-slate-300">→</span><span className="truncate font-mono">{remoteBranch}</span></div>
     {status.remote_branch ? <><div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5"><span className={status.behind ? "text-amber-700" : "text-slate-400"}><Download size={11} className="mr-0.5 inline"/>远端领先 {status.behind} 提交 · 拉取 {status.behind_files} 文件</span><span className={status.ahead ? "text-blue-700" : "text-slate-400"}><Upload size={11} className="mr-0.5 inline"/>本地领先 {status.ahead} 提交 · 推送 {status.ahead_files} 文件</span>{status.changes.length ? <span className="text-rose-600">待提交 {status.changes.length} 文件</span> : null}</div>{status.remote_refresh_error ? <p className="mt-1 truncate text-amber-700" title={status.remote_refresh_error}>远程刷新失败，当前显示本地缓存状态。</p> : null}</> : <p className="mt-1 text-slate-400">未设置远程跟踪分支，无法计算拉取/推送差异。</p>}
   </div>;
+}
+
+function RuntimeActionHelp({ onClose }: { onClose: () => void }) {
+  return <section className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.18)]" role="dialog" aria-label="代码库操作说明">
+    <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-slate-800">代码库操作说明</p><button type="button" onClick={onClose} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭说明"><X size={13}/></button></div>
+    <div className="mt-2.5 space-y-2 text-[11px] leading-5 text-slate-600"><p><strong className="text-slate-800">运行：</strong>只启动当前代码库已启用的运行配置。</p><p><strong className="text-slate-800">打包：</strong>按该代码库的发布配置构建并输出交付文件。</p><p><strong className="text-slate-800">差异：</strong>按文件查看本地工作区或远程分支差异。</p><p><strong className="text-amber-800">重置更新：</strong>撤回已跟踪文件的未提交修改，再拉取远程最新代码；额外新建的文件不会删除。</p><p><strong className="text-emerald-800">提交推送：</strong>填写提交说明后，提交并推送当前代码库。</p></div>
+  </section>;
+}
+
+type GitDiffLine = { kind: "context" | "add" | "remove" | "meta"; content: string; oldLine?: number; newLine?: number };
+type GitDiffFile = { path: string; lines: GitDiffLine[] };
+
+function GitDiffDialog({ repository, onClose }: { repository: CodeRepository; onClose: () => void }) {
+  const [comparison, setComparison] = useState<GitDiffComparison>("working");
+  const [diff, setDiff] = useState<GitWorkspaceDiff | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    setSelectedPath(null);
+    void getCodeRepositoryGitDiff(repository.name, comparison).then((result) => {
+      if (!cancelled) setDiff(result);
+    }).catch((value) => {
+      if (!cancelled) setError(value instanceof Error ? value.message : "无法读取代码差异。");
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [repository.name, comparison]);
+
+  const files = parseGitDiffFiles(diff?.content || "");
+  const activeFile = files.find((item) => item.path === selectedPath) || files[0] || null;
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/60 p-3 backdrop-blur-sm" role="presentation" onMouseDown={onClose}>
+    <section className="flex h-[min(82vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="git-diff-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-4 py-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-700"><FileDiff size={18}/></span><div className="min-w-0 flex-1"><h2 id="git-diff-title" className="truncate text-sm font-semibold text-slate-900">代码文件差异</h2><p className="mt-0.5 truncate text-[11px] text-slate-500">{repository.display_name} · VS Code 风格的行级高亮</p></div><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭代码差异"><X size={17}/></button></header>
+      <div className="flex shrink-0 gap-1 border-b border-slate-100 px-4 py-2">{(["working", "push", "pull"] as const).map((mode) => <button key={mode} type="button" onClick={() => setComparison(mode)} className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${comparison === mode ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{mode === "working" ? "工作区" : mode === "push" ? "待推送" : "待拉取"}</button>)}</div>
+      {loading ? <div className="grid min-h-0 flex-1 place-items-center text-sm text-slate-500"><span><Loader2 size={16} className="mr-2 inline animate-spin"/>正在读取 Git Diff…</span></div> : error ? <p className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : files.length ? <div className="grid min-h-0 flex-1 md:grid-cols-[220px_minmax(0,1fr)]"><aside className="min-h-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:border-b-0 md:border-r">{files.map((file) => <button key={file.path} type="button" onClick={() => setSelectedPath(file.path)} className={`mb-1 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition ${activeFile?.path === file.path ? "bg-violet-100 text-violet-800" : "text-slate-600 hover:bg-white"}`} title={file.path}><FileDiff size={14} className="shrink-0"/><span className="min-w-0 flex-1 truncate font-mono">{file.path}</span></button>)}</aside><div className="min-h-0 overflow-auto bg-[#1e1e1e] p-3"><p className="mb-2 truncate font-mono text-[11px] text-slate-400">{activeFile?.path}</p><pre className="min-w-max overflow-visible font-mono text-[12px] leading-5 text-slate-100">{activeFile?.lines.map((line, index) => <DiffCodeLine key={`${line.kind}-${index}`} line={line}/>)}</pre></div></div> : <div className="grid min-h-0 flex-1 place-items-center px-8 text-center text-sm leading-6 text-slate-500">{diff?.message || "当前比较范围没有代码差异。"}</div>}
+      {diff?.is_truncated && <p className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-800">差异内容较长，当前仅显示前 240,000 个字符。</p>}
+    </section>
+  </div>, document.body);
+}
+
+function DiffCodeLine({ line }: { line: GitDiffLine }) {
+  const colors = line.kind === "add" ? "bg-emerald-500/20 text-emerald-100" : line.kind === "remove" ? "bg-rose-500/20 text-rose-100" : line.kind === "meta" ? "bg-slate-800 text-slate-400" : "text-slate-200";
+  const prefix = line.kind === "add" ? "+" : line.kind === "remove" ? "-" : line.kind === "context" ? " " : "";
+  return <span className={`flex min-w-max ${colors}`}><span className="w-12 select-none border-r border-white/5 px-2 text-right text-slate-500">{line.oldLine ?? ""}</span><span className="w-12 select-none border-r border-white/5 px-2 text-right text-slate-500">{line.newLine ?? ""}</span><span className="w-5 select-none text-center text-slate-400">{prefix}</span><code className="whitespace-pre pr-4">{line.content || " "}</code></span>;
+}
+
+function parseGitDiffFiles(content: string): GitDiffFile[] {
+  const files: GitDiffFile[] = [];
+  let current: GitDiffFile | null = null;
+  let oldLine = 0;
+  let newLine = 0;
+  for (const rawLine of content.split(/\r?\n/)) {
+    const fileMatch = /^diff --git a\/(.+?) b\/(.+)$/.exec(rawLine);
+    if (fileMatch) { current = { path: fileMatch[2], lines: [] }; files.push(current); oldLine = 0; newLine = 0; continue; }
+    if (!current) continue;
+    const hunkMatch = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
+    if (hunkMatch) { oldLine = Number(hunkMatch[1]); newLine = Number(hunkMatch[2]); current.lines.push({ kind: "meta", content: rawLine }); continue; }
+    if (rawLine.startsWith("+++") || rawLine.startsWith("---") || rawLine.startsWith("index ") || rawLine.startsWith("new file") || rawLine.startsWith("deleted file")) { current.lines.push({ kind: "meta", content: rawLine }); continue; }
+    if (rawLine.startsWith("+")) { current.lines.push({ kind: "add", content: rawLine.slice(1), newLine: newLine || undefined }); newLine += 1; continue; }
+    if (rawLine.startsWith("-")) { current.lines.push({ kind: "remove", content: rawLine.slice(1), oldLine: oldLine || undefined }); oldLine += 1; continue; }
+    if (rawLine.startsWith(" ")) { current.lines.push({ kind: "context", content: rawLine.slice(1), oldLine: oldLine || undefined, newLine: newLine || undefined }); oldLine += 1; newLine += 1; continue; }
+    if (rawLine) current.lines.push({ kind: "meta", content: rawLine });
+  }
+  return files;
 }
 
 function RunCard({ run, busy, onForceStop }: { run: CodeRuntimeRun; busy: boolean; onForceStop: () => void }) {

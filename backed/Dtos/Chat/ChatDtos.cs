@@ -65,6 +65,10 @@ public sealed class ChatCompleteRequest
     [JsonPropertyName("codex_model_id")]
     public string? CodexModelId { get; set; }
 
+    /// <summary>Reasoning effort for the selected Codex app-server model.</summary>
+    [JsonPropertyName("codex_reasoning_effort")]
+    public string? CodexReasoningEffort { get; set; }
+
     /// <summary>
     /// 检索返回的引用片段数量。
     /// </summary>
@@ -125,6 +129,9 @@ public sealed class CodexRuntimeHeartbeatRequest
 
     [JsonPropertyName("codex_model_id")]
     public string? CodexModelId { get; set; }
+
+    [JsonPropertyName("codex_reasoning_effort")]
+    public string? CodexReasoningEffort { get; set; }
 }
 
 public sealed class ChatImageAttachmentDto

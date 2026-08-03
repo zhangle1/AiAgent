@@ -39,6 +39,36 @@ public sealed class CodexModelOptionDto
 
     [JsonPropertyName("description")]
     public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("model_id")]
+    public string? ModelId { get; set; }
+
+    [JsonPropertyName("profile_name")]
+    public string? ProfileName { get; set; }
+
+    [JsonPropertyName("supports_reasoning_effort")]
+    public bool SupportsReasoningEffort { get; set; } = true;
+
+    [JsonPropertyName("is_builtin")]
+    public bool IsBuiltin { get; set; }
+}
+
+public sealed class CodexProfileModelDto
+{
+    [JsonPropertyName("display_name")]
+    public string DisplayName { get; set; } = string.Empty;
+
+    [JsonPropertyName("profile_name")]
+    public string ProfileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("model_id")]
+    public string? ModelId { get; set; }
+
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("supports_reasoning_effort")]
+    public bool SupportsReasoningEffort { get; set; }
 }
 
 public sealed class CodexModelPolicyDto
@@ -54,6 +84,18 @@ public sealed class CodexModelPolicyDto
 
     [JsonPropertyName("allow_chat_model_override")]
     public bool AllowChatModelOverride { get; set; } = true;
+
+    [JsonPropertyName("allowed_reasoning_efforts")]
+    public List<string> AllowedReasoningEfforts { get; set; } = [];
+
+    [JsonPropertyName("default_reasoning_effort")]
+    public string DefaultReasoningEffort { get; set; } = "medium";
+
+    [JsonPropertyName("allow_chat_reasoning_effort_override")]
+    public bool AllowChatReasoningEffortOverride { get; set; } = true;
+
+    [JsonPropertyName("profile_models")]
+    public List<CodexProfileModelDto> ProfileModels { get; set; } = [];
 }
 
 public sealed class CodexModelPolicyUpdateRequest
@@ -66,4 +108,16 @@ public sealed class CodexModelPolicyUpdateRequest
 
     [JsonPropertyName("allow_chat_model_override")]
     public bool? AllowChatModelOverride { get; set; }
+
+    [JsonPropertyName("allowed_reasoning_efforts")]
+    public List<string>? AllowedReasoningEfforts { get; set; }
+
+    [JsonPropertyName("default_reasoning_effort")]
+    public string? DefaultReasoningEffort { get; set; }
+
+    [JsonPropertyName("allow_chat_reasoning_effort_override")]
+    public bool? AllowChatReasoningEffortOverride { get; set; }
+
+    [JsonPropertyName("profile_models")]
+    public List<CodexProfileModelDto>? ProfileModels { get; set; }
 }

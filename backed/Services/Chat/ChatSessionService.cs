@@ -208,7 +208,7 @@ public sealed class ChatSessionService : IChatSessionService
         {
             session.CodeProjectId = ResolveProjectId(user, request.CodeProjectId);
             ValidateRepositoryScope(user, session.CodeProjectId, request.CodeRepositoryNames);
-            session.PreferencesJson = SerializePreferences(request);
+            session.PreferencesJson = SerializePreferences(request, session.PreferencesJson);
             return session;
         }
         if (session != null) {
@@ -244,7 +244,18 @@ public sealed class ChatSessionService : IChatSessionService
     }
 
     private int NextSortOrder(string userId) => (_db.Queryable<AiChatSession>().Where(x => x.UserId == userId && !x.IsDeleted).Max(x => x.SortOrder) ?? 0) + 1;
-    private static string SerializePreferences(ChatCompleteRequest request) => JsonSerializer.Serialize(new { knowledge_base_names = request.KnowledgeBaseNames, code_project_id = request.CodeProjectId, code_repository_names = request.CodeRepositoryNames, model_id = request.ModelId, mode = request.Mode, agent = request.Agent });
+    private static string SerializePreferences(ChatCompleteRequest request, string? existing = null)
+    {
+        var preferences = DeserializeObject(existing);
+        preferences["knowledge_base_names"] = request.KnowledgeBaseNames;
+        preferences["code_project_id"] = request.CodeProjectId;
+        preferences["code_repository_names"] = request.CodeRepositoryNames;
+        preferences["model_id"] = request.ModelId;
+        preferences["codex_model_id"] = request.CodexModelId;
+        preferences["mode"] = request.Mode;
+        preferences["agent"] = request.Agent;
+        return JsonSerializer.Serialize(preferences);
+    }
     private static ChatSessionSummaryDto ToSummary(AiChatSession session, List<AiChatMessage> messages, AiCodeProject? project) => new() { Id = session.Id, Title = session.Title, CreatedAt = session.CreatedAt, UpdatedAt = session.UpdatedAt, MessageCount = messages.Count, LastMessage = messages.FirstOrDefault()?.Content ?? string.Empty, ProjectId = session.CodeProjectId, ProjectName = project?.DisplayName, SortOrder = session.SortOrder ?? 0, Priority = session.Priority ?? "normal", IsPinned = session.IsPinned ?? false };
     private static string MakeTitle(string message) => string.IsNullOrWhiteSpace(message) ? "新会话" : message.Trim().Replace('\r', ' ').Replace('\n', ' ')[..Math.Min(message.Trim().Replace('\r', ' ').Replace('\n', ' ').Length, 40)];
     private static Dictionary<string, object?> DeserializeObject(string? value) => string.IsNullOrWhiteSpace(value) ? [] : JsonSerializer.Deserialize<Dictionary<string, object?>>(value) ?? [];

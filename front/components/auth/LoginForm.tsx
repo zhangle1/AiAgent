@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { login } from "@/lib/auth-api";
+import { resolvePostLoginPath } from "@/lib/auth-redirect";
 
 export function LoginForm() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export function LoginForm() {
     setError("");
     try {
       await login(username, password);
-      router.replace(searchParams.get("next") || "/chat");
+      router.replace(resolvePostLoginPath(searchParams.get("next")));
       router.refresh();
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : "登录失败，请重试。");

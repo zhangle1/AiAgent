@@ -51,6 +51,21 @@ Codex 运行租约的缓存键必须包含模型 ID。这样同一个浏览器�
 
 ## 验收
 
+## 5.6 Luna、推理等级与第三方 Profile 扩展
+
+- 内置模型扩展为 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；管理员可分别启用并设置默认值。
+- 管理员可以维护 `minimal`、`low`、`medium`、`high`、`xhigh` 推理等级、默认等级，以及是否允许聊天框覆盖默认值。AiAgent 将选中的等级通过 app-server 的 `modelReasoningEffort` 下发。
+- 管理员可新增第三方 Codex profile：显示名、`profile_name`、可选的实际 `model_id`、说明，以及该 provider 是否支持 `modelReasoningEffort`。profile 名称仅允许字母、数字、连字符和下划线。
+- profile 不写进 `thread/start`。内置模型仍走 app-server；第三方 profile 走 `codex exec --profile <profile_name> --json`，该 profile 对应后端运行账户 `~/.codex/<profile_name>.config.toml`。
+- 第三方项未填写 `model_id` 时，AiAgent 不传 `model`，完整采用 profile 文件中的模型配置；填写后才覆盖为管理员指定的模型 ID。
+- 运行时租约键同时包含工作目录、模型选择与 profile，避免项目切换或 DeepSeek 等不同 profile 复用到错误的 app-server 进程。
+
+### 第三方 Profile 的 CLI 流式适配
+
+配置了 `profile_name` 的第三方模型不依赖 app-server，而是由服务端执行 `codex exec --profile <profile_name> --json`。后端逐行解析 JSONL，将文本、工具和文件修改事件映射为现有 SSE；首次运行返回的 Codex session id 会保存到 AiAgent 会话偏好，后续消息自动使用 `codex exec resume <sessionId> --json`。
+
+该模式不使用 `--ephemeral`，因此可保留 Codex CLI 上下文。浏览器停止生成时取消 HTTP 请求，后端会终止对应的 CLI 子进程树。第三方 provider 的模型、认证、审批和 sandbox 应在其 profile 文件中配置；只有管理员勾选“允许在聊天中选择推理等级”时，AiAgent 才通过 `--config model_reasoning_effort=<等级>` 覆盖 profile 默认值。
+
 - 管理员可启用/停用 Sol、Terra，设置默认模型和聊天切换权限。
 - 普通用户无法调用策略更新接口。
 - Codex 请求未指定模型时使用管理员默认模型。

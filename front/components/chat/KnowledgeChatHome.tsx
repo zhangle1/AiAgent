@@ -104,6 +104,7 @@ export function KnowledgeChatHome() {
   const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedCodexModelId, setSelectedCodexModelId] = useState("");
+  const [selectedCodexReasoningEffort, setSelectedCodexReasoningEffort] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "codebuddy" | "">("");
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
@@ -138,7 +139,10 @@ export function KnowledgeChatHome() {
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
   const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
-  const mobileModelLabel = selectedAgentId === "codex" ? currentCodexModel?.name ?? "Auto" : currentModel?.name || currentModel?.model || "Auto";
+  const codexReasoningEfforts = currentCodexModel?.supports_reasoning_effort ? codexModelPolicy?.allowed_reasoning_efforts ?? [] : [];
+  const mobileModelLabel = selectedAgentId === "codex"
+    ? `${currentCodexModel?.name ?? "Auto"}${currentCodexModel?.supports_reasoning_effort && selectedCodexReasoningEffort ? ` · ${codexReasoningEffortLabel(selectedCodexReasoningEffort)}` : ""}`
+    : currentModel?.name || currentModel?.model || "Auto";
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
@@ -153,6 +157,7 @@ export function KnowledgeChatHome() {
     void getCodexModelPolicy().then((policy) => {
       setCodexModelPolicy(policy);
       setSelectedCodexModelId((current) => current || policy.default_model_id);
+      setSelectedCodexReasoningEffort((current) => current || policy.default_reasoning_effort);
     }).catch(() => setCodexModelPolicy(null));
   }, []);
 
@@ -164,8 +169,8 @@ export function KnowledgeChatHome() {
   }, [agentProviders, selectedAgentId]);
 
   useEffect(() => {
-    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId, selectedCodexModelId || undefined);
-  }, [activateCodexRuntime, selectedAgentId, selectedCodexModelId, selectedProjectId]);
+    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId, selectedCodexModelId || undefined, currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined);
+  }, [activateCodexRuntime, currentCodexModel?.supports_reasoning_effort, selectedAgentId, selectedCodexModelId, selectedCodexReasoningEffort, selectedProjectId]);
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
@@ -346,6 +351,7 @@ export function KnowledgeChatHome() {
         code_project_id: selectedProjectId ?? undefined,
         model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
         codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
+        codex_reasoning_effort: selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined,
         top_k: 6,
         mode: "chat",
         agent: selectedAgentId || undefined,
@@ -585,6 +591,12 @@ export function KnowledgeChatHome() {
                     {codexModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
                   </select>
                 </label>}
+                {selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort && <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title="Codex reasoning effort">
+                  <span className="text-[11px] text-violet-500">推理</span>
+                  <select value={selectedCodexReasoningEffort} onChange={(event) => setSelectedCodexReasoningEffort(event.target.value)} disabled={codexReasoningEfforts.length === 0 || codexModelPolicy?.allow_chat_reasoning_effort_override === false} className="max-w-[90px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
+                    {codexReasoningEfforts.map((effort) => <option key={effort} value={effort}>{codexReasoningEffortLabel(effort)}</option>)}
+                  </select>
+                </label>}
                 <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 ${selectedAgentId === "codex" ? "" : "sm:inline-flex"}`}>
                   <PanelRight size={15} />
                   <select
@@ -659,6 +671,10 @@ export function KnowledgeChatHome() {
       />
     </main>
   );
+}
+
+function codexReasoningEffortLabel(effort: string) {
+  return ({ minimal: "极轻", low: "轻度", medium: "中", high: "高", xhigh: "极高" } as Record<string, string>)[effort] ?? effort;
 }
 
 type ContextPickerItem = {

@@ -1,5 +1,6 @@
 import type { KnowledgeCitation } from "@/lib/knowledge-types";
 import type { ChatImageAttachment } from "@/lib/chat-api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 
 export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string; attachments?: ChatImageAttachment[] } | null; created_at: string };
 export type SessionPriority = "high" | "normal" | "low";
@@ -11,7 +12,7 @@ export type SessionDetail = SessionSummary & { messages: SessionMessage[]; prefe
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   if (response.status === 401 && typeof window !== "undefined") {
-    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    window.location.assign(buildLoginRedirect(window.location.pathname + window.location.search));
     throw new Error("请先登录。");
   }
   const payload = await response.json().catch(() => ({}));

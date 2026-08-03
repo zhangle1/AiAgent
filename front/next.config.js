@@ -8,7 +8,7 @@ const nextConfig = {
   // The deployment script packages this minimal Node.js runtime for a server.
   output: "standalone",
   // Permit development assets and HMR from common local and private-network hosts.
-  allowedDevOrigins: ["192.168.0.45","192.168.1.6","192.168.3.199", "10.*.*.*", "127.*.*.*", "172.*.*.*", "192.168.*.*", "*.localhost", "**.localhost", "*.local", "**.local"],
+  allowedDevOrigins: ["192.168.1.4","192.168.0.45","192.168.1.6","192.168.3.199", "10.*.*.*", "127.*.*.*", "172.*.*.*", "192.168.*.*", "*.localhost", "**.localhost", "*.local", "**.local"],
   async rewrites() {
     return [
       {

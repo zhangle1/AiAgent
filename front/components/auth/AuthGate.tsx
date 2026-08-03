@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getAuthStatus } from "@/lib/auth-api";
+import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -17,9 +18,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (isAuthPage) { setReady(true); return; }
     setReady(false);
     void getAuthStatus().then((status) => {
-      if (!status.authenticated) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      if (!status.authenticated) router.replace(buildLoginRedirect(pathname));
       else setReady(true);
-    }).catch(() => router.replace(`/login?next=${encodeURIComponent(pathname)}`));
+    }).catch(() => router.replace(buildLoginRedirect(pathname)));
   }, [isAuthPage, pathname, router]);
 
   useEffect(() => {
