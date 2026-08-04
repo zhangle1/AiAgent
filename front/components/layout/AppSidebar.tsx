@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, Check, ChevronDown, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutTemplate, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Settings, Wrench, X, type LucideIcon } from "lucide-react";
+import { Archive, Check, ChevronDown, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutTemplate, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -47,6 +47,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const projectMenuAnchorRef = useRef<HTMLElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const projectListMenuAnchorRef = useRef<HTMLElement | null>(null);
@@ -100,6 +101,16 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previousOverflow; };
   }, [mobileOpen]);
+
+  useEffect(() => {
+    const openWorkspaceSearch = (event: KeyboardEvent) => {
+      if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k")) return;
+      event.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", openWorkspaceSearch);
+    return () => window.removeEventListener("keydown", openWorkspaceSearch);
+  }, []);
 
   const groups = useMemo<SessionGroup[]>(() => {
     const preferences = new Map(projectPreferences.map((item) => [item.project_id, item]));
@@ -219,7 +230,11 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
 
     <nav className={`${compact ? "px-2" : "px-3"} pb-3`}>
       {!compact && <p className="px-2 pb-1 text-[10px] font-semibold tracking-[.15em] text-slate-400">工作台</p>}
-      <div className="space-y-1">{mainItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} compact={compact}/>)}</div>
+      <div className="space-y-1">
+        <button type="button" onClick={() => setSearchOpen(true)} className={`flex h-10 items-center rounded-xl text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 ${compact ? "w-full justify-center" : "w-full gap-3 px-3 text-sm"}`} title="搜索项目和会话（Ctrl+K）" aria-label="搜索项目和会话">
+          <Search size={17}/>{!compact && <><span className="min-w-0 flex-1 truncate text-left">搜索项目和会话</span><kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400">Ctrl K</kbd></>}
+        </button>
+        {mainItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} compact={compact}/>)}</div>
     </nav>
 
     {!compact ? <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
@@ -236,6 +251,9 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
       <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className={`text-slate-500 transition hover:bg-red-50 hover:text-red-600 ${compact ? "grid h-9 w-10 place-items-center rounded-lg" : "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px]"}`} title="退出登录"><LogOut size={16}/>{!compact && "退出登录"}</button>
     </div>
     {toolsOpen && <ToolDialog compact={compact} pathname={pathname} onClose={() => setToolsOpen(false)}/>}
+    {searchOpen && (
+      <WorkspaceSearchDialog projects={projects} sessions={sessions} onClose={() => setSearchOpen(false)} onSelectProject={(project) => { setSearchOpen(false); setMobileOpen(false); router.push(`/chat?project=${project.id}`); }} onSelectSession={(session) => { setSearchOpen(false); setMobileOpen(false); router.push(`/chat?session=${encodeURIComponent(session.id)}`); }}/>
+    )}
     {projectMenu && (() => {
       const group = groups.find((item) => item.key === projectMenu.groupKey);
       return group?.project ? <ProjectMenu position={projectMenu} menuRef={projectMenuRef} project={group.project} preference={group.preference} onClose={() => { projectMenuAnchorRef.current = null; setProjectMenu(null); }} onTogglePin={() => void toggleProjectPin(group.project!, group.preference)} onToggleArchive={() => void toggleProjectArchive(group.project!, group.preference)} onSortMode={(sortMode) => void updateProjectPreference(group.project!, { sort_mode: sortMode })}/> : null;
@@ -245,6 +263,41 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     {renameTarget && <RenameSessionDialog session={renameTarget} onClose={() => setRenameTarget(null)} onSave={async (title) => { await renameSession(renameTarget.id, title); setSessions((items) => items.map((item) => item.id === renameTarget.id ? { ...item, title } : item)); setRenameTarget(null); }} />}
     </aside>
   </>;
+}
+
+function WorkspaceSearchDialog({ projects, sessions, onClose, onSelectProject, onSelectSession }: { projects: CodeProject[]; sessions: SessionSummary[]; onClose: () => void; onSelectProject: (project: CodeProject) => void; onSelectSession: (session: SessionSummary) => void }) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matchingProjects = useMemo(() => projects.filter((project) => matchesWorkspaceSearch(normalizedQuery, [project.display_name, project.name, project.description, project.root_path])).sort((left, right) => left.display_name.localeCompare(right.display_name)).slice(0, 8), [normalizedQuery, projects]);
+  const matchingSessions = useMemo(() => sessions.filter((session) => matchesWorkspaceSearch(normalizedQuery, [session.title, session.project_name, session.last_message])).sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()).slice(0, 10), [normalizedQuery, sessions]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return createPortal(<div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-950/35 p-3 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-[12vh]" role="dialog" aria-modal="true" aria-label="搜索项目和会话" onMouseDown={onClose}>
+    <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <Search size={19} className="shrink-0 text-slate-400"/>
+        <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目或会话" className="h-9 min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" aria-label="搜索项目或会话"/>
+        <kbd className="hidden rounded border border-slate-200 bg-slate-50 px-1.5 py-1 text-[10px] text-slate-400 sm:inline">ESC</kbd>
+        <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="关闭搜索"><X size={17}/></button>
+      </div>
+      <div className="workspace-scroll min-h-0 flex-1 overflow-y-auto p-2 sm:max-h-[min(60dvh,560px)]">
+        {!normalizedQuery && <p className="px-3 pb-2 pt-1 text-xs text-slate-400">输入关键词过滤项目和会话；点击项目会以该项目开启新会话。</p>}
+        {matchingProjects.length > 0 && <section className="pb-2"><p className="px-3 py-1.5 text-[10px] font-semibold tracking-[.14em] text-slate-400">项目 · 点击开启新会话</p><div className="space-y-1">{matchingProjects.map((project) => <button key={project.id} type="button" onClick={() => onSelectProject(project)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-blue-50"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600"><FolderGit2 size={16}/></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{project.display_name}</span><span className="block truncate pt-0.5 text-xs text-slate-400">{project.description || project.root_path}</span></span><span className="shrink-0 text-xs text-blue-600">新建会话</span></button>)}</div></section>}
+        {matchingSessions.length > 0 && <section><p className="px-3 py-1.5 text-[10px] font-semibold tracking-[.14em] text-slate-400">会话 · 点击进入会话</p><div className="space-y-1">{matchingSessions.map((session) => <button key={session.id} type="button" onClick={() => onSelectSession(session)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-100"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"><MessageSquare size={16}/></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{session.title}</span><span className="block truncate pt-0.5 text-xs text-slate-400">{session.project_name || "未归属项目"}{session.last_message ? ` · ${session.last_message}` : ""}</span></span><span className="shrink-0 text-xs text-slate-400">进入</span></button>)}</div></section>}
+        {normalizedQuery && matchingProjects.length === 0 && matchingSessions.length === 0 && <div className="px-3 py-10 text-center"><Search size={20} className="mx-auto text-slate-300"/><p className="mt-3 text-sm font-medium text-slate-600">没有匹配的项目或会话</p><p className="mt-1 text-xs text-slate-400">换个关键词再试试。</p></div>}
+      </div>
+      <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400"><span>项目 {matchingProjects.length} 个 · 会话 {matchingSessions.length} 个</span><span className="hidden sm:inline">Ctrl / ⌘ + K 随时唤起</span></div>
+    </div>
+  </div>, document.body);
 }
 
 function SidebarLink({ item, active, compact }: { item: NavItem; active: boolean; compact: boolean }) {
@@ -340,4 +393,9 @@ function compareProjectGroups(left: SessionGroup, right: SessionGroup, mode: Pro
 
 function priorityWeight(priority: SessionSummary["priority"]) {
   return priority === "high" ? 3 : priority === "normal" ? 2 : 1;
+}
+
+function matchesWorkspaceSearch(query: string, values: Array<string | null | undefined>) {
+  if (!query) return true;
+  return values.some((value) => value?.toLocaleLowerCase().includes(query));
 }
