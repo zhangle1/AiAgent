@@ -35,6 +35,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
     {
         EnsureChatSessionColumns();
         EnsureChatProjectPreferenceTable();
+        EnsureChatSidebarPreferenceTable();
         _db.CodeFirst.InitTables(
             typeof(AiModelProvider),
             typeof(AiModelProfile),
@@ -136,6 +137,7 @@ BEGIN
         UserId NVARCHAR(64) NOT NULL,
         CodeProjectId BIGINT NOT NULL,
         IsPinned BIT NOT NULL CONSTRAINT DF_ai_chat_proj_pref_IsPinned DEFAULT 0,
+        IsArchived BIT NOT NULL CONSTRAINT DF_ai_chat_proj_pref_IsArchived DEFAULT 0,
         SortMode NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_chat_proj_pref_SortMode DEFAULT N'updated',
         UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_ai_chat_proj_pref_UpdatedAt DEFAULT SYSUTCDATETIME()
     );
@@ -151,6 +153,8 @@ BEGIN
         ALTER TABLE dbo.ai_chat_proj_pref ADD CodeProjectId BIGINT NULL;
     IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'IsPinned') IS NULL
         ALTER TABLE dbo.ai_chat_proj_pref ADD IsPinned BIT NULL;
+    IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'IsArchived') IS NULL
+        ALTER TABLE dbo.ai_chat_proj_pref ADD IsArchived BIT NOT NULL CONSTRAINT DF_ai_chat_proj_pref_IsArchived DEFAULT 0;
     IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'SortMode') IS NULL
         ALTER TABLE dbo.ai_chat_proj_pref ADD SortMode NVARCHAR(16) NULL;
     IF COL_LENGTH(N'dbo.ai_chat_proj_pref', N'UpdatedAt') IS NULL
@@ -159,8 +163,28 @@ END
 """);
     }
 
+    private void EnsureChatSidebarPreferenceTable()
+    {
+        ExecuteIndexSql("""
+IF OBJECT_ID(N'dbo.ai_chat_sidebar_pref', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ai_chat_sidebar_pref
+    (
+        Id BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_ai_chat_sidebar_pref PRIMARY KEY,
+        UserId NVARCHAR(64) NOT NULL,
+        ProjectSortMode NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_chat_sidebar_pref_ProjectSortMode DEFAULT N'recent',
+        UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_ai_chat_sidebar_pref_UpdatedAt DEFAULT SYSUTCDATETIME()
+    );
+END
+""");
+    }
+
     private void EnsureIndexes()
     {
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_sidebar_pref_UserId' AND object_id = OBJECT_ID(N'dbo.ai_chat_sidebar_pref'))
+    CREATE UNIQUE INDEX UX_ai_chat_sidebar_pref_UserId ON dbo.ai_chat_sidebar_pref(UserId);
+""");
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_model_provider_Service_Code' AND object_id = OBJECT_ID(N'dbo.ai_model_provider'))
     CREATE UNIQUE INDEX UX_ai_model_provider_Service_Code ON dbo.ai_model_provider(ServiceType, ProviderCode) WHERE IsDeleted = 0;

@@ -5,7 +5,9 @@ import { buildLoginRedirect } from "@/lib/auth-redirect";
 export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string; attachments?: ChatImageAttachment[] } | null; created_at: string };
 export type SessionPriority = "high" | "normal" | "low";
 export type ProjectSessionSortMode = "updated" | "priority" | "manual";
-export type ProjectSessionPreference = { project_id: number; is_pinned: boolean; sort_mode: ProjectSessionSortMode };
+export type ProjectListSortMode = "name" | "recent";
+export type ProjectSessionPreference = { project_id: number; is_pinned: boolean; is_archived: boolean; sort_mode: ProjectSessionSortMode };
+export type ChatSidebarPreference = { project_sort_mode: ProjectListSortMode };
 export type SessionSummary = { id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string; project_id?: number | null; project_name?: string | null; sort_order: number; priority: SessionPriority; is_pinned: boolean };
 export type SessionDetail = SessionSummary & { messages: SessionMessage[]; preferences: Record<string, unknown> };
 
@@ -28,4 +30,6 @@ export function renameSession(id: string, title: string) { return request<{ ok: 
 export function reorderSessions(sessionIds: string[]) { return request<{ ok: boolean }>("/api/v1/sessions/reorder", { method: "PUT", body: JSON.stringify({ session_ids: sessionIds }) }); }
 export function updateSessionMetadata(id: string, metadata: { priority?: SessionPriority; is_pinned?: boolean }) { return request<{ ok: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}/meta`, { method: "PATCH", body: JSON.stringify(metadata) }); }
 export async function listProjectSessionPreferences(): Promise<ProjectSessionPreference[]> { return (await request<{ preferences: ProjectSessionPreference[] }>("/api/v1/sessions/project-preferences")).preferences; }
-export function updateProjectSessionPreference(projectId: number, preference: { is_pinned?: boolean; sort_mode?: ProjectSessionSortMode }) { return request<{ ok: boolean }>(`/api/v1/sessions/projects/${projectId}/preference`, { method: "PATCH", body: JSON.stringify(preference) }); }
+export function updateProjectSessionPreference(projectId: number, preference: { is_pinned?: boolean; is_archived?: boolean; sort_mode?: ProjectSessionSortMode }) { return request<{ ok: boolean }>(`/api/v1/sessions/projects/${projectId}/preference`, { method: "PATCH", body: JSON.stringify(preference) }); }
+export function getChatSidebarPreference() { return request<ChatSidebarPreference>("/api/v1/sessions/sidebar-preference"); }
+export function updateChatSidebarPreference(preference: { project_sort_mode: ProjectListSortMode }) { return request<{ ok: boolean }>("/api/v1/sessions/sidebar-preference", { method: "PATCH", body: JSON.stringify(preference) }); }

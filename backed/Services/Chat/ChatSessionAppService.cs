@@ -53,6 +53,14 @@ public sealed class ChatSessionAppService : IDynamicApiController
     public async Task<IActionResult> UpdateProjectPreference(long projectId, [FromBody] UpdateChatProjectPreferenceRequest request, CancellationToken cancellationToken)
         => await _sessions.UpdateProjectPreferenceAsync(await RequireUser(cancellationToken), projectId, request, cancellationToken) ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = "项目会话偏好无效或项目不存在。" });
 
+    [HttpGet("sidebar-preference")]
+    public async Task<ChatSidebarPreferenceDto> GetSidebarPreference(CancellationToken cancellationToken)
+        => await _sessions.GetSidebarPreferenceAsync(await RequireUser(cancellationToken), cancellationToken);
+
+    [HttpPatch("sidebar-preference")]
+    public async Task<IActionResult> UpdateSidebarPreference([FromBody] UpdateChatSidebarPreferenceRequest request, CancellationToken cancellationToken)
+        => await _sessions.UpdateSidebarPreferenceAsync(await RequireUser(cancellationToken), request, cancellationToken) ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = "项目栏排序方式无效。" });
+
     [HttpDelete("{sessionId}")]
     public async Task<IActionResult> Delete(string sessionId, CancellationToken cancellationToken)
         => await _sessions.DeleteAsync(await RequireUser(cancellationToken), sessionId, cancellationToken) ? new OkObjectResult(new { deleted = true }) : new NotFoundObjectResult(new { message = "会话不存在。" });

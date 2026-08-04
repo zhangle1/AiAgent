@@ -16,9 +16,28 @@ public sealed class AiChatProjectPreference
     [SugarColumn(IsNullable = true)]
 
     public bool IsPinned { get; set; }
+    [SugarColumn(IsNullable = true)]
+
+    public bool IsArchived { get; set; }
 
     [SugarColumn(Length = 16)]
     public string SortMode { get; set; } = "updated";
+    [SugarColumn(IsNullable = true)]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[SugarTable("ai_chat_sidebar_pref")]
+public sealed class AiChatSidebarPreference
+{
+    [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
+    public long Id { get; set; }
+
+    [SugarColumn(Length = 64)]
+    public string UserId { get; set; } = string.Empty;
+
+    [SugarColumn(Length = 16)]
+    public string ProjectSortMode { get; set; } = "recent";
+
     [SugarColumn(IsNullable = true)]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

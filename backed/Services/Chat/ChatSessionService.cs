@@ -22,6 +22,8 @@ public interface IChatSessionService
     Task<bool> UpdateMetadataAsync(AuthenticatedUser user, string sessionId, UpdateChatSessionMetaRequest request, CancellationToken cancellationToken);
     Task<List<ChatProjectPreferenceDto>> ListProjectPreferencesAsync(AuthenticatedUser user, CancellationToken cancellationToken);
     Task<bool> UpdateProjectPreferenceAsync(AuthenticatedUser user, long projectId, UpdateChatProjectPreferenceRequest request, CancellationToken cancellationToken);
+    Task<ChatSidebarPreferenceDto> GetSidebarPreferenceAsync(AuthenticatedUser user, CancellationToken cancellationToken);
+    Task<bool> UpdateSidebarPreferenceAsync(AuthenticatedUser user, UpdateChatSidebarPreferenceRequest request, CancellationToken cancellationToken);
 }
 
 public sealed class ChatSessionService : IChatSessionService
@@ -65,7 +67,24 @@ public sealed class ChatSessionService : IChatSessionService
             Content = content,
             Thinking = string.IsNullOrWhiteSpace(thinking) ? null : thinking,
             CitationsJson = citations == null ? null : JsonSerializer.Serialize(citations),
-            MetadataJson = JsonSerializer.Serialize(new { model_id = modelId, model })
+            MetadataJson = JsonSerializer.Serialize(new
+            {
+                model_id = modelId,
+                model,
+                image_ocr = request.ImageOcrResults.Count == 0
+                    ? null
+                    : request.ImageOcrResults.Select(item => new
+                    {
+                        attachment_id = item.AttachmentId,
+                        ocr_used = true,
+                        engine = item.Engine,
+                        language = item.Language,
+                        confidence = item.Confidence,
+                        elapsed_ms = item.ElapsedMs,
+                        cached = item.FromCache,
+                        truncated = item.Truncated
+                    }).ToList()
+            })
         }).ExecuteCommand();
         _db.Updateable<AiChatSession>().SetColumns(x => x.UpdatedAt == DateTime.UtcNow).Where(x => x.Id == session.Id).ExecuteCommand();
         await _memory.RecordObservationAsync(user, session.CodeProjectId, session.Id, "assistant_message", content, cancellationToken);
@@ -173,7 +192,7 @@ public sealed class ChatSessionService : IChatSessionService
     public Task<List<ChatProjectPreferenceDto>> ListProjectPreferencesAsync(AuthenticatedUser user, CancellationToken cancellationToken)
     {
         var preferences = _db.Queryable<AiChatProjectPreference>().Where(x => x.UserId == user.Id).ToList();
-        return Task.FromResult(preferences.Select(x => new ChatProjectPreferenceDto { ProjectId = x.CodeProjectId, IsPinned = x.IsPinned, SortMode = x.SortMode }).ToList());
+        return Task.FromResult(preferences.Select(x => new ChatProjectPreferenceDto { ProjectId = x.CodeProjectId, IsPinned = x.IsPinned, IsArchived = x.IsArchived, SortMode = x.SortMode }).ToList());
     }
 
     public Task<bool> UpdateProjectPreferenceAsync(AuthenticatedUser user, long projectId, UpdateChatProjectPreferenceRequest request, CancellationToken cancellationToken)
@@ -186,6 +205,7 @@ public sealed class ChatSessionService : IChatSessionService
             preference = new AiChatProjectPreference { UserId = user.Id, CodeProjectId = projectId };
         }
         if (request.IsPinned.HasValue) preference.IsPinned = request.IsPinned.Value;
+        if (request.IsArchived.HasValue) preference.IsArchived = request.IsArchived.Value;
         if (request.SortMode != null)
         {
             var sortMode = request.SortMode.Trim().ToLowerInvariant();
@@ -194,7 +214,31 @@ public sealed class ChatSessionService : IChatSessionService
         }
         preference.UpdatedAt = DateTime.UtcNow;
         if (isNew) _db.Insertable(preference).ExecuteCommand();
-        else _db.Updateable(preference).UpdateColumns(x => new { x.IsPinned, x.SortMode, x.UpdatedAt }).ExecuteCommand();
+        else _db.Updateable(preference).UpdateColumns(x => new { x.IsPinned, x.IsArchived, x.SortMode, x.UpdatedAt }).ExecuteCommand();
+        return Task.FromResult(true);
+    }
+
+    public Task<ChatSidebarPreferenceDto> GetSidebarPreferenceAsync(AuthenticatedUser user, CancellationToken cancellationToken)
+    {
+        var preference = _db.Queryable<AiChatSidebarPreference>().First(x => x.UserId == user.Id);
+        return Task.FromResult(new ChatSidebarPreferenceDto { ProjectSortMode = preference?.ProjectSortMode is "name" ? "name" : "recent" });
+    }
+
+    public Task<bool> UpdateSidebarPreferenceAsync(AuthenticatedUser user, UpdateChatSidebarPreferenceRequest request, CancellationToken cancellationToken)
+    {
+        var mode = request.ProjectSortMode?.Trim().ToLowerInvariant();
+        if (mode is not ("name" or "recent")) return Task.FromResult(false);
+        var preference = _db.Queryable<AiChatSidebarPreference>().First(x => x.UserId == user.Id);
+        if (preference == null)
+        {
+            _db.Insertable(new AiChatSidebarPreference { UserId = user.Id, ProjectSortMode = mode, UpdatedAt = DateTime.UtcNow }).ExecuteCommand();
+        }
+        else
+        {
+            preference.ProjectSortMode = mode;
+            preference.UpdatedAt = DateTime.UtcNow;
+            _db.Updateable(preference).UpdateColumns(x => new { x.ProjectSortMode, x.UpdatedAt }).ExecuteCommand();
+        }
         return Task.FromResult(true);
     }
 

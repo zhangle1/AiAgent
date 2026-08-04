@@ -54,11 +54,23 @@ public sealed class ChatProjectPreferenceDto
 {
     [JsonPropertyName("project_id")] public long ProjectId { get; set; }
     [JsonPropertyName("is_pinned")] public bool IsPinned { get; set; }
+    [JsonPropertyName("is_archived")] public bool IsArchived { get; set; }
     [JsonPropertyName("sort_mode")] public string SortMode { get; set; } = "updated";
 }
 
 public sealed class UpdateChatProjectPreferenceRequest
 {
     [JsonPropertyName("is_pinned")] public bool? IsPinned { get; set; }
+    [JsonPropertyName("is_archived")] public bool? IsArchived { get; set; }
     [JsonPropertyName("sort_mode")] public string? SortMode { get; set; }
+}
+
+public sealed class ChatSidebarPreferenceDto
+{
+    [JsonPropertyName("project_sort_mode")] public string ProjectSortMode { get; set; } = "recent";
+}
+
+public sealed class UpdateChatSidebarPreferenceRequest
+{
+    [JsonPropertyName("project_sort_mode")] public string? ProjectSortMode { get; set; }
 }
