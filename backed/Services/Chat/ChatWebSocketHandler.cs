@@ -26,11 +26,13 @@ public sealed class ChatWebSocketHandler
     private readonly IChatImageAttachmentService _attachments;
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
+    private readonly ICodexModelPolicyService _codexModelPolicy;
+    private readonly IImageOcrPolicyService _imageOcrPolicy;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
     {
         _orchestrator = orchestrator;
         _authService = authService;
@@ -38,6 +40,8 @@ public sealed class ChatWebSocketHandler
         _attachments = attachments;
         _usage = usage;
         _memory = memory;
+        _codexModelPolicy = codexModelPolicy;
+        _imageOcrPolicy = imageOcrPolicy;
     }
 
     /// <summary>
@@ -71,6 +75,17 @@ public sealed class ChatWebSocketHandler
                 if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException("Image attachments are currently supported only when Codex local agent is selected.");
+                }
+                var resolvedModel = _codexModelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
+                var imagePolicy = _imageOcrPolicy.GetPolicy();
+                var imageEnabled = resolvedModel.IsBuiltin
+                    ? imagePolicy.NativeImageInputEnabled
+                    : resolvedModel.SupportsImageOcr && imagePolicy.Enabled;
+                if (!imageEnabled)
+                {
+                    throw new InvalidOperationException(resolvedModel.IsBuiltin
+                        ? "The administrator has disabled native Codex image input."
+                        : "The selected Codex profile does not have PaddleOCR image recognition enabled.");
                 }
                 request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
             }

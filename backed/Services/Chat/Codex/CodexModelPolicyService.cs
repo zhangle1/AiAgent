@@ -14,7 +14,8 @@ public sealed record CodexModelDefinition(
     string? AppServerModelId,
     string? ProfileName,
     bool SupportsReasoningEffort,
-    bool IsBuiltin);
+    bool IsBuiltin,
+    bool SupportsImageOcr = false);
 
 public sealed record CodexResolvedModel(CodexModelDefinition Definition, string? ReasoningEffort)
 {
@@ -22,6 +23,8 @@ public sealed record CodexResolvedModel(CodexModelDefinition Definition, string?
     public string Name => Definition.Name;
     public string? AppServerModelId => Definition.AppServerModelId;
     public string? ProfileName => Definition.ProfileName;
+    public bool IsBuiltin => Definition.IsBuiltin;
+    public bool SupportsImageOcr => Definition.SupportsImageOcr;
 }
 
 public interface ICodexModelPolicyService
@@ -226,7 +229,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 ProfileName = profileName,
                 ModelId = modelId,
                 Description = description,
-                SupportsReasoningEffort = input.SupportsReasoningEffort
+                SupportsReasoningEffort = input.SupportsReasoningEffort,
+                SupportsImageOcr = input.SupportsImageOcr
             });
         }
         return result;
@@ -239,7 +243,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             ProfileName = item.ProfileName,
             ModelId = item.ModelId,
             Description = item.Description,
-            SupportsReasoningEffort = item.SupportsReasoningEffort
+            SupportsReasoningEffort = item.SupportsReasoningEffort,
+            SupportsImageOcr = item.SupportsImageOcr
         }));
 
     private static IReadOnlyList<CodexModelDefinition> GetAllModels(IEnumerable<StoredProfileModel> profiles)
@@ -254,7 +259,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 profile.ModelId,
                 profile.ProfileName,
                 profile.SupportsReasoningEffort,
-                false));
+                false,
+                profile.SupportsImageOcr));
         }
         return models;
     }
@@ -274,7 +280,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             ModelId = item.AppServerModelId,
             ProfileName = item.ProfileName,
             SupportsReasoningEffort = item.SupportsReasoningEffort,
-            IsBuiltin = item.IsBuiltin
+            IsBuiltin = item.IsBuiltin,
+            ImageInput = item.IsBuiltin ? "native" : item.SupportsImageOcr ? "ocr" : "none"
         }).ToList(),
         AllowedModelIds = policy.AllowedModelIds,
         DefaultModelId = policy.DefaultModelId,
@@ -288,7 +295,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             ProfileName = item.ProfileName,
             ModelId = item.ModelId,
             Description = item.Description,
-            SupportsReasoningEffort = item.SupportsReasoningEffort
+            SupportsReasoningEffort = item.SupportsReasoningEffort,
+            SupportsImageOcr = item.SupportsImageOcr
         }).ToList()
     };
 
@@ -310,5 +318,6 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
         public string? ModelId { get; set; }
         public string Description { get; set; } = string.Empty;
         public bool SupportsReasoningEffort { get; set; }
+        public bool SupportsImageOcr { get; set; } = true;
     }
 }

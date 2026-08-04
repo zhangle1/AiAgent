@@ -4,7 +4,7 @@ import sys
 
 def configure_stdio():
     """确保 worker JSON 输出使用 UTF-8，避免 Windows 默认编码导致中文乱码。"""
-    for stream in (sys.stdout, sys.stderr):
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
 

@@ -113,6 +113,12 @@ public sealed class ChatCompleteRequest
     public List<string> LocalImagePaths { get; set; } = [];
 
     /// <summary>
+    /// Server-only OCR results for third-party Codex profiles. Browser input must never populate this collection.
+    /// </summary>
+    [JsonIgnore]
+    public List<ChatImageOcrResult> ImageOcrResults { get; set; } = [];
+
+    /// <summary>
     /// Server-built, permission-filtered memory packet. It is never accepted from or returned to the browser.
     /// </summary>
     [JsonIgnore]
@@ -147,6 +153,19 @@ public sealed class ChatImageAttachmentDto
 
     [JsonPropertyName("size_bytes")]
     public long SizeBytes { get; set; }
+}
+
+/// <summary>OCR text derived from one server-owned image attachment.</summary>
+public sealed class ChatImageOcrResult
+{
+    public string AttachmentId { get; set; } = string.Empty;
+    public string Engine { get; set; } = "paddleocr";
+    public string Language { get; set; } = "ch";
+    public string Text { get; set; } = string.Empty;
+    public double? Confidence { get; set; }
+    public long ElapsedMs { get; set; }
+    public bool FromCache { get; set; }
+    public bool Truncated { get; set; }
 }
 
 public sealed class ChatTokenUsage

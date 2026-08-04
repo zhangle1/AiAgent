@@ -87,6 +87,7 @@ public sealed class PythonWorkerHost : IPythonWorkerHost
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
+            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
@@ -150,6 +151,11 @@ public sealed class PythonWorkerHost : IPythonWorkerHost
         {
             TryKillProcessTree(process);
             throw new TimeoutException($"Python worker '{workerName}' timed out after {timeoutSeconds} seconds.");
+        }
+        catch (OperationCanceledException)
+        {
+            TryKillProcessTree(process);
+            throw;
         }
     }
 
@@ -300,6 +306,7 @@ public sealed class PythonWorkerHost : IPythonWorkerHost
         {
             "rag" => "Rag",
             "parsing" => "Parsing",
+            "ocr" => "Ocr",
             _ => workerName.Trim()
         };
     }

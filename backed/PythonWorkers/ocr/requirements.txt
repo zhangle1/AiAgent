@@ -1,0 +1,4 @@
+# Windows CPU compatibility pair. Newer unconstrained 3.x combinations can
+# fail in the Paddle oneDNN/PIR execution path.
+paddlepaddle==3.2.2
+paddleocr==3.4.1

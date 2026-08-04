@@ -28,11 +28,13 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
     private readonly ICodexChatService _codex;
+    private readonly ICodexModelPolicyService _codexModelPolicy;
+    private readonly IImageOcrPolicyService _imageOcrPolicy;
 
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, ICodexChatService codex)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
@@ -42,6 +44,8 @@ public sealed class ChatAppService : IDynamicApiController
         _usage = usage;
         _memory = memory;
         _codex = codex;
+        _codexModelPolicy = codexModelPolicy;
+        _imageOcrPolicy = imageOcrPolicy;
     }
 
     /// <summary>
@@ -153,6 +157,17 @@ public sealed class ChatAppService : IDynamicApiController
         if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Image attachments are currently supported only when Codex local agent is selected.");
+        }
+        var model = _codexModelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
+        var imagePolicy = _imageOcrPolicy.GetPolicy();
+        var imageEnabled = model.IsBuiltin
+            ? imagePolicy.NativeImageInputEnabled
+            : model.SupportsImageOcr && imagePolicy.Enabled;
+        if (!imageEnabled)
+        {
+            throw new InvalidOperationException(model.IsBuiltin
+                ? "The administrator has disabled native Codex image input."
+                : "The selected Codex profile does not have PaddleOCR image recognition enabled.");
         }
         request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
     }

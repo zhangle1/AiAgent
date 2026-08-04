@@ -4,7 +4,7 @@
 
 ## 当前能力
 
-- Codex 图片上下文：选择 Codex 本地代理后，聊天框可上传 PNG、JPEG、WebP 或 GIF 截图；后端校验文件签名并以受控 `localImage` 输入传给 Codex，不会将浏览器提供的路径交给 CLI。
+- Codex 图片上下文：选择 Codex 本地代理后，聊天框可上传 PNG、JPEG、WebP 或 GIF 截图；后端校验文件签名并以受控 `localImage` 输入传给原生 Codex，不会将浏览器提供的路径交给 CLI。第三方 Codex profile 可选择启用本机 PaddleOCR，将带不可信边界的识别文本附加到 prompt，而不假定该 profile 支持图片参数。
 
 - 模型服务配置：LLM、Embedding、Search、TTS、STT、图像与视频模型。
 - Git 账号与代码库：令牌加密保存、连接测试、克隆、代码库登记、拉取与提交推送。
@@ -97,6 +97,8 @@ npm run dev
 选择 Codex 本地代理时，点击聊天输入框左下角的图片按钮，或在输入区按 `Ctrl+V`，即可附加截图。默认最多 4 张、单张最大 10 MB，支持 PNG、JPEG、WebP、GIF；未发送图片暂存于后端 `data/chat_attachments`，发送后的图片会迁移到按用户和会话隔离的历史目录，并随聊天记录回显。CodeBuddy 当前未验证图片输入协议，因此不能使用该功能。
 
 后端运行账户需要能够执行 Codex CLI，且已经完成 Codex 登录。默认执行 `codex app-server --stdio`；若 `codex` 不在后端账户的 `PATH` 中，设置 `AIAGENT_CODEX_COMMAND` 为可执行文件的绝对路径，或在后端配置中设置 `Codex:Command`。每个已登录用户的浏览器页签会保留一个已初始化的 CLI，页签每 25 秒发送一次心跳；停止心跳超过 90 秒才回收。用户最多同时保留和运行 3 个 Codex 会话，可通过 `Codex:RuntimeLeaseSeconds` 与 `Codex:MaxSessionsPerUser` 配置。首次使用页签仍会有一次 CLI 冷启动。聊天窗口在选择项目后会默认勾选“Codex 接管”（可手动取消）；该轮会将项目根目录作为 Codex 的工作目录，并以完整权限执行，请只选择允许 Codex 修改的项目目录。
+
+第三方 profile 的图片 OCR 默认关闭。管理员在“第三方代理”设置中启用后，按 `backed/PythonWorkers/ocr/install.ps1` 为 `PythonWorkers:Ocr:PythonPath` 指向的环境安装 CPU PaddleOCR，并确认聊天附件根目录位于 `PythonWorkers:AllowedRoots` 中。OCR 结果会以图片 SHA-256、引擎与语言为键缓存在 `ImageOcr:CachePath`；识别失败或超时不会中断聊天。
 
 ### 4. 流量统计与管理员视图
 
