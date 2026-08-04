@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Boxes, Code2, GitBranch, Home, Settings2, ShieldCheck } from "lucide-react";
+import { BarChart3, Bot, Boxes, Code2, GitBranch, Home, ScanText, Settings2, ShieldCheck } from "lucide-react";
 import { MODEL_SERVICE_CONFIGS } from "@/components/settings/models/model-service-config";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -16,6 +16,8 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const onAgentProvidersPage = pathname?.startsWith("/settings/agents");
   const onUsagePage = pathname?.startsWith("/settings/usage");
   const onAdminPage = pathname?.startsWith("/settings/admin");
+  const onAdminAgentProvidersPage = pathname?.startsWith("/settings/admin/agents");
+  const onAdminImageOcrPage = pathname?.startsWith("/settings/admin/image-ocr");
   const currentService = MODEL_SERVICE_CONFIGS.find((item) => item.href === pathname);
 
   return (
@@ -68,6 +70,18 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
           <>
             <span>/</span>
             <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><ShieldCheck size={14}/>管理配置</span>
+          </>
+        )}
+        {onAdminAgentProvidersPage && (
+          <>
+            <span>/</span>
+            <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><Bot size={14}/>第三方代理</span>
+          </>
+        )}
+        {onAdminImageOcrPage && (
+          <>
+            <span>/</span>
+            <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><ScanText size={14}/>图片 OCR</span>
           </>
         )}
         {currentService && (

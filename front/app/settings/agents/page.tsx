@@ -1,7 +1,5 @@
-"use client";
-
-import { AgentProvidersSettingsPage } from "@/components/settings/agents/AgentProvidersSettingsPage";
+import { redirect } from "next/navigation";
 
 export default function AgentProvidersPage() {
-  return <AgentProvidersSettingsPage />;
+  redirect("/settings/admin/agents");
 }

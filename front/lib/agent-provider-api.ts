@@ -17,6 +17,7 @@ export type CodexModelOption = {
   profile_name?: string | null;
   supports_reasoning_effort: boolean;
   is_builtin: boolean;
+  image_input: "native" | "ocr" | "none";
 };
 
 export type CodexProfileModel = {
@@ -25,6 +26,7 @@ export type CodexProfileModel = {
   model_id?: string | null;
   description: string;
   supports_reasoning_effort: boolean;
+  supports_image_ocr: boolean;
 };
 
 export type CodexModelPolicy = {
@@ -36,6 +38,35 @@ export type CodexModelPolicy = {
   default_reasoning_effort: string;
   allow_chat_reasoning_effort_override: boolean;
   profile_models: CodexProfileModel[];
+};
+
+export type ImageOcrPolicy = {
+  enabled: boolean;
+  native_image_input_enabled: boolean;
+  auto_process_images: boolean;
+  language: "ch" | "en" | "japan" | "korean";
+  max_image_bytes: number;
+  max_prompt_characters: number;
+  timeout_seconds: number;
+};
+
+export type ImageOcrDiagnostic = {
+  ready: boolean;
+  python_configured: boolean;
+  worker_configured: boolean;
+  paddle_version?: string | null;
+  paddleocr_version?: string | null;
+  error?: string | null;
+  result?: {
+    attachment_id: string;
+    engine: string;
+    language: string;
+    text: string;
+    confidence?: number | null;
+    elapsed_ms: number;
+    from_cache: boolean;
+    truncated: boolean;
+  } | null;
 };
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -57,5 +88,25 @@ export async function updateCodexModelPolicy(payload: Pick<CodexModelPolicy, "al
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  }));
+}
+
+export async function getImageOcrPolicy(): Promise<ImageOcrPolicy> {
+  return parseJson<ImageOcrPolicy>(await fetch("/api/v1/agent-providers/image-ocr-policy", { cache: "no-store" }));
+}
+
+export async function updateImageOcrPolicy(payload: ImageOcrPolicy): Promise<ImageOcrPolicy> {
+  return parseJson<ImageOcrPolicy>(await fetch("/api/v1/agent-providers/image-ocr-policy", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function diagnoseImageOcr(attachmentId?: string): Promise<ImageOcrDiagnostic> {
+  return parseJson<ImageOcrDiagnostic>(await fetch("/api/v1/agent-providers/image-ocr-diagnostics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ attachment_id: attachmentId || null }),
   }));
 }

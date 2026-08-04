@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bot, CheckCircle2, CircleAlert, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
-import { getAgentProviderEnvironments, getCodexModelPolicy, updateCodexModelPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type CodexProfileModel } from "@/lib/agent-provider-api";
+import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, updateCodexModelPolicy, updateImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type CodexProfileModel, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 import { getUiSettings, updateUiSettings } from "@/lib/api";
 import { getAuthStatus } from "@/lib/auth-api";
 
@@ -13,16 +13,18 @@ export function AgentProvidersSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [preferredAgent, setPreferredAgent] = useState<"codex" | "codebuddy" | "none">("codex");
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
+  const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const [detected, ui, policy, auth] = await Promise.all([getAgentProviderEnvironments(), getUiSettings(), getCodexModelPolicy(), getAuthStatus()]);
+      const [detected, ui, policy, ocrPolicy, auth] = await Promise.all([getAgentProviderEnvironments(), getUiSettings(), getCodexModelPolicy(), getImageOcrPolicy(), getAuthStatus()]);
       setProviders(detected);
       setPreferredAgent(ui.preferred_agent ?? "codex");
       setCodexModelPolicy(policy);
+      setImageOcrPolicy(ocrPolicy);
       setIsAdmin(auth.is_admin === true);
       setError(null);
     }
@@ -59,11 +61,31 @@ export function AgentProvidersSettingsPage() {
     finally { setSaving(false); }
   }
 
+  async function saveImageOcrPolicy() {
+    if (!imageOcrPolicy) return;
+    setSaving(true);
+    try { setImageOcrPolicy(await updateImageOcrPolicy(imageOcrPolicy)); setError(null); }
+    catch (ex) { setError(ex instanceof Error ? ex.message : "图片 OCR 策略保存失败。"); }
+    finally { setSaving(false); }
+  }
+
+  function setProfileImageOcr(profileName: string, enabled: boolean) {
+    setCodexModelPolicy((current) => current ? {
+      ...current,
+      profile_models: current.profile_models.map((profile) => profile.profile_name === profileName ? { ...profile, supports_image_ocr: enabled } : profile),
+    } : current);
+  }
+
+  if (!loading && !isAdmin) return <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center"><CircleAlert size={28} className="mx-auto text-amber-600" /><h1 className="mt-3 text-lg font-semibold text-amber-900">没有管理权限</h1><p className="mt-2 text-sm text-amber-700">第三方代理配置仅对管理员开放。</p></section>;
+
   return <section>
     <SettingsPageHeader title="第三方代理" description="检测后端运行账户可用的本地编码代理。只有具备结构化 app-server 协议的代理，才能在聊天中安全接管项目。" action={<div className="flex gap-2"><button type="button" onClick={() => void load()} disabled={loading || saving} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"><RefreshCw size={14} className={loading ? "animate-spin" : ""}/>刷新检测</button><button type="button" onClick={() => void savePreferredAgent()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-3 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存首选项</button></div>}/>
     <section className="mb-4 rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><label className="block text-sm font-semibold text-slate-800">默认聊天代理</label><p className="mt-1 text-xs leading-5 text-slate-500">每次打开聊天时默认选中此代理；若本机环境不满足要求，会自动回退到可用的 Codex 或“不接管”。</p><select value={preferredAgent} onChange={(event) => setPreferredAgent(event.target.value as "codex" | "codebuddy" | "none")} className="mt-3 h-9 min-w-56 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-blue-400"><option value="codex">Codex 本地</option><option value="none">不接管</option><option value="codebuddy" disabled>CodeBuddy CLI（待协议适配）</option></select></section>
     {isAdmin && codexModelPolicy && <section className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">Codex 模型策略</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">仅管理员可配置。模型可用性仍受运行后端账户的 Codex 登录状态、套餐和实时容量影响。</p></div><button type="button" onClick={() => void saveCodexModelPolicy()} disabled={saving || codexModelPolicy.allowed_model_ids.length === 0 || !codexModelPolicy.allowed_model_ids.includes(codexModelPolicy.default_model_id)} className="inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存模型策略</button></div><div className="mt-4 grid gap-3 md:grid-cols-2">{codexModelPolicy.models.map((model) => { const enabled = codexModelPolicy.allowed_model_ids.includes(model.id); return <label key={model.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${enabled ? "border-violet-200 bg-white" : "border-slate-200 bg-slate-50"}`}><input type="checkbox" checked={enabled} onChange={(event) => setCodexModelPolicy((current) => current ? { ...current, allowed_model_ids: event.target.checked ? [...current.allowed_model_ids, model.id] : current.allowed_model_ids.filter((id) => id !== model.id), default_model_id: !event.target.checked && current.default_model_id === model.id ? current.allowed_model_ids.find((id) => id !== model.id) ?? "" : current.default_model_id } : current)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600"/><span><span className="block text-sm font-medium text-slate-800">{model.name}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{model.description}</span><span className="mt-1 block font-mono text-[10px] text-slate-400">{model.id}</span></span></label>; })}</div><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium text-slate-600">默认 Codex 模型<select value={codexModelPolicy.default_model_id} onChange={(event) => setCodexModelPolicy((current) => current ? { ...current, default_model_id: event.target.value } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-700"><option value="">请选择默认模型</option>{codexModelPolicy.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label><label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"><input type="checkbox" checked={codexModelPolicy.allow_chat_model_override} onChange={(event) => setCodexModelPolicy((current) => current ? { ...current, allow_chat_model_override: event.target.checked } : current)} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>允许用户在聊天框切换已启用模型</label></div></section>}
     {isAdmin && codexModelPolicy && <CodexAdvancedPolicySettings policy={codexModelPolicy} saving={saving} onChange={setCodexModelPolicy} onSave={() => void saveCodexModelPolicy()}/>}
+    {isAdmin && imageOcrPolicy && <section className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">第三方 Profile 图片 OCR</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">开启后，第三方 <code>codex exec --profile</code> 不再接收原图参数，而是接收本机 PaddleOCR 提取的、明确标记为不可信的文本。原生 Codex 保持原图输入。</p></div><button type="button" onClick={() => void saveImageOcrPolicy()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存 OCR 策略</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs text-slate-700"><input type="checkbox" checked={imageOcrPolicy.enabled} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, enabled: event.target.checked } : current)} className="h-4 w-4 rounded border-slate-300 text-emerald-600"/>启用 OCR 降级</label><label className="text-xs font-medium text-slate-600">识别语言<select value={imageOcrPolicy.language} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, language: event.target.value as ImageOcrPolicy["language"] } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="ch">中文 / 英文</option><option value="en">英文</option><option value="japan">日文</option><option value="korean">韩文</option></select></label><label className="text-xs font-medium text-slate-600">Prompt 最多字符<input type="number" min={256} max={12000} value={imageOcrPolicy.max_prompt_characters} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, max_prompt_characters: Number(event.target.value) || 256 } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"/></label><label className="text-xs font-medium text-slate-600">超时（秒）<input type="number" min={10} max={180} value={imageOcrPolicy.timeout_seconds} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, timeout_seconds: Number(event.target.value) || 10 } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"/></label></div><p className="mt-3 text-[11px] text-emerald-800">首次启用前，请在后端配置 <code>PythonWorkers:Ocr</code> 指向已安装 CPU PaddleOCR 的 Python 环境；识别失败会保留正常聊天，不会中断请求。</p></section>}
+    {isAdmin && imageOcrPolicy && <section className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">原生 Codex 图片输入</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">原生 Codex app-server 使用受控原图输入；关闭后，聊天输入框会禁用图片上传。该开关不影响第三方 Profile 的 PaddleOCR 降级。</p></div><button type="button" onClick={() => void saveImageOcrPolicy()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-sky-600 px-3 text-xs font-medium text-white hover:bg-sky-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存图片能力</button></div><label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs text-slate-700"><input type="checkbox" checked={imageOcrPolicy.native_image_input_enabled} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, native_image_input_enabled: event.target.checked } : current)} className="h-4 w-4 rounded border-slate-300 text-sky-600"/>允许原生 Codex 接收原图</label></section>}
+    {isAdmin && codexModelPolicy && codexModelPolicy.profile_models.length > 0 && <section className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">第三方 Profile 图片能力</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">开启后，该 Profile 可以上传图片，并由本机 PaddleOCR 提取文字后作为不可信附件上下文发送。关闭后，选择该模型时聊天框会禁用图片上传。</p></div><button type="button" onClick={() => void saveCodexModelPolicy()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存 Profile 能力</button></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{codexModelPolicy.profile_models.map((profile) => <label key={profile.profile_name} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-violet-100 bg-white px-3 py-2 text-xs text-slate-700"><span><span className="block font-medium text-slate-800">{profile.display_name}</span><span className="font-mono text-[11px] text-slate-500">--profile {profile.profile_name}</span></span><span className="inline-flex items-center gap-2"><span>本地 OCR 识图</span><input type="checkbox" checked={profile.supports_image_ocr} onChange={(event) => setProfileImageOcr(profile.profile_name, event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-violet-600"/></span></label>)}</div></section>}
     <div className="grid gap-4 lg:grid-cols-2">
       {providers.map((provider) => <ProviderCard key={provider.id} provider={provider}/>) }
       {loading && providers.length === 0 && <div className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/>正在检测本地 CLI…</div>}
@@ -82,7 +104,7 @@ const CODEX_REASONING_EFFORTS = [
 ];
 
 function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { policy: CodexModelPolicy; saving: boolean; onChange: (policy: CodexModelPolicy) => void; onSave: () => void }) {
-  const [draft, setDraft] = useState<CodexProfileModel>({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false });
+  const [draft, setDraft] = useState<CodexProfileModel>({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_ocr: true });
   const applyProfiles = (profiles: CodexProfileModel[]) => {
     const profileModels = profiles.map((profile) => ({
       id: `profile:${profile.profile_name.trim().toLowerCase()}`,
@@ -102,7 +124,7 @@ function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { pol
     if (!profileName) return;
     if (policy.profile_models.some((item) => item.profile_name.toLowerCase() === profileName.toLowerCase())) return;
     applyProfiles([...policy.profile_models, { ...draft, display_name: draft.display_name.trim() || profileName, profile_name: profileName, model_id: draft.model_id?.trim() || null, description: draft.description.trim() }]);
-    setDraft({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false });
+    setDraft({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_ocr: true });
   };
 
   return <section className="mb-4 space-y-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">

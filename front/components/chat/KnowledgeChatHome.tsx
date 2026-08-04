@@ -19,7 +19,7 @@ import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getSession, type SessionDetail } from "@/lib/session-api";
-import { getAgentProviderEnvironments, getCodexModelPolicy, type AgentProviderEnvironment, type CodexModelPolicy } from "@/lib/agent-provider-api";
+import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 
 type InspectorTab = "preview" | "file" | "tasks" | "terminal";
 
@@ -108,6 +108,7 @@ export function KnowledgeChatHome() {
   const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "codebuddy" | "">("");
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
+  const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -139,6 +140,15 @@ export function KnowledgeChatHome() {
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
   const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
+  const imageInput = selectedAgentId === "codex" ? currentCodexModel?.image_input ?? "none" : "none";
+  const canAttachImages = imageInput === "native"
+    ? imageOcrPolicy?.native_image_input_enabled === true
+    : imageInput === "ocr" && imageOcrPolicy?.enabled === true;
+  const imageAttachmentHint = imageInput === "native"
+    ? "原生 Codex 原图识图"
+    : imageInput === "ocr"
+      ? "第三方 Profile 使用本地 PaddleOCR 识别图片文字"
+      : "当前模型未启用图片识别";
   const codexReasoningEfforts = currentCodexModel?.supports_reasoning_effort ? codexModelPolicy?.allowed_reasoning_efforts ?? [] : [];
   const mobileModelLabel = selectedAgentId === "codex"
     ? `${currentCodexModel?.name ?? "Auto"}${currentCodexModel?.supports_reasoning_effort && selectedCodexReasoningEffort ? ` · ${codexReasoningEffortLabel(selectedCodexReasoningEffort)}` : ""}`
@@ -159,6 +169,7 @@ export function KnowledgeChatHome() {
       setSelectedCodexModelId((current) => current || policy.default_model_id);
       setSelectedCodexReasoningEffort((current) => current || policy.default_reasoning_effort);
     }).catch(() => setCodexModelPolicy(null));
+    void getImageOcrPolicy().then(setImageOcrPolicy).catch(() => setImageOcrPolicy(null));
   }, []);
 
   useEffect(() => {
@@ -290,6 +301,10 @@ export function KnowledgeChatHome() {
       setError("图片附件目前只能发送给 Codex 本地代理。");
       return;
     }
+    if (attachmentsForTurn.length > 0 && !canAttachImages) {
+      setError("当前 Codex 模型未启用图片识别，请切换模型或在第三方代理设置中开启相应图片能力。");
+      return;
+    }
 
     const messageText = query || "请分析我附上的图片。";
 
@@ -385,6 +400,10 @@ export function KnowledgeChatHome() {
       setError("请先选择 Codex 本地代理，再添加图片附件。");
       return;
     }
+    if (!canAttachImages) {
+      setError("当前模型未启用图片识别，无法添加图片附件。");
+      return;
+    }
     const availableSlots = 4 - imageAttachments.length;
     if (availableSlots <= 0) {
       setError("每轮最多添加 4 张图片。");
@@ -433,7 +452,7 @@ export function KnowledgeChatHome() {
   }
 
   return (
-    <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
+    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
       <header className="relative z-[80] flex h-14 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-3 backdrop-blur-xl lg:h-16 lg:px-5">
         <div className="flex min-w-0 items-center gap-2 lg:gap-3">
           <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:mobile-drawer-toggle"))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="打开工作台抽屉"><Menu size={20}/></button>
@@ -517,7 +536,7 @@ export function KnowledgeChatHome() {
               <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18}/></button>
               <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
               <textarea value={input} onFocus={() => setComposerExpanded(true)} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="发消息或按住说话" className={`min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-5 text-slate-800 outline-none placeholder:text-slate-400 ${composerExpanded ? "min-h-[52px]" : "h-9 min-h-9"}`} aria-label="聊天输入" />
-              <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || selectedAgentId !== "codex"} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
+              <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || !canAttachImages} title={imageAttachmentHint} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
               {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim()} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
             </div>
             {composerExpanded && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
@@ -550,7 +569,7 @@ export function KnowledgeChatHome() {
                   }}
                   ref={(element) => { imageFileInputRef.current = element; }}
                 />
-                <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={selectedAgentId === "codex" ? "添加图片（PNG、JPEG、WebP、GIF）" : "图片附件仅支持 Codex 本地代理"}>
+                <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || !canAttachImages} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={imageAttachmentHint}>
                   {uploadingImages ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                 </button>
               </div>

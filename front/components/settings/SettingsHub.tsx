@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, GitBranch, MessageSquare, Network, Palette, Settings2, ShieldCheck, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, GitBranch, MessageSquare, Network, Palette, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAuthStatus } from "@/lib/auth-api";
 import { activeModel, activeProfile, serviceConfigured, type Catalog, type ServiceName } from "@/lib/settings-types";
@@ -16,7 +16,6 @@ const cards: Array<{ titleKey: TranslationKey; descKey: TranslationKey; icon: Lu
   { titleKey: "settings.codeRepository", descKey: "settings.codeRepositoryDesc", icon: Code2, href: "/settings/code-repositories" },
   { titleKey: "settings.gitAccounts", descKey: "settings.gitAccountsDesc", icon: GitBranch, href: "/settings/git-accounts" },
   { titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },
-  { titleKey: "settings.partnersAgents", descKey: "settings.partnersAgentsDesc", icon: Users, href: "/settings/agents" },
   { titleKey: "settings.usage", descKey: "settings.usageDesc", icon: BarChart3, href: "/settings/usage" },
   { titleKey: "nav.memory", descKey: "settings.memoryDesc", icon: Brain, href: "/settings" },
 ];

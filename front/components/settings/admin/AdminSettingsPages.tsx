@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, ChevronRight, ClipboardList, FolderKey, History, Loader2, ShieldCheck, UserPlus, Users } from "lucide-react";
+import { BarChart3, Bot, ChevronRight, ClipboardList, FolderKey, History, Loader2, ScanText, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { createAdminUser, getAdminSession, getAdminSessions, getAdminUsage, getAdminUsers, updateAdminUserProjects, type AdminSession, type AdminUsageReport, type AdminUser } from "@/lib/admin-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
@@ -14,13 +14,15 @@ const cardItems = [
   { href: "/settings/admin/users", title: "用户管理", description: "创建账号，为每位用户分配可在聊天中选择的项目。", icon: Users },
   { href: "/settings/admin/sessions", title: "历史会话", description: "按用户查看已保存的聊天会话与消息记录。", icon: History },
   { href: "/settings/admin/usage", title: "用户流量", description: "按日、周、月或年汇总注册用户的 Token 消耗。", icon: BarChart3 },
+  { href: "/settings/admin/agents", title: "第三方代理", description: "检测本地 CLI，并维护 Codex 模型与 Profile 配置。", icon: Bot },
+  { href: "/settings/admin/image-ocr", title: "图片 OCR", description: "单独检查 PaddleOCR 环境并上传图片验证识别链路。", icon: ScanText },
 ];
 
 export function AdminSettingsHome() {
   const allowed = useAdminAccess();
   if (allowed === null) return <LoadingState />;
   if (!allowed) return <AccessDenied />;
-  return <section><SettingsPageHeader title="管理配置" description="仅管理员可用。集中管理用户项目权限、会话审计和全员流量消耗。" action={null} /><div className="grid gap-4 md:grid-cols-3">{cardItems.map((item) => { const Icon = item.icon; return <Link key={item.href} href={item.href} className="group flex min-h-[190px] flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"><div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Icon size={19} /></span><ChevronRight size={18} className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-600" /></div><div><h2 className="text-[16px] font-semibold text-slate-900">{item.title}</h2><p className="mt-2 text-[13px] leading-6 text-slate-500">{item.description}</p></div></Link>; })}</div></section>;
+  return <section><SettingsPageHeader title="管理配置" description="仅管理员可用。集中管理用户、会话审计、模型代理与图片 OCR 能力。" action={null} /><div className="grid gap-4 md:grid-cols-3">{cardItems.map((item) => { const Icon = item.icon; return <Link key={item.href} href={item.href} className="group flex min-h-[190px] flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"><div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Icon size={19} /></span><ChevronRight size={18} className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-600" /></div><div><h2 className="text-[16px] font-semibold text-slate-900">{item.title}</h2><p className="mt-2 text-[13px] leading-6 text-slate-500">{item.description}</p></div></Link>; })}</div></section>;
 }
 
 export function AdminUsersPage() {
