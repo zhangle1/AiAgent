@@ -1,0 +1,4 @@
+# Windows NVIDIA GPU runtime for PaddleOCR 3.4.1.
+# Install this instead of the CPU runtime in requirements.txt.
+paddlepaddle-gpu==3.2.2
+paddleocr==3.4.1
