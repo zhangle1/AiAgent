@@ -687,7 +687,13 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         AddMarker(files, markerFiles, "package.json");
         AddMarker(files, markerFiles, "pnpm-workspace.yaml");
         AddMarker(files, markerFiles, "Cargo.toml");
+        AddMarker(files, markerFiles, "pom.xml");
+        AddMarker(files, markerFiles, "build.gradle");
+        AddMarker(files, markerFiles, "build.gradle.kts");
         AddMarker(files, markerFiles, "pyproject.toml");
+        AddMarker(files, markerFiles, "requirements.txt");
+        AddMarker(files, markerFiles, "setup.py");
+        AddMarker(files, markerFiles, "Pipfile");
         AddMarker(files, markerFiles, "BUILD.bazel");
         AddMarker(files, markerFiles, "MODULE.bazel");
         AddMarker(files, markerFiles, "Dockerfile");
@@ -705,7 +711,13 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             buildSystems.Add("Cargo");
         }
 
-        if (files.Contains("pyproject.toml") || files.Contains("requirements.txt"))
+        if (files.Contains("pom.xml") || files.Contains("build.gradle") || files.Contains("build.gradle.kts"))
+        {
+            languages.Add("Java");
+            buildSystems.Add(files.Contains("pom.xml") ? "Maven" : "Gradle");
+        }
+
+        if (files.Contains("pyproject.toml") || files.Contains("requirements.txt") || files.Contains("setup.py") || files.Contains("Pipfile"))
         {
             languages.Add("Python");
             buildSystems.Add("Python");
@@ -736,7 +748,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             Branch = branch,
             MarkerFiles = markerFiles,
             SolutionFiles = FindFiles(rootPath, ["*.sln", "*.csproj", "*.slnf"]),
-            ConfigurationFiles = FindFiles(rootPath, ["appsettings*.json", "*.config", "*.pubxml", ".env*", "package.json", "docker-compose*.yml", "docker-compose*.yaml"])
+            ConfigurationFiles = FindFiles(rootPath, ["appsettings*.json", "*.config", "*.pubxml", ".env*", "package.json", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "pyproject.toml", "requirements*.txt", "setup.py", "Pipfile", "docker-compose*.yml", "docker-compose*.yaml"])
         };
     }
 
@@ -1034,6 +1046,16 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             || name.EndsWith(".pubxml", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith(".env", StringComparison.OrdinalIgnoreCase)
             || name.Equals("package.json", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pom.xml", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("build.gradle", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("build.gradle.kts", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("settings.gradle", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("settings.gradle.kts", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("gradle.properties", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pyproject.toml", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("requirements", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("setup.py", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Pipfile", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith("docker-compose", StringComparison.OrdinalIgnoreCase) && (name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
     }
 
