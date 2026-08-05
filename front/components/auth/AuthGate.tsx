@@ -6,6 +6,7 @@ import { Menu } from "lucide-react";
 import { getAuthStatus } from "@/lib/auth-api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { FrontendOnboarding } from "@/components/onboarding/FrontendOnboarding";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -34,7 +35,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!ready) return <main className="flex min-h-screen items-center justify-center text-sm text-zinc-500">正在验证登录状态…</main>;
   if (isDashboardWorkspace) return <>{children}</>;
   const contentHeight = pathname === "/chat" ? "chat-viewport" : "min-h-screen";
-  return <><AppSidebar compact={sidebarCompact} />{pathname !== "/chat" && <MobileWorkspaceLauncher />}<div className={`${contentHeight} pl-0 transition-[padding] duration-200 ${sidebarCompact ? "lg:pl-[72px]" : "lg:pl-[240px]"}`}>{children}</div></>;
+  return <><AppSidebar compact={sidebarCompact} />{pathname !== "/chat" && <MobileWorkspaceLauncher />}<div className={`${contentHeight} pl-0 transition-[padding] duration-200 ${sidebarCompact ? "lg:pl-[72px]" : "lg:pl-[240px]"}`}>{children}</div><FrontendOnboarding /></>;
 }
 
 function MobileWorkspaceLauncher() {

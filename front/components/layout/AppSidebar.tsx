@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, Check, ChevronDown, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutTemplate, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
+import { Archive, Check, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutTemplate, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -350,7 +350,7 @@ function ProjectListMenu({ position, menuRef, sortMode, archivedProjects, onClos
 }
 
 function ToolDialog({ compact, pathname, onClose }: { compact: boolean; pathname: string; onClose: () => void }) {
-  return <div className="fixed inset-0 z-50 bg-slate-950/30" onMouseDown={onClose}><div className={`absolute bottom-4 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl ${compact ? "left-[84px]" : "left-[252px]"}`} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={15}/></button></div><div className="space-y-1">{toolItems.map((item) => <SidebarLink key={item.href} item={item} active={isToolActive(pathname, item.href)} compact={false}/>)}</div></div></div>;
+  return <div className="fixed inset-0 z-50 bg-slate-950/30" onMouseDown={onClose}><div className={`absolute bottom-4 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl ${compact ? "left-[84px]" : "left-[252px]"}`} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={15}/></button></div><div className="space-y-1">{toolItems.map((item) => <SidebarLink key={item.href} item={item} active={isToolActive(pathname, item.href)} compact={false}/>)}</div><div className="mt-2 border-t border-slate-100 pt-2"><button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event("aiagent:onboarding-open")); }} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"><CircleHelp size={16}/>新手引导</button></div></div></div>;
 }
 
 function isActive(pathname: string, href: string) {
