@@ -42,6 +42,13 @@ public sealed class ChatCompleteRequest
     public long? CodeProjectId { get; set; }
 
     /// <summary>
+    /// Cross-project references selected in the chat composer. The server verifies every id against
+    /// the authenticated user's current access before supplying any project context to a model.
+    /// </summary>
+    [JsonPropertyName("project_references")]
+    public List<ChatProjectReferenceRequest> ProjectReferences { get; set; } = [];
+
+    /// <summary>
     /// Optional constrained dashboard workspace for agent file-write tools.
     /// </summary>
     [JsonPropertyName("dashboard_application_id")]
@@ -123,6 +130,37 @@ public sealed class ChatCompleteRequest
     /// </summary>
     [JsonIgnore]
     public string ServerMemoryContext { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Server-built context for verified cross-project references. Browser input can never set it.
+    /// </summary>
+    [JsonIgnore]
+    public string ServerProjectReferenceContext { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Server-normalized user message for model input. The persisted/displayed message remains untouched.
+    /// </summary>
+    [JsonIgnore]
+    public string ServerPromptMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Resolved project references retained for message metadata and prompt construction only.
+    /// </summary>
+    [JsonIgnore]
+    public List<ResolvedChatProjectReference> ResolvedProjectReferences { get; set; } = [];
+}
+
+public sealed class ChatProjectReferenceRequest
+{
+    [JsonPropertyName("project_id")]
+    public long ProjectId { get; set; }
+}
+
+public sealed class ResolvedChatProjectReference
+{
+    public long ProjectId { get; init; }
+    public string DisplayName { get; init; } = string.Empty;
+    public string? Description { get; init; }
 }
 
 public sealed class CodexRuntimeHeartbeatRequest

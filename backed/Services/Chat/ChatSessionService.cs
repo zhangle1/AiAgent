@@ -47,7 +47,13 @@ public sealed class ChatSessionService : IChatSessionService
             ? new List<ResolvedChatImageAttachment>()
             : await _attachments.PersistForSessionAsync(user, session.Id, request.AttachmentIds, cancellationToken);
         if (attachments.Count > 0) request.LocalImagePaths = attachments.Select(item => item.LocalPath).ToList();
-        var metadata = attachments.Count == 0 ? null : JsonSerializer.Serialize(new { attachments = attachments.Select(item => item.Attachment).ToList() });
+        var metadata = attachments.Count == 0 && request.ResolvedProjectReferences.Count == 0
+            ? null
+            : JsonSerializer.Serialize(new
+            {
+                attachments = attachments.Select(item => item.Attachment).ToList(),
+                project_references = request.ResolvedProjectReferences.Select(item => new { project_id = item.ProjectId, display_name = item.DisplayName }).ToList()
+            });
         _db.Insertable(new AiChatMessage { SessionId = session.Id, Role = "user", Content = request.Message.Trim(), MetadataJson = metadata }).ExecuteCommand();
         session.UpdatedAt = DateTime.UtcNow;
         session.SortOrder = NextSortOrder(user.Id);

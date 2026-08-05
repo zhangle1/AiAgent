@@ -3,7 +3,7 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { deleteChatImage, persistedChatImageUrl, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
@@ -12,11 +12,11 @@ import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
-import { getCodeProjects } from "@/lib/code-repository-api";
+import { getChatProjectReferences, getCodeProjects } from "@/lib/code-repository-api";
 import { activeModel, activeProfile, type Catalog, type CatalogModel } from "@/lib/settings-types";
 import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
-import type { CodeProject } from "@/lib/code-repository-types";
+import type { CodeProject, CodeProjectReference } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getSession, type SessionDetail } from "@/lib/session-api";
 import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
@@ -24,6 +24,8 @@ import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, t
 type InspectorTab = "preview" | "file" | "tasks" | "terminal";
 
 type ChatImagePreview = ChatImageAttachment & { previewUrl: string };
+
+type SlashProjectCommand = { start: number; end: number; query: string };
 
 type ChatMessage = {
   id: string;
@@ -113,6 +115,10 @@ export function KnowledgeChatHome() {
   const [input, setInput] = useState("");
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [mobilePicker, setMobilePicker] = useState<"model" | "project" | null>(null);
+  const [slashProjectCommand, setSlashProjectCommand] = useState<SlashProjectCommand | null>(null);
+  const [projectReferenceOptions, setProjectReferenceOptions] = useState<CodeProjectReference[]>([]);
+  const [projectReferenceLoading, setProjectReferenceLoading] = useState(false);
+  const [activeProjectReferenceIndex, setActiveProjectReferenceIndex] = useState(0);
   const [imageAttachments, setImageAttachments] = useState<ChatImagePreview[]>([]);
   const [previewingImage, setPreviewingImage] = useState<ChatImagePreview | null>(null);
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -124,6 +130,7 @@ export function KnowledgeChatHome() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const activeComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingSessionIdRef = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const attachmentPreviewUrlsRef = useRef(new Set<string>());
@@ -259,6 +266,31 @@ export function KnowledgeChatHome() {
     return () => document.removeEventListener("pointerdown", closeWhenOutside);
   }, [openContextPicker]);
 
+  useEffect(() => {
+    if (!slashProjectCommand) {
+      setProjectReferenceOptions([]);
+      setProjectReferenceLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setProjectReferenceLoading(true);
+    const timer = window.setTimeout(() => {
+      void getChatProjectReferences(slashProjectCommand.query, selectedProjectId).then((items) => {
+        if (cancelled) return;
+        setProjectReferenceOptions(items);
+        setActiveProjectReferenceIndex(0);
+      }).catch(() => {
+        if (!cancelled) setProjectReferenceOptions([]);
+      }).finally(() => {
+        if (!cancelled) setProjectReferenceLoading(false);
+      });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [selectedProjectId, slashProjectCommand?.query]);
+
   useEffect(() => () => attachmentPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
   useEffect(() => {
     if (!activeSessionId) return;
@@ -283,6 +315,72 @@ export function KnowledgeChatHome() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function syncSlashProjectCommand(value: string, cursor: number) {
+    const command = findSlashProjectCommand(value, cursor);
+    setSlashProjectCommand(command);
+    if (command) setActiveProjectReferenceIndex(0);
+  }
+
+  function handleComposerChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    activeComposerRef.current = event.currentTarget;
+    setInput(event.target.value);
+    syncSlashProjectCommand(event.target.value, event.target.selectionStart ?? event.target.value.length);
+  }
+
+  function handleComposerFocus(event: React.FocusEvent<HTMLTextAreaElement>) {
+    activeComposerRef.current = event.currentTarget;
+    setComposerExpanded(true);
+    syncSlashProjectCommand(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+  }
+
+  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing || !slashProjectCommand) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSlashProjectCommand(null);
+      return;
+    }
+    if (projectReferenceOptions.length > 0 && event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveProjectReferenceIndex((index) => (index + 1) % projectReferenceOptions.length);
+      return;
+    }
+    if (projectReferenceOptions.length > 0 && event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveProjectReferenceIndex((index) => (index - 1 + projectReferenceOptions.length) % projectReferenceOptions.length);
+      return;
+    }
+    if (projectReferenceOptions.length > 0 && (event.key === "Enter" || event.key === "Tab")) {
+      event.preventDefault();
+      const selected = projectReferenceOptions[activeProjectReferenceIndex] ?? projectReferenceOptions[0];
+      if (selected) insertProjectReference(selected);
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
+  function insertProjectReference(project: CodeProjectReference) {
+    if (!slashProjectCommand) return;
+    const token = `[[项目:${project.display_name}|${project.id}]] `;
+    const next = `${input.slice(0, slashProjectCommand.start)}${token}${input.slice(slashProjectCommand.end)}`;
+    const cursor = slashProjectCommand.start + token.length;
+    setInput(next);
+    setSlashProjectCommand(null);
+    requestAnimationFrame(() => {
+      activeComposerRef.current?.focus();
+      activeComposerRef.current?.setSelectionRange(cursor, cursor);
+    });
   }
 
   async function sendMessage(query: string, options?: { retryAssistantId?: string; attachments?: ChatImagePreview[] }) {
@@ -326,6 +424,7 @@ export function KnowledgeChatHome() {
         },
       ]);
       setInput("");
+      setSlashProjectCommand(null);
       setComposerExpanded(false);
       setImageAttachments([]);
     }
@@ -364,6 +463,7 @@ export function KnowledgeChatHome() {
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: selectedProjectId ?? undefined,
+        project_references: extractProjectReferenceIds(messageText).map((project_id) => ({ project_id })),
         model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
         codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
         codex_reasoning_effort: selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined,
@@ -517,7 +617,7 @@ export function KnowledgeChatHome() {
               event.preventDefault();
               void addImages(images);
             }
-          }} className={`sticky bottom-0 mt-auto rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}>
+          }} className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}>
             {imageAttachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
                 {imageAttachments.map((attachment) => (
@@ -532,10 +632,17 @@ export function KnowledgeChatHome() {
                 ))}
               </div>
             )}
+            {slashProjectCommand && <ProjectReferenceSlashMenu
+              items={projectReferenceOptions}
+              loading={projectReferenceLoading}
+              activeIndex={activeProjectReferenceIndex}
+              onActiveIndexChange={setActiveProjectReferenceIndex}
+              onSelect={insertProjectReference}
+            />}
             <div className="flex items-center gap-1 lg:hidden">
               <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18}/></button>
               <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
-              <textarea value={input} onFocus={() => setComposerExpanded(true)} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="发消息或按住说话" className={`min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-5 text-slate-800 outline-none placeholder:text-slate-400 ${composerExpanded ? "min-h-[52px]" : "h-9 min-h-9"}`} aria-label="聊天输入" />
+              <textarea value={input} onFocus={handleComposerFocus} onChange={handleComposerChange} onKeyDown={handleComposerKeyDown} onSelect={(event) => syncSlashProjectCommand(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length)} placeholder="发消息或按住说话" className={`min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-5 text-slate-800 outline-none placeholder:text-slate-400 ${composerExpanded ? "min-h-[52px]" : "h-9 min-h-9"}`} aria-label="聊天输入，输入斜杠可引用项目" aria-expanded={Boolean(slashProjectCommand)} aria-controls={slashProjectCommand ? "chat-project-reference-menu" : undefined} />
               <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || !canAttachImages} title={imageAttachmentHint} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
               {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim()} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
             </div>
@@ -545,15 +652,15 @@ export function KnowledgeChatHome() {
             </div>}
             <textarea
               value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
+              onFocus={handleComposerFocus}
+              onChange={handleComposerChange}
+              onKeyDown={handleComposerKeyDown}
+              onSelect={(event) => syncSlashProjectCommand(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
               placeholder={t("chat.placeholderShort")}
               className="hidden min-h-[56px] w-full resize-none bg-transparent px-1 pt-1 text-[14px] leading-6 text-slate-800 outline-none placeholder:text-slate-400 lg:block"
+              aria-label="聊天输入，输入斜杠可引用项目"
+              aria-expanded={Boolean(slashProjectCommand)}
+              aria-controls={slashProjectCommand ? "chat-project-reference-menu" : undefined}
             />
             <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
               <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
@@ -689,6 +796,49 @@ export function KnowledgeChatHome() {
         }}
       />
     </main>
+  );
+}
+
+function findSlashProjectCommand(value: string, cursor: number): SlashProjectCommand | null {
+  const beforeCursor = value.slice(0, cursor);
+  const match = /(^|\s)\/([^\s]*)$/.exec(beforeCursor);
+  if (!match) return null;
+  const start = beforeCursor.length - match[0].length + match[1].length;
+  return { start, end: cursor, query: match[2] };
+}
+
+function extractProjectReferenceIds(value: string): number[] {
+  const ids = new Set<number>();
+  for (const match of value.matchAll(/\[\[项目:[^\]|]+\|(\d+)\]\]/g)) {
+    const id = Number(match[1]);
+    if (Number.isSafeInteger(id) && id > 0) ids.add(id);
+  }
+  return [...ids];
+}
+
+function ProjectReferenceSlashMenu({ items, loading, activeIndex, onActiveIndexChange, onSelect }: {
+  items: CodeProjectReference[];
+  loading: boolean;
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
+  onSelect: (project: CodeProjectReference) => void;
+}) {
+  return (
+    <div id="chat-project-reference-menu" role="listbox" aria-label="引用其他项目" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[380px]">
+      <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500"><FolderSearch size={14} className="text-blue-600"/><span>引用其他项目</span><span className="ml-auto font-normal">↑↓ 选择 · Enter 插入</span></div>
+      <div className="max-h-60 overflow-y-auto">
+        {loading ? <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500"><Loader2 size={15} className="animate-spin"/>正在查找可访问项目…</div>
+          : items.length === 0 ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有可引用的其他项目。</p>
+            : items.map((project, index) => {
+              const active = index === activeIndex;
+              return <button key={project.id} type="button" role="option" aria-selected={active} onMouseEnter={() => onActiveIndexChange(index)} onPointerDown={(event) => { event.preventDefault(); onSelect(project); }} className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}>
+                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-bold ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>{project.display_name.slice(0, 1).toUpperCase()}</span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{project.display_name}</span>{project.description && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{project.description}</span>}</span>
+                <span className="shrink-0 text-[10px] text-slate-400">#{project.id}</span>
+              </button>;
+            })}
+      </div>
+    </div>
   );
 }
 

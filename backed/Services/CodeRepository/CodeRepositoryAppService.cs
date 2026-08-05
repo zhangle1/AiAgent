@@ -51,6 +51,24 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         return _manager.ListProjects().Where(project => allowedIds.Contains(project.Id)).ToList();
     }
 
+    [HttpGet("projects/references")]
+    public async Task<List<CodeProjectReferenceDto>> ListProjectReferences([FromQuery] string? query, [FromQuery] long? excludeProjectId, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        var allowedIds = _projectAccess.GetAccessibleProjectIds(user);
+        var term = query?.Trim();
+        return _manager.ListProjects()
+            .Where(project => allowedIds.Contains(project.Id) && project.Id != excludeProjectId)
+            .Where(project => string.IsNullOrWhiteSpace(term)
+                || project.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || project.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(project.Description) && project.Description.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(project => project.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(40)
+            .Select(project => new CodeProjectReferenceDto { Id = project.Id, DisplayName = project.DisplayName, Description = project.Description })
+            .ToList();
+    }
+
     [HttpPost("projects")]
     public CodeProjectDto CreateProject([FromBody] CodeProjectSaveRequest request) => _manager.CreateProject(request);
 

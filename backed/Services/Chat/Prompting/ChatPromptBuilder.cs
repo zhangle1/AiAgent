@@ -170,6 +170,12 @@ public sealed class ChatPromptBuilder : IChatPromptBuilder
         builder.AppendLine($"Dashboard observed revision: {context.DashboardWorkspaceRevision ?? "(none)"}");
         builder.AppendLine();
 
+        if (!string.IsNullOrWhiteSpace(context.ProjectReferenceContext))
+        {
+            builder.AppendLine(context.ProjectReferenceContext);
+            builder.AppendLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(context.MemoryContext))
         {
             builder.AppendLine("Historical memory context:");

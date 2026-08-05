@@ -51,6 +51,12 @@ export type CodeProject = {
   updated_at?: string | null;
 };
 
+export type CodeProjectReference = {
+  id: number;
+  display_name: string;
+  description?: string | null;
+};
+
 export type CodeRepositoryDirectoryBrowser = {
   path: string;
   parent_path?: string | null;

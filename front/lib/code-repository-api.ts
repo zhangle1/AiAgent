@@ -3,6 +3,7 @@ import type {
   CodeRepositoryDirectoryBrowser,
   CodeRepositoryInspection,
   CodeProject,
+  CodeProjectReference,
   CodeProjectSaveRequest,
   CodeRepositorySaveRequest,
   GitOperationResult,
@@ -43,6 +44,14 @@ export async function getCodeRepositories(): Promise<CodeRepository[]> {
 
 export async function getCodeProjects(): Promise<CodeProject[]> {
   return parseJson<CodeProject[]>(await fetch("/api/v1/code-repositories/projects", { cache: "no-store" }));
+}
+
+export async function getChatProjectReferences(query: string, excludeProjectId?: number | null): Promise<CodeProjectReference[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("query", query.trim());
+  if (excludeProjectId) params.set("excludeProjectId", String(excludeProjectId));
+  const suffix = params.size > 0 ? `?${params}` : "";
+  return parseJson<CodeProjectReference[]>(await fetch(`/api/v1/code-repositories/projects/references${suffix}`, { cache: "no-store" }));
 }
 
 export type ResolvedCodeFileReference = {

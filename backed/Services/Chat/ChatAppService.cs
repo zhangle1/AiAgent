@@ -27,6 +27,7 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly IChatImageAttachmentService _attachments;
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
+    private readonly IProjectReferenceContextService _projectReferences;
     private readonly ICodexChatService _codex;
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
@@ -34,7 +35,7 @@ public sealed class ChatAppService : IDynamicApiController
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
@@ -43,6 +44,7 @@ public sealed class ChatAppService : IDynamicApiController
         _attachments = attachments;
         _usage = usage;
         _memory = memory;
+        _projectReferences = projectReferences;
         _codex = codex;
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
@@ -57,6 +59,7 @@ public sealed class ChatAppService : IDynamicApiController
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
+        await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
         var result = await _orchestrator.CompleteAsync(request, cancellationToken);
@@ -79,6 +82,7 @@ public sealed class ChatAppService : IDynamicApiController
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
+        await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
         var content = new System.Text.StringBuilder();

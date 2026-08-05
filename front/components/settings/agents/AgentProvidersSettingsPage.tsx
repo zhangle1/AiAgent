@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bot, CheckCircle2, CircleAlert, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
-import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, updateCodexModelPolicy, updateImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type CodexProfileModel, type ImageOcrPolicy } from "@/lib/agent-provider-api";
+import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, updateCodexModelPolicy, updateImageOcrPolicy, type AgentProviderEnvironment, type CodexModelOption, type CodexModelPolicy, type CodexProfileModel, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 import { getUiSettings, updateUiSettings } from "@/lib/api";
 import { getAuthStatus } from "@/lib/auth-api";
 
@@ -106,7 +106,7 @@ const CODEX_REASONING_EFFORTS = [
 function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { policy: CodexModelPolicy; saving: boolean; onChange: (policy: CodexModelPolicy) => void; onSave: () => void }) {
   const [draft, setDraft] = useState<CodexProfileModel>({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_ocr: true });
   const applyProfiles = (profiles: CodexProfileModel[]) => {
-    const profileModels = profiles.map((profile) => ({
+    const profileModels: CodexModelOption[] = profiles.map((profile) => ({
       id: `profile:${profile.profile_name.trim().toLowerCase()}`,
       name: profile.display_name,
       description: profile.description || `Codex profile: ${profile.profile_name}`,
@@ -114,6 +114,7 @@ function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { pol
       profile_name: profile.profile_name,
       supports_reasoning_effort: profile.supports_reasoning_effort,
       is_builtin: false,
+      image_input: profile.supports_image_ocr ? "ocr" : "none",
     }));
     const models = [...policy.models.filter((model) => model.is_builtin), ...profileModels];
     const allowed_model_ids = policy.allowed_model_ids.filter((id) => models.some((model) => model.id === id));

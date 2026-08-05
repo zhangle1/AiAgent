@@ -26,13 +26,14 @@ public sealed class ChatWebSocketHandler
     private readonly IChatImageAttachmentService _attachments;
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
+    private readonly IProjectReferenceContextService _projectReferences;
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
     {
         _orchestrator = orchestrator;
         _authService = authService;
@@ -40,6 +41,7 @@ public sealed class ChatWebSocketHandler
         _attachments = attachments;
         _usage = usage;
         _memory = memory;
+        _projectReferences = projectReferences;
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
     }
@@ -89,6 +91,7 @@ public sealed class ChatWebSocketHandler
                 }
                 request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
             }
+            await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             var content = new StringBuilder();

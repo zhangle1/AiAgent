@@ -64,6 +64,11 @@ public sealed class AgentContext
     public string MemoryContext { get; set; } = string.Empty;
 
     /// <summary>
+    /// Server-validated metadata for projects referenced from the current message.
+    /// </summary>
+    public string ProjectReferenceContext { get; set; } = string.Empty;
+
+    /// <summary>
     /// 附件上下文预留字段，后续支持用户上传附件参与聊天。
     /// </summary>
     public List<AgentAttachment> Attachments { get; set; } = [];
@@ -87,7 +92,7 @@ public sealed class AgentContext
         var dashboardApplicationId = string.IsNullOrWhiteSpace(request.DashboardApplicationId) ? null : request.DashboardApplicationId.Trim();
         return new AgentContext
         {
-            UserMessage = (request.Message ?? string.Empty).Trim(),
+            UserMessage = (string.IsNullOrWhiteSpace(request.ServerPromptMessage) ? request.Message : request.ServerPromptMessage).Trim(),
             Mode = string.IsNullOrWhiteSpace(request.Mode) ? "chat" : request.Mode.Trim(),
             KnowledgeBaseNames = knowledgeBaseNames,
             KnowledgeBaseName = knowledgeBaseNames.FirstOrDefault(),
@@ -97,7 +102,8 @@ public sealed class AgentContext
             DashboardWorkspaceRevision = string.IsNullOrWhiteSpace(request.DashboardWorkspaceRevision) ? null : request.DashboardWorkspaceRevision.Trim(),
             ModelId = string.IsNullOrWhiteSpace(request.ModelId) ? null : request.ModelId.Trim(),
             TopK = Math.Clamp(request.TopK, 1, 12),
-            MemoryContext = request.ServerMemoryContext ?? string.Empty
+            MemoryContext = request.ServerMemoryContext ?? string.Empty,
+            ProjectReferenceContext = request.ServerProjectReferenceContext ?? string.Empty
         };
     }
 

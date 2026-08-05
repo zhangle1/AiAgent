@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\artifacts\server-package"),
-    [string]$BackendApiUrl = "http://127.0.0.1:5000",
-    [int]$FrontendPort = 3782,
+    [string]$BackendApiUrl = "http://127.0.0.1:8081",
+    [int]$FrontendPort = 8080,
     [string]$RuntimeIdentifier = "win-x64",
+    [switch]$IncludePythonWorkers,
     [switch]$SelfContained
 )
 
@@ -20,7 +21,7 @@ if ($FrontendPort -lt 1024 -or $FrontendPort -gt 65535) {
     throw "FrontendPort must be between 1024 and 65535."
 }
 if (-not [Uri]::IsWellFormedUriString($BackendApiUrl, [UriKind]::Absolute)) {
-    throw "BackendApiUrl must be an absolute URL, for example http://127.0.0.1:5000."
+    throw "BackendApiUrl must be an absolute URL, for example http://127.0.0.1:8081."
 }
 
 Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -31,6 +32,12 @@ Write-Host "[1/4] Publishing backend..." -ForegroundColor Cyan
 $publishArguments = @("publish", $backendProject, "-c", "Release", "-r", $RuntimeIdentifier, "-o", (Join-Path $stageRoot "backend"), "--self-contained:$($SelfContained.IsPresent.ToString().ToLowerInvariant())")
 & dotnet @publishArguments
 if ($LASTEXITCODE -ne 0) { throw "Backend publish failed with exit code $LASTEXITCODE." }
+
+if (-not $IncludePythonWorkers) {
+    Write-Host "Skipping Python workers and local virtual environments. Use -IncludePythonWorkers to include them." -ForegroundColor DarkYellow
+    Remove-Item -LiteralPath (Join-Path $stageRoot "backend\Rag") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $stageRoot "backend\PythonWorkers") -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # Never place the current development/server secrets into the portable package.
 Remove-Item -LiteralPath (Join-Path $stageRoot "backend\appsettings.json") -Force -ErrorAction SilentlyContinue
@@ -62,6 +69,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $standaloneRoot "server.js"))) {
 Copy-Item -Path (Join-Path $standaloneRoot "*") -Destination (Join-Path $stageRoot "front") -Recurse -Force
 New-Item -ItemType Directory -Path (Join-Path $stageRoot "front\.next") -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $frontendBuildRoot ".next\static") -Destination (Join-Path $stageRoot "front\.next\static") -Recurse -Force
+@"
+{
+  "backendApiUrl": ""
+}
+"@ | Set-Content -LiteralPath (Join-Path $stageRoot "front\api-proxy.json") -Encoding utf8
 if (Test-Path -LiteralPath (Join-Path $frontendBuildRoot "public")) {
     Copy-Item -LiteralPath (Join-Path $frontendBuildRoot "public") -Destination (Join-Path $stageRoot "front\public") -Recurse -Force
 }
@@ -79,6 +91,7 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot "DEPLOYMENT.md") -Destination (J
 FrontendPort=$FrontendPort
 BackendApiUrl=$BackendApiUrl
 RuntimeIdentifier=$RuntimeIdentifier
+IncludePythonWorkers=$($IncludePythonWorkers.IsPresent)
 SelfContained=$($SelfContained.IsPresent)
 "@ | Set-Content -LiteralPath (Join-Path $stageRoot "package-info.txt") -Encoding utf8
 

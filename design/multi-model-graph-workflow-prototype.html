@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AiAgent · 多模型 Graph 工作流原型</title>
+  <style>
+    :root {
+      --navy:#172033; --ink:#18243a; --body:#46546a; --muted:#7a879a; --line:#e5eaf1;
+      --paper:#ffffff; --ground:#f6f8fb; --blue:#2f6fed; --blue-soft:#eaf1ff; --violet:#7656e8;
+      --violet-soft:#f1edff; --teal:#0c9775; --teal-soft:#e8f8f3; --orange:#dd7a19; --orange-soft:#fff3e6;
+      --red:#c9465a; --red-soft:#fff0f2; --shadow:0 16px 42px rgba(27,42,67,.08);
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:1080px; background:var(--ground); color:var(--ink); font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif; }
+    button, select { font:inherit; } button { cursor:pointer; } button:focus-visible,select:focus-visible { outline:3px solid #a8c5ff; outline-offset:2px; }
+    .app { min-height:100vh; display:grid; grid-template-columns:252px minmax(660px,1fr) 340px; grid-template-rows:68px 1fr; }
+    .topbar { grid-column:1/-1; display:flex; align-items:center; gap:18px; border-bottom:1px solid var(--line); background:rgba(255,255,255,.94); padding:0 24px; }
+    .brand { display:flex; align-items:center; gap:10px; width:210px; color:var(--navy); font-size:18px; font-weight:780; letter-spacing:-.04em; }
+    .brand-mark { display:grid; width:32px; height:32px; place-items:center; border-radius:10px; background:linear-gradient(145deg,#2f6fed,#7656e8); box-shadow:0 6px 14px #526fe640; color:#fff; font-size:16px; }
+    .crumb { min-width:0; color:var(--muted); font-size:13px; } .crumb b { color:var(--ink); font-weight:700; }
+    .top-actions { margin-left:auto; display:flex; align-items:center; gap:10px; }
+    .status { display:flex; align-items:center; gap:7px; color:#58708e; font-size:12px; } .status i { width:7px; height:7px; border-radius:50%; background:#16a077; box-shadow:0 0 0 4px #dff6ed; }
+    .button { display:inline-flex; min-height:36px; align-items:center; justify-content:center; gap:7px; border:1px solid #d7e0ec; border-radius:9px; background:#fff; color:#405069; padding:0 12px; font-size:12px; font-weight:650; }
+    .button:hover { border-color:#aebed2; background:#fafcff; } .button.primary { border-color:var(--blue); background:var(--blue); color:#fff; box-shadow:0 5px 10px #2f6fed2e; } .button.primary:hover { background:#235bd1; }
+    .sidebar { min-height:0; border-right:1px solid var(--line); background:#fff; padding:18px 12px; }
+    .create { width:100%; min-height:40px; justify-content:flex-start; border-color:#c7d8fb; background:var(--blue-soft); color:#275fcf; font-size:13px; }
+    .nav-label { margin:26px 10px 8px; color:#9aa6b7; font-size:10px; font-weight:750; letter-spacing:.1em; }
+    .nav { display:grid; gap:3px; } .nav button { display:flex; width:100%; min-height:38px; align-items:center; gap:10px; border:0; border-radius:9px; background:transparent; color:#5c6a7f; padding:0 10px; text-align:left; font-size:13px; } .nav button:hover { background:#f6f8fc; color:var(--ink); } .nav button.active { background:#edf3ff; color:#255fce; font-weight:720; } .nav .ico { width:18px; text-align:center; font-size:15px; }
+    .workflow-list { margin-top:12px; display:grid; gap:4px; } .workflow-item { position:relative; display:block; width:100%; overflow:hidden; border:0; border-radius:9px; background:transparent; color:#56657a; padding:9px 10px 9px 24px; text-align:left; font-size:12px; text-overflow:ellipsis; white-space:nowrap; } .workflow-item::before { position:absolute; left:10px; top:14px; width:6px; height:6px; border-radius:50%; background:#b7c2d2; content:""; } .workflow-item.active { background:#f4f7fc; color:var(--ink); font-weight:700; } .workflow-item.active::before { background:var(--violet); }
+    .sidebar-foot { position:fixed; bottom:0; left:0; width:252px; border-top:1px solid var(--line); background:#fff; padding:13px 20px; color:#7f8b9e; font-size:11px; line-height:1.6; }
+    .main { min-width:0; display:flex; min-height:0; flex-direction:column; background:var(--ground); }
+    .work-head { display:flex; min-height:72px; align-items:center; gap:16px; border-bottom:1px solid var(--line); background:#fff; padding:0 22px; }
+    .title { min-width:0; flex:1; } .title h1 { margin:0; overflow:hidden; color:var(--navy); font-size:16px; letter-spacing:-.03em; text-overflow:ellipsis; white-space:nowrap; } .title p { margin:4px 0 0; color:#8390a3; font-size:11px; }
+    .tabs { display:flex; align-self:stretch; gap:4px; } .tabs button { position:relative; border:0; background:transparent; color:#748197; padding:0 12px; font-size:12px; font-weight:650; } .tabs button.active { color:#275fcf; } .tabs button.active::after { position:absolute; right:10px; bottom:0; left:10px; height:2px; border-radius:999px; background:var(--blue); content:""; }
+    .view { display:none; min-height:0; flex:1; } .view.active { display:flex; }
+    .canvas-wrap { position:relative; flex:1; min-height:610px; overflow:hidden; background-color:#fafbfe; background-image:radial-gradient(#dce3ef 1px,transparent 1px); background-size:18px 18px; }
+    .canvas-toolbar { position:absolute; z-index:10; top:16px; left:16px; display:flex; gap:7px; padding:6px; border:1px solid #e3e9f1; border-radius:10px; background:#fff; box-shadow:0 5px 14px #2639580d; } .canvas-toolbar button { width:30px; height:28px; border:0; border-radius:6px; background:transparent; color:#617087; font-size:16px; } .canvas-toolbar button:hover { background:#eff4fc; color:#2563d3; }
+    .run-chip { position:absolute; z-index:10; top:16px; right:16px; display:flex; align-items:center; gap:8px; border:1px solid #cbe6db; border-radius:999px; background:#fff; color:#23735d; padding:7px 11px; font-size:11px; font-weight:700; box-shadow:0 5px 14px #2639580d; } .run-chip span { width:7px; height:7px; border-radius:50%; background:#18a477; }
+    .edge-layer { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; } .edge { fill:none; stroke:#b7c3d4; stroke-width:2; } .edge.active { stroke:#5c8ff0; } .edge.feedback { stroke:#9b8ae8; stroke-dasharray:5 5; }
+    .node { position:absolute; width:186px; min-height:116px; border:1px solid #dce4ef; border-radius:13px; background:#fff; box-shadow:0 8px 18px rgba(35,51,79,.06); padding:12px; text-align:left; transition:.16s ease; } .node:hover { transform:translateY(-1px); border-color:#b6c8e8; box-shadow:0 12px 25px rgba(35,51,79,.1); } .node.selected { border-color:#5f8ff0; box-shadow:0 0 0 3px #dce9ff,0 12px 25px rgba(35,51,79,.1); } .node.running { border-color:#b7a8f4; box-shadow:0 0 0 3px #eeeaff,0 12px 25px rgba(35,51,79,.1); } .node.done { border-color:#96d8c3; }
+    .port { position:absolute; top:50%; width:10px; height:10px; transform:translateY(-50%); border:2px solid #fff; border-radius:50%; background:#9aabc1; box-shadow:0 0 0 1px #b5c2d2; } .port.in { left:-6px; } .port.out { right:-6px; } .node .node-top { display:flex; align-items:center; gap:8px; } .node-icon { display:grid; width:28px; height:28px; place-items:center; border-radius:8px; font-size:14px; } .node-icon.chat { background:#eaf1ff; color:#2865db; } .node-icon.plan { background:#f0ecff; color:#6c4cdc; } .node-icon.gate { background:#fff3e5; color:#c86e16; } .node-icon.run { background:#e8f8f3; color:#058566; } .node-icon.check { background:#eef3f7; color:#4b617b; }
+    .node h3 { margin:0; color:#29364a; font-size:12px; letter-spacing:-.01em; } .node small { display:block; margin-top:2px; color:#8a96a8; font-size:10px; } .node .node-detail { display:flex; align-items:center; justify-content:space-between; margin-top:13px; padding-top:9px; border-top:1px solid #edf0f5; color:#68778c; font-size:10px; } .node .model-pill { overflow:hidden; max-width:104px; border-radius:999px; background:#f4f7fb; padding:4px 7px; color:#51627c; text-overflow:ellipsis; white-space:nowrap; } .node .state-dot { width:7px; height:7px; border-radius:50%; background:#b4c0d0; } .node.running .state-dot { background:var(--violet); box-shadow:0 0 0 4px #eeeaff; } .node.done .state-dot { background:var(--teal); }
+    #node-input { left:5%; top:44%; } #node-plan { left:29%; top:27%; } #node-gate { left:53%; top:27%; } #node-exec { left:53%; top:59%; } #node-check { left:77%; top:44%; }
+    .minimap { position:absolute; right:18px; bottom:18px; width:132px; height:82px; overflow:hidden; border:1px solid #dce4ef; border-radius:9px; background:#fff; box-shadow:0 5px 14px #26395810; } .minimap::after { position:absolute; inset:14px; border:1px solid #93b7f8; content:""; } .mini-node { position:absolute; width:16px; height:10px; border-radius:2px; background:#becce0; } .mini-node.a{left:16px;top:37px}.mini-node.b{left:42px;top:25px;background:#aa98ec}.mini-node.c{left:69px;top:25px;background:#e4b782}.mini-node.d{left:69px;top:49px;background:#8acdb8}.mini-node.e{left:100px;top:37px;background:#a9b9cd}
+    .chat-view { min-height:610px; flex-direction:column; background:#f9fafc; } .chat-head { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fff; padding:13px 22px; } .chat-head b { font-size:12px; } .chat-head span { color:#78869a; font-size:11px; }
+    .messages { min-height:0; flex:1; overflow:auto; padding:24px 12%; } .message { margin:0 0 17px; } .message .author { margin-bottom:6px; color:#8692a4; font-size:11px; font-weight:700; } .bubble { max-width:88%; border:1px solid #e3e9f1; border-radius:12px; background:#fff; padding:11px 12px; color:#46546a; font-size:12px; line-height:1.7; box-shadow:0 2px 5px #21305005; } .message.user { display:flex; flex-direction:column; align-items:flex-end; } .message.user .bubble { border-color:#cfe0ff; background:#edf4ff; color:#31568d; }
+    .run-card { max-width:100%; margin-top:12px; overflow:hidden; border:1px solid #dbe5f2; border-radius:13px; background:#fff; box-shadow:var(--shadow); } .run-card-head { display:flex; align-items:center; gap:9px; border-bottom:1px solid #e9eef5; background:#f8fbff; padding:11px 12px; } .run-card-head .graph { display:grid; width:25px; height:25px; place-items:center; border-radius:7px; background:#e9f1ff; color:#2966dc; } .run-card-head div { flex:1; } .run-card-head b { display:block; font-size:12px; } .run-card-head small { color:#7c899d; font-size:10px; } .run-state { border-radius:999px; background:#e9f8f3; padding:5px 8px; color:#14785c; font-size:10px; font-weight:750; } .run-list { display:grid; gap:0; padding:4px 12px 10px; } .run-row { display:flex; min-height:38px; align-items:center; gap:9px; border-bottom:1px solid #eff2f6; color:#56677d; font-size:11px; } .run-row:last-child { border-bottom:0; } .step { display:grid; width:18px; height:18px; place-items:center; border-radius:50%; background:#e9f8f3; color:#0a8c69; font-size:10px; font-weight:800; } .run-row.running .step { background:#f0ecff; color:#7353e3; } .run-row span:nth-child(2) { flex:1; } .run-row em { color:#8290a2; font-size:10px; font-style:normal; }
+    .composer { display:flex; gap:10px; border-top:1px solid var(--line); background:#fff; padding:14px 22px; } .composer input { min-width:0; flex:1; border:1px solid #dbe3ee; border-radius:10px; background:#fbfcfe; color:#4b5b70; padding:0 12px; font-size:12px; } .composer input:focus { outline:0; border-color:#93b5f5; background:#fff; }
+    .inspector { min-height:0; overflow:auto; border-left:1px solid var(--line); background:#fff; } .inspect-head { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); padding:20px 20px 15px; } .inspect-head h2 { margin:0; color:var(--navy); font-size:14px; letter-spacing:-.02em; } .inspect-head span { color:#8592a5; font-size:11px; } .inspect { padding:18px 20px 28px; } .empty-inspect { display:grid; min-height:320px; place-content:center; color:#95a1b2; text-align:center; font-size:12px; line-height:1.7; } .empty-inspect .empty-icon { margin:auto auto 10px; color:#a9b8cb; font-size:28px; }
+    .field { margin:0 0 18px; } .field label { display:flex; justify-content:space-between; margin:0 0 7px; color:#65748a; font-size:11px; font-weight:700; } .field label span { color:#9ba7b7; font-weight:500; } .field input,.field select { width:100%; height:35px; border:1px solid #dbe3ee; border-radius:8px; background:#fff; color:#3a4a62; padding:0 10px; font-size:12px; } .field input:focus,.field select:focus { outline:0; border-color:#83a9f4; box-shadow:0 0 0 3px #e8f0ff; }
+    .info { margin:18px 0; border:1px solid #e1e8f1; border-radius:10px; background:#fafcff; padding:12px; } .info h3 { margin:0 0 8px; color:#637186; font-size:10px; letter-spacing:.07em; } .info p { margin:0; color:#66768c; font-size:11px; line-height:1.65; } .info code { border-radius:4px; background:#eef3fa; color:#435977; padding:2px 4px; font-family:ui-monospace,Consolas,monospace; font-size:10px; }
+    .ports { display:grid; grid-template-columns:1fr 1fr; gap:8px; } .port-box { border:1px solid #e4eaf2; border-radius:9px; padding:9px; } .port-box b { display:block; margin-bottom:4px; color:#8793a5; font-size:9px; letter-spacing:.06em; } .port-box span { color:#43536a; font-size:11px; }
+    .spec-preview { margin-top:14px; overflow:hidden; border:1px solid #dfe7f0; border-radius:10px; } .spec-preview header { display:flex; align-items:center; justify-content:space-between; background:#f7faff; padding:9px 10px; color:#56677f; font-size:10px; font-weight:700; } .spec-preview pre { max-height:152px; overflow:auto; margin:0; background:#fcfdff; color:#50637c; padding:10px; font:10px/1.6 ui-monospace,Consolas,monospace; white-space:pre-wrap; }
+    .inspector-actions { display:flex; gap:8px; margin-top:20px; } .inspector-actions .button { flex:1; }
+    .toast { position:fixed; z-index:30; right:22px; bottom:22px; transform:translateY(14px); border:1px solid #c8e8db; border-radius:10px; background:#f2fcf8; box-shadow:0 10px 28px #2035501f; color:#16755b; padding:10px 12px; opacity:0; pointer-events:none; font-size:12px; transition:.2s ease; } .toast.show { transform:none; opacity:1; }
+    @media (max-width:1200px) { .app { grid-template-columns:216px minmax(620px,1fr) 310px; } .sidebar-foot { width:216px; } .brand { width:174px; } .messages { padding-left:8%; padding-right:8%; } .node { width:170px; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">✦</span>AiAgent</div>
+      <div class="crumb">工作流 / <b>代码变更交付</b> / v3 草稿</div>
+      <div class="top-actions"><div class="status"><i></i>已保存</div><button class="button" id="openChat">◌ 查看聊天</button><button class="button primary" id="simulate">▶ 模拟执行</button></div>
+    </header>
+
+    <aside class="sidebar">
+      <button class="button create">＋ 新建工作流</button>
+      <div class="nav-label">工作区</div>
+      <nav class="nav"><button class="active"><span class="ico">▦</span>工作流</button><button><span class="ico">◌</span>聊天会话</button><button><span class="ico">◫</span>运行记录</button></nav>
+      <div class="nav-label">我的工作流</div>
+      <div class="workflow-list"><button class="workflow-item active">代码变更交付</button><button class="workflow-item">需求澄清与评审</button><button class="workflow-item">知识库入库</button><button class="workflow-item">故障诊断</button></div>
+      <div class="sidebar-foot">原型模式 · 不会调用模型或执行命令<br>画布交互对应未来的 React Flow 实现</div>
+    </aside>
+
+    <main class="main">
+      <section class="work-head">
+        <div class="title"><h1>代码变更交付</h1><p>从聊天需求到 Spec、受控执行和验证的可复用模板</p></div>
+        <div class="tabs"><button class="active" data-view="canvas">画布</button><button data-view="chat">聊天运行</button></div>
+        <button class="button" id="publish">发布 v3</button>
+      </section>
+
+      <section class="view canvas-wrap active" id="canvasView">
+        <div class="canvas-toolbar"><button title="放大">＋</button><button title="缩小">－</button><button title="适应画布">⌗</button></div>
+        <div class="run-chip"><span></span>模板草稿 · 未运行</div>
+        <svg class="edge-layer" aria-hidden="true" viewBox="0 0 1000 700" preserveAspectRatio="none">
+          <path class="edge" d="M 225 365 C 275 365, 275 220, 330 220" />
+          <path class="edge" d="M 510 220 C 555 220, 555 220, 570 220" />
+          <path class="edge" d="M 663 280 C 663 340, 663 430, 570 430" />
+          <path class="edge active" d="M 756 430 C 790 430, 790 365, 812 365" />
+          <path class="edge feedback" d="M 812 395 C 740 610, 440 630, 420 340" />
+        </svg>
+        <button class="node" id="node-input" data-node="input"><span class="port out"></span><div class="node-top"><span class="node-icon chat">◌</span><div><h3>聊天需求</h3><small>GraphInputArtifact</small></div></div><div class="node-detail"><span class="model-pill">当前聊天会话</span><span class="state-dot"></span></div></button>
+        <button class="node selected" id="node-plan" data-node="planner"><span class="port in"></span><span class="port out"></span><div class="node-top"><span class="node-icon plan">✦</span><div><h3>生成 Spec</h3><small>planner · 结构化输出</small></div></div><div class="node-detail"><span class="model-pill" id="plannerPill">GPT 5.6 Sol</span><span class="state-dot"></span></div></button>
+        <button class="node" id="node-gate" data-node="gate"><span class="port in"></span><span class="port out"></span><div class="node-top"><span class="node-icon gate">◇</span><div><h3>Spec 校验与审批</h3><small>deterministic gate</small></div></div><div class="node-detail"><span class="model-pill">策略 + 人工回路</span><span class="state-dot"></span></div></button>
+        <button class="node" id="node-exec" data-node="executor"><span class="port in"></span><span class="port out"></span><div class="node-top"><span class="node-icon run">▷</span><div><h3>按 Spec 执行</h3><small>executor · CLI JSONL</small></div></div><div class="node-detail"><span class="model-pill" id="executorPill">DeepSeek Flash</span><span class="state-dot"></span></div></button>
+        <button class="node" id="node-check" data-node="verifier"><span class="port in"></span><div class="node-top"><span class="node-icon check">✓</span><div><h3>验证与路由</h3><small>verify → finish / replan</small></div></div><div class="node-detail"><span class="model-pill">测试 + Diff 策略</span><span class="state-dot"></span></div></button>
+        <div class="minimap" aria-label="画布缩略图"><i class="mini-node a"></i><i class="mini-node b"></i><i class="mini-node c"></i><i class="mini-node d"></i><i class="mini-node e"></i></div>
+      </section>
+
+      <section class="view chat-view" id="chatView">
+        <div class="chat-head"><b>会话：订单查询支持状态筛选</b><span>关联 GraphRun · gr_01HWD9K7</span></div>
+        <div class="messages">
+          <article class="message user"><div class="author">你 · 10:32</div><div class="bubble">为订单查询增加状态筛选，并补充对应测试。</div></article>
+          <article class="message"><div class="author">AiAgent · 已创建工作流</div><div class="bubble">已使用「代码变更交付」模板。规划模型会先产出外置 Spec，经策略校验后再交由执行模型处理。</div>
+            <section class="run-card"><div class="run-card-head"><span class="graph">▦</span><div><b>代码变更交付 · Run #01</b><small>模板 v3 · 工作区 AiAgent</small></div><span class="run-state" id="runState">等待启动</span></div><div class="run-list"><div class="run-row" id="rowPlanner"><span class="step">1</span><span>生成 Spec · GPT 5.6 Sol</span><em>等待</em></div><div class="run-row" id="rowGate"><span class="step">2</span><span>Spec 校验与审批</span><em>等待</em></div><div class="run-row" id="rowExecutor"><span class="step">3</span><span>按 Spec 执行 · DeepSeek Flash</span><em>等待</em></div><div class="run-row" id="rowVerifier"><span class="step">4</span><span>验证与路由</span><em>等待</em></div></div></section>
+          </article>
+          <article class="message"><div class="author">AiAgent · 说明</div><div class="bubble">节点运行与聊天会话有关联，但不是同一个对象。执行节点只接收已发布 Spec 和受控上下文，不会继承规划节点的模型会话。</div></article>
+        </div>
+        <form class="composer" id="chatComposer"><input aria-label="追加工作流输入" placeholder="补充目标会生成一个受控输入工件，不会直接注入执行节点" /><button class="button primary">发送</button></form>
+      </section>
+    </main>
+
+    <aside class="inspector">
+      <header class="inspect-head"><h2>节点配置</h2><span id="nodeType">planner</span></header>
+      <div class="inspect" id="inspectContent"></div>
+    </aside>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script>
+    const nodeInfo = {
+      input: { type:'input', title:'聊天需求', desc:'来自聊天会话的输入工件。它会被版本化记录，仅在连接的节点允许时使用。', label:'输入来源', value:'当前聊天会话', ports:['intent','context_manifest'], note:'不会把后续聊天消息自动注入运行中的执行节点。' },
+      planner: { type:'planner', title:'生成 Spec', desc:'规划节点只产出符合 spec/v1 的 Draft；没有文件写权限，也不会派发执行。', label:'规划模型', value:'gpt-5.6-sol', ports:['intent','spec_draft'], note:'使用独立 CLI 会话；输出经 Schema 校验后才能进入下一节点。', models:[['gpt-5.6-sol','GPT 5.6 Sol'],['gpt-5.6-terra','GPT 5.6 Terra'],['gpt-5.6-luna','GPT 5.6 Luna']] },
+      gate: { type:'spec_gate', title:'Spec 校验与审批', desc:'确定性节点：检查 schema、可写路径、命令、预算与审批策略，再发布不可变 Spec。', label:'执行策略', value:'ask_before_write', ports:['spec_draft','published_spec'], note:'不选择模型；当存在写入或高风险命令时暂停等待人工决定。' },
+      executor: { type:'executor', title:'按 Spec 执行', desc:'执行节点只读取固定 Spec 快照、允许文件和结构化失败证据；任何范围外动作都会被策略阻止。', label:'执行模型', value:'deepseek_flash_executor', ports:['published_spec','execution_result'], note:'每个 NodeRun 使用隔离会话；不会继承 Planner 的上下文。', models:[['deepseek_flash_executor','DeepSeek Flash'],['gpt-5.6-terra','GPT 5.6 Terra'],['codex_local_executor','Codex Local']] },
+      verifier: { type:'verifier', title:'验证与路由', desc:'先依据测试命令、diff 和策略进行确定性验证；失败后可路由回规划节点，形成新 Spec 版本。', label:'验证模式', value:'deterministic', ports:['execution_result','verification_result'], note:'验证通过才结束 Run；可修复失败会携带最小化证据进入再规划。' }
+    };
+    const $ = (id) => document.getElementById(id);
+    let selected = 'planner'; let running = false;
+    const toast = (message) => { const el=$('toast'); el.textContent=message; el.classList.add('show'); window.clearTimeout(window.__toast); window.__toast=window.setTimeout(()=>el.classList.remove('show'),2600); };
+    const renderInspector = () => {
+      const info=nodeInfo[selected]; $('nodeType').textContent=info.type;
+      const modelControl=info.models ? `<select id="modelSelect">${info.models.map(([id,name])=>`<option value="${id}" ${id===info.value?'selected':''}>${name}</option>`).join('')}</select>` : `<input value="${info.value}" readonly />`;
+      const spec=selected==='planner' ? `{
+  "schema_version": "spec/v1",
+  "objective": "订单状态筛选",
+  "steps": ["S1", "S2"],
+  "verification": ["dotnet test"]
+}` : selected==='executor' ? `{
+  "spec_ref": "spec_01H...@v1",
+  "profile": "deepseek_flash_executor",
+  "session_mode": "isolated"
+}` : `{
+  "node_type": "${info.type}",
+  "run_binding": "node_run_01H...",
+  "policy_snapshot": "policy_20260805"
+}`;
+      $('inspectContent').innerHTML=`<div class="field"><label>节点名称 <span>模板配置</span></label><input id="labelInput" value="${info.title}" /></div><div class="field"><label>${info.label} <span>受控候选项</span></label>${modelControl}</div><div class="info"><h3>节点职责</h3><p>${info.desc}</p></div><div class="ports"><div class="port-box"><b>INPUT</b><span>${info.ports[0]}</span></div><div class="port-box"><b>OUTPUT</b><span>${info.ports[1]}</span></div></div><div class="info"><h3>会话与权限</h3><p>${info.note}</p></div><div class="spec-preview"><header><span>运行时输入 / 输出示意</span><span>⌄</span></header><pre>${spec}</pre></div><div class="inspector-actions"><button class="button" id="resetNode">重置</button><button class="button primary" id="saveNode">保存配置</button></div>`;
+      $('modelSelect')?.addEventListener('change',(event)=>{ info.value=event.target.value; const label=event.target.options[event.target.selectedIndex].text; if(selected==='planner') $('plannerPill').textContent=label; if(selected==='executor') $('executorPill').textContent=label; });
+      $('saveNode').onclick=()=>toast('已保存「'+$('labelInput').value+'」节点配置（原型模式）'); $('resetNode').onclick=()=>{ renderInspector(); toast('已还原节点草稿'); };
+    };
+    document.querySelectorAll('[data-node]').forEach((node)=>node.addEventListener('click',()=>{ selected=node.dataset.node; document.querySelectorAll('[data-node]').forEach(item=>item.classList.toggle('selected',item===node)); renderInspector(); }));
+    document.querySelectorAll('[data-view]').forEach((tab)=>tab.addEventListener('click',()=>{ const isCanvas=tab.dataset.view==='canvas'; document.querySelectorAll('[data-view]').forEach(item=>item.classList.toggle('active',item===tab)); $('canvasView').classList.toggle('active',isCanvas); $('chatView').classList.toggle('active',!isCanvas); }));
+    $('openChat').onclick=()=>document.querySelector('[data-view="chat"]').click();
+    $('publish').onclick=()=>toast('已发布 WorkflowDefinition v3（原型模式）');
+    $('chatComposer').addEventListener('submit',(event)=>{ event.preventDefault(); const input=event.currentTarget.querySelector('input'); if(!input.value.trim()) return input.focus(); input.value=''; toast('已创建 GraphInputArtifact，等待连接节点消费。'); });
+    function setRow(id,text,mode){ const row=$(id); row.classList.remove('running'); if(mode==='running') row.classList.add('running'); row.querySelector('em').textContent=text; }
+    $('simulate').onclick=()=>{
+      if(running) return; running=true; $('simulate').textContent='◌ 执行中'; $('simulate').disabled=true; $('runState').textContent='运行中'; $('runState').style.background='#f0ecff'; $('runState').style.color='#7050df';
+      const sequence=[
+        [0,()=>{ $('node-plan').classList.add('running'); setRow('rowPlanner','运行中','running'); }],
+        [1000,()=>{ $('node-plan').classList.remove('running'); $('node-plan').classList.add('done'); setRow('rowPlanner','已产出 Spec','done'); $('node-gate').classList.add('running'); setRow('rowGate','校验中','running'); }],
+        [2000,()=>{ $('node-gate').classList.remove('running'); $('node-gate').classList.add('done'); setRow('rowGate','已批准','done'); $('node-exec').classList.add('running'); setRow('rowExecutor','执行中','running'); }],
+        [3200,()=>{ $('node-exec').classList.remove('running'); $('node-exec').classList.add('done'); setRow('rowExecutor','已变更 2 文件','done'); $('node-check').classList.add('running'); setRow('rowVerifier','验证中','running'); }],
+        [4200,()=>{ $('node-check').classList.remove('running'); $('node-check').classList.add('done'); setRow('rowVerifier','测试通过','done'); $('runState').textContent='已完成'; $('runState').style.background='#e9f8f3'; $('runState').style.color='#14785c'; $('simulate').textContent='↻ 再次模拟'; $('simulate').disabled=false; running=false; toast('GraphRun 已完成：Spec、执行证据和验证结果均已记录。'); }]
+      ]; sequence.forEach(([delay,fn])=>setTimeout(fn,delay));
+    };
+    renderInspector();
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
-// Frontend runs on :3782. This value is the backend API server used only by
+// Frontend runs on :8080 in deployment. This value is the backend API server used only by
 // the Next.js server-side rewrite for /api/*.
-const backendUrl = process.env.NEXT_PUBLIC_AIAGENT_API_BASE_URL || "http://127.0.0.1:5000";
+const backendUrl = process.env.NEXT_PUBLIC_AIAGENT_API_BASE_URL || "http://127.0.0.1:8081";
 console.info(`[AiAgent] API proxy target: ${backendUrl}`);
 
 /** @type {import('next').NextConfig} */

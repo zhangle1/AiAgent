@@ -53,6 +53,7 @@ export function CodeProjectSettingsPage() {
   const selectedProject = useMemo(() => projects.find((item) => item.id === selectedProjectId) ?? null, [projects, selectedProjectId]);
   const selectedConfigs = repositoryDraft.configurationFiles;
   const repositoryBrowseStartPath = repositoryDraft.rootPath.trim() || projects.find((item) => item.id === repositoryDraft.projectId)?.root_path;
+  const selectedRepositoryCanPackage = selectedRepository ? supportsManagedRuntime(selectedRepository) : false;
 
   useEffect(() => { void reload(); }, []);
 
@@ -270,7 +271,7 @@ export function CodeProjectSettingsPage() {
       </aside>
       <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {mode === "project" ? <ProjectForm draft={projectDraft} busy={busy} onChange={setProjectDraft} onBrowse={() => void openBrowser("project", projectDraft.rootPath || undefined)} onSave={() => void saveProject()} onDelete={() => projectDraft.id && selectedProject && void removeProject(selectedProject)} /> : <>
-          <RepositoryForm draft={repositoryDraft} projects={projects} inspection={inspection} health={health} busy={busy} editing={Boolean(selectedRepository)} canPackage={Boolean(selectedRepository) && supportsManagedRuntime(selectedRepository)} selectedConfigs={selectedConfigs} onChange={setRepositoryDraft} onInspect={() => void inspectRepository()} onBrowse={() => void openBrowser("repository", repositoryBrowseStartPath)} onBrowseFile={(target) => void openFileBrowser(target)} onSave={() => void saveRepository()} onDelete={() => selectedRepository && void removeRepository(selectedRepository)} onHealth={() => void checkHealth()} onOpenFile={(path) => void openFile(path)} onPackage={() => void startPackage()} />
+          <RepositoryForm draft={repositoryDraft} projects={projects} inspection={inspection} health={health} busy={busy} editing={Boolean(selectedRepository)} canPackage={selectedRepositoryCanPackage} selectedConfigs={selectedConfigs} onChange={setRepositoryDraft} onInspect={() => void inspectRepository()} onBrowse={() => void openBrowser("repository", repositoryBrowseStartPath)} onBrowseFile={(target) => void openFileBrowser(target)} onSave={() => void saveRepository()} onDelete={() => selectedRepository && void removeRepository(selectedRepository)} onHealth={() => void checkHealth()} onOpenFile={(path) => void openFile(path)} onPackage={() => void startPackage()} />
           {selectedRepository && supportsManagedRuntime(selectedRepository) && <RuntimeDebugSection repository={selectedRepository} draft={runtimeDraft} busy={busy} onChange={setRuntimeDraft} onSelectRole={(role) => void loadRuntimeProfile(selectedRepository, role)} onBrowseEntry={() => void openFileBrowser(runtimeDraft.role === "frontend" ? "frontendEntry" : "backendEntry")} onSave={() => void saveRuntimeProfile()} />}
         </>}
         {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}

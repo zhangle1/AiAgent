@@ -35,6 +35,7 @@ export type ChatCompleteRequest = {
   knowledge_base_names?: string[];
   code_repository_names?: string[];
   code_project_id?: number;
+  project_references?: Array<{ project_id: number }>;
   dashboard_application_id?: string;
   dashboard_file_path?: string;
   dashboard_workspace_revision?: string;

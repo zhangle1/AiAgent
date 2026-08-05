@@ -176,6 +176,22 @@ public sealed class CodeProjectDto
     public DateTime? UpdatedAt { get; set; }
 }
 
+/// <summary>
+/// Safe project metadata used by the chat slash-command reference menu.
+/// It deliberately excludes local paths and repository details.
+/// </summary>
+public sealed class CodeProjectReferenceDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("display_name")]
+    public string DisplayName { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
 public sealed class CodeRuntimeProfileSaveRequest
 {
     [JsonPropertyName("repository_name")]
