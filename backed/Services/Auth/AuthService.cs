@@ -122,7 +122,7 @@ public sealed class AuthService : IAuthService
         var user = _db.Queryable<AiUser>().First(item => item.Username == username);
         if (user == null)
         {
-            var (created, error) = await CreateUserAsync(username, "123456", null, cancellationToken);
+            var (created, error) = await CreateUserAsync(username, "123123", null, cancellationToken);
             if (created == null) throw new InvalidOperationException(error ?? "Failed to create the default administrator.");
             created.Role = "admin";
             _db.Updateable(created).UpdateColumns(item => item.Role).ExecuteCommand();
