@@ -53,6 +53,75 @@ Subscribe(graphRunId, afterSequence) -> normalized events
 
 状态和事件必须以服务端时间、递增 sequence 和稳定 ID 为准；模型文本只是证据，不能推进状态机。
 
+### 2.3 可视化工作流、模型选择与聊天会话
+
+推荐引入 **React Flow** 作为“工作流模板编辑器”，但 React Flow 只负责画布交互、节点参数编辑和运行态展示；它不是调度器，也不是执行权限的来源。画布保存的是版本化的 `WorkflowDefinition`，后端从其已发布版本创建 `GraphRun`，再由 `GraphRunCoordinator` 解释节点、边、策略和审批。
+
+```mermaid
+flowchart LR
+  Chat["聊天会话\n用户意图"] --> Start["启动工作流"]
+  Canvas["React Flow 模板画布"] --> Publish["发布 WorkflowDefinition vN"]
+  Publish --> Start
+  Start --> Run["GraphRun"]
+  Run --> NodeRun1["NodeRun: Planner"]
+  Run --> NodeRun2["NodeRun: Executor"]
+  Run --> NodeRun3["NodeRun: Verifier"]
+  NodeRun1 --> Events["规范化事件 / 工件"]
+  NodeRun2 --> Events
+  NodeRun3 --> Events
+  Events --> Chat
+  Events --> CanvasState["画布运行态覆盖层"]
+```
+
+#### 节点不是聊天会话
+
+**不要把节点定义为一个聊天会话。** 两者的生命周期、复用方式和隔离目标不同：
+
+| 对象 | 是什么 | 生命周期 | 与其他对象的关系 |
+| --- | --- | --- | --- |
+| `WorkflowNode` | 模板中的定义，如“生成 Spec”“执行 Spec”“验证” | 随 `WorkflowDefinition` 版本存在，可被许多 Run 复用 | 指定 node type、输入/输出端口、模型角色、策略和 UI 配置。 |
+| `NodeRun` | 某个节点在一次 `GraphRun` 中的实际尝试 | 任务级、可重试 | 绑定已解析的模型/profile、输入工件、输出工件、状态和事件。 |
+| `ChatSession` | 用户与 AiAgent 的持续对话容器 | 用户会话级 | 可发起多个 `GraphRun`，并接收其事件摘要。 |
+| `ModelSession` | 某个 CLI/profile 的短期或可续接上下文 | 仅在节点执行策略允许时存在 | 是 `NodeRun` 的可选资源，不是节点 ID；默认 Planner 与 Executor 不共享。 |
+
+因此，一个聊天会话可以发起多个工作流 Run；一个 `GraphRun` 包含多个 `NodeRun`；一个节点运行**可以**关联一个 `ModelSession` 用于续接，但这是显式策略，而非一对一绑定。对于“GPT 规划 → DeepSeek 执行”，推荐每个节点运行使用隔离会话，特别是执行节点绝不继承 Planner 会话。只有纯对话、低风险的连续分析节点可选择 `session_mode=resume_same_node`，且 resume key 必须包含 `workflow_run_id + node_id + profile + workspace`。
+
+#### 通用节点模型
+
+第一版只做少量深节点类型，避免画布成为任意 prompt 的无约束编排器：
+
+| 节点类型 | 模型是否可选 | 输入端口 | 输出端口 | 说明 |
+| --- | --- | --- | --- | --- |
+| `planner` | 是，限 `planner` 角色白名单 | `intent`、`context_manifest`、`prior_result?` | `spec_draft` | 只能产出结构化 Draft，无工作区写权限。 |
+| `spec_gate` | 否，确定性实现 | `spec_draft` | `published_spec`、`approval_request?` | Schema/策略/路径校验并发布不可变 Spec。 |
+| `executor` | 是，限 `executor` 角色白名单 | `published_spec`、`context_manifest` | `execution_result`、`events` | 如选 DeepSeek Flash，profile 由服务端 `ModelRolePolicy` 解析。 |
+| `verifier` | 默认否；可选审查模型 | `published_spec`、`execution_result` | `verification_result` | 先跑确定性检查；审查模型只能补充解释，不能替代通过判据。 |
+| `approval` | 否 | `approval_request` | `approval_decision` | 人工节点；暂停/恢复由后端状态机管理。 |
+| `router` | 否，确定性条件 | 已声明的结果端口 | 指定的下游端口 | 只允许基于结构化状态、风险或验证结果分支，不能解析自由文本。 |
+
+节点中的“模型下拉框”应保存 **模型角色和受控候选项**，例如 `role=executor, selected_profile=deepseek_flash_executor`，而不是保存 API Key、CLI 参数、绝对路径或任意模型名。发布模板时服务端写入可用 profile 的快照；运行时再次检查其启用状态、能力、预算和项目授权。模型/profile 变更不应静默改变已运行的 `NodeRun`。
+
+#### 画布与聊天如何结合
+
+- 聊天是**入口和叙事视图**：用户在消息中提出目标，选择一个已发布工作流模板（或让系统从默认模板创建 Draft），聊天消息保存 `graph_run_id`；随后把节点状态、审批、重要文本、测试结果和最终摘要按事件流显示为可折叠卡片。
+- React Flow 是**编排和诊断视图**：点击聊天中的“打开工作流”跳到该 Run 的只读画布覆盖层，节点颜色/徽标展示 `queued/running/waiting_approval/completed/failed`，边展示实际选择的分支；从画布可打开对应 `NodeRun` 的事件、Spec、diff 和审批记录。
+- 模板编辑与运行实例分开：用户编辑模板时只改 `WorkflowDefinitionDraft`；点击发布创建不可变 `WorkflowDefinitionVersion`。运行中的画布只读，不能拖线或改模型；要改变路径/模型必须取消后从新模板版本重新发起，或由再规划节点发布新的 Spec。
+- 聊天中可直接回复审批或补充目标，但该回复先变成一个显式 `GraphInputArtifact`；只有连到接收该类型输入的节点、并经策略允许时才会被消费。这样不会把聊天中的所有后续消息不加区分地注入正在执行的 DeepSeek 会话。
+
+#### 服务端存储建议
+
+关系型数据库是工作流定义、运行状态、版本、聊天关联和审批的主存储；已有 SqlSugar/SQL Server 基础可直接承载。把 React Flow 的 JSON 当作**模板定义**保存，而不是只放在浏览器本地。
+
+| 数据 | 推荐位置 | 原因 |
+| --- | --- | --- |
+| `WorkflowDefinitionDraft` / 已发布 `WorkflowDefinitionVersion` | SQL Server：节点、边、viewport、版本、发布者、schema version、内容 hash | 支持事务、乐观并发、发布审计与恢复；节点/边可整体存 `DefinitionJson`，常用字段另外列出索引。 |
+| `GraphRun` / `NodeRun` / 重试 / 审批 / 事件序列 | SQL Server | 是状态机与聊天关联的事实来源，便于幂等、锁与事件补拉。 |
+| Spec | SQL Server 中保存 canonical JSON、版本和 hash；大文本/附件仅存工件引用 | Spec 需要强一致和审计；同上避免以文件系统“最新文件”作为执行输入。 |
+| diff、完整 JSONL、终端日志、测试报告、上下文快照 | 受控工件存储（MVP 可放服务端允许根目录；生产推荐 MinIO/S3/Blob） | 大小与保留期可控，数据库只持 `artifact_ref + sha256`。 |
+| 聊天消息 | 继续使用现有聊天表；消息元数据仅保存 `graph_run_id`、节点摘要和安全的工件链接 | 不复制完整工作流状态，避免聊天表成为第二状态机。 |
+
+建议表名：`AiWorkflowDefinition`、`AiWorkflowDefinitionVersion`、`AiGraphRun`、`AiGraphNodeRun`、`AiGraphRunEvent`、`AiGraphInputArtifact`、`AiGraphApproval`；现有 `AiChatSession` / `AiChatMessage` 增加可选关联即可。`WorkflowDefinitionVersion` 内的 React Flow JSON 应保留 `node.id`、`type`、`position`、`data`、`edge.source/target/sourceHandle/targetHandle`；运行时永远读取已发布版本，不信任浏览器重新提交的图。
+
 ## 3. 推荐 Graph：节点、边与人工回路
 
 ```mermaid
