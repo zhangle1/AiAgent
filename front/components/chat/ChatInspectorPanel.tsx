@@ -1,10 +1,12 @@
 "use client";
 
 import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, X } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
-import { getCodeFile } from "@/lib/code-repository-api";
-import type { CodeProject } from "@/lib/code-repository-types";
+import { getCodeFile, getProjectMarkdownDocuments, readProjectMarkdownDocument } from "@/lib/code-repository-api";
+import type { CodeProject, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeLog } from "@/lib/code-runtime-types";
 
 export type ChatCodeFileReference = {
@@ -12,7 +14,7 @@ export type ChatCodeFileReference = {
   filePath: string;
   line?: number;
 };
-type WorkspaceTab = "preview" | "file" | "tasks" | "terminal";
+type WorkspaceTab = "preview" | "file" | "documents" | "tasks" | "terminal";
 
 function terminalPanelWidth(viewportWidth: number) {
   const minimum = Math.min(360, Math.max(280, Math.round(viewportWidth * 0.45)));
@@ -20,7 +22,7 @@ function terminalPanelWidth(viewportWidth: number) {
   return Math.max(minimum, Math.min(maximum, Math.round(viewportWidth / 2)));
 }
 
-export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, onClose }: { isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: "preview" | "file" | "tasks" | "terminal" | null; onClose: () => void }) {
+export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, onInsertMarkdownReference, onClose }: { isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onClose: () => void }) {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   const [activeTab, setActiveTab] = useState<WorkspaceTab | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -30,6 +32,11 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   const [browserRevision, setBrowserRevision] = useState(0);
   const [file, setFile] = useState<{ path: string; content: string; line_count: number } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
+  const [markdownDocuments, setMarkdownDocuments] = useState<CodeProjectMarkdownDocument[]>([]);
+  const [loadingMarkdownDocuments, setLoadingMarkdownDocuments] = useState(false);
+  const [selectedMarkdownDocument, setSelectedMarkdownDocument] = useState<CodeProjectMarkdownDocument | null>(null);
+  const [markdownDocumentContent, setMarkdownDocumentContent] = useState<CodeProjectMarkdownDocumentContent | null>(null);
+  const [loadingMarkdownDocument, setLoadingMarkdownDocument] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runtimeLogs, setRuntimeLogs] = useState<Record<string, CodeRuntimeLog[]>>({});
   const [panelWidth, setPanelWidth] = useState(380);
@@ -127,8 +134,39 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   }, [file, fileReference]);
 
   useEffect(() => {
+    if (!isOpen || !project || (activeTab !== "documents" && requestedTab !== "documents")) return;
+    let disposed = false;
+    setLoadingMarkdownDocuments(true);
+    setError(null);
+    void getProjectMarkdownDocuments(project.id)
+      .then((items) => {
+        if (disposed) return;
+        setMarkdownDocuments(items);
+        setSelectedMarkdownDocument((current) => current && items.some((item) => item.repository_name === current.repository_name && item.path === current.path) ? current : items[0] ?? null);
+      })
+      .catch((ex) => { if (!disposed) setError(ex instanceof Error ? ex.message : "无法读取项目 Markdown 文档。"); })
+      .finally(() => { if (!disposed) setLoadingMarkdownDocuments(false); });
+    return () => { disposed = true; };
+  }, [isOpen, project, activeTab, requestedTab]);
+
+  useEffect(() => {
+    if (!project || !selectedMarkdownDocument) { setMarkdownDocumentContent(null); return; }
+    let disposed = false;
+    setLoadingMarkdownDocument(true);
+    setError(null);
+    void readProjectMarkdownDocument(project.id, selectedMarkdownDocument.repository_name, selectedMarkdownDocument.path)
+      .then((value) => { if (!disposed) setMarkdownDocumentContent(value); })
+      .catch((ex) => { if (!disposed) setError(ex instanceof Error ? ex.message : "无法读取 Markdown 文档。"); })
+      .finally(() => { if (!disposed) setLoadingMarkdownDocument(false); });
+    return () => { disposed = true; };
+  }, [project, selectedMarkdownDocument]);
+
+  useEffect(() => {
     setBrowserAddress("");
     setBrowserUrl("");
+    setMarkdownDocuments([]);
+    setSelectedMarkdownDocument(null);
+    setMarkdownDocumentContent(null);
   }, [project?.id]);
 
   useEffect(() => {
@@ -202,6 +240,16 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
           <div className="border-b border-slate-100 px-4 py-3"><p className="truncate text-xs font-semibold text-slate-800">{file?.path || fileReference?.filePath || "选择代码引用以查看文件"}</p><p className="mt-1 text-[11px] text-slate-400">{file ? `${file.line_count} 行` : "代码文件仅在已注册仓库范围内读取"}</p></div>
           {loadingFile ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>读取文件中…</div> : file ? <pre className="workspace-scroll min-h-0 flex-1 overflow-auto bg-slate-950 py-3 text-[12px] leading-6 text-slate-100">{lines.map((content, index) => { const number = index + 1; const highlighted = number === line; return <div id={`chat-code-line-${number}`} key={number} className={`flex min-w-max px-4 ${highlighted ? "bg-amber-300/20 ring-1 ring-inset ring-amber-300/50" : ""}`}><span className="mr-4 w-10 select-none text-right text-slate-500">{number}</span><code className="whitespace-pre">{content || " "}</code></div>; })}{file.line_count > lines.length && <p className="px-4 pt-2 text-slate-500">为保持面板流畅，仅显示前 {lines.length} 行。</p>}</pre> : <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">从聊天结果中的代码引用卡片打开文件。</div>}
         </div>
+      ) : activeTab === "documents" ? (
+        <ProjectDocumentsTab
+          documents={markdownDocuments}
+          loadingDocuments={loadingMarkdownDocuments}
+          selectedDocument={selectedMarkdownDocument}
+          content={markdownDocumentContent}
+          loadingContent={loadingMarkdownDocument}
+          onSelect={setSelectedMarkdownDocument}
+          onInsert={onInsertMarkdownReference}
+        />
       ) : activeTab === "tasks" ? <SideTaskTab project={project} runtime={runtime} /> : <RuntimeTerminalTab runtime={runtime} logs={runtimeLogs} />}
       {error && <div className="border-t border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>}
     </aside>
@@ -210,6 +258,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 
 function workspaceTabMeta(tab: WorkspaceTab) {
   if (tab === "file") return { label: "文件", icon: FileCode2 };
+  if (tab === "documents") return { label: "项目文档", icon: FileText };
   if (tab === "tasks") return { label: "侧边任务", icon: ListTodo };
   if (tab === "preview") return { label: "浏览器", icon: Globe2 };
   return { label: "终端", icon: Terminal };
@@ -221,13 +270,98 @@ function WorkspaceTabButton({ tab, active, onSelect, onClose }: { tab: Workspace
 }
 
 function AddTabMenu({ tabs, onOpen }: { tabs: WorkspaceTab[]; onOpen: (tab: WorkspaceTab) => void }) {
-  const options: WorkspaceTab[] = ["file", "tasks", "preview", "terminal"];
+  const options: WorkspaceTab[] = ["documents", "file", "tasks", "preview", "terminal"];
   return <div className="absolute right-0 top-10 z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); const exists = tabs.includes(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-slate-700 transition hover:bg-slate-100"><Icon size={15} className="text-slate-500"/><span className="flex-1">{label}</span><span className="text-[10px] text-slate-400">{exists ? "切换" : "新增"}</span></button>; })}</div>;
 }
 
 function EmptyWorkspace({ onOpen }: { onOpen: (tab: WorkspaceTab) => void }) {
-  const options: WorkspaceTab[] = ["file", "tasks", "preview", "terminal"];
+  const options: WorkspaceTab[] = ["documents", "file", "tasks", "preview", "terminal"];
   return <div className="flex min-h-0 flex-1 items-center justify-center p-6"><div className="w-full max-w-sm space-y-2">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-11 w-full items-center gap-2.5 rounded-lg bg-slate-50 px-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"><Icon size={16}/><span className="flex-1">{label}</span><Plus size={15} className="text-slate-400"/></button>; })}</div></div>;
+}
+
+type MarkdownTreeNode = {
+  children: Map<string, MarkdownTreeNode>;
+  document?: CodeProjectMarkdownDocument;
+};
+
+function buildMarkdownDocumentTree(documents: CodeProjectMarkdownDocument[]) {
+  const root: MarkdownTreeNode = { children: new Map() };
+  for (const document of documents) {
+    let node = root;
+    for (const segment of [document.repository_name, ...document.path.split("/")]) {
+      let child = node.children.get(segment);
+      if (!child) {
+        child = { children: new Map() };
+        node.children.set(segment, child);
+      }
+      node = child;
+    }
+    node.document = document;
+  }
+  return root;
+}
+
+function ProjectDocumentsTab({ documents, loadingDocuments, selectedDocument, content, loadingContent, onSelect, onInsert }: {
+  documents: CodeProjectMarkdownDocument[];
+  loadingDocuments: boolean;
+  selectedDocument: CodeProjectMarkdownDocument | null;
+  content: CodeProjectMarkdownDocumentContent | null;
+  loadingContent: boolean;
+  onSelect: (document: CodeProjectMarkdownDocument) => void;
+  onInsert?: (document: CodeProjectMarkdownDocument) => void;
+}) {
+  const tree = useMemo(() => buildMarkdownDocumentTree(documents), [documents]);
+  return <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="workspace-scroll w-[44%] min-w-[160px] max-w-[300px] overflow-auto border-r border-slate-200 bg-slate-50/60 p-2">
+      <div className="px-2 py-1.5 text-[11px] font-semibold text-slate-500">项目 Markdown 文档</div>
+      {loadingDocuments ? <div className="flex min-h-24 items-center justify-center gap-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin"/>正在读取目录…</div>
+        : documents.length === 0 ? <p className="px-2 py-5 text-center text-xs leading-5 text-slate-500">当前项目的已注册仓库中没有可引用的 Markdown 文档。</p>
+          : <MarkdownDocumentTreeNode node={tree} selectedDocument={selectedDocument} onSelect={onSelect}/>}
+    </div>
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
+      <div className="flex min-h-12 items-center gap-2 border-b border-slate-100 px-3">
+        <FileText size={15} className="shrink-0 text-blue-600"/>
+        <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{selectedDocument?.path || "选择一个 Markdown 文档"}</p>{selectedDocument && <p className="mt-0.5 truncate text-[10px] text-slate-400">{selectedDocument.repository_name}</p>}</div>
+        {selectedDocument && onInsert && <button type="button" onClick={() => onInsert(selectedDocument)} className="shrink-0 rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-700">引用到聊天</button>}
+      </div>
+      {loadingContent ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>正在预览文档…</div>
+        : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><article className="markdown-document-preview mx-auto max-w-4xl"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+          h1: ({ className, ...props }) => <h1 className={`mb-5 border-b border-slate-200 pb-3 text-2xl font-bold tracking-tight text-slate-950 ${className ?? ""}`} {...props}/>,
+          h2: ({ className, ...props }) => <h2 className={`mb-3 mt-8 border-b border-slate-100 pb-2 text-xl font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
+          h3: ({ className, ...props }) => <h3 className={`mb-2 mt-6 text-base font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
+          h4: ({ className, ...props }) => <h4 className={`mb-2 mt-5 text-sm font-bold text-slate-800 ${className ?? ""}`} {...props}/>,
+          p: ({ className, ...props }) => <p className={`my-3 text-[14px] leading-7 text-slate-700 ${className ?? ""}`} {...props}/>,
+          a: ({ className, ...props }) => <a className={`font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900 ${className ?? ""}`} target="_blank" rel="noreferrer" {...props}/>,
+          ul: ({ className, ...props }) => <ul className={`my-3 list-disc space-y-1 pl-6 marker:text-slate-400 ${className ?? ""}`} {...props}/>,
+          ol: ({ className, ...props }) => <ol className={`my-3 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500 ${className ?? ""}`} {...props}/>,
+          li: ({ className, ...props }) => <li className={`pl-1 ${className ?? ""}`} {...props}/>,
+          blockquote: ({ className, ...props }) => <blockquote className={`my-4 border-l-4 border-blue-300 bg-blue-50 px-4 py-2 text-slate-700 ${className ?? ""}`} {...props}/>,
+          hr: ({ className, ...props }) => <hr className={`my-7 border-slate-200 ${className ?? ""}`} {...props}/>,
+          table: ({ className, ...props }) => <table className={`my-4 min-w-full border-collapse text-left text-[13px] leading-6 ${className ?? ""}`} {...props}/>,
+          thead: ({ className, ...props }) => <thead className={`bg-slate-100 text-slate-800 ${className ?? ""}`} {...props}/>,
+          th: ({ className, ...props }) => <th className={`border border-slate-200 px-3 py-2 font-semibold ${className ?? ""}`} {...props}/>,
+          td: ({ className, ...props }) => <td className={`border border-slate-200 px-3 py-2 align-top ${className ?? ""}`} {...props}/>,
+          pre: ({ className, ...props }) => <pre className={`my-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-[12px] leading-6 text-slate-100 shadow-sm ${className ?? ""}`} {...props}/>,
+          code: ({ className, ...props }) => <code className={`${className ? "font-mono" : "rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-rose-700"} ${className ?? ""}`} {...props}/>,
+          img: ({ className, alt, ...props }) => <img className={`my-4 max-w-full rounded-lg border border-slate-200 shadow-sm ${className ?? ""}`} alt={alt ?? "文档图片"} {...props}/>,
+        }}>{content.content}</ReactMarkdown></article>{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>
+          : <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm leading-6 text-slate-500">从左侧树状目录选择文档后即可预览，文档内容不会作为代码文件暴露。</div>}
+    </div>
+  </div>;
+}
+
+function MarkdownDocumentTreeNode({ node, selectedDocument, onSelect, depth = 0 }: { node: MarkdownTreeNode; selectedDocument: CodeProjectMarkdownDocument | null; onSelect: (document: CodeProjectMarkdownDocument) => void; depth?: number }) {
+  return <div>{[...node.children.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, child]) => <MarkdownDocumentTreeItem key={name} name={name} node={child} selectedDocument={selectedDocument} onSelect={onSelect} depth={depth}/>)}</div>;
+}
+
+function MarkdownDocumentTreeItem({ name, node, selectedDocument, onSelect, depth }: { name: string; node: MarkdownTreeNode; selectedDocument: CodeProjectMarkdownDocument | null; onSelect: (document: CodeProjectMarkdownDocument) => void; depth: number }) {
+  const [expanded, setExpanded] = useState(depth < 2);
+  const hasChildren = node.children.size > 0;
+  if (node.document && !hasChildren) {
+    const active = selectedDocument?.repository_name === node.document.repository_name && selectedDocument.path === node.document.path;
+    return <button type="button" onClick={() => onSelect(node.document!)} className={`flex min-h-8 w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs transition ${active ? "bg-blue-100 text-blue-800" : "text-slate-700 hover:bg-slate-100"}`} style={{ paddingLeft: `${depth * 12 + 8}px` }}><FileText size={14} className="shrink-0 text-blue-500"/><span className="min-w-0 truncate">{name}</span></button>;
+  }
+  return <div><button type="button" onClick={() => setExpanded((current) => !current)} className="flex min-h-8 w-full items-center gap-1 rounded-md py-1 pr-2 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-100" style={{ paddingLeft: `${depth * 12 + 4}px` }}><span className="grid h-4 w-4 place-items-center">{expanded ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}</span>{expanded ? <FolderOpen size={14} className="shrink-0 text-amber-500"/> : <Folder size={14} className="shrink-0 text-amber-500"/>}<span className="min-w-0 truncate">{name}</span></button>{expanded && <MarkdownDocumentTreeNode node={node} selectedDocument={selectedDocument} onSelect={onSelect} depth={depth + 1}/>}</div>;
 }
 
 function SideTaskTab({ project, runtime }: { project: CodeProject | null; runtime: CodeProjectRuntime | null }) {

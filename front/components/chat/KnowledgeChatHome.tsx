@@ -3,7 +3,7 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { deleteChatImage, persistedChatImageUrl, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
@@ -12,20 +12,20 @@ import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
-import { getChatProjectReferences, getCodeProjects } from "@/lib/code-repository-api";
+import { getChatProjectReferences, getCodeProjects, getProjectMarkdownDocuments } from "@/lib/code-repository-api";
 import { activeModel, activeProfile, type Catalog, type CatalogModel } from "@/lib/settings-types";
 import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
-import type { CodeProject, CodeProjectReference } from "@/lib/code-repository-types";
+import type { CodeProject, CodeProjectMarkdownDocument, CodeProjectReference } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getSession, type SessionDetail } from "@/lib/session-api";
 import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 
-type InspectorTab = "preview" | "file" | "tasks" | "terminal";
+type InspectorTab = "preview" | "file" | "documents" | "tasks" | "terminal";
 
 type ChatImagePreview = ChatImageAttachment & { previewUrl: string };
 
-type SlashProjectCommand = { start: number; end: number; query: string };
+type SlashProjectCommand = { start: number; end: number; query: string; kind: "projects" | "documents" };
 
 type ChatMessage = {
   id: string;
@@ -118,6 +118,8 @@ export function KnowledgeChatHome() {
   const [slashProjectCommand, setSlashProjectCommand] = useState<SlashProjectCommand | null>(null);
   const [projectReferenceOptions, setProjectReferenceOptions] = useState<CodeProjectReference[]>([]);
   const [projectReferenceLoading, setProjectReferenceLoading] = useState(false);
+  const [markdownDocumentOptions, setMarkdownDocumentOptions] = useState<CodeProjectMarkdownDocument[]>([]);
+  const [markdownDocumentLoading, setMarkdownDocumentLoading] = useState(false);
   const [activeProjectReferenceIndex, setActiveProjectReferenceIndex] = useState(0);
   const [imageAttachments, setImageAttachments] = useState<ChatImagePreview[]>([]);
   const [previewingImage, setPreviewingImage] = useState<ChatImagePreview | null>(null);
@@ -270,11 +272,31 @@ export function KnowledgeChatHome() {
     if (!slashProjectCommand) {
       setProjectReferenceOptions([]);
       setProjectReferenceLoading(false);
+      setMarkdownDocumentOptions([]);
+      setMarkdownDocumentLoading(false);
       return;
     }
     let cancelled = false;
-    setProjectReferenceLoading(true);
     const timer = window.setTimeout(() => {
+      if (slashProjectCommand.kind === "documents") {
+        if (!selectedProjectId) {
+          setMarkdownDocumentOptions([]);
+          setMarkdownDocumentLoading(false);
+          return;
+        }
+        setMarkdownDocumentLoading(true);
+        void getProjectMarkdownDocuments(selectedProjectId, slashProjectCommand.query).then((items) => {
+          if (cancelled) return;
+          setMarkdownDocumentOptions(items);
+          setActiveProjectReferenceIndex(0);
+        }).catch(() => {
+          if (!cancelled) setMarkdownDocumentOptions([]);
+        }).finally(() => {
+          if (!cancelled) setMarkdownDocumentLoading(false);
+        });
+        return;
+      }
+      setProjectReferenceLoading(true);
       void getChatProjectReferences(slashProjectCommand.query, selectedProjectId).then((items) => {
         if (cancelled) return;
         setProjectReferenceOptions(items);
@@ -289,7 +311,7 @@ export function KnowledgeChatHome() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [selectedProjectId, slashProjectCommand?.query]);
+  }, [selectedProjectId, slashProjectCommand?.kind, slashProjectCommand?.query]);
 
   useEffect(() => () => attachmentPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
   useEffect(() => {
@@ -348,20 +370,26 @@ export function KnowledgeChatHome() {
       setSlashProjectCommand(null);
       return;
     }
-    if (projectReferenceOptions.length > 0 && event.key === "ArrowDown") {
+    const slashItems = slashProjectCommand.kind === "documents" ? markdownDocumentOptions : projectReferenceOptions;
+    if (slashItems.length > 0 && event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveProjectReferenceIndex((index) => (index + 1) % projectReferenceOptions.length);
+      setActiveProjectReferenceIndex((index) => (index + 1) % slashItems.length);
       return;
     }
-    if (projectReferenceOptions.length > 0 && event.key === "ArrowUp") {
+    if (slashItems.length > 0 && event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveProjectReferenceIndex((index) => (index - 1 + projectReferenceOptions.length) % projectReferenceOptions.length);
+      setActiveProjectReferenceIndex((index) => (index - 1 + slashItems.length) % slashItems.length);
       return;
     }
-    if (projectReferenceOptions.length > 0 && (event.key === "Enter" || event.key === "Tab")) {
+    if (slashItems.length > 0 && (event.key === "Enter" || event.key === "Tab")) {
       event.preventDefault();
-      const selected = projectReferenceOptions[activeProjectReferenceIndex] ?? projectReferenceOptions[0];
-      if (selected) insertProjectReference(selected);
+      if (slashProjectCommand.kind === "documents") {
+        const selected = markdownDocumentOptions[activeProjectReferenceIndex] ?? markdownDocumentOptions[0];
+        if (selected) insertMarkdownDocumentReference(selected);
+      } else {
+        const selected = projectReferenceOptions[activeProjectReferenceIndex] ?? projectReferenceOptions[0];
+        if (selected) insertProjectReference(selected);
+      }
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
@@ -380,6 +408,45 @@ export function KnowledgeChatHome() {
     requestAnimationFrame(() => {
       activeComposerRef.current?.focus();
       activeComposerRef.current?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function openMarkdownDocumentSearch() {
+    if (!slashProjectCommand || slashProjectCommand.kind !== "projects") return;
+    const command = "/spec ";
+    const next = `${input.slice(0, slashProjectCommand.start)}${command}${input.slice(slashProjectCommand.end)}`;
+    const cursor = slashProjectCommand.start + command.length;
+    setInput(next);
+    setSlashProjectCommand({ start: slashProjectCommand.start, end: cursor, query: "", kind: "documents" });
+    setActiveProjectReferenceIndex(0);
+    requestAnimationFrame(() => {
+      activeComposerRef.current?.focus();
+      activeComposerRef.current?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function insertMarkdownDocumentReference(document: CodeProjectMarkdownDocument) {
+    if (!slashProjectCommand) return;
+    const token = `[[文档:${document.name}|${document.repository_name}|${document.path}]] `;
+    const next = `${input.slice(0, slashProjectCommand.start)}${token}${input.slice(slashProjectCommand.end)}`;
+    const cursor = slashProjectCommand.start + token.length;
+    setInput(next);
+    setSlashProjectCommand(null);
+    requestAnimationFrame(() => {
+      activeComposerRef.current?.focus();
+      activeComposerRef.current?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function appendMarkdownDocumentReference(document: CodeProjectMarkdownDocument) {
+    const token = `[[文档:${document.name}|${document.repository_name}|${document.path}]]`;
+    const separator = input.trim() ? (input.endsWith(" ") ? "" : " ") : "";
+    const next = `${input}${separator}${token} `;
+    setInput(next);
+    setComposerExpanded(true);
+    requestAnimationFrame(() => {
+      activeComposerRef.current?.focus();
+      activeComposerRef.current?.setSelectionRange(next.length, next.length);
     });
   }
 
@@ -464,6 +531,7 @@ export function KnowledgeChatHome() {
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: selectedProjectId ?? undefined,
         project_references: extractProjectReferenceIds(messageText).map((project_id) => ({ project_id })),
+        markdown_document_references: extractMarkdownDocumentReferences(messageText),
         model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
         codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
         codex_reasoning_effort: selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined,
@@ -632,13 +700,22 @@ export function KnowledgeChatHome() {
                 ))}
               </div>
             )}
-            {slashProjectCommand && <ProjectReferenceSlashMenu
-              items={projectReferenceOptions}
-              loading={projectReferenceLoading}
+            {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu
+              items={markdownDocumentOptions}
+              loading={markdownDocumentLoading}
+              hasProject={Boolean(selectedProjectId)}
               activeIndex={activeProjectReferenceIndex}
               onActiveIndexChange={setActiveProjectReferenceIndex}
+              onSelect={insertMarkdownDocumentReference}
+            /> : <ProjectReferenceSlashMenu
+              items={projectReferenceOptions}
+              loading={projectReferenceLoading}
+              showDocumentCategory={slashProjectCommand.query.length === 0}
+              activeIndex={activeProjectReferenceIndex}
+              onActiveIndexChange={setActiveProjectReferenceIndex}
+              onOpenDocuments={openMarkdownDocumentSearch}
               onSelect={insertProjectReference}
-            />}
+            />)}
             <div className="flex items-center gap-1 lg:hidden">
               <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18}/></button>
               <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
@@ -774,7 +851,7 @@ export function KnowledgeChatHome() {
           )}
         </div>
       </section>
-      <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} onClose={() => setRightPanelOpen(false)}/>
+      <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} onInsertMarkdownReference={appendMarkdownDocumentReference} onClose={() => setRightPanelOpen(false)}/>
       {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)}/>}
       </div>
       <MobileOptionSheet
@@ -801,10 +878,11 @@ export function KnowledgeChatHome() {
 
 function findSlashProjectCommand(value: string, cursor: number): SlashProjectCommand | null {
   const beforeCursor = value.slice(0, cursor);
-  const match = /(^|\s)\/([^\s]*)$/.exec(beforeCursor);
+  const match = /(^|\s)\/([^\s]*)(?:\s([^\n]*))?$/.exec(beforeCursor);
   if (!match) return null;
   const start = beforeCursor.length - match[0].length + match[1].length;
-  return { start, end: cursor, query: match[2] };
+  const command = match[2].toLowerCase();
+  return command === "spec" ? { start, end: cursor, query: match[3]?.trim() ?? "", kind: "documents" } : { start, end: cursor, query: match[2], kind: "projects" };
 }
 
 function extractProjectReferenceIds(value: string): number[] {
@@ -816,17 +894,30 @@ function extractProjectReferenceIds(value: string): number[] {
   return [...ids];
 }
 
-function ProjectReferenceSlashMenu({ items, loading, activeIndex, onActiveIndexChange, onSelect }: {
+function extractMarkdownDocumentReferences(value: string): Array<{ repository_name: string; path: string }> {
+  const references = new Map<string, { repository_name: string; path: string }>();
+  for (const match of value.matchAll(/\[\[文档:[^\]|]+\|([^\]|]+)\|([^\]|]+)\]\]/g)) {
+    const repository_name = match[1].trim();
+    const path = match[2].trim();
+    if (repository_name && path) references.set(`${repository_name}\u0000${path}`, { repository_name, path });
+  }
+  return [...references.values()];
+}
+
+function ProjectReferenceSlashMenu({ items, loading, showDocumentCategory, activeIndex, onActiveIndexChange, onOpenDocuments, onSelect }: {
   items: CodeProjectReference[];
   loading: boolean;
+  showDocumentCategory: boolean;
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
+  onOpenDocuments: () => void;
   onSelect: (project: CodeProjectReference) => void;
 }) {
   return (
     <div id="chat-project-reference-menu" role="listbox" aria-label="引用其他项目" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[380px]">
       <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500"><FolderSearch size={14} className="text-blue-600"/><span>引用其他项目</span><span className="ml-auto font-normal">↑↓ 选择 · Enter 插入</span></div>
       <div className="max-h-60 overflow-y-auto">
+        {showDocumentCategory && <button type="button" onPointerDown={(event) => { event.preventDefault(); onOpenDocuments(); }} className="mb-1 flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-2.5 py-2 text-left text-blue-900 transition hover:bg-blue-100"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-600 text-white"><FileText size={15}/></span><span className="min-w-0 flex-1"><span className="block text-xs font-semibold">项目文档</span><span className="mt-0.5 block text-[11px] text-blue-700">搜索当前项目的 Markdown 文档</span></span><span className="text-[11px] font-medium text-blue-600">/spec</span></button>}
         {loading ? <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500"><Loader2 size={15} className="animate-spin"/>正在查找可访问项目…</div>
           : items.length === 0 ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有可引用的其他项目。</p>
             : items.map((project, index) => {
@@ -842,6 +933,28 @@ function ProjectReferenceSlashMenu({ items, loading, activeIndex, onActiveIndexC
   );
 }
 
+function MarkdownDocumentSlashMenu({ items, loading, hasProject, activeIndex, onActiveIndexChange, onSelect }: {
+  items: CodeProjectMarkdownDocument[];
+  loading: boolean;
+  hasProject: boolean;
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
+  onSelect: (document: CodeProjectMarkdownDocument) => void;
+}) {
+  return <div id="chat-project-reference-menu" role="listbox" aria-label="搜索当前项目的 Markdown 文档" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[420px]">
+    <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500"><FileText size={14} className="text-blue-600"/><span>项目文档 · /spec</span><span className="ml-auto font-normal">↑↓ 选择 · Enter 插入</span></div>
+    <div className="max-h-60 overflow-y-auto">
+      {!hasProject ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">请先选择当前项目，再使用 /spec 搜索其 Markdown 文档。</p>
+        : loading ? <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500"><Loader2 size={15} className="animate-spin"/>正在搜索项目文档…</div>
+          : items.length === 0 ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有符合条件的 Markdown 文档。</p>
+            : items.map((document, index) => {
+              const active = index === activeIndex;
+              return <button key={`${document.repository_name}:${document.path}`} type="button" role="option" aria-selected={active} onMouseEnter={() => onActiveIndexChange(index)} onPointerDown={(event) => { event.preventDefault(); onSelect(document); }} className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}><FileText size={15}/></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{document.name}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{document.repository_name} / {document.path}</span></span></button>;
+            })}
+    </div>
+  </div>;
+}
+
 function codexReasoningEffortLabel(effort: string) {
   return ({ minimal: "极轻", low: "轻度", medium: "中", high: "高", xhigh: "极高" } as Record<string, string>)[effort] ?? effort;
 }
@@ -855,6 +968,7 @@ type ContextPickerItem = {
 function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
   const [open, setOpen] = useState(false);
   const options: Array<{ tab: InspectorTab; label: string; shortcut: string; icon: typeof FileCode2 }> = [
+    { tab: "documents", label: "项目文档", shortcut: "", icon: FileText },
     { tab: "file", label: "文件", shortcut: "Ctrl+P", icon: FileCode2 },
     { tab: "tasks", label: "侧边任务", shortcut: "Ctrl+Alt+S", icon: ListTodo },
     { tab: "preview", label: "浏览器", shortcut: "Ctrl+I", icon: Globe2 },

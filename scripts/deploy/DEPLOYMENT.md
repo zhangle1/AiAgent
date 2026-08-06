@@ -8,8 +8,8 @@
 
 ```powershell
 ./scripts/deploy/Build-ServerPackage.ps1 `
-  -BackendApiUrl "http://127.0.0.1:8081" `
-  -FrontendPort 8080
+  -BackendApiUrl "http://127.0.0.1:5000" `
+  -FrontendPort 3782
 ```
 
 输出文件为：`artifacts/server-package/AiAgent-server.zip`。ZIP 内包含：
@@ -28,8 +28,8 @@ AiAgent-server/
 
 ```powershell
 ./scripts/deploy/Build-ServerPackage.ps1 `
-  -BackendApiUrl "http://127.0.0.1:8081" `
-  -FrontendPort 8080 `
+  -BackendApiUrl "http://127.0.0.1:5000" `
+  -FrontendPort 3782 `
   -IncludePythonWorkers
 ```
 
@@ -45,27 +45,27 @@ AiAgent-server/
 
 ```powershell
 cd D:\AiAgent
-./Run-AiAgent.ps1 -Action Start -BackendPort 8081 -FrontendPort 8080
+./Run-AiAgent.ps1 -Action Start -BackendPort 5000 -FrontendPort 3782
 ```
 
 前端 API 默认自动转发到同机的 `http://127.0.0.1:<BackendPort>`。跨机器部署时，编辑 `front\api-proxy.json`，填写后端完整地址，再重启服务：
 
 ```json
 {
-  "backendApiUrl": "http://192.168.1.20:8081"
+  "backendApiUrl": "http://192.168.1.20:5000"
 }
 ```
 
 留空则继续自动跟随 `-BackendPort`。也可以不改文件，启动时临时指定：
 
 ```powershell
-./Run-AiAgent.ps1 -Action Restart -BackendPort 8081 -FrontendPort 8080 -BackendApiUrl "http://192.168.1.20:8081"
+./Run-AiAgent.ps1 -Action Restart -BackendPort 5000 -FrontendPort 3782 -BackendApiUrl "http://192.168.1.20:5000"
 ```
 
 修改前端端口时无需重打包：
 
 ```powershell
-./Run-AiAgent.ps1 -Action Restart -BackendPort 8081 -FrontendPort 8080
+./Run-AiAgent.ps1 -Action Restart -BackendPort 5000 -FrontendPort 3782
 ```
 
 停止服务：
@@ -81,8 +81,8 @@ cd D:\AiAgent
 按需开放前端、后端端口。AiAgent 代码运行功能会动态使用前端 `4300-4399`、后端 `5100-5199`；只有远程用户必须直连这些临时服务时才开放对应端口段。公网 IP 或域名还需设置防火墙和 NAT / 反向代理映射。
 
 ```powershell
-New-NetFirewallRule -DisplayName "AiAgent 前端" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
-New-NetFirewallRule -DisplayName "AiAgent 后端" -Direction Inbound -Protocol TCP -LocalPort 8081 -Action Allow
+New-NetFirewallRule -DisplayName "AiAgent 前端" -Direction Inbound -Protocol TCP -LocalPort 3782 -Action Allow
+New-NetFirewallRule -DisplayName "AiAgent 后端" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow
 ```
 
 不要提交或传播 `appsettings.Production.json`，它可能包含数据库密码、Token 或 API Key。

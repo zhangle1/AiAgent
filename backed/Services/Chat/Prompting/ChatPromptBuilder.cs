@@ -176,6 +176,12 @@ public sealed class ChatPromptBuilder : IChatPromptBuilder
             builder.AppendLine();
         }
 
+        if (!string.IsNullOrWhiteSpace(context.MarkdownDocumentContext))
+        {
+            builder.AppendLine(context.MarkdownDocumentContext);
+            builder.AppendLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(context.MemoryContext))
         {
             builder.AppendLine("Historical memory context:");

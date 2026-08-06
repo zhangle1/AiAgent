@@ -4,6 +4,7 @@ using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Admin;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
+using System.Text;
 
 namespace AiAgent.Backend.Services.CodeRepository;
 
@@ -67,6 +68,41 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
             .Take(40)
             .Select(project => new CodeProjectReferenceDto { Id = project.Id, DisplayName = project.DisplayName, Description = project.Description })
             .ToList();
+    }
+
+    [HttpGet("projects/{projectId:long}/markdown-documents")]
+    public async Task<IActionResult> ListMarkdownDocuments([FromRoute] long projectId, [FromQuery] string? query, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        return new OkObjectResult(_manager.ListProjectMarkdownDocuments(projectId, query));
+    }
+
+    [HttpGet("projects/{projectId:long}/markdown-documents/content")]
+    public async Task<IActionResult> ReadMarkdownDocument([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] string path, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try
+        {
+            return new OkObjectResult(_manager.ReadProjectMarkdownDocument(projectId, repositoryName, path));
+        }
+        catch (DecoderFallbackException)
+        {
+            return new BadRequestObjectResult(new { message = "The Markdown document must use UTF-8 or a Unicode byte-order mark." });
+        }
+        catch (ArgumentException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (FileNotFoundException)
+        {
+            return new NotFoundObjectResult(new { message = "The referenced project document is unavailable." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
     }
 
     [HttpPost("projects")]

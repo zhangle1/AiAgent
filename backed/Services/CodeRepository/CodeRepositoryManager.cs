@@ -54,6 +54,10 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryFileReferenceDto? ResolveProjectFileReference(long projectId, string reference);
 
+    List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query);
+
+    CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path);
+
     (string FilePath, string DownloadName) GetPackageArchive(string name, string archiveName);
 
     void Delete(string name);
@@ -66,6 +70,10 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const long MaxUploadedFileBytes = 50L * 1024 * 1024;
+    private const int MaxMarkdownDocumentCount = 600;
+    private const int MaxMarkdownDocumentDepth = 12;
+    private const int MaxMarkdownDocumentPreviewCharacters = 400_000;
+    private static readonly HashSet<string> ExcludedMarkdownDirectories = new(StringComparer.OrdinalIgnoreCase) { ".git", "node_modules", "bin", "obj", ".next", "dist", "build", "coverage" };
     private static readonly Regex TrailingLineReference = new(@"(?:(?:#L)|(?::))(?<line>[1-9]\d{0,8})$", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private readonly ISqlSugarClient _db;
@@ -534,6 +542,54 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         };
     }
 
+    public List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query)
+    {
+        FindProject(projectId);
+        var term = query?.Trim();
+        var repositories = _db.Queryable<AiCodeRepository>()
+            .Where(item => item.ProjectId == projectId && !item.IsDeleted)
+            .ToList();
+        var documents = new List<CodeProjectMarkdownDocumentDto>();
+        foreach (var repository in repositories)
+        {
+            foreach (var file in EnumerateMarkdownFiles(repository.RootPath))
+            {
+                var path = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(repository.RootPath)), file).Replace('\\', '/');
+                if (!string.IsNullOrWhiteSpace(term)
+                    && !path.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    && !Path.GetFileName(path).Contains(term, StringComparison.OrdinalIgnoreCase)) continue;
+                documents.Add(new CodeProjectMarkdownDocumentDto
+                {
+                    RepositoryName = repository.Name,
+                    Path = path,
+                    Name = Path.GetFileName(path)
+                });
+                if (documents.Count >= MaxMarkdownDocumentCount) break;
+            }
+            if (documents.Count >= MaxMarkdownDocumentCount) break;
+        }
+        return documents
+            .OrderBy(item => item.RepositoryName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path)
+    {
+        FindProject(projectId);
+        var repository = _db.Queryable<AiCodeRepository>()
+            .Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted)
+            .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
+        var repositoryRoot = GetResolvedPath(new DirectoryInfo(repository.RootPath));
+        var normalizedPath = NormalizeMarkdownDocumentPath(path);
+        var candidate = Path.GetFullPath(Path.Combine(repositoryRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
+        if (!File.Exists(candidate)) throw new FileNotFoundException("The referenced project document is unavailable.");
+        var resolved = GetResolvedPath(new FileInfo(candidate));
+        if (!IsPathWithin(repositoryRoot, resolved) || !IsMarkdownFile(resolved)) throw new InvalidOperationException("The referenced project document is unavailable.");
+        var content = ReadMarkdownDocumentContent(resolved, out var isTruncated);
+        return new CodeProjectMarkdownDocumentContentDto { RepositoryName = repository.Name, Path = normalizedPath, Content = content, IsTruncated = isTruncated };
+    }
+
     private object ReadConfiguredFile(AiCodeRepository entity, string path, IReadOnlyCollection<string> allowedFiles)
     {
         var normalized = NormalizeConfiguredPath(entity.RootPath, path, allowedFiles);
@@ -650,6 +706,78 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             var resolved = GetResolvedPath(new FileInfo(candidate));
             if (IsPathWithin(repositoryRoot, resolved)) yield return resolved;
         }
+    }
+
+    private static IEnumerable<string> EnumerateMarkdownFiles(string repositoryRootPath)
+    {
+        var root = GetResolvedPath(new DirectoryInfo(repositoryRootPath));
+        if (!Directory.Exists(root)) yield break;
+        var pending = new Queue<(string Path, int Depth)>();
+        pending.Enqueue((root, 0));
+        var yielded = 0;
+        while (pending.Count > 0 && yielded < MaxMarkdownDocumentCount)
+        {
+            var (directoryPath, depth) = pending.Dequeue();
+            DirectoryInfo directory;
+            try { directory = new DirectoryInfo(directoryPath); }
+            catch (ArgumentException) { continue; }
+            if (!directory.Exists || (depth > 0 && directory.Attributes.HasFlag(FileAttributes.ReparsePoint))) continue;
+
+            FileInfo[] files;
+            DirectoryInfo[] children;
+            try
+            {
+                files = directory.GetFiles();
+                children = depth < MaxMarkdownDocumentDepth ? directory.GetDirectories() : [];
+            }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+
+            foreach (var file in files)
+            {
+                if (file.Attributes.HasFlag(FileAttributes.ReparsePoint) || !IsMarkdownFile(file.FullName)) continue;
+                var resolved = GetResolvedPath(file);
+                if (!IsPathWithin(root, resolved)) continue;
+                yield return resolved;
+                yielded++;
+                if (yielded >= MaxMarkdownDocumentCount) yield break;
+            }
+            foreach (var child in children)
+            {
+                if (ExcludedMarkdownDirectories.Contains(child.Name) || child.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+                var resolved = GetResolvedPath(child);
+                if (IsPathWithin(root, resolved)) pending.Enqueue((resolved, depth + 1));
+            }
+        }
+    }
+
+    private static bool IsMarkdownFile(string path)
+        => Path.GetExtension(path) is var extension
+            && (extension.Equals(".md", StringComparison.OrdinalIgnoreCase) || extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase));
+
+    private static string NormalizeMarkdownDocumentPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path)) throw new ArgumentException("A repository-relative Markdown document path is required.", nameof(path));
+        var normalized = path.Replace('\\', '/').Trim().TrimStart('/');
+        if (!IsMarkdownFile(normalized) || normalized.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(part => part is "." or ".." || ExcludedMarkdownDirectories.Contains(part)))
+            throw new InvalidOperationException("The referenced project document is unavailable.");
+        return normalized;
+    }
+
+    private static string ReadMarkdownDocumentContent(string path, out bool isTruncated)
+    {
+        using var reader = new StreamReader(path, new UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: true);
+        var buffer = new char[8192];
+        var builder = new StringBuilder();
+        while (builder.Length < MaxMarkdownDocumentPreviewCharacters)
+        {
+            var remaining = Math.Min(buffer.Length, MaxMarkdownDocumentPreviewCharacters - builder.Length);
+            var read = reader.Read(buffer, 0, remaining);
+            if (read == 0) break;
+            builder.Append(buffer, 0, read);
+        }
+        isTruncated = reader.Peek() >= 0;
+        return builder.ToString();
     }
 
     private static string GetResolvedPath(FileSystemInfo item)

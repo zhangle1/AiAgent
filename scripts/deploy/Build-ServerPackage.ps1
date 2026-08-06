@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\artifacts\server-package"),
-    [string]$BackendApiUrl = "http://127.0.0.1:8081",
-    [int]$FrontendPort = 8080,
+    [string]$BackendApiUrl = "http://127.0.0.1:5000",
+    [int]$FrontendPort = 3782,
     [string]$RuntimeIdentifier = "win-x64",
     [switch]$IncludePythonWorkers,
     [switch]$SelfContained
@@ -21,7 +21,7 @@ if ($FrontendPort -lt 1024 -or $FrontendPort -gt 65535) {
     throw "FrontendPort must be between 1024 and 65535."
 }
 if (-not [Uri]::IsWellFormedUriString($BackendApiUrl, [UriKind]::Absolute)) {
-    throw "BackendApiUrl must be an absolute URL, for example http://127.0.0.1:8081."
+    throw "BackendApiUrl must be an absolute URL, for example http://127.0.0.1:5000."
 }
 
 Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue

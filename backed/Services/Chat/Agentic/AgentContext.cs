@@ -68,6 +68,9 @@ public sealed class AgentContext
     /// </summary>
     public string ProjectReferenceContext { get; set; } = string.Empty;
 
+    /// <summary>Server-validated Markdown document context referenced by the current message.</summary>
+    public string MarkdownDocumentContext { get; set; } = string.Empty;
+
     /// <summary>
     /// 附件上下文预留字段，后续支持用户上传附件参与聊天。
     /// </summary>
@@ -103,7 +106,8 @@ public sealed class AgentContext
             ModelId = string.IsNullOrWhiteSpace(request.ModelId) ? null : request.ModelId.Trim(),
             TopK = Math.Clamp(request.TopK, 1, 12),
             MemoryContext = request.ServerMemoryContext ?? string.Empty,
-            ProjectReferenceContext = request.ServerProjectReferenceContext ?? string.Empty
+            ProjectReferenceContext = request.ServerProjectReferenceContext ?? string.Empty,
+            MarkdownDocumentContext = request.ServerMarkdownDocumentContext ?? string.Empty
         };
     }
 

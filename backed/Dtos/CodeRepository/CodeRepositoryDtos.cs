@@ -192,6 +192,34 @@ public sealed class CodeProjectReferenceDto
     public string? Description { get; set; }
 }
 
+/// <summary>One Markdown file inside a registered repository, addressed only by a repository-relative path.</summary>
+public sealed class CodeProjectMarkdownDocumentDto
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+}
+
+public sealed class CodeProjectMarkdownDocumentContentDto
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("is_truncated")]
+    public bool IsTruncated { get; set; }
+}
+
 public sealed class CodeRuntimeProfileSaveRequest
 {
     [JsonPropertyName("repository_name")]

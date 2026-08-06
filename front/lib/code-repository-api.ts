@@ -3,6 +3,8 @@ import type {
   CodeRepositoryDirectoryBrowser,
   CodeRepositoryInspection,
   CodeProject,
+  CodeProjectMarkdownDocument,
+  CodeProjectMarkdownDocumentContent,
   CodeProjectReference,
   CodeProjectSaveRequest,
   CodeRepositorySaveRequest,
@@ -52,6 +54,18 @@ export async function getChatProjectReferences(query: string, excludeProjectId?:
   if (excludeProjectId) params.set("excludeProjectId", String(excludeProjectId));
   const suffix = params.size > 0 ? `?${params}` : "";
   return parseJson<CodeProjectReference[]>(await fetch(`/api/v1/code-repositories/projects/references${suffix}`, { cache: "no-store" }));
+}
+
+export async function getProjectMarkdownDocuments(projectId: number, query = ""): Promise<CodeProjectMarkdownDocument[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("query", query.trim());
+  const suffix = params.size > 0 ? `?${params}` : "";
+  return parseJson<CodeProjectMarkdownDocument[]>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents${suffix}`, { cache: "no-store" }));
+}
+
+export async function readProjectMarkdownDocument(projectId: number, repositoryName: string, path: string): Promise<CodeProjectMarkdownDocumentContent> {
+  const params = new URLSearchParams({ repository_name: repositoryName, path });
+  return parseJson<CodeProjectMarkdownDocumentContent>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents/content?${params}`, { cache: "no-store" }));
 }
 
 export type ResolvedCodeFileReference = {

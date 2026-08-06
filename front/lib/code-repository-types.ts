@@ -57,6 +57,19 @@ export type CodeProjectReference = {
   description?: string | null;
 };
 
+export type CodeProjectMarkdownDocument = {
+  repository_name: string;
+  path: string;
+  name: string;
+};
+
+export type CodeProjectMarkdownDocumentContent = {
+  repository_name: string;
+  path: string;
+  content: string;
+  is_truncated: boolean;
+};
+
 export type CodeRepositoryDirectoryBrowser = {
   path: string;
   parent_path?: string | null;

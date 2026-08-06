@@ -48,6 +48,9 @@ public sealed class ChatCompleteRequest
     [JsonPropertyName("project_references")]
     public List<ChatProjectReferenceRequest> ProjectReferences { get; set; } = [];
 
+    [JsonPropertyName("markdown_document_references")]
+    public List<ChatMarkdownDocumentReferenceRequest> MarkdownDocumentReferences { get; set; } = [];
+
     /// <summary>
     /// Optional constrained dashboard workspace for agent file-write tools.
     /// </summary>
@@ -143,11 +146,17 @@ public sealed class ChatCompleteRequest
     [JsonIgnore]
     public string ServerPromptMessage { get; set; } = string.Empty;
 
+    [JsonIgnore]
+    public string ServerMarkdownDocumentContext { get; set; } = string.Empty;
+
     /// <summary>
     /// Resolved project references retained for message metadata and prompt construction only.
     /// </summary>
     [JsonIgnore]
     public List<ResolvedChatProjectReference> ResolvedProjectReferences { get; set; } = [];
+
+    [JsonIgnore]
+    public List<ResolvedChatMarkdownDocumentReference> ResolvedMarkdownDocumentReferences { get; set; } = [];
 }
 
 public sealed class ChatProjectReferenceRequest
@@ -161,6 +170,23 @@ public sealed class ResolvedChatProjectReference
     public long ProjectId { get; init; }
     public string DisplayName { get; init; } = string.Empty;
     public string? Description { get; init; }
+}
+
+public sealed class ChatMarkdownDocumentReferenceRequest
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+}
+
+public sealed class ResolvedChatMarkdownDocumentReference
+{
+    public string RepositoryName { get; init; } = string.Empty;
+    public string Path { get; init; } = string.Empty;
+    public string Content { get; init; } = string.Empty;
+    public bool IsTruncated { get; init; }
 }
 
 public sealed class CodexRuntimeHeartbeatRequest

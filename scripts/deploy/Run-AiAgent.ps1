@@ -2,8 +2,8 @@
 param(
     [ValidateSet("Start", "Stop", "Restart")]
     [string]$Action = "Start",
-    [int]$BackendPort = 8081,
-    [int]$FrontendPort = 8080,
+    [int]$BackendPort = 5000,
+    [int]$FrontendPort = 3782,
     [string]$BackendApiUrl
 )
 

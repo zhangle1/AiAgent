@@ -110,6 +110,7 @@ builder.Services.AddSingleton<ICodexModelPolicyService, CodexModelPolicyService>
 builder.Services.AddSingleton<IImageOcrPolicyService, ImageOcrPolicyService>();
 builder.Services.AddSingleton<IChatImageAttachmentService, ChatImageAttachmentService>();
 builder.Services.AddSingleton<IProjectReferenceContextService, ProjectReferenceContextService>();
+builder.Services.AddSingleton<IMarkdownDocumentReferenceContextService, MarkdownDocumentReferenceContextService>();
 builder.Services.AddSingleton<IImageOcrService, ImageOcrService>();
 builder.Services.AddSingleton<ICodexChatService, CodexChatService>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
