@@ -10,6 +10,7 @@ type MarkdownMessageProps = {
   content: string;
   projectId?: number | null;
   onOpenCodeFile?: (reference: { repositoryName: string; filePath: string; line?: number }) => void;
+  onOpenProjectMarkdownDocument?: (fileName: string) => void;
 };
 
 type CodeReferenceCandidate = {
@@ -130,6 +131,11 @@ function codeReferenceFromText(value: string): CodeReferenceCandidate | null {
   return !reference.includes("\n") && sourceFilePattern.test(reference) ? { reference } : null;
 }
 
+function markdownDocumentReferenceFromText(value: string): string | null {
+  const reference = value.trim();
+  return !reference.includes("\n") && /\.md(?:(?::|#L)[1-9]\d{0,8})?$/i.test(reference) ? reference : null;
+}
+
 function linkifyAgentFileReferences(markdown: string): string {
   return markdown.split(/(```[\s\S]*?```|`[^`]*`)/g).map((segment) => {
     if (!segment || segment.startsWith("`")) return segment;
@@ -170,7 +176,7 @@ function OpenCodeReference({ candidate, projectId, onOpenCodeFile, children, cla
   );
 }
 
-export function MarkdownMessage({ content, projectId, onOpenCodeFile }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProjectMarkdownDocument }: MarkdownMessageProps) {
   const renderedContent = linkifyAgentFileReferences(content);
   return (
     <ReactMarkdown
@@ -198,8 +204,13 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile }: Markdown
         th: (props) => <th className="border-b border-zinc-200 px-3 py-2 font-semibold" {...domProps(props)} />,
         td: (props) => <td className="border-b border-zinc-100 px-3 py-2 align-top" {...domProps(props)} />,
         code: ({ className, children, ...props }) => {
-          const sourceReference = !className ? codeReferenceFromText(readChildrenText(children)) : null;
+          const codeText = readChildrenText(children).trim();
+          const sourceReference = !className ? codeReferenceFromText(codeText) : null;
+          const markdownDocumentReference = !className ? markdownDocumentReferenceFromText(codeText) : null;
           const code = <code className={`${className ?? ""} rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.92em]`} {...domProps(props)}>{children}</code>;
+          if (markdownDocumentReference && onOpenProjectMarkdownDocument) {
+            return <button type="button" onClick={() => onOpenProjectMarkdownDocument(markdownDocumentReference)} className="cursor-pointer text-left text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900" title="在右侧项目文档中打开">{code}</button>;
+          }
           return sourceReference && projectId && onOpenCodeFile
             ? <OpenCodeReference candidate={sourceReference} projectId={projectId} onOpenCodeFile={onOpenCodeFile} className="cursor-pointer text-left text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">{code}</OpenCodeReference>
             : code;
@@ -213,7 +224,12 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile }: Markdown
         a: ({ href, children, ...props }) => {
           // Agents sometimes turn a source file name into an ordinary http link.
           // Prefer the displayed source-file reference so it opens in the right inspector.
-          const sourceReference = codeReferenceFromHref(href) ?? codeReferenceFromText(readChildrenText(children));
+          const linkText = readChildrenText(children).trim();
+          const sourceReference = codeReferenceFromHref(href) ?? codeReferenceFromText(linkText);
+          const markdownDocumentReference = markdownDocumentReferenceFromText(sourceReference?.reference ?? linkText);
+          if (markdownDocumentReference && onOpenProjectMarkdownDocument) {
+            return <button type="button" onClick={() => onOpenProjectMarkdownDocument(markdownDocumentReference)} className="text-blue-600 underline underline-offset-2 hover:text-blue-700" title="在右侧项目文档中打开">{children}</button>;
+          }
           if (sourceReference && projectId && onOpenCodeFile) {
             return <OpenCodeReference candidate={sourceReference} projectId={projectId} onOpenCodeFile={onOpenCodeFile} className="text-blue-600 underline underline-offset-2 hover:text-blue-700">{children}</OpenCodeReference>;
           }

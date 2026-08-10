@@ -203,6 +203,21 @@ public sealed class CodeProjectMarkdownDocumentDto
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>repository, upload, or agent_index. Clients must still address documents by opaque repository/path fields.</summary>
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "repository";
+
+    [JsonPropertyName("uploader_id")]
+    public string? UploaderId { get; set; }
+
+    /// <summary>Safe server-side upload directory relative to the dedicated project Markdown root.</summary>
+    [JsonPropertyName("directory_path")]
+    public string? DirectoryPath { get; set; }
+
+    /// <summary>UTC timestamp used by clients to make newly created project documents easy to find.</summary>
+    [JsonPropertyName("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public sealed class CodeProjectMarkdownDocumentContentDto
@@ -218,6 +233,42 @@ public sealed class CodeProjectMarkdownDocumentContentDto
 
     [JsonPropertyName("is_truncated")]
     public bool IsTruncated { get; set; }
+}
+
+public sealed class CodeProjectMarkdownDirectoryCreateRequest
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("parent_path")]
+    public string? ParentPath { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+}
+
+public sealed class CodeProjectMarkdownDirectoryDto
+{
+    [JsonPropertyName("repository_name")]
+    public string RepositoryName { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+}
+
+public sealed class CodeProjectAgentMarkdownIndexDto
+{
+    [JsonPropertyName("available")]
+    public bool Available { get; set; }
+
+    [JsonPropertyName("is_stale")]
+    public bool IsStale { get; set; }
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public sealed class CodeRuntimeProfileSaveRequest

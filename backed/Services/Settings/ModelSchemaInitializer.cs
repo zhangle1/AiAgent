@@ -48,6 +48,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiKnowledgeChunk),
             typeof(AiKnowledgeJob),
             typeof(AiCodeProject),
+            typeof(AiProjectMarkdownDocument),
             typeof(AiCodeRepository),
             typeof(AiCodeRepositoryRunProfile),
             typeof(AiCodeRepositoryFile),
@@ -77,6 +78,9 @@ IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
 
 IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
     ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;
+
+IF COL_LENGTH(N'dbo.ai_project_markdown_document', N'DirectoryPath') IS NULL
+    ALTER TABLE dbo.ai_project_markdown_document ADD DirectoryPath NVARCHAR(512) NULL;
 
 IF COL_LENGTH(N'dbo.ai_user', N'Role') IS NULL
     ALTER TABLE dbo.ai_user ADD Role NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_user_Role DEFAULT N'user';

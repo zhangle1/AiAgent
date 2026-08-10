@@ -149,6 +149,10 @@ public sealed class ChatCompleteRequest
     [JsonIgnore]
     public string ServerMarkdownDocumentContext { get; set; } = string.Empty;
 
+    /// <summary>Server-generated project orientation context. Browser input cannot populate it.</summary>
+    [JsonIgnore]
+    public string ServerProjectAgentMarkdownIndexContext { get; set; } = string.Empty;
+
     /// <summary>
     /// Resolved project references retained for message metadata and prompt construction only.
     /// </summary>

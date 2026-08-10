@@ -19,6 +19,7 @@ public interface IMarkdownDocumentReferenceContextService
 public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentReferenceContextService
 {
     private const int MaximumReferences = 5;
+    private const int MaximumContextCharacters = 160_000;
     private static readonly Regex MarkdownDocumentTokenRegex = new(@"\[\[文档:[^\]|]+\|([^\]|]+)\|([^\]|]+)\]\]", RegexOptions.CultureInvariant);
     private readonly ICodeRepositoryManager _repositories;
     private readonly IProjectAccessService _projectAccess;
@@ -46,18 +47,22 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
             throw new UnauthorizedAccessException("A project must be selected before referencing its Markdown documents.");
 
         var resolved = new List<ResolvedChatMarkdownDocumentReference>();
+        var remainingCharacters = MaximumContextCharacters;
         foreach (var reference in references)
         {
             try
             {
                 var document = _repositories.ReadProjectMarkdownDocument(request.CodeProjectId.Value, reference.RepositoryName, reference.Path);
+                if (remainingCharacters <= 0) throw new InvalidOperationException("The referenced Markdown documents exceed the 160,000-character chat context limit.");
+                var content = document.Content.Length <= remainingCharacters ? document.Content : document.Content[..remainingCharacters];
                 resolved.Add(new ResolvedChatMarkdownDocumentReference
                 {
                     RepositoryName = document.RepositoryName,
                     Path = document.Path,
-                    Content = document.Content,
-                    IsTruncated = document.IsTruncated
+                    Content = content,
+                    IsTruncated = document.IsTruncated || content.Length < document.Content.Length
                 });
+                remainingCharacters -= content.Length;
             }
             catch (ArgumentException)
             {

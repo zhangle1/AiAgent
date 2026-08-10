@@ -61,6 +61,15 @@ export type CodeProjectMarkdownDocument = {
   repository_name: string;
   path: string;
   name: string;
+  source?: "repository" | "upload" | "agent_index";
+  uploader_id?: string | null;
+  directory_path?: string | null;
+  updated_at?: string | null;
+};
+
+export type CodeProjectMarkdownDirectory = {
+  repository_name: string;
+  path: string;
 };
 
 export type CodeProjectMarkdownDocumentContent = {
@@ -68,6 +77,13 @@ export type CodeProjectMarkdownDocumentContent = {
   path: string;
   content: string;
   is_truncated: boolean;
+};
+
+export type CodeProjectAgentMarkdownIndex = {
+  available: boolean;
+  is_stale: boolean;
+  content: string;
+  updated_at?: string | null;
 };
 
 export type CodeRepositoryDirectoryBrowser = {
@@ -107,6 +123,7 @@ export type GitWorkspaceStatus = { is_repository: boolean; branch?: string | nul
 export type GitOperationResult = { ok: boolean; action: string; output: string; status: GitWorkspaceStatus };
 export type GitWorkspaceBranches = { current_branch?: string | null; local_branches: string[]; remote_branches: string[] };
 export type GitDiffComparison = "working" | "push" | "pull";
-export type GitWorkspaceDiff = { comparison: GitDiffComparison; remote_branch?: string | null; file_count: number; is_truncated: boolean; content: string; message?: string | null };
+export type GitWorkspaceDiffFile = { path: string; status: string; old_path?: string | null };
+export type GitWorkspaceDiff = { comparison: GitDiffComparison; remote_branch?: string | null; file_count: number; is_truncated: boolean; files: GitWorkspaceDiffFile[]; content: string; message?: string | null };
 export type CodeRepositoryHealth = { root_exists: boolean; project_match: boolean; is_git_repository: boolean; branch?: string | null; solution_files: Array<{ path: string; exists: boolean }>; configuration_files: Array<{ path: string; exists: boolean }>; messages: string[] };
 export type ConfiguredCodeFile = { path: string; content: string; sha256: string; updated_at: string };

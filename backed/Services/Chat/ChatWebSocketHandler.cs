@@ -28,13 +28,14 @@ public sealed class ChatWebSocketHandler
     private readonly IMemoryService _memory;
     private readonly IProjectReferenceContextService _projectReferences;
     private readonly IMarkdownDocumentReferenceContextService _markdownDocuments;
+    private readonly IProjectAgentMarkdownIndexContextService _projectAgentMarkdownIndex;
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
     {
         _orchestrator = orchestrator;
         _authService = authService;
@@ -44,6 +45,7 @@ public sealed class ChatWebSocketHandler
         _memory = memory;
         _projectReferences = projectReferences;
         _markdownDocuments = markdownDocuments;
+        _projectAgentMarkdownIndex = projectAgentMarkdownIndex;
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
     }
@@ -95,6 +97,7 @@ public sealed class ChatWebSocketHandler
             }
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
+            await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             var content = new StringBuilder();

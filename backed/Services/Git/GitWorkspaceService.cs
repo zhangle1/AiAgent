@@ -68,8 +68,17 @@ public sealed class GitWorkspaceDiff
     public int FileCount { get; set; }
     [JsonPropertyName("is_truncated")]
     public bool IsTruncated { get; set; }
+    public List<GitWorkspaceDiffFile> Files { get; set; } = [];
     public string Content { get; set; } = string.Empty;
     public string? Message { get; set; }
+}
+
+public sealed class GitWorkspaceDiffFile
+{
+    public string Path { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("old_path")]
+    public string? OldPath { get; set; }
 }
 
 public sealed class GitWorkspaceService : IGitWorkspaceService
@@ -285,10 +294,10 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
             _ => $"HEAD...{remoteBranch}"
         };
         var diff = await RunGitAsync(rootPath, ["diff", "--no-ext-diff", "--no-color", "--unified=3", range], cancellationToken);
-        var files = await RunGitAsync(rootPath, ["diff", "--name-only", range], cancellationToken);
-        if (diff.ExitCode != 0 || files.ExitCode != 0)
+        var files = await GetDiffFilesAsync(rootPath, range, mode == "working", cancellationToken);
+        if (diff.ExitCode != 0)
         {
-            var output = JoinOutput([diff.Output, files.Output]);
+            var output = diff.Output;
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(output) ? "无法读取 Git Diff。" : output);
         }
         var content = diff.Output;
@@ -299,11 +308,49 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         {
             Comparison = mode,
             RemoteBranch = remoteBranch,
-            FileCount = ToLines(files.Output).Count,
+            FileCount = files.Count,
             IsTruncated = isTruncated,
+            Files = files,
             Content = content,
             Message = remoteRefreshError ?? (string.IsNullOrWhiteSpace(content) ? "没有可显示的差异。" : null)
         };
+    }
+
+    private static async Task<List<GitWorkspaceDiffFile>> GetDiffFilesAsync(string rootPath, string range, bool includeUntracked, CancellationToken cancellationToken)
+    {
+        var result = await RunGitAsync(rootPath, ["diff", "--name-status", "-z", range], cancellationToken);
+        if (result.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.Output) ? "Unable to read changed Git files." : result.Output);
+        var values = result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var files = new List<GitWorkspaceDiffFile>();
+        for (var index = 0; index < values.Length;)
+        {
+            var status = values[index++].Trim();
+            if (string.IsNullOrWhiteSpace(status) || index >= values.Length) break;
+            string? oldPath = null;
+            string path;
+            if (status.StartsWith('R') || status.StartsWith('C'))
+            {
+                oldPath = values[index++];
+                if (index >= values.Length) break;
+                path = values[index++];
+            }
+            else
+            {
+                path = values[index++];
+            }
+            files.Add(new GitWorkspaceDiffFile { Status = status, Path = path.Replace('\\', '/'), OldPath = oldPath?.Replace('\\', '/') });
+        }
+        if (includeUntracked)
+        {
+            var untracked = await RunGitAsync(rootPath, ["ls-files", "--others", "--exclude-standard", "-z"], cancellationToken);
+            if (untracked.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(untracked.Output) ? "Unable to read untracked Git files." : untracked.Output);
+            foreach (var path in untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var normalized = path.Replace('\\', '/');
+                if (files.All(file => !string.Equals(file.Path, normalized, StringComparison.Ordinal))) files.Add(new GitWorkspaceDiffFile { Status = "??", Path = normalized });
+            }
+        }
+        return files.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase).Take(600).ToList();
     }
 
     private static async Task<string?> RefreshRemoteRefsAsync(string rootPath, CancellationToken cancellationToken)

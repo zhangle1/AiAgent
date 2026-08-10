@@ -3,8 +3,10 @@ import type {
   CodeRepositoryDirectoryBrowser,
   CodeRepositoryInspection,
   CodeProject,
+  CodeProjectMarkdownDirectory,
   CodeProjectMarkdownDocument,
   CodeProjectMarkdownDocumentContent,
+  CodeProjectAgentMarkdownIndex,
   CodeProjectReference,
   CodeProjectSaveRequest,
   CodeRepositorySaveRequest,
@@ -68,6 +70,38 @@ export async function readProjectMarkdownDocument(projectId: number, repositoryN
   return parseJson<CodeProjectMarkdownDocumentContent>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents/content?${params}`, { cache: "no-store" }));
 }
 
+export async function uploadProjectMarkdownDocument(projectId: number, repositoryName: string, directoryPath: string, file: File): Promise<CodeProjectMarkdownDocument> {
+  const body = new FormData();
+  body.set("repository_name", repositoryName);
+  body.set("directory_path", directoryPath);
+  body.set("file", file);
+  return parseJson<CodeProjectMarkdownDocument>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents/upload`, { method: "POST", body }));
+}
+
+export async function getProjectMarkdownDirectories(projectId: number): Promise<CodeProjectMarkdownDirectory[]> {
+  return parseJson<CodeProjectMarkdownDirectory[]>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-directories`, { cache: "no-store" }));
+}
+
+export async function createProjectMarkdownDirectory(projectId: number, repositoryName: string, parentPath: string, name: string): Promise<CodeProjectMarkdownDirectory> {
+  return parseJson<CodeProjectMarkdownDirectory>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-directories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repository_name: repositoryName, parent_path: parentPath, name }) }));
+}
+
+export function projectMarkdownDocumentDownloadUrl(projectId: number, repositoryName: string, path: string): string {
+  return `/api/v1/code-repositories/projects/${projectId}/markdown-documents/download?${new URLSearchParams({ repository_name: repositoryName, path })}`;
+}
+
+export async function deleteProjectMarkdownDocument(projectId: number, repositoryName: string, path: string): Promise<void> {
+  await parseJson<{ ok: boolean }>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents?${new URLSearchParams({ repository_name: repositoryName, path })}`, { method: "DELETE" }));
+}
+
+export async function getProjectAgentMarkdownIndex(projectId: number): Promise<CodeProjectAgentMarkdownIndex> {
+  return parseJson<CodeProjectAgentMarkdownIndex>(await fetch(`/api/v1/code-repositories/projects/${projectId}/agent-markdown-index`, { cache: "no-store" }));
+}
+
+export async function generateProjectAgentMarkdownIndex(projectId: number): Promise<CodeProjectAgentMarkdownIndex> {
+  return parseJson<CodeProjectAgentMarkdownIndex>(await fetch(`/api/v1/code-repositories/projects/${projectId}/agent-markdown-index`, { method: "POST" }));
+}
+
 export type ResolvedCodeFileReference = {
   repository_name: string;
   file_path: string;
@@ -118,17 +152,6 @@ export async function browseCodeRepositoryFiles(rootPath: string, kind: "solutio
   if (path) query.set("path", path);
   return parseJson<CodeRepositoryDirectoryBrowser>(
     await fetch(`/api/v1/code-repositories/browse/files?${query.toString()}`, { cache: "no-store" }),
-  );
-}
-
-export async function uploadCodeRepositoryFile(rootPath: string, directoryPath: string, file: File, overwrite: boolean): Promise<{ name: string; path: string }> {
-  const body = new FormData();
-  body.set("root_path", rootPath);
-  body.set("path", directoryPath);
-  body.set("file", file);
-  body.set("overwrite", String(overwrite));
-  return parseJson<{ name: string; path: string }>(
-    await fetch("/api/v1/code-repositories/browse/files/upload", { method: "POST", body }),
   );
 }
 

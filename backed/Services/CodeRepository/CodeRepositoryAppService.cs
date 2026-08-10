@@ -105,6 +105,120 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         }
     }
 
+    [HttpGet("projects/{projectId:long}/markdown-documents/download")]
+    public async Task<IActionResult> DownloadMarkdownDocument([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] string path, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try
+        {
+            var document = _manager.DownloadProjectMarkdownDocument(projectId, repositoryName, path);
+            return new FileContentResult(document.Content, "text/markdown; charset=utf-8") { FileDownloadName = document.FileName };
+        }
+        catch (DecoderFallbackException) { return new BadRequestObjectResult(new { message = "Markdown 文件必须使用 UTF-8 或 Unicode BOM 编码。" }); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (FileNotFoundException) { return new NotFoundObjectResult(new { message = "The referenced project document is unavailable." }); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
+    [HttpDelete("projects/{projectId:long}/markdown-documents")]
+    public async Task<IActionResult> DeleteMarkdownDocument([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] string path, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try
+        {
+            _manager.DeleteProjectMarkdownDocument(projectId, repositoryName, path);
+            return new OkObjectResult(new { ok = true });
+        }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (DirectoryNotFoundException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (FileNotFoundException) { return new NotFoundObjectResult(new { message = "The referenced project document is unavailable." }); }
+        catch (UnauthorizedAccessException) { return new BadRequestObjectResult(new { message = "AiAgent cannot delete the selected server file. Grant the service account Modify permission on its directory." }); }
+        catch (IOException) { return new BadRequestObjectResult(new { message = "The selected Markdown file could not be deleted because it is in use or the server filesystem rejected the operation." }); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
+    [HttpGet("projects/{projectId:long}/markdown-directories")]
+    public async Task<IActionResult> ListMarkdownDirectories([FromRoute] long projectId, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        return new OkObjectResult(_manager.ListProjectMarkdownDirectories(projectId));
+    }
+
+    [HttpPost("projects/{projectId:long}/markdown-directories")]
+    public async Task<IActionResult> CreateMarkdownDirectory([FromRoute] long projectId, [FromBody] CodeProjectMarkdownDirectoryCreateRequest? request, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try { return new OkObjectResult(_manager.CreateProjectMarkdownDirectory(projectId, request?.RepositoryName ?? string.Empty, request?.ParentPath, request?.Name ?? string.Empty)); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (DirectoryNotFoundException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (FileNotFoundException ex) { return new NotFoundObjectResult(new { message = ex.Message }); }
+        catch (UnauthorizedAccessException) { return new BadRequestObjectResult(new { message = "AiAgent cannot create the selected server directory. Grant the service account Modify permission on that directory." }); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
+    [HttpPost("projects/{projectId:long}/markdown-documents/upload")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadProjectMarkdownDocument([FromRoute] long projectId, [FromForm(Name = "repository_name")] string? repositoryName, [FromForm(Name = "directory_path")] string? directoryPath, IFormFile file, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try
+        {
+            return new OkObjectResult(await _manager.UploadProjectMarkdownDocumentAsync(projectId, user, repositoryName, directoryPath, file, cancellationToken));
+        }
+        catch (DecoderFallbackException)
+        {
+            return new BadRequestObjectResult(new { message = "Markdown 文件必须使用 UTF-8 或 Unicode BOM 编码。" });
+        }
+        catch (ArgumentException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+        catch (FileNotFoundException ex)
+        {
+            return new NotFoundObjectResult(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new BadRequestObjectResult(new { message = "AiAgent cannot write to the selected server directory. Grant the service account Modify permission on that directory." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("projects/{projectId:long}/agent-markdown-index")]
+    public async Task<IActionResult> GetProjectAgentMarkdownIndex([FromRoute] long projectId, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        return new OkObjectResult(_manager.GetProjectAgentMarkdownIndex(projectId));
+    }
+
+    [HttpPost("projects/{projectId:long}/agent-markdown-index")]
+    public async Task<IActionResult> GenerateProjectAgentMarkdownIndex([FromRoute] long projectId, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try
+        {
+            return new OkObjectResult(await _manager.GenerateProjectAgentMarkdownIndexAsync(projectId, user, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new BadRequestObjectResult(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("projects")]
     public CodeProjectDto CreateProject([FromBody] CodeProjectSaveRequest request) => _manager.CreateProject(request);
 
@@ -175,28 +289,6 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
                 : new OkObjectResult(resolved);
         }
         catch (ArgumentException ex)
-        {
-            return new BadRequestObjectResult(new { message = ex.Message });
-        }
-    }
-
-    [HttpPost("browse/files/upload")]
-    [Consumes("multipart/form-data")]
-    public async Task<IActionResult> UploadBrowseFile([FromForm(Name = "root_path")] string rootPath, [FromForm] string? path, IFormFile file, [FromForm] bool overwrite, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return new OkObjectResult(await _manager.UploadFileAsync(rootPath, path, file, overwrite, cancellationToken));
-        }
-        catch (ArgumentException ex)
-        {
-            return new BadRequestObjectResult(new { message = ex.Message });
-        }
-        catch (DirectoryNotFoundException ex)
-        {
-            return new BadRequestObjectResult(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
         {
             return new BadRequestObjectResult(new { message = ex.Message });
         }

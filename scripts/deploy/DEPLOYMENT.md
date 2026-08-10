@@ -86,3 +86,26 @@ New-NetFirewallRule -DisplayName "AiAgent 后端" -Direction Inbound -Protocol T
 ```
 
 不要提交或传播 `appsettings.Production.json`，它可能包含数据库密码、Token 或 API Key。
+
+## 四、项目 Markdown 上传目录的最小 NTFS 权限
+
+项目根目录必须位于 `CodeRepository:AllowedRoots` 的某一个根目录中。AiAgent 不会接受浏览器传来的服务器路径。默认 Markdown 上传和项目 Agent 索引使用每个项目根目录下固定的：
+
+```text
+uploads\aiagent-documents\
+```
+
+首次部署时，由管理员在每个已注册项目中预先创建这个目录，然后仅给运行 AiAgent 后端服务的 Windows 账户授予该目录及其子项的“修改 (Modify)”权限。不要把“完全控制”或项目根目录的写权限授予服务账户。
+
+```powershell
+$projectRoot = "E:\Projects\ExampleProject"
+$serviceAccount = "DOMAIN\AiAgentSvc" # 或 NT SERVICE\AiAgentBackend
+$uploadDirectory = Join-Path $projectRoot "uploads\aiagent-documents"
+New-Item -ItemType Directory -Force -Path $uploadDirectory
+$grant = "{0}:(OI)(CI)M" -f $serviceAccount
+icacls $uploadDirectory /grant $grant
+```
+
+服务账户仍需对项目根目录和已注册仓库拥有读取/列出权限，以便生成索引和读取代码；默认情况下只有上述专用目录需要写入权限。项目文档页面也允许把**当前项目已注册仓库内已选中的目录**作为交付上传或新建文件夹目标：若启用此流程，管理员必须仅对需要交付的仓库目录（建议单独的 `docs\delivery` 子目录）及其子项授予服务账户“修改 (Modify)”权限，不能向整个 `AllowedRoots`、任意项目根目录或未注册仓库授予写权限。所有目标仍会规范化为仓库相对路径，拒绝越界、符号链接/重解析点及 `.git`、`node_modules`、构建目录。
+
+验证步骤：以服务账户启动后端，在有权限的账号下打开“项目文档”，选中 `uploads/aiagent-documents` 或已注册仓库中的交付目录，上传一个 UTF-8 `.md` 文件并新建一个子目录，然后下载该文档、引用到聊天，最后点击“刷新索引”。上传、下载、引用和索引均应成功。若返回写入失败，请先核对项目根目录/仓库根目录位于 `CodeRepository:AllowedRoots`，再运行 `icacls` 确认服务账户在**所选目标目录**拥有 `(M)`，并检查该目录及其父目录没有重解析点。

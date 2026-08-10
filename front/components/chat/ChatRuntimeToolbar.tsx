@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Download, FileDiff, FilePenLine, GitBranch, Info, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, File, FileDiff, FilePenLine, Folder, FolderOpen, GitBranch, Info, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
 import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
 import { discardCodeRepositoryChangesAndPull, getCodeRepositoryGitDiff, getCodeRepositoryGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
-import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceStatus } from "@/lib/code-repository-types";
+import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
@@ -253,7 +253,7 @@ function RuntimeActionHelp({ onClose }: { onClose: () => void }) {
 }
 
 type GitDiffLine = { kind: "context" | "add" | "remove" | "meta"; content: string; oldLine?: number; newLine?: number };
-type GitDiffFile = { path: string; lines: GitDiffLine[] };
+type GitDiffFile = GitWorkspaceDiffFile & { lines: GitDiffLine[] };
 
 function GitDiffDialog({ repository, onClose }: { repository: CodeRepository; onClose: () => void }) {
   const [comparison, setComparison] = useState<GitDiffComparison>("working");
@@ -275,14 +275,15 @@ function GitDiffDialog({ repository, onClose }: { repository: CodeRepository; on
     return () => { cancelled = true; };
   }, [repository.name, comparison]);
 
-  const files = parseGitDiffFiles(diff?.content || "");
+  const parsedFiles = parseGitDiffFiles(diff?.content || "");
+  const files = (diff?.files?.length ? diff.files.map((file) => ({ ...file, lines: parsedFiles.find((parsed) => parsed.path === file.path)?.lines ?? [] })) : parsedFiles);
   const activeFile = files.find((item) => item.path === selectedPath) || files[0] || null;
   if (typeof document === "undefined") return null;
   return createPortal(<div className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/60 p-3 backdrop-blur-sm" role="presentation" onMouseDown={onClose}>
     <section className="flex h-[min(82vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="git-diff-title" onMouseDown={(event) => event.stopPropagation()}>
       <header className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-4 py-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-700"><FileDiff size={18}/></span><div className="min-w-0 flex-1"><h2 id="git-diff-title" className="truncate text-sm font-semibold text-slate-900">代码文件差异</h2><p className="mt-0.5 truncate text-[11px] text-slate-500">{repository.display_name} · VS Code 风格的行级高亮</p></div><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭代码差异"><X size={17}/></button></header>
       <div className="flex shrink-0 gap-1 border-b border-slate-100 px-4 py-2">{(["working", "push", "pull"] as const).map((mode) => <button key={mode} type="button" onClick={() => setComparison(mode)} className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${comparison === mode ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{mode === "working" ? "工作区" : mode === "push" ? "待推送" : "待拉取"}</button>)}</div>
-      {loading ? <div className="grid min-h-0 flex-1 place-items-center text-sm text-slate-500"><span><Loader2 size={16} className="mr-2 inline animate-spin"/>正在读取 Git Diff…</span></div> : error ? <p className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : files.length ? <div className="grid min-h-0 flex-1 md:grid-cols-[220px_minmax(0,1fr)]"><aside className="min-h-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:border-b-0 md:border-r">{files.map((file) => <button key={file.path} type="button" onClick={() => setSelectedPath(file.path)} className={`mb-1 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition ${activeFile?.path === file.path ? "bg-violet-100 text-violet-800" : "text-slate-600 hover:bg-white"}`} title={file.path}><FileDiff size={14} className="shrink-0"/><span className="min-w-0 flex-1 truncate font-mono">{file.path}</span></button>)}</aside><div className="min-h-0 overflow-auto bg-[#1e1e1e] p-3"><p className="mb-2 truncate font-mono text-[11px] text-slate-400">{activeFile?.path}</p><pre className="min-w-max overflow-visible font-mono text-[12px] leading-5 text-slate-100">{activeFile?.lines.map((line, index) => <DiffCodeLine key={`${line.kind}-${index}`} line={line}/>)}</pre></div></div> : <div className="grid min-h-0 flex-1 place-items-center px-8 text-center text-sm leading-6 text-slate-500">{diff?.message || "当前比较范围没有代码差异。"}</div>}
+      {loading ? <div className="grid min-h-0 flex-1 place-items-center text-sm text-slate-500"><span><Loader2 size={16} className="mr-2 inline animate-spin"/>正在读取 Git Diff…</span></div> : error ? <p className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : files.length ? <div className="grid min-h-0 flex-1 md:grid-cols-[260px_minmax(0,1fr)]"><aside className="min-h-0 overflow-auto border-b border-slate-200 bg-slate-50 p-2 md:border-b-0 md:border-r"><p className="px-2 py-1 text-[11px] font-semibold text-slate-500">文件变更</p><GitDiffFileTree files={files} activePath={activeFile?.path} onSelect={setSelectedPath}/></aside><div className="min-h-0 overflow-auto bg-[#1e1e1e] p-3"><p className="mb-2 truncate font-mono text-[11px] text-slate-400">{activeFile?.path}</p>{activeFile?.lines.length ? <pre className="min-w-max overflow-visible font-mono text-[12px] leading-5 text-slate-100">{activeFile.lines.map((line, index) => <DiffCodeLine key={`${line.kind}-${index}`} line={line}/>)}</pre> : <p className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-xs leading-5 text-slate-400">该文件是未跟踪的新增文件，Git 尚无可对比的基线；它已在左侧目录树中标记为 U。</p>}</div></div> : <div className="grid min-h-0 flex-1 place-items-center px-8 text-center text-sm leading-6 text-slate-500">{diff?.message || "当前比较范围没有代码差异。"}</div>}
       {diff?.is_truncated && <p className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-800">差异内容较长，当前仅显示前 240,000 个字符。</p>}
     </section>
   </div>, document.body);
@@ -294,6 +295,41 @@ function DiffCodeLine({ line }: { line: GitDiffLine }) {
   return <span className={`flex min-w-max ${colors}`}><span className="w-12 select-none border-r border-white/5 px-2 text-right text-slate-500">{line.oldLine ?? ""}</span><span className="w-12 select-none border-r border-white/5 px-2 text-right text-slate-500">{line.newLine ?? ""}</span><span className="w-5 select-none text-center text-slate-400">{prefix}</span><code className="whitespace-pre pr-4">{line.content || " "}</code></span>;
 }
 
+type GitDiffFileTreeNode = { children: Map<string, GitDiffFileTreeNode>; file?: GitDiffFile };
+
+function GitDiffFileTree({ files, activePath, onSelect }: { files: GitDiffFile[]; activePath?: string; onSelect: (path: string) => void }) {
+  const root: GitDiffFileTreeNode = { children: new Map() };
+  for (const file of files) {
+    let node = root;
+    for (const segment of file.path.split("/").filter(Boolean)) {
+      let child = node.children.get(segment);
+      if (!child) { child = { children: new Map() }; node.children.set(segment, child); }
+      node = child;
+    }
+    node.file = file;
+  }
+  return <GitDiffFileTreeNodeView node={root} activePath={activePath} onSelect={onSelect}/>;
+}
+
+function GitDiffFileTreeNodeView({ node, activePath, onSelect, depth = 0 }: { node: GitDiffFileTreeNode; activePath?: string; onSelect: (path: string) => void; depth?: number }) {
+  return <div>{[...node.children.entries()].sort(([leftName, left], [rightName, right]) => Number(Boolean(left.file)) - Number(Boolean(right.file)) || leftName.localeCompare(rightName)).map(([name, child]) => <GitDiffFileTreeItem key={name} name={name} node={child} activePath={activePath} onSelect={onSelect} depth={depth}/>)}</div>;
+}
+
+function GitDiffFileTreeItem({ name, node, activePath, onSelect, depth }: { name: string; node: GitDiffFileTreeNode; activePath?: string; onSelect: (path: string) => void; depth: number }) {
+  const [expanded, setExpanded] = useState(depth < 2);
+  if (node.file && node.children.size === 0) {
+    const active = activePath === node.file.path;
+    return <button type="button" onClick={() => onSelect(node.file!.path)} title={node.file.old_path ? `${node.file.old_path} → ${node.file.path}` : node.file.path} className={`flex min-h-8 w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs transition ${active ? "bg-violet-100 text-violet-800" : "text-slate-600 hover:bg-white"}`} style={{ paddingLeft: `${depth * 12 + 8}px` }}><File size={13} className="shrink-0"/><span className="min-w-0 flex-1 truncate font-mono">{name}</span><GitDiffFileStatus status={node.file.status}/></button>;
+  }
+  return <div><button type="button" onClick={() => setExpanded((current) => !current)} className="flex min-h-8 w-full items-center gap-1 rounded-md py-1 pr-2 text-left text-xs font-medium text-slate-600 hover:bg-white" style={{ paddingLeft: `${depth * 12 + 4}px` }}><span className="grid h-4 w-4 place-items-center">{expanded ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}</span>{expanded ? <FolderOpen size={14} className="shrink-0 text-amber-500"/> : <Folder size={14} className="shrink-0 text-amber-500"/>}<span className="min-w-0 truncate">{name}</span></button>{expanded && <GitDiffFileTreeNodeView node={node} activePath={activePath} onSelect={onSelect} depth={depth + 1}/>}</div>;
+}
+
+function GitDiffFileStatus({ status }: { status: string }) {
+  const code = status === "??" ? "U" : status[0]?.toUpperCase() || "M";
+  const color = code === "A" || code === "U" ? "bg-emerald-100 text-emerald-700" : code === "D" ? "bg-rose-100 text-rose-700" : code === "R" ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-700";
+  return <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${color}`}>{code}</span>;
+}
+
 function parseGitDiffFiles(content: string): GitDiffFile[] {
   const files: GitDiffFile[] = [];
   let current: GitDiffFile | null = null;
@@ -301,7 +337,7 @@ function parseGitDiffFiles(content: string): GitDiffFile[] {
   let newLine = 0;
   for (const rawLine of content.split(/\r?\n/)) {
     const fileMatch = /^diff --git a\/(.+?) b\/(.+)$/.exec(rawLine);
-    if (fileMatch) { current = { path: fileMatch[2], lines: [] }; files.push(current); oldLine = 0; newLine = 0; continue; }
+    if (fileMatch) { current = { path: fileMatch[2], status: "M", lines: [] }; files.push(current); oldLine = 0; newLine = 0; continue; }
     if (!current) continue;
     const hunkMatch = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
     if (hunkMatch) { oldLine = Number(hunkMatch[1]); newLine = Number(hunkMatch[2]); current.lines.push({ kind: "meta", content: rawLine }); continue; }

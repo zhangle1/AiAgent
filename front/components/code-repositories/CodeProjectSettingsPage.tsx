@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, FolderPlus, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, FolderPlus, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, X } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
-import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, createCodeRepositoryDirectory, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, uploadCodeRepositoryFile, writeConfiguredCodeFile } from "@/lib/code-repository-api";
+import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, createCodeRepositoryDirectory, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, writeConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, CodeRepositoryDirectoryBrowser, CodeRepositoryHealth, CodeRepositoryInspection } from "@/lib/code-repository-types";
 import { listGitAccounts, type GitAccount } from "@/lib/git-account-api";
 import { getCodeProjectRuntime, saveCodeRuntimeProfile } from "@/lib/code-runtime-api";
@@ -278,7 +278,7 @@ export function CodeProjectSettingsPage() {
       </div>
     </div>
     {browser && <DirectoryPicker browser={browser} allowCreate={browserTarget === "project"} onClose={() => setBrowser(null)} onOpen={(path) => void openBrowser(browserTarget, path)} onCreate={createProjectDirectory} onChoose={() => { if (browserTarget === "project") setProjectDraft((item) => ({ ...item, rootPath: browser.path })); else setRepositoryDraft((item) => ({ ...item, rootPath: browser.path })); setBrowser(null); }} />}
-    {fileBrowser && <FilePicker browser={fileBrowser} rootPath={repositoryDraft.rootPath} target={fileBrowserTarget} onClose={() => setFileBrowser(null)} onOpen={(path) => void openFileBrowser(fileBrowserTarget, path)} onRefresh={(path) => openFileBrowser(fileBrowserTarget, path)} onChoose={chooseFile} onUploaded={addFileToDraft} />}
+    {fileBrowser && <FilePicker browser={fileBrowser} target={fileBrowserTarget} onClose={() => setFileBrowser(null)} onOpen={(path) => void openFileBrowser(fileBrowserTarget, path)} onChoose={chooseFile} />}
     {cloneOpen && <CloneDialog projects={projects} accounts={accounts} draft={cloneDraft} lines={cloneLines} busy={busy} onChange={setCloneDraft} onClose={() => !busy && setCloneOpen(false)} onSubmit={() => void cloneRepository()} />}
     {terminalOpen && <TerminalDialog title={terminalTitle} lines={cloneLines} busy={busy} onClose={() => !busy && setTerminalOpen(false)} />}
     {fileDraft && <FileEditor file={fileDraft} busy={busy} onChange={setFileDraft} onClose={() => !busy && setFileDraft(null)} onSave={() => void saveFile()} />}
@@ -379,39 +379,13 @@ function ConfigurationFileSelection({ candidates, selected, chatEditable, onBrow
   return <section className="mt-5 rounded-xl border border-blue-100 bg-white p-3.5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800"><FilePenLine size={15} className="text-blue-600"/>配置文件</div><p className="mt-1 text-[11px] leading-5 text-slate-500">添加后可供运行、打包与代码库编辑使用；单独开启“聊天可修改”才会出现在聊天菜单。</p></div><button type="button" onClick={onBrowse} className="secondary-button shrink-0 px-2.5 py-1 text-xs"><FolderOpen size={14}/>添加文件</button></div>{selected.length ? <div className="mt-3 space-y-1.5">{selected.map((path) => <div key={path} className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2"><FileCog size={14} className="shrink-0 text-slate-400"/><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-700" title={path}>{path}</span><label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-blue-700"><input type="checkbox" checked={chatEditable.includes(path)} onChange={(event) => onChatEditable(path, event.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>聊天可改</label><button type="button" onClick={() => onRemove(path)} className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`移除配置文件：${path}`} title="从代码库配置中移除，不删除磁盘文件"><Trash2 size={13}/></button></div>)}</div> : <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-400">尚未添加配置文件。可选择 package.json、.env、appsettings 等。</p>}{available.length > 0 && <div className="mt-3 border-t border-slate-100 pt-3"><p className="text-[11px] text-slate-400">已识别，可快速添加</p><div className="mt-2 flex flex-wrap gap-1.5">{available.slice(0, 12).map((path) => <button type="button" key={path} onClick={() => onAdd(path)} className="max-w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title={path}>+ {path}</button>)}</div></div>}</section>;
 }
 function Footer({ busy, onSave, label }: { busy: boolean; onSave: () => void; label: string }) { return <div className="mt-6 flex justify-end border-t border-slate-100 pt-4"><button onClick={onSave} disabled={busy} className="primary-button">{busy ? <Loader2 size={14} className="animate-spin"/> : <Check size={14}/>} {label}</button></div>; }
-function FilePicker({ browser, rootPath, target, onClose, onOpen, onRefresh, onChoose, onUploaded }: { browser: CodeRepositoryDirectoryBrowser; rootPath: string; target: FileBrowserTarget; onClose: () => void; onOpen: (path?: string) => void; onRefresh: (path?: string) => Promise<void>; onChoose: (path: string) => void; onUploaded: (path: string) => void }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [overwrite, setOverwrite] = useState(false);
-  const [uploadError, setUploadError] = useState("");
+function FilePicker({ browser, target, onClose, onOpen, onChoose }: { browser: CodeRepositoryDirectoryBrowser; target: FileBrowserTarget; onClose: () => void; onOpen: (path?: string) => void; onChoose: (path: string) => void }) {
   const files = (browser.files ?? []).filter((file) => target === "backendEntry" ? file.path.toLowerCase().endsWith(".csproj") : target === "frontendEntry" ? file.path.toLowerCase().endsWith("package.json") : true);
   const title = target === "backendEntry" ? "选择 C# API 启动工程" : target === "frontendEntry" ? "选择前端 package.json" : target === "solution" ? "选择解决方案或工程文件" : "选择配置文件";
-  const accept = target === "solution" || target === "backendEntry" ? ".sln,.slnf,.csproj" : target === "frontendEntry" ? ".json" : undefined;
-  async function uploadSelectedFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setUploading(true); setUploadError("");
-    try {
-      const uploaded = await uploadCodeRepositoryFile(rootPath, browser.path, file, overwrite);
-      onUploaded(uploaded.path);
-      await onRefresh(browser.path);
-    } catch (value) {
-      setUploadError(message(value));
-    } finally {
-      setUploading(false);
-    }
-  }
   return <Modal title={title} onClose={onClose}>
     <p className="truncate font-mono text-xs text-slate-500">{browser.path}</p>
-    <p className="mt-1 text-xs leading-5 text-slate-500">{target === "backendEntry" ? "只会显示 .csproj；请选择 Web/API 或 OutputType=Exe 工程。" : target === "frontendEntry" ? "只会显示 package.json。" : "进入文件夹后，单击一个文件即可选中；也可上传到当前目录。"}</p>
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5">
-      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>覆盖同名文件</label>
-      <input ref={inputRef} type="file" className="hidden" accept={accept} onChange={(event) => void uploadSelectedFile(event)}/>
-      <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="secondary-button px-2.5 py-1 text-xs disabled:opacity-50">{uploading ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}上传文件</button>
-    </div>
-    {uploadError && <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">{uploadError}</p>}
-    <div className="workspace-scroll mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 p-2">{browser.parent_path && <button type="button" onClick={() => onOpen(browser.parent_path ?? undefined)} className="block w-full rounded px-2 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}{browser.directories.map((path) => <button type="button" key={path} onClick={() => onOpen(path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-slate-50"><FolderOpen size={15} className="text-amber-500"/>{path.split(/[\\/]/).pop()}</button>)}{files.map((file) => <button type="button" key={file.path} onClick={() => onChoose(file.path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-blue-50"><FileCog size={15} className="text-blue-500"/><span className="truncate font-mono text-xs" title={file.path}>{file.name}</span></button>)}{files.length === 0 && <p className="px-2 py-4 text-xs text-slate-400">此目录没有可选文件，请进入下级目录或上传文件。</p>}</div>
+    <p className="mt-1 text-xs leading-5 text-slate-500">{target === "backendEntry" ? "只会显示 .csproj；请选择 Web/API 或 OutputType=Exe 工程。" : target === "frontendEntry" ? "只会显示 package.json。" : "进入文件夹后，单击一个文件即可选中。任意代码库目录上传已关闭。"}</p>
+    <div className="workspace-scroll mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 p-2">{browser.parent_path && <button type="button" onClick={() => onOpen(browser.parent_path ?? undefined)} className="block w-full rounded px-2 py-2 text-left text-xs text-blue-600 hover:bg-blue-50">↑ 上级目录</button>}{browser.directories.map((path) => <button type="button" key={path} onClick={() => onOpen(path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-slate-50"><FolderOpen size={15} className="text-amber-500"/>{path.split(/[\\/]/).pop()}</button>)}{files.map((file) => <button type="button" key={file.path} onClick={() => onChoose(file.path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-blue-50"><FileCog size={15} className="text-blue-500"/><span className="truncate font-mono text-xs" title={file.path}>{file.name}</span></button>)}{files.length === 0 && <p className="px-2 py-4 text-xs text-slate-400">此目录没有可选文件，请进入下级目录。</p>}</div>
   </Modal>;
 }
 

@@ -1,5 +1,6 @@
 using AiAgent.Backend.Dtos.CodeRepository;
 using AiAgent.Backend.Entities.CodeRepository;
+using AiAgent.Backend.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using SqlSugar;
 using System.Security.Cryptography;
@@ -32,8 +33,6 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryDirectoryBrowserDto BrowseFiles(string rootPath, string? path, string kind);
 
-    Task<CodeRepositoryBrowserFileDto> UploadFileAsync(string rootPath, string? directoryPath, IFormFile file, bool overwrite, CancellationToken cancellationToken = default);
-
     CodeRepositoryInspectionDto Inspect(string rootPath);
 
     CodeRepositoryDto Create(CodeRepositorySaveRequest request);
@@ -58,6 +57,20 @@ public interface ICodeRepositoryManager
 
     CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path);
 
+    Task<CodeProjectMarkdownDocumentDto> UploadProjectMarkdownDocumentAsync(long projectId, AuthenticatedUser user, string? repositoryName, string? directoryPath, IFormFile file, CancellationToken cancellationToken = default);
+
+    List<CodeProjectMarkdownDirectoryDto> ListProjectMarkdownDirectories(long projectId);
+
+    CodeProjectMarkdownDirectoryDto CreateProjectMarkdownDirectory(long projectId, string repositoryName, string? parentPath, string name);
+
+    (byte[] Content, string FileName) DownloadProjectMarkdownDocument(long projectId, string repositoryName, string path);
+
+    void DeleteProjectMarkdownDocument(long projectId, string repositoryName, string path);
+
+    CodeProjectAgentMarkdownIndexDto GetProjectAgentMarkdownIndex(long projectId);
+
+    Task<CodeProjectAgentMarkdownIndexDto> GenerateProjectAgentMarkdownIndexAsync(long projectId, AuthenticatedUser user, CancellationToken cancellationToken = default);
+
     (string FilePath, string DownloadName) GetPackageArchive(string name, string archiveName);
 
     void Delete(string name);
@@ -69,23 +82,31 @@ public interface ICodeRepositoryManager
 public sealed class CodeRepositoryManager : ICodeRepositoryManager
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const long MaxUploadedFileBytes = 50L * 1024 * 1024;
     private const int MaxMarkdownDocumentCount = 600;
     private const int MaxMarkdownDocumentDepth = 12;
     private const int MaxMarkdownDocumentPreviewCharacters = 400_000;
+    private const long MaxProjectMarkdownUploadBytes = 2L * 1024 * 1024;
+    private const int MaxProjectMarkdownUploadCharacters = 200_000;
+    private const string ProjectUploadDirectoryName = "uploads";
+    private const string ProjectAiAgentDocumentsDirectoryName = "aiagent-documents";
+    private const string UploadedDocumentRepositoryName = "aiagent-uploads";
+    private const string AgentIndexRepositoryName = "aiagent-project-index";
+    private const string AgentIndexKind = "agent_index";
     private static readonly HashSet<string> ExcludedMarkdownDirectories = new(StringComparer.OrdinalIgnoreCase) { ".git", "node_modules", "bin", "obj", ".next", "dist", "build", "coverage" };
     private static readonly Regex TrailingLineReference = new(@"(?:(?:#L)|(?::))(?<line>[1-9]\d{0,8})$", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private readonly ISqlSugarClient _db;
     private readonly List<string> _allowedRoots;
+    private readonly ILogger<CodeRepositoryManager> _logger;
 
     /// <summary>
     /// Initializes the manager and resolves the allowed local roots.
     /// </summary>
-    public CodeRepositoryManager(ISqlSugarClient db, IConfiguration configuration)
+    public CodeRepositoryManager(ISqlSugarClient db, IConfiguration configuration, ILogger<CodeRepositoryManager> logger)
     {
         _db = db;
         _allowedRoots = ResolveAllowedRoots(configuration);
+        _logger = logger;
     }
 
     /// <summary>
@@ -294,56 +315,6 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             AllowedRoots = [root],
             Directories = directories,
             Files = files
-        };
-    }
-
-    /// <summary>
-    /// Saves a user-selected file into the currently browsed repository directory.
-    /// The target is always constrained to the supplied repository root.
-    /// </summary>
-    public async Task<CodeRepositoryBrowserFileDto> UploadFileAsync(string rootPath, string? directoryPath, IFormFile file, bool overwrite, CancellationToken cancellationToken = default)
-    {
-        if (file is null || file.Length <= 0) throw new ArgumentException("请选择一个非空文件。", nameof(file));
-        if (file.Length > MaxUploadedFileBytes) throw new ArgumentException("上传文件不能超过 50 MB。", nameof(file));
-
-        var root = NormalizeAndValidatePath(rootPath);
-        var directory = string.IsNullOrWhiteSpace(directoryPath) ? root : Path.GetFullPath(directoryPath);
-        if (!Directory.Exists(directory) || !IsPathWithin(root, directory))
-            throw new InvalidOperationException("上传目录不在当前代码库内。");
-
-        var fileName = Path.GetFileName(file.FileName);
-        if (string.IsNullOrWhiteSpace(fileName)
-            || fileName is "." or ".."
-            || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-            || file.FileName.Contains('/')
-            || file.FileName.Contains('\\'))
-            throw new ArgumentException("上传文件名无效。", nameof(file));
-
-        var targetPath = Path.GetFullPath(Path.Combine(directory, fileName));
-        if (!IsPathWithin(root, targetPath) || Directory.Exists(targetPath))
-            throw new InvalidOperationException("上传目标无效。");
-        if (File.Exists(targetPath) && !overwrite)
-            throw new InvalidOperationException("当前目录已有同名文件；勾选“覆盖同名文件”后再上传。");
-
-        var temporaryPath = Path.Combine(directory, $".aiagent-upload-{Guid.NewGuid():N}.tmp");
-        try
-        {
-            await using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                await file.CopyToAsync(output, cancellationToken);
-            }
-
-            File.Move(temporaryPath, targetPath, overwrite);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
-        }
-
-        return new CodeRepositoryBrowserFileDto
-        {
-            Name = fileName,
-            Path = Path.GetRelativePath(root, targetPath).Replace('\\', '/')
         };
     }
 
@@ -562,20 +533,48 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
                 {
                     RepositoryName = repository.Name,
                     Path = path,
-                    Name = Path.GetFileName(path)
+                    Name = Path.GetFileName(path),
+                    Source = "repository",
+                    UpdatedAt = new FileInfo(file).LastWriteTimeUtc
                 });
                 if (documents.Count >= MaxMarkdownDocumentCount) break;
             }
             if (documents.Count >= MaxMarkdownDocumentCount) break;
         }
+        var uploaded = _db.Queryable<AiProjectMarkdownDocument>()
+            .Where(item => item.ProjectId == projectId)
+            .OrderByDescending(item => item.UpdatedAt)
+            .OrderByDescending(item => item.CreatedAt)
+            .ToList();
+        foreach (var document in uploaded)
+        {
+            if (document.Kind == AgentIndexKind) continue;
+            if (!string.IsNullOrWhiteSpace(term) && !document.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase)) continue;
+            documents.Add(new CodeProjectMarkdownDocumentDto
+            {
+                RepositoryName = document.Kind == AgentIndexKind ? AgentIndexRepositoryName : UploadedDocumentRepositoryName,
+                Path = document.Id,
+                Name = document.DisplayName,
+                Source = document.Kind == AgentIndexKind ? "agent_index" : "upload",
+                UploaderId = document.UploaderId,
+                DirectoryPath = document.DirectoryPath,
+                UpdatedAt = document.UpdatedAt ?? document.CreatedAt
+            });
+        }
         return documents
-            .OrderBy(item => item.RepositoryName, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(item => item.UpdatedAt)
+            .ThenBy(item => item.RepositoryName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
     public CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path)
     {
+        if (string.Equals(repositoryName, UploadedDocumentRepositoryName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(repositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase))
+        {
+            return ReadStoredProjectMarkdownDocument(projectId, repositoryName, path);
+        }
         FindProject(projectId);
         var repository = _db.Queryable<AiCodeRepository>()
             .Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted)
@@ -589,6 +588,485 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         var content = ReadMarkdownDocumentContent(resolved, out var isTruncated);
         return new CodeProjectMarkdownDocumentContentDto { RepositoryName = repository.Name, Path = normalizedPath, Content = content, IsTruncated = isTruncated };
     }
+
+    public async Task<CodeProjectMarkdownDocumentDto> UploadProjectMarkdownDocumentAsync(long projectId, AuthenticatedUser user, string? repositoryName, string? directoryPath, IFormFile file, CancellationToken cancellationToken = default)
+    {
+        if (file is null || file.Length <= 0) throw new ArgumentException("请选择一个非空 Markdown 文件。", nameof(file));
+        if (file.Length > MaxProjectMarkdownUploadBytes) throw new ArgumentException("Markdown 上传文件不能超过 2 MB。", nameof(file));
+        var displayName = ValidateMarkdownUploadFileName(file.FileName);
+        var normalizedDirectoryPath = NormalizeProjectMarkdownDirectoryPath(directoryPath);
+        var effectiveRepositoryName = string.IsNullOrWhiteSpace(repositoryName) ? UploadedDocumentRepositoryName : NormalizeName(repositoryName, string.Empty);
+        var isDedicatedUpload = string.Equals(effectiveRepositoryName, UploadedDocumentRepositoryName, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(effectiveRepositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("The generated Agent index folder cannot be used as an upload target.", nameof(repositoryName));
+        var uploadDirectory = isDedicatedUpload
+            ? EnsureProjectUploadSubdirectory(projectId, normalizedDirectoryPath, create: false)
+            : EnsureRegisteredRepositoryDirectory(projectId, effectiveRepositoryName, normalizedDirectoryPath, create: false, out effectiveRepositoryName);
+        var id = Guid.NewGuid().ToString("N");
+        var storageName = isDedicatedUpload ? $"{id}.md" : displayName;
+        var targetPath = CombineInsideDirectory(uploadDirectory, storageName);
+        var temporaryPath = CombineInsideDirectory(uploadDirectory, $".aiagent-markdown-{id}.tmp");
+        try
+        {
+            await using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await file.CopyToAsync(output, cancellationToken);
+            }
+            var info = new FileInfo(temporaryPath);
+            if (info.Length <= 0 || info.Length > MaxProjectMarkdownUploadBytes) throw new ArgumentException("Markdown 上传文件不能超过 2 MB。", nameof(file));
+            var content = ReadStrictUtf8Markdown(temporaryPath);
+            if (content.Length > MaxProjectMarkdownUploadCharacters) throw new ArgumentException("Markdown 上传内容不能超过 200,000 个字符。", nameof(file));
+            if (File.Exists(targetPath)) throw new InvalidOperationException("A Markdown file with the same name already exists in the selected directory.");
+            File.Move(temporaryPath, targetPath, false);
+            if (!isDedicatedUpload)
+                return new CodeProjectMarkdownDocumentDto { RepositoryName = effectiveRepositoryName, Path = string.IsNullOrEmpty(normalizedDirectoryPath) ? displayName : $"{normalizedDirectoryPath}/{displayName}", Name = displayName, Source = "repository", UploaderId = user.Id, DirectoryPath = normalizedDirectoryPath, UpdatedAt = info.LastWriteTimeUtc };
+            _db.Insertable(new AiProjectMarkdownDocument { Id = id, ProjectId = projectId, UploaderId = user.Id, DisplayName = displayName, Kind = "upload", DirectoryPath = normalizedDirectoryPath, StorageName = storageName, SizeBytes = info.Length }).ExecuteCommand();
+            return new CodeProjectMarkdownDocumentDto { RepositoryName = UploadedDocumentRepositoryName, Path = id, Name = displayName, Source = "upload", UploaderId = user.Id, DirectoryPath = normalizedDirectoryPath, UpdatedAt = DateTime.UtcNow };
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Project Markdown upload was denied for project {ProjectId}.", projectId);
+            throw new InvalidOperationException("AiAgent 无法写入项目专用 uploads/aiagent-documents 目录。请为运行服务的 Windows 账户授予该目录的“修改”权限后重试。");
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+    }
+
+    public CodeProjectAgentMarkdownIndexDto GetProjectAgentMarkdownIndex(long projectId)
+    {
+        var project = FindProject(projectId);
+        var entity = _db.Queryable<AiProjectMarkdownDocument>()
+            .Where(item => item.ProjectId == projectId && item.Kind == AgentIndexKind)
+            .OrderByDescending(item => item.UpdatedAt)
+            .OrderByDescending(item => item.CreatedAt)
+            .First();
+        if (entity is null) return new CodeProjectAgentMarkdownIndexDto { Available = false, IsStale = true };
+        try
+        {
+            var path = GetStoredProjectMarkdownPath(project, entity);
+            if (!File.Exists(path)) return new CodeProjectAgentMarkdownIndexDto { Available = false, IsStale = true, UpdatedAt = entity.UpdatedAt ?? entity.CreatedAt };
+            var isStale = IsProjectAgentIndexStale(project, entity);
+            return new CodeProjectAgentMarkdownIndexDto { Available = true, IsStale = isStale, Content = ReadMarkdownDocumentContent(path, out _), UpdatedAt = entity.UpdatedAt ?? entity.CreatedAt };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Project Agent Markdown index cannot be read for project {ProjectId}.", projectId);
+            return new CodeProjectAgentMarkdownIndexDto { Available = false, IsStale = true, UpdatedAt = entity.UpdatedAt ?? entity.CreatedAt };
+        }
+    }
+
+    public async Task<CodeProjectAgentMarkdownIndexDto> GenerateProjectAgentMarkdownIndexAsync(long projectId, AuthenticatedUser user, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var project = FindProject(projectId);
+        var directory = EnsureProjectUploadDirectory(projectId);
+        var content = BuildProjectAgentMarkdownIndex(project);
+        var existing = _db.Queryable<AiProjectMarkdownDocument>().Where(item => item.ProjectId == projectId && item.Kind == AgentIndexKind).First();
+        var id = existing?.Id ?? Guid.NewGuid().ToString("N");
+        var storageName = existing?.StorageName ?? "AGENT.md";
+        var targetPath = CombineInsideDirectory(directory, storageName);
+        var temporaryPath = CombineInsideDirectory(directory, $".aiagent-project-map-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, content, new UTF8Encoding(false), cancellationToken);
+            File.Move(temporaryPath, targetPath, true);
+            var now = DateTime.UtcNow;
+            if (existing is null)
+            {
+                _db.Insertable(new AiProjectMarkdownDocument { Id = id, ProjectId = projectId, UploaderId = user.Id, DisplayName = "项目 Agent 索引", Kind = AgentIndexKind, DirectoryPath = string.Empty, StorageName = storageName, SizeBytes = new FileInfo(targetPath).Length, CreatedAt = now, UpdatedAt = now }).ExecuteCommand();
+            }
+            else
+            {
+                existing.UploaderId = user.Id;
+                existing.SizeBytes = new FileInfo(targetPath).Length;
+                existing.UpdatedAt = now;
+                _db.Updateable(existing).UpdateColumns(item => new { item.UploaderId, item.SizeBytes, item.UpdatedAt }).ExecuteCommand();
+            }
+            return new CodeProjectAgentMarkdownIndexDto { Available = true, IsStale = false, Content = content, UpdatedAt = now };
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Project Agent Markdown index write was denied for project {ProjectId}.", projectId);
+            throw new InvalidOperationException("AiAgent 无法写入项目专用 uploads/aiagent-documents 目录。请为运行服务的 Windows 账户授予该目录的“修改”权限后重试。");
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+    }
+
+    private CodeProjectMarkdownDocumentContentDto ReadStoredProjectMarkdownDocument(long projectId, string repositoryName, string documentId)
+    {
+        var project = FindProject(projectId);
+        if (!Guid.TryParseExact(documentId, "N", out _)) throw new ArgumentException("The project Markdown document identifier is invalid.", nameof(documentId));
+        var expectedKind = string.Equals(repositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase) ? AgentIndexKind : "upload";
+        var entity = _db.Queryable<AiProjectMarkdownDocument>()
+            .Where(item => item.Id == documentId && item.ProjectId == projectId && item.Kind == expectedKind)
+            .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
+        var path = GetStoredProjectMarkdownPath(project, entity);
+        if (!File.Exists(path)) throw new FileNotFoundException("The referenced project document is unavailable.");
+        var content = ReadMarkdownDocumentContent(path, out var isTruncated);
+        return new CodeProjectMarkdownDocumentContentDto { RepositoryName = repositoryName, Path = entity.Id, Content = content, IsTruncated = isTruncated };
+    }
+
+    public List<CodeProjectMarkdownDirectoryDto> ListProjectMarkdownDirectories(long projectId)
+    {
+        FindProject(projectId);
+        var directories = new List<CodeProjectMarkdownDirectoryDto>();
+        try
+        {
+            directories.Add(new CodeProjectMarkdownDirectoryDto { RepositoryName = UploadedDocumentRepositoryName, Path = string.Empty });
+            directories.AddRange(EnumerateSafeDirectories(EnsureProjectUploadDirectory(projectId)).Select(path => new CodeProjectMarkdownDirectoryDto { RepositoryName = UploadedDocumentRepositoryName, Path = path }));
+        }
+        catch (Exception ex) when (ex is DirectoryNotFoundException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Cannot enumerate dedicated Markdown directories for project {ProjectId}.", projectId);
+        }
+        var repositories = _db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == projectId && !item.IsDeleted).ToList();
+        foreach (var repository in repositories)
+        {
+            try
+            {
+                var root = EnsureRegisteredRepositoryDirectory(projectId, repository.Name, string.Empty, create: false, out var resolvedName);
+                directories.Add(new CodeProjectMarkdownDirectoryDto { RepositoryName = resolvedName, Path = string.Empty });
+                directories.AddRange(EnumerateSafeDirectories(root).Select(path => new CodeProjectMarkdownDirectoryDto { RepositoryName = resolvedName, Path = path }));
+            }
+            catch (Exception ex) when (ex is DirectoryNotFoundException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                _logger.LogWarning(ex, "Cannot enumerate selectable Markdown directories for repository {RepositoryName}.", repository.Name);
+            }
+        }
+        return directories.GroupBy(item => $"{item.RepositoryName}\u0000{item.Path}", StringComparer.OrdinalIgnoreCase).Select(group => group.First()).OrderBy(item => item.RepositoryName, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    public CodeProjectMarkdownDirectoryDto CreateProjectMarkdownDirectory(long projectId, string repositoryName, string? parentPath, string name)
+    {
+        var normalizedName = NormalizeProjectMarkdownDirectoryName(name);
+        var parent = NormalizeProjectMarkdownDirectoryPath(parentPath);
+        var fullRelativePath = string.IsNullOrEmpty(parent) ? normalizedName : $"{parent}/{normalizedName}";
+        var normalizedRepositoryName = NormalizeName(repositoryName, string.Empty);
+        if (string.Equals(normalizedRepositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("The generated Agent index folder cannot be changed.", nameof(repositoryName));
+        if (string.Equals(normalizedRepositoryName, UploadedDocumentRepositoryName, StringComparison.OrdinalIgnoreCase))
+            EnsureProjectUploadSubdirectory(projectId, fullRelativePath, create: true);
+        else
+            EnsureRegisteredRepositoryDirectory(projectId, normalizedRepositoryName, fullRelativePath, create: true, out normalizedRepositoryName);
+        return new CodeProjectMarkdownDirectoryDto { RepositoryName = normalizedRepositoryName, Path = fullRelativePath };
+    }
+
+    public (byte[] Content, string FileName) DownloadProjectMarkdownDocument(long projectId, string repositoryName, string path)
+    {
+        var content = ReadProjectMarkdownDocument(projectId, repositoryName, path);
+        if (content.IsTruncated) throw new InvalidOperationException("The Markdown document is too large to download through this endpoint.");
+        var isStoredDocument = string.Equals(content.RepositoryName, UploadedDocumentRepositoryName, StringComparison.OrdinalIgnoreCase) || string.Equals(content.RepositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase);
+        var downloadName = isStoredDocument
+            ? _db.Queryable<AiProjectMarkdownDocument>().Where(item => item.ProjectId == projectId && item.Id == content.Path).Select(item => item.DisplayName).First()
+            : Path.GetFileName(content.Path);
+        if (string.IsNullOrWhiteSpace(downloadName)) downloadName = "document.md";
+        return (new UTF8Encoding(false).GetBytes(content.Content), downloadName);
+    }
+
+    public void DeleteProjectMarkdownDocument(long projectId, string repositoryName, string path)
+    {
+        if (string.Equals(repositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The generated Agent index cannot be deleted. Refresh it to regenerate its contents.");
+        if (string.Equals(repositoryName, UploadedDocumentRepositoryName, StringComparison.OrdinalIgnoreCase))
+        {
+            var project = FindProject(projectId);
+            if (!Guid.TryParseExact(path, "N", out _)) throw new ArgumentException("The project Markdown document identifier is invalid.", nameof(path));
+            var entity = _db.Queryable<AiProjectMarkdownDocument>()
+                .Where(item => item.Id == path && item.ProjectId == projectId && item.Kind == "upload")
+                .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
+            var storedPath = GetStoredProjectMarkdownPath(project, entity);
+            if (File.Exists(storedPath)) File.Delete(storedPath);
+            _db.Deleteable<AiProjectMarkdownDocument>().Where(item => item.Id == entity.Id && item.ProjectId == projectId).ExecuteCommand();
+            return;
+        }
+
+        var normalizedName = NormalizeName(repositoryName, string.Empty);
+        var normalizedPath = NormalizeMarkdownDocumentPath(path);
+        var repositoryRoot = EnsureRegisteredRepositoryDirectory(projectId, normalizedName, string.Empty, create: false, out _);
+        var candidate = Path.GetFullPath(Path.Combine(repositoryRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
+        if (!File.Exists(candidate)) throw new FileNotFoundException("The referenced project document is unavailable.");
+        var fileInfo = new FileInfo(candidate);
+        if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new InvalidOperationException("The referenced project document is unavailable.");
+        var resolved = GetResolvedPath(fileInfo);
+        if (!IsPathWithin(repositoryRoot, resolved) || !IsMarkdownFile(resolved)) throw new InvalidOperationException("The referenced project document is unavailable.");
+        File.Delete(resolved);
+    }
+
+    private string EnsureProjectUploadDirectory(long projectId)
+    {
+        var project = FindProject(projectId);
+        string configuredRoot;
+        try
+        {
+            configuredRoot = NormalizeAndValidatePath(project.RootPath);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            throw new InvalidOperationException("项目根目录不存在，无法使用项目专用 Markdown 上传目录。");
+        }
+        catch (InvalidOperationException)
+        {
+            throw new InvalidOperationException("项目根目录不在 CodeRepository:AllowedRoots 允许范围内，无法使用项目专用 Markdown 上传目录。");
+        }
+        var projectRoot = GetResolvedPath(new DirectoryInfo(configuredRoot));
+        if (!Directory.Exists(projectRoot) || !IsAllowedPath(projectRoot))
+            throw new InvalidOperationException("项目根目录已不在 CodeRepository:AllowedRoots 允许范围内，无法使用项目 Markdown 上传目录。");
+        var uploads = CombineInsideDirectory(projectRoot, ProjectUploadDirectoryName);
+        var documents = CombineInsideDirectory(uploads, ProjectAiAgentDocumentsDirectoryName);
+        try
+        {
+            EnsureNonLinkDirectory(uploads);
+            EnsureNonLinkDirectory(documents);
+            var resolved = GetResolvedPath(new DirectoryInfo(documents));
+            if (!IsPathWithin(projectRoot, resolved)) throw new InvalidOperationException("项目专用 Markdown 上传目录解析后越出了项目根目录。");
+            return resolved;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Project Markdown directory access was denied for project {ProjectId}.", projectId);
+            throw new InvalidOperationException("AiAgent 无法访问项目专用 uploads/aiagent-documents 目录。请为运行服务的 Windows 账户授予该目录及其父目录的“修改”权限后重试。");
+        }
+    }
+
+    private string EnsureProjectUploadSubdirectory(long projectId, string relativePath, bool create)
+        => EnsureDirectoryUnderRoot(EnsureProjectUploadDirectory(projectId), relativePath, create);
+
+    private string EnsureRegisteredRepositoryDirectory(long projectId, string repositoryName, string relativePath, bool create, out string resolvedRepositoryName)
+    {
+        FindProject(projectId);
+        var normalizedName = NormalizeName(repositoryName, string.Empty);
+        var repository = _db.Queryable<AiCodeRepository>()
+            .Where(item => item.ProjectId == projectId && item.Name == normalizedName && !item.IsDeleted)
+            .First() ?? throw new FileNotFoundException("The selected project repository is unavailable.");
+        var root = GetResolvedPath(new DirectoryInfo(repository.RootPath));
+        if (!Directory.Exists(root)) throw new DirectoryNotFoundException("The selected registered repository directory is unavailable.");
+        if (!IsAllowedPath(root)) throw new InvalidOperationException("The selected registered repository is outside CodeRepository:AllowedRoots.");
+        var directory = EnsureDirectoryUnderRoot(root, relativePath, create);
+        resolvedRepositoryName = repository.Name;
+        return directory;
+    }
+
+    private static string EnsureDirectoryUnderRoot(string root, string relativePath, bool create)
+    {
+        var resolvedRoot = GetResolvedPath(new DirectoryInfo(root));
+        if (!Directory.Exists(resolvedRoot)) throw new DirectoryNotFoundException("The selected directory is unavailable.");
+        var current = resolvedRoot;
+        foreach (var segment in NormalizeProjectMarkdownDirectoryPath(relativePath).Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (ExcludedMarkdownDirectories.Contains(segment)) throw new ArgumentException("The selected directory is not available for Markdown delivery.", nameof(relativePath));
+            current = CombineInsideDirectory(current, segment);
+            if (!Directory.Exists(current))
+            {
+                if (!create) throw new DirectoryNotFoundException("The selected server directory no longer exists.");
+                Directory.CreateDirectory(current);
+            }
+            var info = new DirectoryInfo(current);
+            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new InvalidOperationException("The selected directory cannot be a symbolic link or reparse point.");
+            current = GetResolvedPath(info);
+            if (!IsPathWithin(resolvedRoot, current)) throw new InvalidOperationException("The selected directory resolves outside its registered root.");
+        }
+        return current;
+    }
+
+    private static IEnumerable<string> EnumerateSafeDirectories(string rootPath)
+    {
+        var root = GetResolvedPath(new DirectoryInfo(rootPath));
+        if (!Directory.Exists(root)) yield break;
+        var pending = new Queue<(string Path, int Depth)>();
+        pending.Enqueue((root, 0));
+        var yielded = 0;
+        while (pending.Count > 0 && yielded < MaxMarkdownDocumentCount)
+        {
+            var (current, depth) = pending.Dequeue();
+            DirectoryInfo[] children;
+            try { children = depth < MaxMarkdownDocumentDepth ? new DirectoryInfo(current).GetDirectories() : []; }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+            foreach (var child in children)
+            {
+                if (ExcludedMarkdownDirectories.Contains(child.Name) || child.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+                var resolved = GetResolvedPath(child);
+                if (!IsPathWithin(root, resolved)) continue;
+                yield return Path.GetRelativePath(root, resolved).Replace('\\', '/');
+                if (++yielded >= MaxMarkdownDocumentCount) yield break;
+                pending.Enqueue((resolved, depth + 1));
+            }
+        }
+    }
+
+    private static void EnsureNonLinkDirectory(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            var info = new DirectoryInfo(path);
+            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new InvalidOperationException("项目专用 Markdown 上传目录不能是符号链接或重解析点。");
+            return;
+        }
+        Directory.CreateDirectory(path);
+    }
+
+    private static string NormalizeProjectMarkdownDirectoryPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+        if (Path.IsPathRooted(path)) throw new ArgumentException("A server directory must be relative to the selected repository.", nameof(path));
+        var normalized = path.Replace('\\', '/').Trim().Trim('/');
+        if (string.IsNullOrWhiteSpace(normalized)) return string.Empty;
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(segment => segment is "." or ".." || segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+            throw new ArgumentException("The selected server directory is invalid.", nameof(path));
+        return string.Join('/', segments);
+    }
+
+    private static string NormalizeProjectMarkdownDirectoryName(string name)
+    {
+        var normalized = name.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized is "." or ".." || normalized.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || normalized.Contains('/') || normalized.Contains('\\') || ExcludedMarkdownDirectories.Contains(normalized))
+            throw new ArgumentException("The new folder name is invalid or reserved.", nameof(name));
+        return normalized;
+    }
+
+    private string GetStoredProjectMarkdownPath(AiCodeProject project, AiProjectMarkdownDocument document)
+    {
+        if (string.IsNullOrWhiteSpace(document.StorageName)
+            || !string.Equals(Path.GetExtension(document.StorageName), ".md", StringComparison.OrdinalIgnoreCase)
+            || document.StorageName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || document.StorageName.Contains('/') || document.StorageName.Contains('\\'))
+            throw new InvalidOperationException("The stored project document metadata is invalid.");
+        var directory = EnsureProjectUploadSubdirectory(project.Id, document.DirectoryPath ?? string.Empty, create: false);
+        var candidate = CombineInsideDirectory(directory, document.StorageName);
+        var fileInfo = new FileInfo(candidate);
+        if (fileInfo.Exists && fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new InvalidOperationException("The stored project document cannot be a symbolic link or reparse point.");
+        var resolved = GetResolvedPath(fileInfo);
+        if (!IsPathWithin(directory, resolved)) throw new InvalidOperationException("The stored project document is outside its dedicated directory.");
+        return resolved;
+    }
+
+    private static string CombineInsideDirectory(string directory, string fileOrDirectoryName)
+    {
+        var candidate = Path.GetFullPath(Path.Combine(directory, fileOrDirectoryName));
+        if (!IsPathWithin(directory, candidate)) throw new InvalidOperationException("The requested path is outside its allowed directory.");
+        return candidate;
+    }
+
+    private static string ValidateMarkdownUploadFileName(string? originalName)
+    {
+        var fileName = Path.GetFileName(originalName ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(fileName) || fileName is "." or ".." || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || (originalName?.Contains('/') ?? false) || (originalName?.Contains('\\') ?? false) || !IsMarkdownFile(fileName))
+            throw new ArgumentException("仅支持 UTF-8 编码的 .md 或 .markdown 文件，且文件名不能包含路径。", nameof(originalName));
+        return fileName.Trim();
+    }
+
+    private static string ReadStrictUtf8Markdown(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        if ((bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
+            || (bytes.Length >= 4 && bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0xFE && bytes[3] == 0xFF))
+            throw new DecoderFallbackException("Markdown uploads must be UTF-8 text.");
+        return new UTF8Encoding(false, true).GetString(bytes);
+    }
+
+    private bool IsProjectAgentIndexStale(AiCodeProject project, AiProjectMarkdownDocument index)
+    {
+        var indexTime = index.UpdatedAt ?? index.CreatedAt;
+        if (indexTime < DateTime.UtcNow.AddDays(-7)) return true;
+        if (project.UpdatedAt.HasValue && project.UpdatedAt.Value > indexTime) return true;
+        var repositories = _db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == project.Id && !item.IsDeleted).ToList();
+        return repositories.Any(repository => GetDirectoryLastWriteTimeUtc(repository.RootPath) is { } modified && modified > indexTime);
+    }
+
+    private string BuildProjectAgentMarkdownIndex(AiCodeProject project)
+    {
+        var repositories = _db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == project.Id && !item.IsDeleted).ToList();
+        var builder = new StringBuilder();
+        builder.AppendLine("# 项目 Agent 索引");
+        builder.AppendLine();
+        builder.AppendLine($"- 项目：{project.DisplayName}");
+        builder.AppendLine($"- 生成时间（UTC）：{DateTime.UtcNow:O}");
+        builder.AppendLine("- 说明：此索引仅描述已注册仓库的受控相对路径；需按问题继续使用代码检索验证。");
+        builder.AppendLine();
+        builder.AppendLine("## 已注册模块与入口");
+        if (repositories.Count == 0) builder.AppendLine("- 当前项目没有已注册仓库。请先注册仓库后刷新索引。");
+        foreach (var repository in repositories.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var metadata = ReadMetadata(repository);
+            builder.AppendLine();
+            builder.AppendLine($"### {repository.DisplayName} (`{repository.Name}`)");
+            builder.AppendLine($"- 技术栈：{(metadata.Languages.Count > 0 ? string.Join("、", metadata.Languages) : "未识别")}");
+            builder.AppendLine($"- 构建系统：{(metadata.BuildSystems.Count > 0 ? string.Join("、", metadata.BuildSystems) : "未识别")}");
+            builder.AppendLine($"- 代码版本：{(string.IsNullOrWhiteSpace(metadata.Branch) ? "未识别分支" : metadata.Branch)}；最近扫描：{(repository.LastScannedAt.HasValue ? repository.LastScannedAt.Value.ToString("O") : "未记录")}");
+            var files = EnumerateProjectIndexFiles(repository.RootPath).ToList();
+            var entries = files.Where(IsLikelyProjectEntry).Take(20).ToList();
+            builder.AppendLine($"- 关键入口：{(entries.Count > 0 ? string.Join("，", entries.Select(item => $"`{item}`")) : "未识别；请按需检索")}");
+            builder.AppendLine("- 受控目录树：");
+            foreach (var item in files.Take(80)) builder.AppendLine($"  - `{item}`");
+        }
+        builder.AppendLine();
+        builder.AppendLine("## 业务关键词映射");
+        foreach (var repository in repositories.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            builder.AppendLine($"- `{repository.Name}`（{repository.DisplayName}）→ 该已注册模块；以入口和后续代码检索确认具体业务术语。");
+        }
+        builder.AppendLine();
+        builder.AppendLine("## 代码问答规则");
+        builder.AppendLine("- 先根据模块、入口和相对目录缩小范围，再搜索或读取所需代码。");
+        builder.AppendLine("- 索引缺失或已过期时，提示刷新；不得据此伪造目录或实现细节。");
+        builder.AppendLine("- 文档不包含密钥、连接串、绝对路径、.git、依赖目录或构建产物。");
+        return builder.ToString();
+    }
+
+    private static IEnumerable<string> EnumerateProjectIndexFiles(string repositoryRootPath)
+    {
+        var root = GetResolvedPath(new DirectoryInfo(repositoryRootPath));
+        if (!Directory.Exists(root)) yield break;
+        var queue = new Queue<(string Path, int Depth)>();
+        queue.Enqueue((root, 0));
+        var yielded = 0;
+        while (queue.Count > 0 && yielded < 120)
+        {
+            var (directory, depth) = queue.Dequeue();
+            DirectoryInfo info;
+            try { info = new DirectoryInfo(directory); } catch (ArgumentException) { continue; }
+            if (!info.Exists || (depth > 0 && info.Attributes.HasFlag(FileAttributes.ReparsePoint))) continue;
+            FileInfo[] files;
+            DirectoryInfo[] children;
+            try { files = info.GetFiles(); children = depth < 4 ? info.GetDirectories() : []; }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+            foreach (var file in files)
+            {
+                if (file.Attributes.HasFlag(FileAttributes.ReparsePoint) || IsSensitiveIndexFile(file.Name)) continue;
+                var resolved = GetResolvedPath(file);
+                if (!IsPathWithin(root, resolved)) continue;
+                yield return Path.GetRelativePath(root, resolved).Replace('\\', '/');
+                if (++yielded >= 120) yield break;
+            }
+            foreach (var child in children)
+            {
+                if (ExcludedMarkdownDirectories.Contains(child.Name) || child.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+                var resolved = GetResolvedPath(child);
+                if (IsPathWithin(root, resolved)) queue.Enqueue((resolved, depth + 1));
+            }
+        }
+    }
+
+    private static bool IsLikelyProjectEntry(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return fileName is "Program.cs" or "Startup.cs" or "main.py" or "app.py" or "main.ts" or "main.tsx" or "index.ts" or "index.tsx" or "package.json" or "Cargo.toml" or "pyproject.toml"
+            || path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSensitiveIndexFile(string fileName)
+        => fileName.StartsWith(".env", StringComparison.OrdinalIgnoreCase)
+            || fileName.Contains("secret", StringComparison.OrdinalIgnoreCase)
+            || fileName.Contains("credential", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".key", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase);
 
     private object ReadConfiguredFile(AiCodeRepository entity, string path, IReadOnlyCollection<string> allowedFiles)
     {
