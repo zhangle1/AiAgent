@@ -14,6 +14,13 @@ public sealed class AiCodeRepository
     [SugarColumn(IsNullable = true)]
     public long? ProjectId { get; set; }
 
+    /// <summary>
+    /// The Git account used when this repository was cloned. The account still
+    /// belongs to a user and is resolved per request before any Git command.
+    /// </summary>
+    [SugarColumn(IsNullable = true)]
+    public long? GitAccountId { get; set; }
+
     [SugarColumn(Length = 128)]
     public string Name { get; set; } = string.Empty;
 

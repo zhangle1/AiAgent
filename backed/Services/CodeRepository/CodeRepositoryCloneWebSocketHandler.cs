@@ -143,7 +143,8 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
                     // to keep multiple checkouts of the same remote independently addressable.
                     Name = BuildMountedRepositoryName(inspection.SuggestedName, project.Id, destination),
                     DisplayName = BuildMountedDisplayName(inspection.SuggestedDisplayName, branch),
-                    RootPath = destination
+                    RootPath = destination,
+                    GitAccountId = account.Id
                 });
             }
             await SendAsync(socket, new { type = "completed", success, exit_code = process.ExitCode, destination_path = destination, repository, message = success ? "Clone completed and repository mounted." : "Git clone failed. Review the terminal output." }, cancellationToken);

@@ -57,6 +57,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiUserSession),
             typeof(AiChatSession),
             typeof(AiChatMessage),
+            typeof(AiChatDebugTrace),
             typeof(AiPromptTemplate),
             typeof(AiPromptTemplateUserState),
             typeof(AiMemoryItem),
@@ -78,6 +79,9 @@ IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
 
 IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
     ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;
+
+IF COL_LENGTH(N'dbo.ai_code_repository', N'GitAccountId') IS NULL
+    ALTER TABLE dbo.ai_code_repository ADD GitAccountId BIGINT NULL;
 
 IF COL_LENGTH(N'dbo.ai_project_markdown_document', N'DirectoryPath') IS NULL
     ALTER TABLE dbo.ai_project_markdown_document ADD DirectoryPath NVARCHAR(512) NULL;
@@ -307,6 +311,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_proj_pref_Use
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_message_Session_Id' AND object_id = OBJECT_ID(N'dbo.ai_chat_message'))
     CREATE INDEX IX_ai_chat_message_Session_Id ON dbo.ai_chat_message(SessionId, Id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_debug_trace_User_Session_Expiry' AND object_id = OBJECT_ID(N'dbo.ai_chat_debug_trace'))
+    CREATE INDEX IX_ai_chat_debug_trace_User_Session_Expiry ON dbo.ai_chat_debug_trace(UserId, SessionId, ExpiresAt DESC);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_Scope_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_item'))

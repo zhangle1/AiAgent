@@ -6,18 +6,24 @@ using System.Text.Json.Serialization;
 namespace AiAgent.Backend.Services.Git;
 
 /// <summary>
+/// Ephemeral HTTPS credentials for one server-side Git command lane. They are
+/// supplied through the child-process environment only and never persisted in a repository.
+/// </summary>
+public sealed record GitWorkspaceCredential(string Username, string AccessToken);
+
+/// <summary>
 /// Shared Git command boundary for trusted server workspaces. Callers own path authorization.
 /// A workspace has one operation lane, mirroring VS Code SCM's operation manager behavior.
 /// </summary>
 public interface IGitWorkspaceService
 {
-    Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken);
-    Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken);
-    Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken);
-    Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken);
-    Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken);
-    Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken);
-    Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken);
+    Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
 }
 
 public sealed class GitWorkspaceStatus
@@ -84,18 +90,19 @@ public sealed class GitWorkspaceDiffFile
 public sealed class GitWorkspaceService : IGitWorkspaceService
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _operationGates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AsyncLocal<GitWorkspaceCredential?> _credential = new();
     private static readonly ConcurrentDictionary<string, DateTimeOffset> RecentRemoteRefreshes = new(StringComparer.OrdinalIgnoreCase);
 
-    public Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken)
-        => RunExclusiveAsync(workspaceKey, () => GetStatusAsync(rootPath, cancellationToken), cancellationToken);
+    public Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
+        => RunExclusiveAsync(workspaceKey, () => GetStatusAsync(rootPath, cancellationToken), cancellationToken, credential);
 
-    public Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken)
-        => RunExclusiveAsync(workspaceKey, () => GetBranchesAsync(rootPath, cancellationToken), cancellationToken);
+    public Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
+        => RunExclusiveAsync(workspaceKey, () => GetBranchesAsync(rootPath, cancellationToken), cancellationToken, credential);
 
-    public Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken)
-        => RunExclusiveAsync(workspaceKey, () => GetDiffAsync(rootPath, comparison, cancellationToken), cancellationToken);
+    public Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
+        => RunExclusiveAsync(workspaceKey, () => GetDiffAsync(rootPath, comparison, cancellationToken), cancellationToken, credential);
 
-    public Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken)
+    public Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, async () =>
         {
             await RequireRepositoryAsync(rootPath, cancellationToken);
@@ -131,9 +138,9 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Output = checkout.Output,
                 Status = await GetStatusAsync(rootPath, cancellationToken)
             };
-        }, cancellationToken);
+        }, cancellationToken, credential);
 
-    public Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken)
+    public Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, async () =>
         {
             await RequireRepositoryAsync(rootPath, cancellationToken);
@@ -151,9 +158,9 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Output = JoinOutput(output),
                 Status = await GetStatusAsync(rootPath, cancellationToken)
             };
-        }, cancellationToken);
+        }, cancellationToken, credential);
 
-    public Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken)
+    public Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, async () =>
         {
             await RequireRepositoryAsync(rootPath, cancellationToken);
@@ -165,9 +172,9 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Output = pull.Output,
                 Status = await GetStatusAsync(rootPath, cancellationToken)
             };
-        }, cancellationToken);
+        }, cancellationToken, credential);
 
-    public Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken)
+    public Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, async () =>
         {
             await RequireRepositoryAsync(rootPath, cancellationToken);
@@ -199,17 +206,23 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Output = JoinOutput(output),
                 Status = await GetStatusAsync(rootPath, cancellationToken)
             };
-        }, cancellationToken);
+        }, cancellationToken, credential);
 
-    private async Task<T> RunExclusiveAsync<T>(string workspaceKey, Func<Task<T>> operation, CancellationToken cancellationToken)
+    private async Task<T> RunExclusiveAsync<T>(string workspaceKey, Func<Task<T>> operation, CancellationToken cancellationToken, GitWorkspaceCredential? credential)
     {
         var gate = _operationGates.GetOrAdd(workspaceKey, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
+        var previousCredential = _credential.Value;
+        _credential.Value = credential;
         try { return await operation(); }
-        finally { gate.Release(); }
+        finally
+        {
+            _credential.Value = previousCredential;
+            gate.Release();
+        }
     }
 
-    private static async Task<GitOperationResult> FailureAsync(string action, List<string> output, string rootPath, CancellationToken cancellationToken) => new()
+    private async Task<GitOperationResult> FailureAsync(string action, List<string> output, string rootPath, CancellationToken cancellationToken) => new()
     {
         Ok = false,
         Action = action,
@@ -217,7 +230,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         Status = await GetStatusAsync(rootPath, cancellationToken)
     };
 
-    private static async Task RequireRepositoryAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task RequireRepositoryAsync(string rootPath, CancellationToken cancellationToken)
     {
         var check = await RunGitAsync(rootPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
         if (check.ExitCode != 0 || !check.Output.Contains("true", StringComparison.OrdinalIgnoreCase))
@@ -226,7 +239,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         }
     }
 
-    private static async Task<GitWorkspaceStatus> GetStatusAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<GitWorkspaceStatus> GetStatusAsync(string rootPath, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(rootPath)) throw new DirectoryNotFoundException("The selected Git workspace no longer exists.");
         var check = await RunGitAsync(rootPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
@@ -258,7 +271,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         };
     }
 
-    private static async Task<GitWorkspaceBranches> GetBranchesAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<GitWorkspaceBranches> GetBranchesAsync(string rootPath, CancellationToken cancellationToken)
     {
         await RequireRepositoryAsync(rootPath, cancellationToken);
         await RefreshRemoteRefsAsync(rootPath, cancellationToken);
@@ -273,7 +286,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         };
     }
 
-    private static async Task<GitWorkspaceDiff> GetDiffAsync(string rootPath, string? comparison, CancellationToken cancellationToken)
+    private async Task<GitWorkspaceDiff> GetDiffAsync(string rootPath, string? comparison, CancellationToken cancellationToken)
     {
         await RequireRepositoryAsync(rootPath, cancellationToken);
         var mode = string.IsNullOrWhiteSpace(comparison) ? "working" : comparison.Trim().ToLowerInvariant();
@@ -316,7 +329,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         };
     }
 
-    private static async Task<List<GitWorkspaceDiffFile>> GetDiffFilesAsync(string rootPath, string range, bool includeUntracked, CancellationToken cancellationToken)
+    private async Task<List<GitWorkspaceDiffFile>> GetDiffFilesAsync(string rootPath, string range, bool includeUntracked, CancellationToken cancellationToken)
     {
         var result = await RunGitAsync(rootPath, ["diff", "--name-status", "-z", range], cancellationToken);
         if (result.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.Output) ? "Unable to read changed Git files." : result.Output);
@@ -353,7 +366,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         return files.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase).Take(600).ToList();
     }
 
-    private static async Task<string?> RefreshRemoteRefsAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<string?> RefreshRemoteRefsAsync(string rootPath, CancellationToken cancellationToken)
     {
         if (RecentRemoteRefreshes.TryGetValue(rootPath, out var refreshedAt) && DateTimeOffset.UtcNow - refreshedAt < TimeSpan.FromSeconds(2)) return null;
         var remotes = await RunGitAsync(rootPath, ["remote"], cancellationToken);
@@ -370,7 +383,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
 
     private static List<string> ToLines(string value) => value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
-    private static async Task<(int Behind, int Ahead)> GetTrackingCountsAsync(string rootPath, string? remoteBranch, CancellationToken cancellationToken)
+    private async Task<(int Behind, int Ahead)> GetTrackingCountsAsync(string rootPath, string? remoteBranch, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(remoteBranch)) return (0, 0);
         var result = await RunGitAsync(rootPath, ["rev-list", "--left-right", "--count", $"{remoteBranch}...HEAD"], cancellationToken);
@@ -380,7 +393,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
             : (0, 0);
     }
 
-    private static async Task<int> GetChangedFileCountAsync(string rootPath, string? from, string? to, CancellationToken cancellationToken)
+    private async Task<int> GetChangedFileCountAsync(string rootPath, string? from, string? to, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to)) return 0;
         var result = await RunGitAsync(rootPath, ["diff", "--name-only", $"{from}...{to}"], cancellationToken);
@@ -396,19 +409,39 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         return separator > 0 ? remoteBranch[..separator] : null;
     }
 
-    private static async Task<GitProcessResult> RunGitAsync(string rootPath, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<GitProcessResult> RunGitAsync(string rootPath, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo("git") { WorkingDirectory = rootPath, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
         // The server cannot answer an interactive credential prompt; fail clearly instead of leaving the runtime menu waiting.
         startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        var credential = _credential.Value;
+        string? askPassPath = null;
+        if (credential is not null)
+        {
+            askPassPath = Path.Combine(Path.GetTempPath(), $"aiagent-git-askpass-{Guid.NewGuid():N}.cmd");
+            await File.WriteAllTextAsync(askPassPath, "@echo off\r\necho %~1 | findstr /b /i \"Username\" >nul && (echo %AIAGENT_GIT_USERNAME%) || (echo %AIAGENT_GIT_TOKEN%)\r\n", Encoding.ASCII, cancellationToken);
+            startInfo.Environment["GIT_ASKPASS"] = askPassPath;
+            startInfo.Environment["AIAGENT_GIT_USERNAME"] = credential.Username;
+            startInfo.Environment["AIAGENT_GIT_TOKEN"] = credential.AccessToken;
+        }
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-        using var process = new Process { StartInfo = startInfo };
-        if (!process.Start()) throw new InvalidOperationException("Unable to start Git. Ensure Git is installed on the server.");
-        var output = new StringBuilder();
-        output.Append(await process.StandardOutput.ReadToEndAsync(cancellationToken));
-        output.Append(await process.StandardError.ReadToEndAsync(cancellationToken));
-        await process.WaitForExitAsync(cancellationToken);
-        return new GitProcessResult(process.ExitCode, output.ToString().Trim());
+        try
+        {
+            using var process = new Process { StartInfo = startInfo };
+            if (!process.Start()) throw new InvalidOperationException("Unable to start Git. Ensure Git is installed on the server.");
+            var output = new StringBuilder();
+            output.Append(await process.StandardOutput.ReadToEndAsync(cancellationToken));
+            output.Append(await process.StandardError.ReadToEndAsync(cancellationToken));
+            await process.WaitForExitAsync(cancellationToken);
+            return new GitProcessResult(process.ExitCode, output.ToString().Trim());
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(askPassPath))
+            {
+                try { File.Delete(askPassPath); } catch { }
+            }
+        }
     }
 
     private static string NormalizeCommitMessage(string message)

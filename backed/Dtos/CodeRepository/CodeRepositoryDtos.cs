@@ -13,6 +13,9 @@ public sealed class CodeRepositoryDto
     [JsonPropertyName("project_id")]
     public long? ProjectId { get; set; }
 
+    [JsonPropertyName("git_account_id")]
+    public long? GitAccountId { get; set; }
+
     [JsonPropertyName("project_name")]
     public string? ProjectName { get; set; }
 
@@ -93,6 +96,9 @@ public sealed class CodeRepositorySaveRequest
 
     [JsonPropertyName("project_id")]
     public long? ProjectId { get; set; }
+
+    [JsonPropertyName("git_account_id")]
+    public long? GitAccountId { get; set; }
 
     [JsonPropertyName("display_name")]
     public string? DisplayName { get; set; }

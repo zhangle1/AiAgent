@@ -345,6 +345,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         var entity = new AiCodeRepository
         {
             ProjectId = project?.Id,
+            GitAccountId = request.GitAccountId,
             Name = name,
             DisplayName = FirstNonEmpty(request.DisplayName, inspection.SuggestedDisplayName, name),
             RootPath = inspection.RootPath,
@@ -379,6 +380,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         var now = DateTime.UtcNow;
         entity.DisplayName = FirstNonEmpty(request.DisplayName, entity.DisplayName, inspection.SuggestedDisplayName, entity.Name);
         entity.ProjectId = project?.Id;
+        // Existing settings clients do not submit a Git account. Keep the
+        // account selected at clone time unless a later client explicitly sends one.
+        entity.GitAccountId = request.GitAccountId ?? entity.GitAccountId;
         entity.RootPath = inspection.RootPath;
         entity.Description = NormalizeOptional(request.Description);
         entity.Status = "configured";
@@ -1432,6 +1436,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         {
             Id = entity.Id,
             ProjectId = entity.ProjectId,
+            GitAccountId = entity.GitAccountId,
             ProjectName = project?.DisplayName,
             Name = entity.Name,
             DisplayName = entity.DisplayName,
