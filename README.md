@@ -1,3 +1,5 @@
+
+
 # AiAgent
 
 ## 项目 Markdown 与 Agent 索引
@@ -65,7 +67,7 @@ AiAgent/
 ├─ docs/                   # 架构、Agent 与实施记录
 ├─ handoff/                # 阶段规格与开发交接归档
 ├─ AGENTS.md               # 面向开发者和 AI Agent 的协作规则
-└─ backed/appsettings.example.json
+└─ backed/appsettings.dev.example.json
 ```
 
 ## 本地启动
@@ -76,7 +78,7 @@ AiAgent/
 
 ```powershell
 cd backed
-Copy-Item appsettings.example.json appsettings.json
+Copy-Item appsettings.dev.example.json appsettings.json
 dotnet restore
 dotnet run
 ```
@@ -146,7 +148,7 @@ npm run dev
 ## 安全与提交规则
 
 - 不提交 `backed/appsettings.json`、`.env`、`backed/data/`、知识库原文、索引、运行时工作区和构建产物。
-- 提交前使用 `backed/appsettings.example.json` 作为配置样例，不得在 README、Issue、日志或代码中写入真实密码、Token 或 API Key。
+- 提交前使用 `backed/appsettings.dev.example.json` 作为配置样例，不得在 README、Issue、日志或代码中写入真实密码、Token 或 API Key。
 - 代码库访问受后端允许根目录约束；看板 Agent 只能写入当前看板工作区。
 
 ## 技术栈
