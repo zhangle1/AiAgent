@@ -58,12 +58,15 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     const streamId = createStreamId();
     const controller = new AbortController();
     controllersRef.current.set(streamId, controller);
-    const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", events: [], startedAt: Date.now(), unread: false, agent: request.agent };
+    const streamRequest = { ...request, client_runtime_id: getChatRuntimeId() };
+    const initialEvents: ChatStreamEvent[] = streamRequest.debug_trace && streamRequest.trace_id
+      ? [{ type: "debug_trace", debug_trace: { trace_id: streamRequest.trace_id, stage: "browser_submit", status: "completed", elapsed_ms: 0, duration_ms: 0, provider: streamRequest.agent === "codex" ? "codex" : "openai_compatible", transport: "websocket" } }]
+      : [];
+    const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", events: initialEvents, startedAt: Date.now(), unread: false, agent: request.agent };
     const next = { ...streamsRef.current, [streamId]: record };
     streamsRef.current = next;
     setStreams(next);
 
-    const streamRequest = { ...request, client_runtime_id: getChatRuntimeId() };
     void streamCompleteChat(streamRequest, (event) => {
       update(streamId, (current) => ({
         ...current,

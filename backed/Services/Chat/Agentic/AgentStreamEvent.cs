@@ -1,4 +1,6 @@
 using AiAgent.Backend.Dtos.Knowledge;
+using AiAgent.Backend.Dtos.Chat;
+using System.Text.Json.Serialization;
 
 namespace AiAgent.Backend.Services.Chat.Agentic;
 
@@ -7,6 +9,9 @@ namespace AiAgent.Backend.Services.Chat.Agentic;
 /// </summary>
 public sealed class AgentStreamEvent
 {
+    [JsonPropertyName("debug_trace")]
+    public ChatDebugTraceEvent? DebugTrace { get; set; }
+
     /// <summary>
     /// 事件类型，例如 label、thinking、content、tool、sources、done、error。
     /// </summary>

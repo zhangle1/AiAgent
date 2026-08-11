@@ -1,10 +1,10 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
-import { deleteChatImage, persistedChatImageUrl, uploadChatImage, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
+import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
@@ -18,10 +18,10 @@ import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject, CodeProjectMarkdownDocument, CodeProjectReference } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
-import { getSession, type SessionDetail } from "@/lib/session-api";
+import { getSession, getSessionDiagnostics, type ChatDebugTraceRecord, type SessionDetail } from "@/lib/session-api";
 import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 
-type InspectorTab = "preview" | "file" | "documents" | "tasks" | "terminal";
+type InspectorTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal";
 
 type ChatImagePreview = ChatImageAttachment & { previewUrl: string };
 
@@ -46,8 +46,17 @@ type ChatMessage = {
   agent?: "codex" | "codebuddy";
   modificationStatus?: string;
   attachments?: ChatImagePreview[];
+  documentAttachments?: ChatFileAttachment[];
   markdownDocuments?: CodeProjectMarkdownDocument[];
+  projectReferences?: CodeProjectReference[];
+  debugTrace?: ChatDebugTraceEvent[];
 };
+
+const CHAT_DEBUG_STORAGE_PREFIX = "aiagent:chat-debug:";
+
+function chatDebugStorageKey(sessionId: string | null) {
+  return `${CHAT_DEBUG_STORAGE_PREFIX}${sessionId ?? "new"}`;
+}
 
 function createClientId(): string {
   return globalThis.crypto?.randomUUID?.()
@@ -59,11 +68,13 @@ function toHistoryMessages(session: SessionDetail): ChatMessage[] {
     id: String(message.id), role: message.role, content: message.content, thinking: message.thinking ?? undefined,
     citations: message.citations ?? undefined, model: message.metadata?.model ?? null,
     attachments: message.metadata?.attachments?.map((attachment) => ({ ...attachment, previewUrl: persistedChatImageUrl(session.id, attachment.id) })),
+    documentAttachments: message.metadata?.document_attachments,
     status: "done",
   }));
 }
 
 function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key: TranslationKey) => string): ChatMessage {
+  if (event.type === "debug_trace" && event.debug_trace) return { ...message, debugTrace: [...(message.debugTrace ?? []), event.debug_trace] };
   const stats = event.metadata ? extractRunStats(event.metadata) : {};
   if (event.type === "label") return { ...message, label: event.label ?? null, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
   if (event.type === "thinking") return { ...message, thinking: `${message.thinking ?? ""}${event.content ?? ""}`, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
@@ -104,6 +115,10 @@ export function KnowledgeChatHome() {
   const [selectedKbNames, setSelectedKbNames] = useState<string[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(requestedProjectId);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
+  const [debugTraceEnabled, setDebugTraceEnabled] = useState(false);
+  const [diagnosticDialogOpen, setDiagnosticDialogOpen] = useState(false);
+  const [storedDiagnostics, setStoredDiagnostics] = useState<ChatDebugTraceRecord[]>([]);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedCodexModelId, setSelectedCodexModelId] = useState("");
@@ -119,13 +134,17 @@ export function KnowledgeChatHome() {
   const [slashProjectCommand, setSlashProjectCommand] = useState<SlashProjectCommand | null>(null);
   const [projectReferenceOptions, setProjectReferenceOptions] = useState<CodeProjectReference[]>([]);
   const [projectReferenceLoading, setProjectReferenceLoading] = useState(false);
+  const [pendingProjectReferences, setPendingProjectReferences] = useState<CodeProjectReference[]>([]);
   const [markdownDocumentOptions, setMarkdownDocumentOptions] = useState<CodeProjectMarkdownDocument[]>([]);
   const [markdownDocumentLoading, setMarkdownDocumentLoading] = useState(false);
   const [pendingMarkdownDocuments, setPendingMarkdownDocuments] = useState<CodeProjectMarkdownDocument[]>([]);
   const [activeProjectReferenceIndex, setActiveProjectReferenceIndex] = useState(0);
   const [imageAttachments, setImageAttachments] = useState<ChatImagePreview[]>([]);
+  const [documentAttachments, setDocumentAttachments] = useState<ChatFileAttachment[]>([]);
   const [previewingImage, setPreviewingImage] = useState<ChatImagePreview | null>(null);
+  const [requestedDocumentAttachment, setRequestedDocumentAttachment] = useState<ChatFileAttachment | null>(null);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
@@ -135,13 +154,18 @@ export function KnowledgeChatHome() {
   const [fileReference, setFileReference] = useState<ChatCodeFileReference | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
-  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
-  const activeComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const activeComposerRef = useRef<HTMLDivElement | null>(null);
+  const [composerCursor, setComposerCursor] = useState(0);
   const pendingSessionIdRef = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const wasSendingRef = useRef(false);
   const attachmentPreviewUrlsRef = useRef(new Set<string>());
   const { streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
+
+  useEffect(() => {
+    setDebugTraceEnabled(sessionStorage.getItem(chatDebugStorageKey(activeSessionId)) === "1");
+  }, [activeSessionId]);
 
   const readyKnowledgeBases = useMemo(
     () => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"),
@@ -349,29 +373,56 @@ export function KnowledgeChatHome() {
     }
   }
 
+  function openDiagnostics() {
+    if (!activeSessionId) return;
+    setDiagnosticDialogOpen(true);
+    setStoredDiagnostics([]);
+    setDiagnosticsLoading(true);
+    void getSessionDiagnostics(activeSessionId)
+      .then(setStoredDiagnostics)
+      .catch((ex) => setError(ex instanceof Error ? ex.message : "诊断日志读取失败。"))
+      .finally(() => setDiagnosticsLoading(false));
+  }
+
   function syncSlashProjectCommand(value: string, cursor: number) {
     const command = findSlashProjectCommand(value, cursor);
     setSlashProjectCommand(command);
     if (command) setActiveProjectReferenceIndex(0);
   }
 
-  function handleComposerChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
-    activeComposerRef.current = event.currentTarget;
-    setInput(event.target.value);
-    syncSlashProjectCommand(event.target.value, event.target.selectionStart ?? event.target.value.length);
+  function handleComposerChange(value: string, cursor: number) {
+    setInput(value);
+    setComposerCursor(cursor);
+    setPendingMarkdownDocuments((current) => current.filter((document) => extractMarkdownDocumentReferences(value).some((reference) => markdownDocumentKey(document) === `${reference.repository_name}\u0000${reference.path}`)));
+    setPendingProjectReferences((current) => current.filter((project) => extractProjectReferenceIds(value).includes(project.id)));
+    syncSlashProjectCommand(value, cursor);
   }
 
-  function handleComposerFocus(event: React.FocusEvent<HTMLTextAreaElement>) {
-    activeComposerRef.current = event.currentTarget;
+  function handleComposerFocus(element: HTMLDivElement, cursor: number) {
+    activeComposerRef.current = element;
+    setComposerCursor(cursor);
     setComposerExpanded(true);
-    syncSlashProjectCommand(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+    syncSlashProjectCommand(input, cursor);
   }
 
-  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleComposerCursorChange(cursor: number) {
+    setComposerCursor(cursor);
+    syncSlashProjectCommand(input, cursor);
+  }
+
+  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLDivElement>, cursor: number) {
+    if (!event.nativeEvent.isComposing && event.key === "Backspace") {
+      const removable = inlineReferenceBeforeCursor(input, cursor);
+      if (removable) {
+        event.preventDefault();
+        removeInlineReference(removable.token, removable.start);
+        return;
+      }
+    }
     if (event.nativeEvent.isComposing || !slashProjectCommand) {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
-        event.currentTarget.form?.requestSubmit();
+        event.currentTarget.closest("form")?.requestSubmit();
       }
       return;
     }
@@ -404,21 +455,20 @@ export function KnowledgeChatHome() {
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      event.currentTarget.form?.requestSubmit();
+      event.currentTarget.closest("form")?.requestSubmit();
     }
   }
 
   function insertProjectReference(project: CodeProjectReference) {
-    if (!slashProjectCommand) return;
-    const token = `[[项目:${project.display_name}|${project.id}]] `;
-    const next = `${input.slice(0, slashProjectCommand.start)}${token}${input.slice(slashProjectCommand.end)}`;
-    const cursor = slashProjectCommand.start + token.length;
+    const command = findSlashProjectCommand(input, composerCursor) ?? slashProjectCommand;
+    if (!command || command.kind !== "projects") return;
+    const token = projectReferenceToken(project);
+    const next = `${input.slice(0, command.start)}${token}${input.slice(command.end)}`;
+    const cursor = command.start + token.length;
     setInput(next);
+    setPendingProjectReferences((current) => addProjectReference(current, project));
     setSlashProjectCommand(null);
-    requestAnimationFrame(() => {
-      activeComposerRef.current?.focus();
-      activeComposerRef.current?.setSelectionRange(cursor, cursor);
-    });
+    focusComposerAt(cursor);
   }
 
   function openMarkdownDocumentSearch() {
@@ -429,30 +479,45 @@ export function KnowledgeChatHome() {
     setInput(next);
     setSlashProjectCommand({ start: slashProjectCommand.start, end: cursor, query: "", kind: "documents" });
     setActiveProjectReferenceIndex(0);
-    requestAnimationFrame(() => {
-      activeComposerRef.current?.focus();
-      activeComposerRef.current?.setSelectionRange(cursor, cursor);
-    });
+    focusComposerAt(cursor);
   }
 
   function insertMarkdownDocumentReference(document: CodeProjectMarkdownDocument) {
-    if (!slashProjectCommand) return;
-    const next = `${input.slice(0, slashProjectCommand.start)}${input.slice(slashProjectCommand.end)}`;
+    const command = findSlashProjectCommand(input, composerCursor) ?? slashProjectCommand;
+    if (!command || command.kind !== "documents") return;
+    const token = markdownDocumentReferenceToken(document);
+    const next = `${input.slice(0, command.start)}${token}${input.slice(command.end)}`;
+    const cursor = command.start + token.length;
     setInput(next);
     setPendingMarkdownDocuments((current) => addMarkdownDocumentReference(current, document));
     setSlashProjectCommand(null);
-    requestAnimationFrame(() => {
-      activeComposerRef.current?.focus();
-      activeComposerRef.current?.setSelectionRange(slashProjectCommand.start, slashProjectCommand.start);
-    });
+    focusComposerAt(cursor);
   }
 
   function appendMarkdownDocumentReference(document: CodeProjectMarkdownDocument) {
+    const token = markdownDocumentReferenceToken(document);
+    const cursor = composerCursor;
+    const next = `${input.slice(0, cursor)}${token}${input.slice(cursor)}`;
+    setInput(next);
     setPendingMarkdownDocuments((current) => addMarkdownDocumentReference(current, document));
     setComposerExpanded(true);
+    focusComposerAt(cursor + token.length);
+  }
+
+  function removeInlineReference(token: string, start = input.indexOf(token)) {
+    if (start < 0) return;
+    const next = `${input.slice(0, start)}${input.slice(start + token.length)}`;
+    handleComposerChange(next, start);
+    focusComposerAt(start);
+  }
+
+  function focusComposerAt(cursor: number) {
+    setComposerCursor(cursor);
     requestAnimationFrame(() => {
-      activeComposerRef.current?.focus();
-      activeComposerRef.current?.setSelectionRange(input.length, input.length);
+      const composer = activeComposerRef.current;
+      if (!composer) return;
+      composer.focus();
+      setInlineComposerSelection(composer, cursor);
     });
   }
 
@@ -460,17 +525,17 @@ export function KnowledgeChatHome() {
     setInput(prompt);
     setComposerExpanded(true);
     setSlashProjectCommand(null);
-    requestAnimationFrame(() => {
-      activeComposerRef.current?.focus();
-      activeComposerRef.current?.setSelectionRange(prompt.length, prompt.length);
-    });
+    focusComposerAt(prompt.length);
   }
 
-  async function sendMessage(query: string, options?: { retryAssistantId?: string; attachments?: ChatImagePreview[]; markdownDocuments?: CodeProjectMarkdownDocument[] }) {
+  async function sendMessage(query: string, options?: { retryAssistantId?: string; attachments?: ChatImagePreview[]; documentAttachments?: ChatFileAttachment[]; markdownDocuments?: CodeProjectMarkdownDocument[]; projectReferences?: CodeProjectReference[] }) {
     const attachmentsForTurn = options?.attachments ?? imageAttachments;
+    const documentAttachmentsForTurn = options?.documentAttachments ?? documentAttachments;
     const markdownDocumentsForTurn = options?.markdownDocuments ?? pendingMarkdownDocuments;
     const markdownReferences = mergeMarkdownDocumentReferences(extractMarkdownDocumentReferences(query), markdownDocumentsForTurn);
-    if ((!query && attachmentsForTurn.length === 0 && markdownReferences.length === 0) || sending || uploadingImages) return;
+    const projectReferencesForTurn = options?.projectReferences ?? pendingProjectReferences;
+    const projectReferenceIds = mergeProjectReferenceIds(extractProjectReferenceIds(query), projectReferencesForTurn);
+    if ((!query && attachmentsForTurn.length === 0 && documentAttachmentsForTurn.length === 0 && markdownReferences.length === 0 && projectReferenceIds.length === 0) || sending || uploadingImages || uploadingFiles) return;
     if (selectedAgentId && selectedAgentProvider && !selectedAgentProvider.chat_supported) {
       setError(`${selectedAgentProvider.name} 已检测到，但当前版本尚未适配聊天接管协议。`);
       return;
@@ -480,8 +545,8 @@ export function KnowledgeChatHome() {
       return;
     }
 
-    if (attachmentsForTurn.length > 0 && selectedAgentId !== "codex") {
-      setError("图片附件目前只能发送给 Codex 本地代理。");
+    if ((attachmentsForTurn.length > 0 || documentAttachmentsForTurn.length > 0) && selectedAgentId !== "codex") {
+      setError("附件目前只能发送给 Codex 本地代理。");
       return;
     }
     if (attachmentsForTurn.length > 0 && !canAttachImages) {
@@ -489,10 +554,11 @@ export function KnowledgeChatHome() {
       return;
     }
 
-    const messageText = query || (markdownReferences.length > 0 ? "请基于已选项目文档回答。" : "请分析我附上的图片。");
+    const messageText = query || (markdownReferences.length > 0 ? "请基于已选项目文档回答。" : projectReferenceIds.length > 0 ? "请结合已引用项目回答。" : documentAttachmentsForTurn.length > 0 ? "请分析我附上的文件。" : "请分析我附上的图片。");
 
     const sessionId = activeSessionId ?? createClientId();
     if (!activeSessionId) {
+      if (debugTraceEnabled) sessionStorage.setItem(chatDebugStorageKey(sessionId), "1");
       pendingSessionIdRef.current = sessionId;
       setActiveSessionId(sessionId);
       router.replace(`/chat?session=${encodeURIComponent(sessionId)}`);
@@ -506,14 +572,18 @@ export function KnowledgeChatHome() {
           role: "user",
           content: messageText,
           attachments: attachmentsForTurn,
+          documentAttachments: documentAttachmentsForTurn,
           markdownDocuments: markdownDocumentsForTurn,
+          projectReferences: projectReferencesForTurn,
         },
       ]);
       setInput("");
       setSlashProjectCommand(null);
       setComposerExpanded(false);
       setImageAttachments([]);
+      setDocumentAttachments([]);
       setPendingMarkdownDocuments([]);
+      setPendingProjectReferences([]);
     }
 
     setError(null);
@@ -550,7 +620,7 @@ export function KnowledgeChatHome() {
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: selectedProjectId ?? undefined,
-        project_references: extractProjectReferenceIds(messageText).map((project_id) => ({ project_id })),
+        project_references: projectReferenceIds.map((project_id) => ({ project_id })),
         markdown_document_references: markdownReferences,
         model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
         codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
@@ -559,6 +629,9 @@ export function KnowledgeChatHome() {
         mode: "chat",
         agent: selectedAgentId || undefined,
         attachment_ids: attachmentsForTurn.map((attachment) => attachment.id),
+        document_attachment_ids: documentAttachmentsForTurn.map((attachment) => attachment.id),
+        debug_trace: debugTraceEnabled || undefined,
+        trace_id: debugTraceEnabled ? createClientId().replaceAll("-", "") : undefined,
       });
       setMessages((items) => {
         const streamMessageId = `stream:${streamId}`;
@@ -614,6 +687,38 @@ export function KnowledgeChatHome() {
     }
   }
 
+  async function addDocuments(files: File[]) {
+    if (files.length === 0) return;
+    if (selectedAgentId !== "codex") {
+      setError("请先选择 Codex 本地代理，再添加文件附件。");
+      return;
+    }
+    const availableSlots = 4 - documentAttachments.length;
+    if (availableSlots <= 0) {
+      setError("每轮最多添加 4 个文件附件。");
+      return;
+    }
+    if (files.length > availableSlots) setError(`每轮最多添加 4 个文件，已选择前 ${availableSlots} 个。`);
+    setUploadingFiles(true);
+    try {
+      for (const file of files.slice(0, availableSlots)) {
+        const attachment = await uploadChatFile(file);
+        setDocumentAttachments((current) => [...current, attachment]);
+      }
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : "文件上传失败，请重试。");
+    } finally {
+      setUploadingFiles(false);
+    }
+  }
+
+  function addAttachments(files: File[]) {
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    const documents = files.filter((file) => !file.type.startsWith("image/"));
+    if (images.length > 0) void addImages(images);
+    if (documents.length > 0) void addDocuments(documents);
+  }
+
   async function removeImage(attachment: ChatImagePreview) {
     setImageAttachments((current) => current.filter((item) => item.id !== attachment.id));
     attachmentPreviewUrlsRef.current.delete(attachment.previewUrl);
@@ -623,6 +728,21 @@ export function KnowledgeChatHome() {
     } catch {
       // The server will also clean short-lived image uploads after expiry.
     }
+  }
+
+  async function removeDocument(attachment: ChatFileAttachment) {
+    setDocumentAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    try {
+      await deleteChatFile(attachment.id);
+    } catch {
+      // The server will clean short-lived uploads after expiry.
+    }
+  }
+
+  function previewDocumentExtraction(attachment: ChatFileAttachment) {
+    if (attachment.extraction_status !== "ready") return;
+    setRequestedDocumentAttachment({ ...attachment });
+    openInspector("uploads");
   }
 
   function stopGenerating() {
@@ -659,11 +779,6 @@ export function KnowledgeChatHome() {
     }
   }
 
-  function openMarkdownDocument(document: CodeProjectMarkdownDocument) {
-    setRequestedMarkdownDocument(document);
-    openInspector("documents");
-  }
-
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
       <header className="relative z-[80] flex h-14 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-3 backdrop-blur-xl lg:h-16 lg:px-5">
@@ -679,6 +794,9 @@ export function KnowledgeChatHome() {
           {selectedProject && <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex"><Braces size={12}/>{selectedProject.display_name}</span>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 lg:gap-2">
+          <button type="button" onClick={() => setDebugTraceEnabled((enabled) => { const next = !enabled; sessionStorage.setItem(chatDebugStorageKey(activeSessionId), next ? "1" : "0"); return next; })} className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition ${debugTraceEnabled ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"}`} title="仅当前浏览器会话显示耗时诊断，不记录消息内容">
+            <Terminal size={13} />Debug
+          </button>
           <ClientScanDialog />
           <ChatRuntimeToolbar project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")}/>
           <span className="hidden lg:contents"><SidePanelTabLauncher onOpen={openInspector}/></span>
@@ -702,11 +820,13 @@ export function KnowledgeChatHome() {
                   onPreviewImage={setPreviewingImage}
                     onRetry={message.role === "assistant" ? () => {
                       const userMessage = findPreviousUserMessage(displayMessages, index);
-                      if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id, attachments: userMessage.attachments, markdownDocuments: userMessage.markdownDocuments });
+                      if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id, attachments: userMessage.attachments, documentAttachments: userMessage.documentAttachments, markdownDocuments: userMessage.markdownDocuments, projectReferences: userMessage.projectReferences });
                     } : undefined}
                     onOpenCodeFile={openCodeFile}
                     onOpenProjectMarkdownDocument={openProjectMarkdownDocument}
                     projectId={selectedProjectId}
+                    showDebugTrace={debugTraceEnabled}
+                    onOpenDiagnostics={openDiagnostics}
                 />
               ))}
               {sending && (
@@ -720,17 +840,20 @@ export function KnowledgeChatHome() {
           )}
 
           <form onSubmit={handleSubmit} onPaste={(event) => {
-            const imagesFromItems = Array.from(event.clipboardData.items)
-              .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+            const filesFromItems = Array.from(event.clipboardData.items)
+              .filter((item) => item.kind === "file")
               .map((item) => item.getAsFile())
               .filter((file): file is File => file !== null);
-            const images = imagesFromItems.length > 0
-              ? imagesFromItems
-              : Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
-            if (images.length > 0) {
+            const files = filesFromItems.length > 0 ? filesFromItems : Array.from(event.clipboardData.files);
+            if (files.length > 0) {
               event.preventDefault();
-              void addImages(images);
+              addAttachments(files);
             }
+          }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+            event.preventDefault();
+            const files = Array.from(event.dataTransfer.files);
+            if (files.length === 0) return;
+            addAttachments(files);
           }} className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}>
             {imageAttachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
@@ -746,7 +869,15 @@ export function KnowledgeChatHome() {
                 ))}
               </div>
             )}
-            {pendingMarkdownDocuments.length > 0 && <PendingMarkdownDocumentChips items={pendingMarkdownDocuments} onOpen={openMarkdownDocument} onRemove={(document) => setPendingMarkdownDocuments((current) => current.filter((item) => markdownDocumentKey(item) !== markdownDocumentKey(document)))}/>}
+            {documentAttachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+                {documentAttachments.map((attachment) => (
+                  <div key={attachment.id} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+                    <FileText size={15} className="shrink-0 text-blue-600"/><span className="max-w-44 truncate">{attachment.file_name}</span><button type="button" onDoubleClick={() => void previewDocumentExtraction(attachment)} title={attachment.extraction_status === "ready" ? "双击查看实际提取文本" : "旧 Office 格式需先转换"} className={`shrink-0 select-none text-[10px] ${attachment.extraction_status === "ready" ? "cursor-zoom-in text-emerald-600" : "cursor-default text-amber-600"}`}>{attachment.extraction_status === "ready" ? "文本提取" : "需转换"}</button><button type="button" onClick={() => void removeDocument(attachment)} className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label={`移除 ${attachment.file_name}`}><X size={13}/></button>
+                  </div>
+                ))}
+              </div>
+            )}
             {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu
               items={markdownDocumentOptions}
               loading={markdownDocumentLoading}
@@ -766,42 +897,31 @@ export function KnowledgeChatHome() {
             <div className="flex items-center gap-1 lg:hidden">
               <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18}/></button>
               <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
-              <textarea value={input} onFocus={handleComposerFocus} onChange={handleComposerChange} onKeyDown={handleComposerKeyDown} onSelect={(event) => syncSlashProjectCommand(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length)} placeholder="发消息或按住说话" className={`min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-[14px] leading-5 text-slate-800 outline-none placeholder:text-slate-400 ${composerExpanded ? "min-h-[52px]" : "h-9 min-h-9"}`} aria-label="聊天输入，输入斜杠可引用项目" aria-expanded={Boolean(slashProjectCommand)} aria-controls={slashProjectCommand ? "chat-project-reference-menu" : undefined} />
-              <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || !canAttachImages} title={imageAttachmentHint} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
-              {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
+              <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference}/>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
+              {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
             </div>
             {composerExpanded && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
               <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600"><Braces size={14} className="shrink-0 text-blue-600"/><span className="min-w-0 flex-1 truncate">{selectedProject?.display_name || "选择项目"}</span><ChevronDown size={13} className="shrink-0"/></button>
               <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600"><Bot size={14} className="shrink-0 text-violet-600"/><select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体"><option value="">云端模型</option><option value="codex">Codex 本地</option></select></label>
             </div>}
-            <textarea
-              value={input}
-              onFocus={handleComposerFocus}
-              onChange={handleComposerChange}
-              onKeyDown={handleComposerKeyDown}
-              onSelect={(event) => syncSlashProjectCommand(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-              placeholder={t("chat.placeholderShort")}
-              className="hidden min-h-[56px] w-full resize-none bg-transparent px-1 pt-1 text-[14px] leading-6 text-slate-800 outline-none placeholder:text-slate-400 lg:block"
-              aria-label="聊天输入，输入斜杠可引用项目"
-              aria-expanded={Boolean(slashProjectCommand)}
-              aria-controls={slashProjectCommand ? "chat-project-reference-menu" : undefined}
-            />
+            <InlineReferenceComposer value={input} cursor={composerCursor} placeholder={t("chat.placeholderShort")} className="hidden min-h-[56px] px-1 pt-1 text-[14px] leading-6 lg:block" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference}/>
             <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
               <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.md,.markdown,.txt,.csv"
                   multiple
                   className="hidden"
                   onChange={(event) => {
                     const files = Array.from(event.currentTarget.files ?? []);
                     event.currentTarget.value = "";
-                    void addImages(files);
+                    addAttachments(files);
                   }}
-                  ref={(element) => { imageFileInputRef.current = element; }}
+                  ref={(element) => { fileInputRef.current = element; }}
                 />
-                <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={sending || uploadingImages || !canAttachImages} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={imageAttachmentHint}>
-                  {uploadingImages ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件">
+                  {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                 </button>
               </div>
 
@@ -880,7 +1000,7 @@ export function KnowledgeChatHome() {
                 ) : (
                   <button
                     type="submit"
-                    disabled={!input.trim() && pendingMarkdownDocuments.length === 0}
+                    disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300"
                     aria-label={t("chat.send")}
                   >
@@ -898,7 +1018,8 @@ export function KnowledgeChatHome() {
           )}
         </div>
       </section>
-      <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)}/>
+      <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)}/>
+      {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
       {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)}/>}
       </div>
       <MobileOptionSheet
@@ -941,6 +1062,18 @@ function extractProjectReferenceIds(value: string): number[] {
   return [...ids];
 }
 
+function addProjectReference(items: CodeProjectReference[], project: CodeProjectReference): CodeProjectReference[] {
+  return items.some((item) => item.id === project.id) ? items : [...items, project];
+}
+
+function projectReferenceToken(project: CodeProjectReference): string {
+  return `[[项目:${project.display_name}|${project.id}]]`;
+}
+
+function mergeProjectReferenceIds(existing: number[], projects: CodeProjectReference[]): number[] {
+  return [...new Set([...existing, ...projects.map((project) => project.id)])];
+}
+
 function extractMarkdownDocumentReferences(value: string): Array<{ repository_name: string; path: string }> {
   const references = new Map<string, { repository_name: string; path: string }>();
   for (const match of value.matchAll(/\[\[文档:[^\]|]+\|([^\]|]+)\|([^\]|]+)\]\]/g)) {
@@ -967,6 +1100,10 @@ function addMarkdownDocumentReference(items: CodeProjectMarkdownDocument[], docu
   return items.some((item) => markdownDocumentKey(item) === markdownDocumentKey(document)) ? items : [...items, document];
 }
 
+function markdownDocumentReferenceToken(document: CodeProjectMarkdownDocument): string {
+  return `[[文档:${document.name}|${document.repository_name}|${document.path}]]`;
+}
+
 function mergeMarkdownDocumentReferences(existing: Array<{ repository_name: string; path: string }>, documents: CodeProjectMarkdownDocument[]): Array<{ repository_name: string; path: string }> {
   const references = new Map(existing.map((item) => [`${item.repository_name}\u0000${item.path}`, item]));
   documents.forEach((document) => references.set(markdownDocumentKey(document), { repository_name: document.repository_name, path: document.path }));
@@ -988,8 +1125,131 @@ function formatMarkdownDocumentUpdatedAt(document: CodeProjectMarkdownDocument):
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp);
 }
 
-function PendingMarkdownDocumentChips({ items, onOpen, onRemove }: { items: CodeProjectMarkdownDocument[]; onOpen: (document: CodeProjectMarkdownDocument) => void; onRemove: (document: CodeProjectMarkdownDocument) => void }) {
-  return <div className="mb-2 flex flex-wrap gap-1.5 border-b border-slate-100 pb-2" aria-label="已引用项目文档">{items.map((document) => <span key={markdownDocumentKey(document)} className="inline-flex max-w-full items-center rounded-lg border border-blue-200 bg-blue-50 py-1 pl-2 text-[11px] text-blue-800"><FileText size={13} className="mr-1 shrink-0 text-blue-600"/><button type="button" onClick={() => onOpen(document)} className="max-w-[220px] truncate font-medium hover:underline" title={`${document.repository_name} / ${document.path}`}>{document.name}</button><button type="button" onClick={() => onRemove(document)} className="ml-1 grid h-5 w-5 place-items-center rounded text-blue-600 hover:bg-blue-100" aria-label={`移除 ${document.name}`}><X size={12}/></button></span>)}</div>;
+type InlineReferenceSegment = { token: string; kind: "project" | "document"; label: string };
+
+function inlineReferenceSegments(value: string): Array<string | InlineReferenceSegment> {
+  const result: Array<string | InlineReferenceSegment> = [];
+  const expression = /\[\[(项目|文档):([^\]|]+)(?:\|[^\]]+)+\]\]/g;
+  let cursor = 0;
+  for (const match of value.matchAll(expression)) {
+    if (match.index! > cursor) result.push(value.slice(cursor, match.index));
+    result.push({ token: match[0], kind: match[1] === "项目" ? "project" : "document", label: match[2] });
+    cursor = match.index! + match[0].length;
+  }
+  if (cursor < value.length) result.push(value.slice(cursor));
+  return result;
+}
+
+function inlineReferenceBeforeCursor(value: string, cursor: number): { token: string; start: number } | null {
+  let start = 0;
+  for (const segment of inlineReferenceSegments(value)) {
+    if (typeof segment === "string") { start += segment.length; continue; }
+    if (start + segment.token.length === cursor) return { token: segment.token, start };
+    start += segment.token.length;
+  }
+  return null;
+}
+
+function inlineComposerValue(node: Node, appendBlockBreak = false): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node instanceof HTMLElement && node.dataset.inlineReference) return node.dataset.inlineReference;
+  if (node instanceof HTMLElement && node.tagName === "BR") return "\n";
+  const value = Array.from(node.childNodes).map((child) => inlineComposerValue(child, true)).join("");
+  return appendBlockBreak && node instanceof HTMLElement && node.tagName === "DIV" && value ? `${value}\n` : value;
+}
+
+function inlineComposerCursor(element: HTMLElement): number {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return inlineComposerValue(element).length;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer)) return inlineComposerValue(element).length;
+  const before = range.cloneRange();
+  before.selectNodeContents(element);
+  before.setEnd(range.startContainer, range.startOffset);
+  return inlineComposerValue(before.cloneContents()).length;
+}
+
+function inlineComposerNodeLength(node: Node): number {
+  return inlineComposerValue(node).length;
+}
+
+function setInlineComposerSelection(element: HTMLElement, offset: number) {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  let remaining = Math.max(0, offset);
+  for (const child of Array.from(element.childNodes)) {
+    const length = inlineComposerNodeLength(child);
+    if (remaining > length) { remaining -= length; continue; }
+    if (child.nodeType === Node.TEXT_NODE) range.setStart(child, Math.min(remaining, child.textContent?.length ?? 0));
+    else if (child instanceof HTMLElement && child.dataset.inlineReference) remaining === 0 ? range.setStartBefore(child) : range.setStartAfter(child);
+    else range.setStartBefore(child);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function renderInlineComposerValue(element: HTMLElement, value: string) {
+  const fragment = document.createDocumentFragment();
+  for (const segment of inlineReferenceSegments(value)) {
+    if (typeof segment === "string") {
+      fragment.append(document.createTextNode(segment));
+      continue;
+    }
+    const wrapper = document.createElement("span");
+    wrapper.contentEditable = "false";
+    wrapper.dataset.inlineReference = segment.token;
+    wrapper.className = "mx-0.5 inline-flex max-w-[220px] align-middle";
+    const chip = document.createElement("span");
+    chip.className = "inline-flex max-w-full items-center rounded-lg border border-blue-200 bg-blue-50 py-1 pl-2 text-[11px] text-blue-800";
+    const label = document.createElement("span");
+    label.className = "truncate font-medium";
+    label.textContent = `${segment.kind === "project" ? "项目" : "文档"}：${segment.label}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.dataset.inlineReferenceRemove = segment.token;
+    remove.className = "ml-1 grid h-5 w-5 shrink-0 place-items-center rounded text-blue-600 hover:bg-blue-100";
+    remove.setAttribute("aria-label", `移除 ${segment.label}`);
+    remove.textContent = "×";
+    chip.append(label, remove);
+    wrapper.append(chip);
+    fragment.append(wrapper);
+  }
+  element.replaceChildren(fragment);
+}
+
+function InlineReferenceComposer({ value, cursor, placeholder, className, onValueChange, onCursorChange, onFocus, onKeyDown, onRemove }: { value: string; cursor: number; placeholder: string; className: string; onValueChange: (value: string, cursor: number) => void; onCursorChange: (cursor: number) => void; onFocus: (element: HTMLDivElement, cursor: number) => void; onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>, cursor: number) => void; onRemove: (token: string) => void }) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const compositionRef = useRef(false);
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || compositionRef.current || inlineComposerValue(editor) === value) return;
+    renderInlineComposerValue(editor, value);
+    if (document.activeElement === editor) setInlineComposerSelection(editor, cursor);
+  }, [value, cursor]);
+  const read = (element: HTMLDivElement) => onValueChange(inlineComposerValue(element), inlineComposerCursor(element));
+  const removeFromEvent = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-inline-reference-remove]") : null;
+    const token = target?.dataset.inlineReferenceRemove;
+    if (token) onRemove(token);
+  };
+  return <div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="聊天输入，输入斜杠可引用项目" data-placeholder={placeholder} onCompositionStart={() => { compositionRef.current = true; }} onCompositionEnd={(event) => { compositionRef.current = false; read(event.currentTarget); }} onInput={(event) => { if (!compositionRef.current) read(event.currentTarget); }} onFocus={(event) => onFocus(event.currentTarget, inlineComposerCursor(event.currentTarget))} onSelect={(event) => onCursorChange(inlineComposerCursor(event.currentTarget))} onKeyDown={(event) => onKeyDown(event, inlineComposerCursor(event.currentTarget))} onMouseDown={(event) => { if ((event.target as Element).closest("button[data-inline-reference-remove]")) event.preventDefault(); }} onClick={removeFromEvent} className={`workspace-scroll max-h-36 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-slate-800 outline-none empty:before:pointer-events-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 ${className}`}/>;
+}
+
+function InlineReferenceText({ value }: { value: string }) {
+  return <>{inlineReferenceSegments(value).map((segment, index) => typeof segment === "string" ? segment : <span key={`${segment.token}-${index}`} className="mx-0.5 inline-flex items-center rounded-md bg-white/15 px-1.5 py-0.5 text-[11px] text-white"><span className="mr-1">{segment.kind === "project" ? <Braces size={12}/> : <FileText size={12}/>}</span>{segment.label}</span>)}</>;
+}
+
+function humanizeInlineReferenceTokens(value: string): string {
+  return value
+    .replace(/\[\[项目:([^\]|]+)\|[^\]]+\]\]/g, "【项目：$1】")
+    .replace(/\[\[文档:([^\]|]+)\|[^\]]+\]\]/g, "【文档：`$1`】");
 }
 
 function ProjectReferenceSlashMenu({ items, loading, showDocumentCategory, activeIndex, onActiveIndexChange, onOpenDocuments, onSelect }: {
@@ -1206,7 +1466,7 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
-function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null }) {
+function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
@@ -1226,8 +1486,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
         )}
         {isUser ? (
           <>
-            <div className="whitespace-pre-wrap break-words">{message.content}</div>
-            {message.markdownDocuments && message.markdownDocuments.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{message.markdownDocuments.map((document) => <span key={markdownDocumentKey(document)} className="inline-flex items-center rounded-md bg-white/15 px-2 py-0.5 text-[11px] text-white"><FileText size={12} className="mr-1"/>{document.name}</span>)}</div>}
+            <div className="whitespace-pre-wrap break-words"><InlineReferenceText value={message.content}/></div>
             {message.attachments && message.attachments.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {message.attachments.map((attachment) => (
@@ -1237,12 +1496,18 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
                 ))}
               </div>
             )}
+            {message.documentAttachments && message.documentAttachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {message.documentAttachments.map((attachment) => <span key={attachment.id} className="inline-flex max-w-full items-center gap-1 rounded-md bg-white/15 px-2 py-1 text-[11px] text-white"><FileText size={12} className="shrink-0"/><span className="max-w-44 truncate">{attachment.file_name}</span><span className="opacity-75">{attachment.extraction_status === "ready" ? "文本提取" : "需转换"}</span></span>)}
+              </div>
+            )}
           </>
         ) : (
           <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">
-            {message.content ? <MarkdownMessage content={message.content} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}
+            {message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}
           </div>
         )}
+        {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
           <details className="mt-3 rounded-lg border border-zinc-200 bg-white p-2 text-[11px] text-zinc-500" open={!message.content}>
             <summary className="cursor-pointer select-none font-medium">{message.status === "streaming" ? t("chat.traceLive") : t("chat.traceHistory")}</summary>
@@ -1277,6 +1542,9 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
         )}
         {!isUser && (
           <div className="mt-3 flex items-center gap-1 text-zinc-500">
+            <button type="button" onClick={onOpenDiagnostics} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-amber-50 hover:text-amber-700" aria-label="查看诊断日志" title="查看诊断日志">
+              <Activity size={14} />
+            </button>
             {canCopy && (
               <button type="button" onClick={() => void navigator.clipboard?.writeText(message.content)} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-zinc-100" aria-label="Copy">
                 <Copy size={14} />
@@ -1291,6 +1559,52 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
         )}
       </div>
     </article>
+  );
+}
+
+function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
+  const latestByStage = new Map<string, ChatDebugTraceEvent>();
+  for (const event of events) latestByStage.set(event.stage, event);
+  return (
+    <details className="mt-3 rounded-lg border border-amber-200 bg-amber-50/50 p-2 text-[11px] text-slate-600" open>
+      <summary className="cursor-pointer select-none font-medium text-amber-900">诊断时间线（仅当前请求）</summary>
+      <div className="mt-2 space-y-1 border-l border-amber-200 pl-3">
+        {[...latestByStage.values()].map((event) => (
+          <div key={`${event.trace_id}-${event.stage}`} className="flex flex-wrap items-center gap-x-2 leading-5">
+            <span className={event.status === "failed" ? "text-rose-700" : event.status === "cancelled" ? "text-amber-700" : "text-slate-700"}>{debugStageLabel(event.stage)}</span>
+            <span className="tabular-nums text-slate-500">{event.elapsed_ms}ms{event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}</span>
+            <span className="text-slate-400">{event.provider} / {event.transport}</span>
+            {event.error_code && <span className="text-rose-600">{event.error_code}</span>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function debugStageLabel(stage: string) {
+  const labels: Record<string, string> = {
+    browser_submit: "浏览器提交", backend_received: "后端接收", auth_session_context: "鉴权与上下文", request_started: "请求开始", provider_request_started: "模型请求", first_stream_event: "首个流事件", provider_completed: "模型完成", persistence: "写入会话", frontend_push: "推送前端", request_completed: "请求结束",
+  };
+  return labels[stage] ?? "诊断阶段";
+}
+
+function ChatDiagnosticsDialog({ traces, loading, onClose }: { traces: ChatDebugTraceRecord[]; loading: boolean; onClose: () => void }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={onClose}>
+      <section className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="聊天诊断日志" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-700"><Activity size={16}/></span><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold text-slate-900">聊天诊断日志</h2><p className="mt-0.5 text-[11px] text-slate-500">仅保存脱敏耗时靶点，默认保留 7 天。</p></div><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭诊断日志"><X size={17}/></button></header>
+        <div className="workspace-scroll min-h-0 flex-1 overflow-y-auto p-4">
+          {loading ? <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/>正在读取诊断日志…</div> : traces.length === 0 ? <p className="py-10 text-center text-sm text-slate-500">当前会话没有可用的诊断日志。请先开启 Debug 后发送消息。</p> : <div className="space-y-4">{traces.map((trace) => <section key={trace.trace_id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-800">{new Date(trace.created_at).toLocaleString("zh-CN")}</span><span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">{trace.provider} / {trace.transport}</span></div><div className="space-y-1 border-l border-slate-200 pl-3">{trace.events.map((event, index) => <div key={`${event.stage}-${index}`} className="flex flex-wrap items-center gap-x-2 text-[11px] leading-5"><span className={event.status === "failed" ? "text-rose-700" : event.status === "cancelled" ? "text-amber-700" : "text-slate-700"}>{debugStageLabel(event.stage)}</span><span className="tabular-nums text-slate-500">{event.elapsed_ms}ms{event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}</span>{event.error_code && <span className="text-rose-600">{event.error_code}</span>}</div>)}</div></section>)}</div>}
+        </div>
+      </section>
+    </div>
   );
 }
 

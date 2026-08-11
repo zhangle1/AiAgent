@@ -25,6 +25,8 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly IAuthService _authService;
     private readonly IChatSessionService _sessions;
     private readonly IChatImageAttachmentService _attachments;
+    private readonly IChatFileAttachmentService _fileAttachments;
+    private readonly IChatUploadLibraryService _uploadLibrary;
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
     private readonly IProjectReferenceContextService _projectReferences;
@@ -33,17 +35,20 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly ICodexChatService _codex;
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
+    private readonly IChatDebugTraceStore _debugTraceStore;
 
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IChatUploadLibraryService uploadLibrary, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
         _authService = authService;
         _sessions = sessions;
         _attachments = attachments;
+        _fileAttachments = fileAttachments;
+        _uploadLibrary = uploadLibrary;
         _usage = usage;
         _memory = memory;
         _projectReferences = projectReferences;
@@ -52,6 +57,7 @@ public sealed class ChatAppService : IDynamicApiController
         _codex = codex;
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
+        _debugTraceStore = debugTraceStore;
     }
 
     /// <summary>
@@ -60,17 +66,33 @@ public sealed class ChatAppService : IDynamicApiController
     [HttpPost("complete")]
     public async Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
     {
+        var trace = ChatDebugTrace.Create(request);
+        trace?.Complete("backend_received");
+        trace?.Start("auth_session_context");
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
+        await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
         await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
         await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
+        trace?.Complete("auth_session_context");
+        trace?.Start("request_started");
+        trace?.Complete("request_started");
+        trace?.Start("provider_request_started");
         var result = await _orchestrator.CompleteAsync(request, cancellationToken);
+        trace?.CompleteProvider();
+        trace?.Start("persistence");
         await _sessions.RecordAssistantMessageAsync(user, request, result.Content, null, result.Citations, result.ModelId, result.Model, cancellationToken);
         await _usage.RecordAsync(user, request, result, cancellationToken);
+        trace?.Complete("persistence");
+        trace?.Start("frontend_push");
+        trace?.Complete("frontend_push");
+        trace?.Complete("request_completed");
+        result.DebugTrace = trace?.Events.ToList();
+        await _debugTraceStore.SaveAsync(user, request.SessionId, trace, cancellationToken);
         return result;
     }
 
@@ -85,24 +107,45 @@ public sealed class ChatAppService : IDynamicApiController
         response.ContentType = "text/event-stream; charset=utf-8";
         response.Headers["Cache-Control"] = "no-cache";
         response.Headers["Connection"] = "keep-alive";
+        var trace = ChatDebugTrace.Create(request);
+        await WriteTraceAsync(response, trace?.Complete("backend_received"), cancellationToken);
+        await WriteTraceAsync(response, trace?.Start("auth_session_context"), cancellationToken);
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
+        await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
         await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
         await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
+        await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
         var content = new System.Text.StringBuilder();
         var thinking = new System.Text.StringBuilder();
         object? citations = null;
         string? modelId = null;
         string? model = null;
+        var providerRequestStarted = false;
 
         try
         {
+            await WriteTraceAsync(response, trace?.Start("request_started"), cancellationToken);
+            await WriteTraceAsync(response, trace?.Complete("request_started"), cancellationToken);
             var result = await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
             {
+                if (streamEvent.Type == "provider_request_started")
+                {
+                    if (!providerRequestStarted)
+                    {
+                        providerRequestStarted = true;
+                        await WriteTraceAsync(response, trace?.Start("provider_request_started"), token);
+                    }
+                    return;
+                }
+                if (providerRequestStarted && streamEvent.Type != "debug_trace")
+                {
+                    await WriteTraceAsync(response, trace?.FirstStreamEvent(), token);
+                }
                 if (streamEvent.Type == "content") content.Append(streamEvent.Content);
                 if (streamEvent.Type == "thinking") thinking.Append(streamEvent.Content);
                 if (streamEvent.Type == "sources") citations = streamEvent.Citations;
@@ -110,23 +153,36 @@ public sealed class ChatAppService : IDynamicApiController
                 model ??= streamEvent.Model;
                 await WriteSseAsync(response, streamEvent, token);
             }, cancellationToken);
+            await WriteTraceAsync(response, trace?.CompleteProvider(), cancellationToken);
+            providerRequestStarted = false;
             var finalContent = content.Length > 0 ? content.ToString() : result.Content;
             var finalModelId = modelId ?? result.ModelId;
             var finalModel = model ?? result.Model;
+            await WriteTraceAsync(response, trace?.Start("persistence"), cancellationToken);
             await _sessions.RecordAssistantMessageAsync(user, request, finalContent, thinking.ToString(), citations ?? result.Citations, finalModelId, finalModel, cancellationToken);
             await _usage.RecordAsync(user, request, result, cancellationToken);
+            await WriteTraceAsync(response, trace?.Complete("persistence"), cancellationToken);
+            await WriteTraceAsync(response, trace?.Start("frontend_push"), cancellationToken);
+            await WriteTraceAsync(response, trace?.Complete("frontend_push"), cancellationToken);
+            await WriteTraceAsync(response, trace?.Complete("request_completed"), cancellationToken);
+            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await WriteSseAsync(response, new AgentStreamEvent { Type = "completed" }, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The browser stopped the streaming request; no terminal error should be emitted.
+            if (providerRequestStarted) await WriteTraceAsync(response, trace?.CancelProvider(), CancellationToken.None);
+            await WriteTraceAsync(response, trace?.Cancel("request_completed"), CancellationToken.None);
+            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
+            if (providerRequestStarted) await WriteTraceAsync(response, trace?.FailProvider("request_failed"), CancellationToken.None);
+            await WriteTraceAsync(response, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
+            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await WriteSseAsync(response, new AgentStreamEvent
             {
                 Type = "error",
-                Content = ex.Message
+                Content = "Chat request failed."
             }, cancellationToken);
         }
     }
@@ -139,11 +195,46 @@ public sealed class ChatAppService : IDynamicApiController
         return await _attachments.SaveAsync(user, file, cancellationToken);
     }
 
+    [HttpPost("attachments/files")]
+    [Consumes("multipart/form-data")]
+    public async Task<ChatFileAttachmentDto> UploadFile(IFormFile file, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        return await _fileAttachments.SaveAsync(user, file, cancellationToken);
+    }
+
     [HttpDelete("attachments/{attachmentId}")]
     public async Task<object> DeleteImage([FromRoute] string attachmentId, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
         return new { ok = await _attachments.DeleteAsync(user, attachmentId, cancellationToken) };
+    }
+
+    [HttpDelete("attachments/files/{attachmentId}")]
+    public async Task<object> DeleteFile([FromRoute] string attachmentId, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        return new { ok = await _fileAttachments.DeleteAsync(user, attachmentId, cancellationToken) };
+    }
+
+    [HttpGet("attachments/files/{attachmentId}/extraction")]
+    public async Task<ChatFileExtractionPreviewDto> GetFileExtraction([FromRoute] string attachmentId, [FromQuery(Name = "session_id")] string? sessionId, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        return await _fileAttachments.ExtractPreviewAsync(user, sessionId, attachmentId, cancellationToken);
+    }
+
+    [HttpGet("uploads/mine")]
+    public async Task<List<ChatUploadFileDto>> ListMyUploads([FromQuery] string? keyword, [FromQuery] string? kind, [FromQuery(Name = "session_id")] string? sessionId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
+        => await _uploadLibrary.ListAsync(await RequireUser(cancellationToken), null, keyword, kind, sessionId, limit, cancellationToken);
+
+    [HttpGet("uploads/{attachmentId}/content")]
+    public async Task<IActionResult> OpenMyUpload([FromRoute] string attachmentId, CancellationToken cancellationToken)
+    {
+        var content = await _uploadLibrary.OpenAsync(await RequireUser(cancellationToken), null, attachmentId, cancellationToken);
+        return content == null
+            ? new NotFoundResult()
+            : new FileStreamResult(new FileStream(content.Path, FileMode.Open, FileAccess.Read, FileShare.Read), content.ContentType) { EnableRangeProcessing = true };
     }
 
     [HttpPost("codex/heartbeat")]
@@ -184,6 +275,17 @@ public sealed class ChatAppService : IDynamicApiController
         request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
     }
 
+    private async Task ResolveDocumentAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+    {
+        if (request.DocumentAttachmentIds.Count == 0) return;
+        if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Document attachments are currently supported only when Codex local agent is selected.");
+        }
+        var attachments = await _fileAttachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.DocumentAttachmentIds, cancellationToken);
+        request.ServerAttachmentContext = await _fileAttachments.ExtractContextAsync(attachments, cancellationToken);
+    }
+
     private async Task<AuthenticatedUser> RequireUser(CancellationToken cancellationToken) => await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
 
     private static async Task WriteSseAsync(HttpResponse response, AgentStreamEvent streamEvent, CancellationToken cancellationToken)
@@ -192,5 +294,10 @@ public sealed class ChatAppService : IDynamicApiController
         await response.WriteAsync($"event: {streamEvent.Type}\n", cancellationToken);
         await response.WriteAsync($"data: {json}\n\n", cancellationToken);
         await response.Body.FlushAsync(cancellationToken);
+    }
+
+    private static Task WriteTraceAsync(HttpResponse response, AgentStreamEvent? streamEvent, CancellationToken cancellationToken)
+    {
+        return streamEvent is null ? Task.CompletedTask : WriteSseAsync(response, streamEvent, cancellationToken);
     }
 }

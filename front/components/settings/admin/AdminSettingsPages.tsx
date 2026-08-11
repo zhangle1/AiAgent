@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Bot, ChevronRight, ClipboardList, FolderKey, History, Loader2, ScanText, ShieldCheck, UserPlus, Users } from "lucide-react";
+import { BarChart3, Bot, ChevronRight, ClipboardList, FileUp, FolderKey, History, Loader2, ScanText, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { createAdminUser, getAdminSession, getAdminSessions, getAdminUsage, getAdminUsers, updateAdminUserProjects, type AdminSession, type AdminUsageReport, type AdminUser } from "@/lib/admin-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
@@ -16,6 +16,7 @@ const cardItems = [
   { href: "/settings/admin/usage", title: "用户流量", description: "按日、周、月或年汇总注册用户的 Token 消耗。", icon: BarChart3 },
   { href: "/settings/admin/agents", title: "第三方代理", description: "检测本地 CLI，并维护 Codex 模型与 Profile 配置。", icon: Bot },
   { href: "/settings/admin/image-ocr", title: "图片 OCR", description: "单独检查 PaddleOCR 环境并上传图片验证识别链路。", icon: ScanText },
+  { href: "/settings/admin/uploads", title: "上传管理", description: "按用户筛选查看聊天附件、图片与文本提取。", icon: FileUp },
 ];
 
 export function AdminSettingsHome() {

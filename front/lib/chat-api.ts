@@ -29,6 +29,8 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export type ChatCompleteRequest = {
+  debug_trace?: boolean;
+  trace_id?: string;
   session_id?: string;
   message: string;
   knowledge_base_name?: string;
@@ -47,6 +49,7 @@ export type ChatCompleteRequest = {
   mode?: string;
   agent?: "codex" | "codebuddy";
   attachment_ids?: string[];
+  document_attachment_ids?: string[];
   client_runtime_id?: string;
 };
 
@@ -55,6 +58,37 @@ export type ChatImageAttachment = {
   file_name: string;
   content_type: string;
   size_bytes: number;
+};
+
+export type ChatFileAttachment = {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  kind: "document";
+  extraction_status: "ready" | "unsupported";
+  extraction_id?: string | null;
+};
+
+export type ChatUploadFile = {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  kind: "image" | "document" | "extracted_text";
+  extraction_status?: string | null;
+  created_at: string;
+  session_id?: string | null;
+  source_attachment_id?: string | null;
+  uploader_id?: string | null;
+  uploader_name?: string | null;
+};
+
+export type ChatFileExtractionPreview = {
+  attachment_id: string;
+  file_name: string;
+  content: string;
+  truncated: boolean;
 };
 
 export type ChatCompleteResponse = {
@@ -102,16 +136,50 @@ export async function uploadChatImage(file: File): Promise<ChatImageAttachment> 
   return parseJson<ChatImageAttachment>(await fetch("/api/v1/chat/attachments/images", { method: "POST", body }));
 }
 
+export async function uploadChatFile(file: File): Promise<ChatFileAttachment> {
+  const body = new FormData();
+  body.set("file", file);
+  return parseJson<ChatFileAttachment>(await fetch("/api/v1/chat/attachments/files", { method: "POST", body }));
+}
+
 export async function deleteChatImage(attachmentId: string): Promise<void> {
   await parseJson<{ ok: boolean }>(await fetch(`/api/v1/chat/attachments/${encodeURIComponent(attachmentId)}`, { method: "DELETE" }));
+}
+
+export async function deleteChatFile(attachmentId: string): Promise<void> {
+  await parseJson<{ ok: boolean }>(await fetch(`/api/v1/chat/attachments/files/${encodeURIComponent(attachmentId)}`, { method: "DELETE" }));
+}
+
+export async function getChatFileExtraction(attachmentId: string, sessionId?: string): Promise<ChatFileExtractionPreview> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return parseJson<ChatFileExtractionPreview>(await fetch(`/api/v1/chat/attachments/files/${encodeURIComponent(attachmentId)}/extraction${query}`, { cache: "no-store" }));
 }
 
 export function persistedChatImageUrl(sessionId: string, attachmentId: string): string {
   return `/api/v1/chat/attachments/${encodeURIComponent(sessionId)}/${encodeURIComponent(attachmentId)}`;
 }
 
+export async function getMyChatUploads(filters: { keyword?: string; kind?: string; sessionId?: string } = {}): Promise<ChatUploadFile[]> {
+  const query = new URLSearchParams({ limit: "200" });
+  if (filters.keyword) query.set("keyword", filters.keyword);
+  if (filters.kind) query.set("kind", filters.kind);
+  if (filters.sessionId) query.set("session_id", filters.sessionId);
+  return parseJson<ChatUploadFile[]>(await fetch(`/api/v1/chat/uploads/mine?${query}`, { cache: "no-store" }));
+}
+
+export function myChatUploadContentUrl(attachmentId: string): string {
+  return `/api/v1/chat/uploads/${encodeURIComponent(attachmentId)}/content`;
+}
+
+export async function getChatUploadText(attachmentId: string, adminUserId?: string): Promise<string> {
+  const response = await fetch(adminUserId ? `/api/v1/admin/uploads/${encodeURIComponent(attachmentId)}/content?user_id=${encodeURIComponent(adminUserId)}` : myChatUploadContentUrl(attachmentId), { cache: "no-store" });
+  if (!response.ok) throw new Error(`读取附件失败（HTTP ${response.status}）`);
+  return response.text();
+}
+
 export type ChatStreamEvent = {
-  type: "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
+  type: "debug_trace" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
+  debug_trace?: ChatDebugTraceEvent | null;
   label?: string | null;
   content?: string;
   model_id?: string | null;
@@ -119,6 +187,17 @@ export type ChatStreamEvent = {
   knowledge_base_name?: string | null;
   citations?: KnowledgeCitation[] | null;
   metadata?: Record<string, unknown>;
+};
+
+export type ChatDebugTraceEvent = {
+  trace_id: string;
+  stage: string;
+  status: "started" | "completed" | "failed" | "cancelled";
+  elapsed_ms: number;
+  duration_ms?: number | null;
+  provider: "codex" | "openai_compatible" | "unknown";
+  transport: "codex_app_server" | "http_stream" | "websocket" | "sse" | "unknown";
+  error_code?: "cancelled" | "request_failed" | string | null;
 };
 
 export async function streamCompleteChat(

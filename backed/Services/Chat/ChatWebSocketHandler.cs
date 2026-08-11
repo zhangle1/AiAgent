@@ -24,6 +24,7 @@ public sealed class ChatWebSocketHandler
     private readonly IAuthService _authService;
     private readonly IChatSessionService _sessions;
     private readonly IChatImageAttachmentService _attachments;
+    private readonly IChatFileAttachmentService _fileAttachments;
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
     private readonly IProjectReferenceContextService _projectReferences;
@@ -31,16 +32,18 @@ public sealed class ChatWebSocketHandler
     private readonly IProjectAgentMarkdownIndexContextService _projectAgentMarkdownIndex;
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
+    private readonly IChatDebugTraceStore _debugTraceStore;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore)
     {
         _orchestrator = orchestrator;
         _authService = authService;
         _sessions = sessions;
         _attachments = attachments;
+        _fileAttachments = fileAttachments;
         _usage = usage;
         _memory = memory;
         _projectReferences = projectReferences;
@@ -48,6 +51,7 @@ public sealed class ChatWebSocketHandler
         _projectAgentMarkdownIndex = projectAgentMarkdownIndex;
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
+        _debugTraceStore = debugTraceStore;
     }
 
     /// <summary>
@@ -66,14 +70,21 @@ public sealed class ChatWebSocketHandler
         using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         var cancellationToken = cancellationSource.Token;
         Task? clientCloseMonitor = null;
+        ChatDebugTrace? trace = null;
+        ChatCompleteRequest request = null!;
+        AuthenticatedUser user = null!;
+        var providerRequestStarted = false;
 
         try
         {
             var requestText = await ReceiveTextAsync(socket, cancellationToken);
             clientCloseMonitor = MonitorClientCloseAsync(socket, cancellationSource, cancellationToken);
-            var request = JsonSerializer.Deserialize<ChatCompleteRequest>(requestText, JsonOptions)
+            request = JsonSerializer.Deserialize<ChatCompleteRequest>(requestText, JsonOptions)
                 ?? throw new InvalidOperationException("Invalid chat request.");
-            var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
+            trace = ChatDebugTrace.Create(request);
+            await SendTraceAsync(socket, trace?.Complete("backend_received"), cancellationToken);
+            await SendTraceAsync(socket, trace?.Start("auth_session_context"), cancellationToken);
+            user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
                 ?? throw new UnauthorizedAccessException();
             request.RuntimeUserId = user.Id;
             if (request.AttachmentIds.Count > 0)
@@ -95,19 +106,44 @@ public sealed class ChatWebSocketHandler
                 }
                 request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
             }
+            if (request.DocumentAttachmentIds.Count > 0)
+            {
+                if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Document attachments are currently supported only when Codex local agent is selected.");
+                }
+                var attachments = await _fileAttachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.DocumentAttachmentIds, cancellationToken);
+                request.ServerAttachmentContext = await _fileAttachments.ExtractContextAsync(attachments, cancellationToken);
+            }
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
+            await SendTraceAsync(socket, trace?.Complete("auth_session_context"), cancellationToken);
             var content = new StringBuilder();
             var thinking = new StringBuilder();
             object? citations = null;
             string? modelId = null;
             string? model = null;
 
+            await SendTraceAsync(socket, trace?.Start("request_started"), cancellationToken);
+            await SendTraceAsync(socket, trace?.Complete("request_started"), cancellationToken);
             var result = await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
             {
+                if (streamEvent.Type == "provider_request_started")
+                {
+                    if (!providerRequestStarted)
+                    {
+                        providerRequestStarted = true;
+                        await SendTraceAsync(socket, trace?.Start("provider_request_started"), token);
+                    }
+                    return;
+                }
+                if (providerRequestStarted && streamEvent.Type != "debug_trace")
+                {
+                    await SendTraceAsync(socket, trace?.FirstStreamEvent(), token);
+                }
                 if (streamEvent.Type == "content") content.Append(streamEvent.Content);
                 if (streamEvent.Type == "thinking") thinking.Append(streamEvent.Content);
                 if (streamEvent.Type == "sources") citations = streamEvent.Citations;
@@ -115,11 +151,19 @@ public sealed class ChatWebSocketHandler
                 model ??= streamEvent.Model;
                 await SendEventAsync(socket, streamEvent, token);
             }, cancellationToken);
+            await SendTraceAsync(socket, trace?.CompleteProvider(), cancellationToken);
+            providerRequestStarted = false;
             var finalContent = content.Length > 0 ? content.ToString() : result.Content;
             var finalModelId = modelId ?? result.ModelId;
             var finalModel = model ?? result.Model;
+            await SendTraceAsync(socket, trace?.Start("persistence"), cancellationToken);
             await _sessions.RecordAssistantMessageAsync(user, request, finalContent, thinking.ToString(), citations ?? result.Citations, finalModelId, finalModel, cancellationToken);
             await _usage.RecordAsync(user, request, result, cancellationToken);
+            await SendTraceAsync(socket, trace?.Complete("persistence"), cancellationToken);
+            await SendTraceAsync(socket, trace?.Start("frontend_push"), cancellationToken);
+            await SendTraceAsync(socket, trace?.Complete("frontend_push"), cancellationToken);
+            await SendTraceAsync(socket, trace?.Complete("request_completed"), cancellationToken);
+            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await SendEventAsync(socket, new AgentStreamEvent { Type = "completed" }, cancellationToken);
 
             if (socket.State == WebSocketState.Open)
@@ -129,17 +173,23 @@ public sealed class ChatWebSocketHandler
         }
         catch (OperationCanceledException)
         {
+            if (providerRequestStarted) await SendTraceAsync(socket, trace?.CancelProvider(), CancellationToken.None);
+            await SendTraceAsync(socket, trace?.Cancel("request_completed"), CancellationToken.None);
+            if (user != null && request != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
             {
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "cancelled", CancellationToken.None);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
+            if (providerRequestStarted) await SendTraceAsync(socket, trace?.FailProvider("request_failed"), CancellationToken.None);
+            await SendTraceAsync(socket, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
+            if (user != null && request != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await SendEventAsync(socket, new AgentStreamEvent
             {
                 Type = "error",
-                Content = ex.Message
+                Content = "Chat request failed."
             }, CancellationToken.None);
 
             if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
@@ -219,5 +269,10 @@ public sealed class ChatWebSocketHandler
         var json = JsonSerializer.Serialize(streamEvent, JsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
         await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
+    }
+
+    private static Task SendTraceAsync(WebSocket socket, AgentStreamEvent? streamEvent, CancellationToken cancellationToken)
+    {
+        return streamEvent is null ? Task.CompletedTask : SendEventAsync(socket, streamEvent, cancellationToken);
     }
 }

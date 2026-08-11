@@ -8,6 +8,12 @@ namespace AiAgent.Backend.Dtos.Chat;
 /// </summary>
 public sealed class ChatCompleteRequest
 {
+    [JsonPropertyName("debug_trace")]
+    public bool DebugTrace { get; set; }
+
+    [JsonPropertyName("trace_id")]
+    public string? TraceId { get; set; }
+
     [JsonPropertyName("session_id")]
     public string? SessionId { get; set; }
 
@@ -104,6 +110,13 @@ public sealed class ChatCompleteRequest
     public List<string> AttachmentIds { get; set; } = [];
 
     /// <summary>
+    /// Uploaded non-image attachment identifiers. They are resolved to server-owned paths only while
+    /// the server extracts a bounded text representation for a Codex turn.
+    /// </summary>
+    [JsonPropertyName("document_attachment_ids")]
+    public List<string> DocumentAttachmentIds { get; set; } = [];
+
+    /// <summary>
     /// Opaque browser-tab runtime identifier used only to retain a user's local Codex CLI lease.
     /// It is not a device fingerprint and is regenerated when the tab storage is cleared.
     /// </summary>
@@ -121,6 +134,13 @@ public sealed class ChatCompleteRequest
     /// </summary>
     [JsonIgnore]
     public List<string> LocalImagePaths { get; set; } = [];
+
+    /// <summary>
+    /// Server-only text extracted from validated document attachments. Browser input must never
+    /// populate this value, and raw attachment paths are never persisted in it.
+    /// </summary>
+    [JsonIgnore]
+    public string ServerAttachmentContext { get; set; } = string.Empty;
 
     /// <summary>
     /// Server-only OCR results for third-party Codex profiles. Browser input must never populate this collection.
@@ -223,6 +243,60 @@ public sealed class ChatImageAttachmentDto
     public long SizeBytes { get; set; }
 }
 
+public sealed class ChatFileAttachmentDto
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("file_name")]
+    public string FileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("content_type")]
+    public string ContentType { get; set; } = string.Empty;
+
+    [JsonPropertyName("size_bytes")]
+    public long SizeBytes { get; set; }
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "document";
+
+    [JsonPropertyName("extraction_status")]
+    public string ExtractionStatus { get; set; } = "ready";
+
+    [JsonPropertyName("extraction_id")]
+    public string? ExtractionId { get; set; }
+}
+
+public sealed class ChatFileExtractionPreviewDto
+{
+    [JsonPropertyName("attachment_id")]
+    public string AttachmentId { get; set; } = string.Empty;
+
+    [JsonPropertyName("file_name")]
+    public string FileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    [JsonPropertyName("truncated")]
+    public bool Truncated { get; set; }
+}
+
+public sealed class ChatUploadFileDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("file_name")] public string FileName { get; set; } = string.Empty;
+    [JsonPropertyName("content_type")] public string ContentType { get; set; } = "application/octet-stream";
+    [JsonPropertyName("size_bytes")] public long SizeBytes { get; set; }
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "document";
+    [JsonPropertyName("extraction_status")] public string? ExtractionStatus { get; set; }
+    [JsonPropertyName("created_at")] public DateTime CreatedAt { get; set; }
+    [JsonPropertyName("session_id")] public string? SessionId { get; set; }
+    [JsonPropertyName("source_attachment_id")] public string? SourceAttachmentId { get; set; }
+    [JsonPropertyName("uploader_id")] public string? UploaderId { get; set; }
+    [JsonPropertyName("uploader_name")] public string? UploaderName { get; set; }
+}
+
 /// <summary>OCR text derived from one server-owned image attachment.</summary>
 public sealed class ChatImageOcrResult
 {
@@ -251,11 +325,62 @@ public sealed class ChatTokenUsage
     public bool IsEstimated { get; set; }
 }
 
+public sealed class ChatDebugTraceEvent
+{
+    [JsonPropertyName("trace_id")]
+    public string TraceId { get; set; } = string.Empty;
+
+    [JsonPropertyName("stage")]
+    public string Stage { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("elapsed_ms")]
+    public long ElapsedMs { get; set; }
+
+    [JsonPropertyName("duration_ms")]
+    public long? DurationMs { get; set; }
+
+    [JsonPropertyName("provider")]
+    public string Provider { get; set; } = "unknown";
+
+    [JsonPropertyName("transport")]
+    public string Transport { get; set; } = "unknown";
+
+    [JsonPropertyName("error_code")]
+    public string? ErrorCode { get; set; }
+}
+
+public sealed class ChatDebugTraceRecordDto
+{
+    [JsonPropertyName("trace_id")]
+    public string TraceId { get; set; } = string.Empty;
+
+    [JsonPropertyName("provider")]
+    public string Provider { get; set; } = "unknown";
+
+    [JsonPropertyName("transport")]
+    public string Transport { get; set; } = "unknown";
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+
+    [JsonPropertyName("expires_at")]
+    public DateTime ExpiresAt { get; set; }
+
+    [JsonPropertyName("events")]
+    public List<ChatDebugTraceEvent> Events { get; set; } = [];
+}
+
 /// <summary>
 /// 聊天响应，包含 LLM 生成结果和知识库引用。
 /// </summary>
 public sealed class ChatCompleteResponse
 {
+    [JsonPropertyName("debug_trace")]
+    public List<ChatDebugTraceEvent>? DebugTrace { get; set; }
+
     /// <summary>
     /// 用户原始问题。
     /// </summary>

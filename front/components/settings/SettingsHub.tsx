@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, GitBranch, MessageSquare, Network, Palette, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
+import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, FileUp, GitBranch, MessageSquare, Network, Palette, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAuthStatus } from "@/lib/auth-api";
 import { activeModel, activeProfile, serviceConfigured, type Catalog, type ServiceName } from "@/lib/settings-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/dictionaries";
 
-const cards: Array<{ titleKey: TranslationKey; descKey: TranslationKey; icon: LucideIcon; href: string }> = [
+const cards: Array<{ titleKey?: TranslationKey; descKey?: TranslationKey; title?: string; description?: string; icon: LucideIcon; href: string }> = [
   { titleKey: "settings.appearance", descKey: "settings.appearanceDesc", icon: Palette, href: "/settings" },
   { titleKey: "settings.network", descKey: "settings.networkDesc", icon: Network, href: "/settings" },
   { titleKey: "settings.models", descKey: "settings.modelsDesc", icon: Bot, href: "/settings/models" },
@@ -17,6 +17,7 @@ const cards: Array<{ titleKey: TranslationKey; descKey: TranslationKey; icon: Lu
   { titleKey: "settings.gitAccounts", descKey: "settings.gitAccountsDesc", icon: GitBranch, href: "/settings/git-accounts" },
   { titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },
   { titleKey: "settings.usage", descKey: "settings.usageDesc", icon: BarChart3, href: "/settings/usage" },
+  { title: "我的上传", description: "查看聊天中已发送的图片、文档和文本提取。", icon: FileUp, href: "/settings/uploads" },
   { titleKey: "nav.memory", descKey: "settings.memoryDesc", icon: Brain, href: "/settings" },
 ];
 
@@ -82,19 +83,19 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-            <Link key={card.titleKey} href={card.href} className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+          <Link key={card.href} href={card.href} className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Icon size={19} strokeWidth={1.6} className="text-[var(--muted-foreground)]" />
-                  <h2 className="text-[15px] font-semibold leading-snug">{t(card.titleKey)}</h2>
+                  <h2 className="text-[15px] font-semibold leading-snug">{card.titleKey ? t(card.titleKey) : card.title}</h2>
                 </div>
                 <ChevronRight size={18} className="text-[var(--muted-foreground)] transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
               </div>
-              <p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{t(card.descKey)}</p>
+              <p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{card.descKey ? t(card.descKey) : card.description}</p>
             </Link>
           );
         })}
-        {isAdmin && <Link href="/settings/admin" className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-violet-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><ShieldCheck size={19} strokeWidth={1.6} className="text-violet-600" /><h2 className="text-[15px] font-semibold leading-snug">管理配置</h2></div><ChevronRight size={18} className="text-[var(--muted-foreground)] transition group-hover:translate-x-0.5 group-hover:text-violet-600" /></div><p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">管理用户、项目访问范围、历史会话与全员流量。</p></Link>}
+        {isAdmin && <><Link href="/settings/admin" className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-violet-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><ShieldCheck size={19} strokeWidth={1.6} className="text-violet-600" /><h2 className="text-[15px] font-semibold leading-snug">管理配置</h2></div><ChevronRight size={18} className="text-[var(--muted-foreground)] transition group-hover:translate-x-0.5 group-hover:text-violet-600" /></div><p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">管理用户、项目访问范围、历史会话与全员流量。</p></Link><Link href="/settings/admin/uploads" className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-violet-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><FileUp size={19} strokeWidth={1.6} className="text-violet-600" /><h2 className="text-[15px] font-semibold leading-snug">上传管理</h2></div><ChevronRight size={18} className="text-[var(--muted-foreground)] transition group-hover:translate-x-0.5 group-hover:text-violet-600" /></div><p className="text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">按用户、类型和文件名筛选查看聊天附件与文本提取。</p></Link></>}
       </div>
     </section>
   );

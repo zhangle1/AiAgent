@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Boxes, Code2, GitBranch, Home, ScanText, Settings2, ShieldCheck } from "lucide-react";
+import { BarChart3, Bot, Boxes, Code2, FileUp, GitBranch, Home, ScanText, Settings2, ShieldCheck } from "lucide-react";
 import { MODEL_SERVICE_CONFIGS } from "@/components/settings/models/model-service-config";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -15,6 +15,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const onGitWorkspacePage = pathname?.startsWith("/settings/git");
   const onAgentProvidersPage = pathname?.startsWith("/settings/agents");
   const onUsagePage = pathname?.startsWith("/settings/usage");
+  const onUploadsPage = pathname?.startsWith("/settings/uploads");
   const onAdminPage = pathname?.startsWith("/settings/admin");
   const onAdminAgentProvidersPage = pathname?.startsWith("/settings/admin/agents");
   const onAdminImageOcrPage = pathname?.startsWith("/settings/admin/image-ocr");
@@ -64,6 +65,12 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
           <>
             <span>/</span>
             <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><BarChart3 size={14}/>流量统计</span>
+          </>
+        )}
+        {onUploadsPage && (
+          <>
+            <span>/</span>
+            <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><FileUp size={14}/>我的上传</span>
           </>
         )}
         {onAdminPage && (

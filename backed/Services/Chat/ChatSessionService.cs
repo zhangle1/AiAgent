@@ -30,12 +30,14 @@ public sealed class ChatSessionService : IChatSessionService
 {
     private readonly ISqlSugarClient _db;
     private readonly IChatImageAttachmentService _attachments;
+    private readonly IChatFileAttachmentService _fileAttachments;
     private readonly IProjectAccessService _projectAccess;
     private readonly IMemoryService _memory;
-    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IProjectAccessService projectAccess, IMemoryService memory)
+    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IProjectAccessService projectAccess, IMemoryService memory)
     {
         _db = db;
         _attachments = attachments;
+        _fileAttachments = fileAttachments;
         _projectAccess = projectAccess;
         _memory = memory;
     }
@@ -46,12 +48,21 @@ public sealed class ChatSessionService : IChatSessionService
         var attachments = request.AttachmentIds.Count == 0
             ? new List<ResolvedChatImageAttachment>()
             : await _attachments.PersistForSessionAsync(user, session.Id, request.AttachmentIds, cancellationToken);
+        var documentAttachments = request.DocumentAttachmentIds.Count == 0
+            ? new List<ResolvedChatFileAttachment>()
+            : await _fileAttachments.PersistForSessionAsync(user, session.Id, request.DocumentAttachmentIds, cancellationToken);
+        var extractionIds = await _fileAttachments.PersistExtractionFilesAsync(user, session.Id, documentAttachments, cancellationToken);
+        foreach (var item in documentAttachments)
+        {
+            if (extractionIds.TryGetValue(item.Attachment.Id, out var extractionId)) item.Attachment.ExtractionId = extractionId;
+        }
         if (attachments.Count > 0) request.LocalImagePaths = attachments.Select(item => item.LocalPath).ToList();
-        var metadata = attachments.Count == 0 && request.ResolvedProjectReferences.Count == 0 && request.ResolvedMarkdownDocumentReferences.Count == 0
+        var metadata = attachments.Count == 0 && documentAttachments.Count == 0 && request.ResolvedProjectReferences.Count == 0 && request.ResolvedMarkdownDocumentReferences.Count == 0
             ? null
             : JsonSerializer.Serialize(new
             {
                 attachments = attachments.Select(item => item.Attachment).ToList(),
+                document_attachments = documentAttachments.Select(item => item.Attachment).ToList(),
                 project_references = request.ResolvedProjectReferences.Select(item => new { project_id = item.ProjectId, display_name = item.DisplayName }).ToList(),
                 markdown_document_references = request.ResolvedMarkdownDocumentReferences.Select(item => new { repository_name = item.RepositoryName, path = item.Path }).ToList()
             });

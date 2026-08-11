@@ -1,8 +1,8 @@
 import type { KnowledgeCitation } from "@/lib/knowledge-types";
-import type { ChatImageAttachment } from "@/lib/chat-api";
+import type { ChatDebugTraceEvent, ChatFileAttachment, ChatImageAttachment } from "@/lib/chat-api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 
-export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string; attachments?: ChatImageAttachment[] } | null; created_at: string };
+export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string; attachments?: ChatImageAttachment[]; document_attachments?: ChatFileAttachment[] } | null; created_at: string };
 export type SessionPriority = "high" | "normal" | "low";
 export type ProjectSessionSortMode = "updated" | "priority" | "manual";
 export type ProjectListSortMode = "name" | "recent";
@@ -10,6 +10,7 @@ export type ProjectSessionPreference = { project_id: number; is_pinned: boolean;
 export type ChatSidebarPreference = { project_sort_mode: ProjectListSortMode };
 export type SessionSummary = { id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string; project_id?: number | null; project_name?: string | null; sort_order: number; priority: SessionPriority; is_pinned: boolean };
 export type SessionDetail = SessionSummary & { messages: SessionMessage[]; preferences: Record<string, unknown> };
+export type ChatDebugTraceRecord = { trace_id: string; provider: string; transport: string; created_at: string; expires_at: string; events: ChatDebugTraceEvent[] };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -24,6 +25,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export async function listSessions(): Promise<SessionSummary[]> { return (await request<{ sessions: SessionSummary[] }>("/api/v1/sessions/list?limit=100")).sessions; }
 export function getSession(id: string) { return request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(id)}`); }
+export async function getSessionDiagnostics(id: string) { return (await request<{ traces: ChatDebugTraceRecord[] }>(`/api/v1/sessions/${encodeURIComponent(id)}/diagnostics`)).traces; }
 export function deleteSession(id: string) { return request<{ deleted: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }); }
 export function archiveSession(id: string) { return request<{ archived: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}/archive`, { method: "POST" }); }
 export function renameSession(id: string, title: string) { return request<{ ok: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ title }) }); }

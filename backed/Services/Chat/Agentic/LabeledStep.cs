@@ -73,6 +73,7 @@ public sealed class LabeledStepRunner : ILabeledStepRunner
         string? modelId = null;
         string? model = null;
 
+        await EmitAsync(onEvent, new AgentStreamEvent { Type = "provider_request_started" }, cancellationToken);
         await foreach (var chunk in _llmChatClient.StreamAsync(messages, context.ModelId, cancellationToken))
         {
             modelId ??= chunk.ModelId;

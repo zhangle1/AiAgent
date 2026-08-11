@@ -1,6 +1,7 @@
 using AiAgent.Backend.Dtos.Admin;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Chat;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,9 +15,10 @@ public sealed class AdminAppService : IDynamicApiController
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthService _auth;
     private readonly IAdminService _admin;
+    private readonly IChatUploadLibraryService _uploads;
 
-    public AdminAppService(IHttpContextAccessor httpContextAccessor, IAuthService auth, IAdminService admin)
-        => (_httpContextAccessor, _auth, _admin) = (httpContextAccessor, auth, admin);
+    public AdminAppService(IHttpContextAccessor httpContextAccessor, IAuthService auth, IAdminService admin, IChatUploadLibraryService uploads)
+        => (_httpContextAccessor, _auth, _admin, _uploads) = (httpContextAccessor, auth, admin, uploads);
 
     [HttpGet("users")]
     public async Task<List<AdminUserDto>> ListUsers(CancellationToken cancellationToken) => await _admin.ListUsersAsync(await RequireAdministrator(cancellationToken), cancellationToken);
@@ -63,6 +65,25 @@ public sealed class AdminAppService : IDynamicApiController
     [HttpGet("usage")]
     public async Task<AdminUsageReportDto> Usage([FromQuery] string period = "day", [FromQuery] int days = 365, [FromQuery(Name = "user_id")] string? userId = null, CancellationToken cancellationToken = default)
         => await _admin.GetUsageReportAsync(await RequireAdministrator(cancellationToken), period, days, userId, cancellationToken);
+
+    [HttpGet("uploads")]
+    public async Task<List<ChatUploadFileDto>> ListUploads([FromQuery(Name = "user_id")] string? userId, [FromQuery] string? keyword, [FromQuery] string? kind, [FromQuery(Name = "session_id")] string? sessionId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var administrator = await RequireAdministrator(cancellationToken);
+        var uploads = await _uploads.ListAsync(administrator, userId, keyword, kind, sessionId, limit, cancellationToken);
+        var users = (await _admin.ListUsersAsync(administrator, cancellationToken)).ToDictionary(item => item.Id, item => item.Alias ?? item.Username, StringComparer.Ordinal);
+        foreach (var upload in uploads) upload.UploaderName = upload.UploaderId != null && users.TryGetValue(upload.UploaderId, out var name) ? name : upload.UploaderId;
+        return uploads;
+    }
+
+    [HttpGet("uploads/{attachmentId}/content")]
+    public async Task<IActionResult> OpenUpload([FromRoute] string attachmentId, [FromQuery(Name = "user_id")] string? userId, CancellationToken cancellationToken)
+    {
+        var content = await _uploads.OpenAsync(await RequireAdministrator(cancellationToken), userId, attachmentId, cancellationToken);
+        return content == null
+            ? new NotFoundResult()
+            : new FileStreamResult(new FileStream(content.Path, FileMode.Open, FileAccess.Read, FileShare.Read), content.ContentType) { EnableRangeProcessing = true };
+    }
 
     private async Task<AuthenticatedUser> RequireAdministrator(CancellationToken cancellationToken)
     {

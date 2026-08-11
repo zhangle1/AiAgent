@@ -82,6 +82,7 @@ builder.Services.AddSingleton<IMemoryCandidateService, MemoryCandidateService>()
 builder.Services.AddHostedService<MemoryCandidateHostedService>();
 builder.Services.AddSingleton<IAdminService, AdminService>();
 builder.Services.AddSingleton<IChatSessionService, ChatSessionService>();
+builder.Services.AddSingleton<IChatDebugTraceStore, ChatDebugTraceStore>();
 builder.Services.AddSingleton<IPromptTemplateService, PromptTemplateService>();
 builder.Services.AddSingleton<IModelProviderOptionsService, ModelProviderOptionsService>();
 builder.Services.AddSingleton<IModelSchemaInitializer, ModelSchemaInitializer>();
@@ -109,6 +110,8 @@ builder.Services.AddSingleton<IAgentProviderEnvironmentService, AgentProviderEnv
 builder.Services.AddSingleton<ICodexModelPolicyService, CodexModelPolicyService>();
 builder.Services.AddSingleton<IImageOcrPolicyService, ImageOcrPolicyService>();
 builder.Services.AddSingleton<IChatImageAttachmentService, ChatImageAttachmentService>();
+builder.Services.AddSingleton<IChatFileAttachmentService, ChatFileAttachmentService>();
+builder.Services.AddSingleton<IChatUploadLibraryService, ChatUploadLibraryService>();
 builder.Services.AddSingleton<IProjectReferenceContextService, ProjectReferenceContextService>();
 builder.Services.AddSingleton<IMarkdownDocumentReferenceContextService, MarkdownDocumentReferenceContextService>();
 builder.Services.AddSingleton<IProjectAgentMarkdownIndexContextService, ProjectAgentMarkdownIndexContextService>();

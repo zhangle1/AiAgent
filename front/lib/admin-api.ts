@@ -1,4 +1,5 @@
 import type { SessionDetail, SessionSummary } from "@/lib/session-api";
+import type { ChatUploadFile } from "@/lib/chat-api";
 
 export type AdminUser = { id: string; username: string; alias?: string | null; role: string; is_disabled: boolean; created_at: string; project_ids: number[] };
 export type AdminSession = SessionSummary & { user_id: string; username: string };
@@ -21,3 +22,5 @@ export function resetAdminUserPassword(userId: string, password: string) { retur
 export function getAdminSessions(userId?: string) { return request<AdminSession[]>(`/api/v1/admin/sessions?${new URLSearchParams({ limit: "100", ...(userId ? { user_id: userId } : {}) })}`); }
 export function getAdminSession(userId: string, sessionId: string) { return request<SessionDetail>(`/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`); }
 export function getAdminUsage(period: "day" | "week" | "month" | "year", days: number, userId?: string) { return request<AdminUsageReport>(`/api/v1/admin/usage?${new URLSearchParams({ period, days: String(days), ...(userId ? { user_id: userId } : {}) })}`); }
+export function getAdminUploads(filters: { userId?: string; keyword?: string; kind?: string; sessionId?: string } = {}) { return request<ChatUploadFile[]>(`/api/v1/admin/uploads?${new URLSearchParams({ limit: "200", ...(filters.userId ? { user_id: filters.userId } : {}), ...(filters.keyword ? { keyword: filters.keyword } : {}), ...(filters.kind ? { kind: filters.kind } : {}), ...(filters.sessionId ? { session_id: filters.sessionId } : {}) })}`); }
+export function adminChatUploadContentUrl(attachmentId: string, userId: string) { return `/api/v1/admin/uploads/${encodeURIComponent(attachmentId)}/content?user_id=${encodeURIComponent(userId)}`; }

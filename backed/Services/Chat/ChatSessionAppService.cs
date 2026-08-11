@@ -13,7 +13,8 @@ public sealed class ChatSessionAppService : IDynamicApiController
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthService _authService;
     private readonly IChatSessionService _sessions;
-    public ChatSessionAppService(IHttpContextAccessor httpContextAccessor, IAuthService authService, IChatSessionService sessions) => (_httpContextAccessor, _authService, _sessions) = (httpContextAccessor, authService, sessions);
+    private readonly IChatDebugTraceStore _debugTraceStore;
+    public ChatSessionAppService(IHttpContextAccessor httpContextAccessor, IAuthService authService, IChatSessionService sessions, IChatDebugTraceStore debugTraceStore) => (_httpContextAccessor, _authService, _sessions, _debugTraceStore) = (httpContextAccessor, authService, sessions, debugTraceStore);
 
     [HttpGet("list")]
     public async Task<object> List([FromQuery] int limit = 50, CancellationToken cancellationToken = default)
@@ -28,6 +29,10 @@ public sealed class ChatSessionAppService : IDynamicApiController
         var detail = await _sessions.GetAsync(await RequireUser(cancellationToken), sessionId, cancellationToken);
         return detail == null ? new NotFoundObjectResult(new { message = "会话不存在。" }) : new OkObjectResult(detail);
     }
+
+    [HttpGet("{sessionId}/diagnostics")]
+    public async Task<object> Diagnostics(string sessionId, CancellationToken cancellationToken)
+        => new { traces = await _debugTraceStore.ListAsync(await RequireUser(cancellationToken), sessionId, cancellationToken) };
 
     [HttpPatch("{sessionId}")]
     public async Task<IActionResult> Rename(string sessionId, [FromBody] RenameChatSessionRequest request, CancellationToken cancellationToken)

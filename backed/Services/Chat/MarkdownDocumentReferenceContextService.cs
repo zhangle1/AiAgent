@@ -33,7 +33,9 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
     public Task ResolveAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var references = ExtractReferences(request.Message);
+        // Prefer the structured fields emitted by the composer, then retain text-token parsing
+        // for older clients. Both values are still validated against the selected project below.
+        var references = ExtractReferences(request);
         if (references.Count > MaximumReferences)
             throw new InvalidOperationException($"A chat message can reference at most {MaximumReferences} Markdown documents.");
         if (references.Count == 0)
@@ -80,28 +82,30 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
 
         request.ResolvedMarkdownDocumentReferences = resolved;
         request.ServerMarkdownDocumentContext = BuildContext(resolved);
-        request.ServerPromptMessage = NormalizePromptMessage(
-            string.IsNullOrWhiteSpace(request.ServerPromptMessage) ? request.Message : request.ServerPromptMessage,
-            resolved);
+        // Keep the original [[文档:名称|仓库|相对路径]] marker in the user request. Replacing it
+        // with only a display name or path makes same-named files ambiguous to the model.
+        request.ServerPromptMessage = string.IsNullOrWhiteSpace(request.ServerPromptMessage)
+            ? request.Message
+            : request.ServerPromptMessage;
         return Task.CompletedTask;
     }
+
+    private static List<(string RepositoryName, string Path)> ExtractReferences(ChatCompleteRequest request)
+        => ExtractReferences(request.Message)
+            .Concat((request.MarkdownDocumentReferences ?? [])
+                .Select(reference => (RepositoryName: reference.RepositoryName.Trim(), Path: reference.Path.Trim()))
+                .Where(reference => !string.IsNullOrWhiteSpace(reference.RepositoryName) && !string.IsNullOrWhiteSpace(reference.Path)))
+            .GroupBy(reference => $"{reference.RepositoryName}\n{reference.Path}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
 
     private static List<(string RepositoryName, string Path)> ExtractReferences(string? message)
         => MarkdownDocumentTokenRegex.Matches(message ?? string.Empty)
             .Select(match => (RepositoryName: match.Groups[1].Value.Trim(), Path: match.Groups[2].Value.Trim()))
             .Where(reference => !string.IsNullOrWhiteSpace(reference.RepositoryName) && !string.IsNullOrWhiteSpace(reference.Path))
-            .Distinct()
+            .GroupBy(reference => $"{reference.RepositoryName}\n{reference.Path}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .ToList();
-
-    private static string NormalizePromptMessage(string message, IReadOnlyList<ResolvedChatMarkdownDocumentReference> references)
-    {
-        var resolved = references.ToDictionary(item => $"{item.RepositoryName}\n{item.Path}", StringComparer.OrdinalIgnoreCase);
-        return MarkdownDocumentTokenRegex.Replace(message, match =>
-        {
-            var key = $"{match.Groups[1].Value.Trim()}\n{match.Groups[2].Value.Trim()}";
-            return resolved.TryGetValue(key, out var document) ? $"文档“{document.Path}”" : match.Value;
-        });
-    }
 
     private static string BuildContext(IReadOnlyList<ResolvedChatMarkdownDocumentReference> references)
     {
