@@ -1522,6 +1522,11 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         DisplayName = project.DisplayName,
         RootPath = project.RootPath,
         Description = project.Description,
+        AutoGitUpdateEnabled = project.AutoGitUpdateEnabled,
+        AutoGitUpdateIntervalHours = project.AutoGitUpdateIntervalHours,
+        AutoGitUpdateLastAttemptedAt = project.AutoGitUpdateLastAttemptedAt,
+        AutoGitUpdateLastSucceededAt = project.AutoGitUpdateLastSucceededAt,
+        AutoGitUpdateLastResult = project.AutoGitUpdateLastResult,
         Repositories = repositories,
         CreatedAt = project.CreatedAt,
         UpdatedAt = project.UpdatedAt

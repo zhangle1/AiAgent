@@ -66,6 +66,10 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiUsageRecord),
             typeof(AiGitAccount));
 
+        // InitTables creates the table for a new database. Existing tables need
+        // an explicit additive migration because SqlSugar does not reliably add
+        // newly introduced columns to legacy tables.
+        EnsureProjectAutoGitUpdateColumns();
         EnsureColumns();
         EnsureIndexes();
         SeedProviders();
@@ -92,6 +96,9 @@ IF COL_LENGTH(N'dbo.ai_user', N'Role') IS NULL
 IF COL_LENGTH(N'dbo.ai_user', N'Alias') IS NULL
     ALTER TABLE dbo.ai_user ADD Alias NVARCHAR(64) NULL;
 
+IF COL_LENGTH(N'dbo.ai_user', N'CanCommitCode') IS NULL
+    ALTER TABLE dbo.ai_user ADD CanCommitCode BIT NULL CONSTRAINT DF_ai_user_CanCommitCode DEFAULT 0;
+
 IF OBJECT_ID(N'dbo.ai_code_repo_run', N'U') IS NOT NULL
 BEGIN
     IF COL_LENGTH(N'dbo.ai_code_repo_run', N'TestScript') IS NULL
@@ -100,6 +107,36 @@ BEGIN
         ALTER TABLE dbo.ai_code_repo_run ADD PreferredPort INT NULL;
 END
 
+""");
+    }
+
+    private void EnsureProjectAutoGitUpdateColumns()
+    {
+        ExecuteIndexSql("""
+IF OBJECT_ID(N'ai_code_project', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'ai_code_project', N'AutoUpdOn') IS NULL
+        ALTER TABLE ai_code_project ADD AutoUpdOn BIT NULL CONSTRAINT DF_ai_code_project_AutoUpdOn DEFAULT 0;
+    IF COL_LENGTH(N'ai_code_project', N'AutoUpdHours') IS NULL
+        ALTER TABLE ai_code_project ADD AutoUpdHours INT NULL CONSTRAINT DF_ai_code_project_AutoUpdHours DEFAULT 24;
+    IF COL_LENGTH(N'ai_code_project', N'AutoUpdAttemptAt') IS NULL
+        ALTER TABLE ai_code_project ADD AutoUpdAttemptAt DATETIME2 NULL;
+    IF COL_LENGTH(N'ai_code_project', N'AutoUpdSuccessAt') IS NULL
+        ALTER TABLE ai_code_project ADD AutoUpdSuccessAt DATETIME2 NULL;
+    IF COL_LENGTH(N'ai_code_project', N'AutoUpdResult') IS NULL
+        ALTER TABLE ai_code_project ADD AutoUpdResult NVARCHAR(1024) NULL;
+
+    IF COL_LENGTH(N'ai_code_project', N'AutoGitUpdateEnabled') IS NOT NULL
+        EXEC(N'UPDATE ai_code_project SET AutoUpdOn = AutoGitUpdateEnabled;');
+    IF COL_LENGTH(N'ai_code_project', N'AutoGitUpdateIntervalHours') IS NOT NULL
+        EXEC(N'UPDATE ai_code_project SET AutoUpdHours = AutoGitUpdateIntervalHours;');
+    IF COL_LENGTH(N'ai_code_project', N'AutoGitUpdateLastAttemptedAt') IS NOT NULL
+        EXEC(N'UPDATE ai_code_project SET AutoUpdAttemptAt = AutoGitUpdateLastAttemptedAt WHERE AutoGitUpdateLastAttemptedAt IS NOT NULL;');
+    IF COL_LENGTH(N'ai_code_project', N'AutoGitUpdateLastSucceededAt') IS NOT NULL
+        EXEC(N'UPDATE ai_code_project SET AutoUpdSuccessAt = AutoGitUpdateLastSucceededAt WHERE AutoGitUpdateLastSucceededAt IS NOT NULL;');
+    IF COL_LENGTH(N'ai_code_project', N'AutoGitUpdateLastResult') IS NOT NULL
+        EXEC(N'UPDATE ai_code_project SET AutoUpdResult = AutoGitUpdateLastResult WHERE AutoGitUpdateLastResult IS NOT NULL;');
+END
 """);
     }
 

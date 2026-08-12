@@ -1,6 +1,8 @@
 using AiAgent.Backend.Dtos.DashboardApp;
 using AiAgent.Backend.Entities.CodeRepository;
+using AiAgent.Backend.Services.Auth;
 using Furion.DynamicApiController;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SqlSugar;
 using System.Text;
@@ -39,7 +41,13 @@ public sealed class DashboardApplicationAppService : IDynamicApiController
     [HttpGet("{id}/runtime")] public Task<object> Runtime([FromRoute] string id, [FromServices] IDashboardRuntimeService runtime, CancellationToken cancellationToken) => runtime.StatusAsync(id, cancellationToken);
     [HttpGet("{id}/git/status")] public Task<object> GitStatus([FromRoute] string id, [FromServices] IDashboardGitService git, CancellationToken cancellationToken) => git.StatusAsync(id, cancellationToken);
     [HttpPost("{id}/git/pull")] public Task<object> GitPull([FromRoute] string id, [FromServices] IDashboardGitService git, CancellationToken cancellationToken) => git.PullAsync(id, cancellationToken);
-    [HttpPost("{id}/git/push")] public Task<object> GitPush([FromRoute] string id, [FromBody] DashboardGitPushRequest request, [FromServices] IDashboardGitService git, CancellationToken cancellationToken) => git.CommitAndPushAsync(id, request, cancellationToken);
+    [HttpPost("{id}/git/push")]
+    public async Task<IActionResult> GitPush([FromRoute] string id, [FromBody] DashboardGitPushRequest request, [FromServices] IDashboardGitService git, [FromServices] IAuthService auth, [FromServices] IHttpContextAccessor httpContextAccessor, CancellationToken cancellationToken)
+    {
+        var user = await auth.TryGetCurrentUserAsync(httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!user.CanCommitCode) return new ForbidResult();
+        return new OkObjectResult(await git.CommitAndPushAsync(id, request, cancellationToken));
+    }
 }
 
 public sealed class DashboardApplicationDto

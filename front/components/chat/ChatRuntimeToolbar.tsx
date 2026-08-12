@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, Download, File, FileDiff, FilePenLine, Folder, FolderOpen, GitBranch, Info, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
 import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
-import { discardCodeRepositoryChangesAndPull, getCodeRepositoryGitDiff, getCodeRepositoryGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
-import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus } from "@/lib/code-repository-types";
+import { discardCodeRepositoryChangesAndPull, discardProjectGitChangesAndPull, getCodeRepositoryGitDiff, getProjectGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, pushProjectGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
+import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus, ProjectGitBatchOperationResult, ProjectGitRepositoryStatus, ProjectGitStatus } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
+type ProjectGitBatchAction = "discard-and-pull" | "commit-and-push";
 
 export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel, onOpenRuntimePanel }: { project: CodeProject | null; rightPanelOpen: boolean; onToggleRightPanel: () => void; onOpenRuntimePanel: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -17,20 +18,29 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gitStatuses, setGitStatuses] = useState<Record<number, GitWorkspaceStatus>>({});
+  const [projectGitStatus, setProjectGitStatus] = useState<ProjectGitStatus | null>(null);
   const [packageStatus, setPackageStatus] = useState<Record<string, string>>({});
   const [configDraft, setConfigDraft] = useState<ChatConfigDraft | null>(null);
   const [pushTarget, setPushTarget] = useState<CodeRepository | null>(null);
   const [diffTarget, setDiffTarget] = useState<CodeRepository | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [batchAction, setBatchAction] = useState<ProjectGitBatchAction | null>(null);
+  const [batchResult, setBatchResult] = useState<ProjectGitBatchOperationResult | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!menuOpen || !project) return;
+    if (!project) {
+      setProjectGitStatus(null);
+      setGitStatuses({});
+      return;
+    }
+    setProjectGitStatus(null);
+    setGitStatuses({});
     void refresh();
-  // The selected project is the only runtime context for this menu.
+  // The selected project is the only runtime context for this menu and is checked immediately.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menuOpen, project?.id]);
+  }, [project?.id]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -46,14 +56,13 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     if (!project) return;
     setRefreshing(true);
     try {
-      setRuntime(await getCodeProjectRuntime(project.id));
-      const entries = await Promise.all(project.repositories.map(async (repository) => {
-        try { return [repository.id, await getCodeRepositoryGitStatus(repository.name)] as const; }
-        catch { return [repository.id, null] as const; }
-      }));
-      setGitStatuses(Object.fromEntries(entries.filter((entry): entry is readonly [number, GitWorkspaceStatus] => entry[1] !== null)));
+      const [runtimeState, gitState] = await Promise.all([getCodeProjectRuntime(project.id), getProjectGitStatus(project.id)]);
+      setRuntime(runtimeState);
+      setProjectGitStatus(gitState);
+      setGitStatuses(Object.fromEntries(gitState.repositories.flatMap((repository) => repository.status ? [[repository.repository_id, repository.status] as const] : [])));
       setError(null);
     } catch (ex) {
+      setProjectGitStatus({ project_id: project.id, state: "attention", message: "Git 状态检查失败，请手动刷新重试。", repositories: [] });
       setError(ex instanceof Error ? ex.message : "无法读取运行状态。");
     } finally {
       setRefreshing(false);
@@ -170,16 +179,43 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     }
   }
 
+  async function runProjectGitBatch(action: ProjectGitBatchAction, message?: string) {
+    if (!project) return;
+    const repositoryNames = projectGitStatus?.repositories.filter((repository) => repository.status?.is_repository).map((repository) => repository.repository_name) ?? [];
+    if (!repositoryNames.length) {
+      setError("当前项目没有可批量操作的 Git 代码库。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setBatchResult(null);
+    try {
+      const result = action === "discard-and-pull"
+        ? await discardProjectGitChangesAndPull(project.id, repositoryNames)
+        : await pushProjectGit(project.id, repositoryNames, message ?? "");
+      setBatchResult(result);
+      await refresh();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : "项目 Git 批量操作失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const activeRuns = runtime?.runs.filter(isActiveRun) ?? [];
+  const visibleGitRows = projectGitStatus?.repositories.filter((repository) => repository.status?.is_repository) ?? [];
+  const topGitState = refreshing ? "checking" : project ? projectGitStatus?.state ?? "neutral" : "neutral";
+  const topGitClass = topGitState === "synced" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : topGitState === "attention" ? "border-amber-300 bg-amber-50 text-amber-800" : topGitState === "checking" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600";
+  const topGitLabel = topGitState === "checking" ? "正在检查 Git 状态" : topGitState === "synced" ? "代码已同步" : topGitState === "attention" ? "需要处理 Git 状态" : "项目程序运行";
 
   return <>
     <div className="relative flex items-center gap-1.5">
       {menuOpen && typeof document !== "undefined" && createPortal(<button type="button" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-[85] bg-slate-950/35 lg:hidden" aria-label="关闭项目程序运行" />, document.body)}
       <div ref={menuRef} className="relative">
-        <button type="button" onClick={() => setMenuOpen((current) => !current)} className={`inline-flex h-9 items-center gap-1 rounded-xl border px-2 text-[11px] font-medium shadow-sm lg:h-8 lg:gap-1.5 lg:rounded-lg lg:px-2.5 lg:text-xs ${menuOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-expanded={menuOpen}>
-          <Terminal size={14}/>项目程序运行<ChevronDown size={13} className={menuOpen ? "rotate-180 transition" : "transition"}/>
+        <button type="button" onClick={() => setMenuOpen((current) => !current)} className={`inline-flex h-9 items-center gap-1 rounded-xl border px-2 text-[11px] font-medium shadow-sm lg:h-8 lg:gap-1.5 lg:rounded-lg lg:px-2.5 lg:text-xs ${topGitClass}`} aria-expanded={menuOpen} aria-label={`${topGitLabel}：${projectGitStatus?.message ?? "请选择项目后检查"}`} title={projectGitStatus?.message ?? "请选择项目后检查"}>
+          {refreshing ? <Loader2 size={14} className="animate-spin"/> : <Terminal size={14}/>}项目程序运行<ChevronDown size={13} className={menuOpen ? "rotate-180 transition" : "transition"}/>
         </button>
-        {menuOpen && typeof document !== "undefined" && createPortal(<div ref={panelRef} className="fixed inset-x-0 bottom-0 z-[90] max-h-[84dvh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-4 shadow-[0_-12px_42px_rgba(15,23,42,0.2)] lg:inset-x-auto lg:right-5 lg:top-16 lg:w-[390px] lg:max-h-[calc(100dvh-5rem)] lg:rounded-xl lg:p-3 lg:shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
+        {menuOpen && typeof document !== "undefined" && createPortal(<div ref={panelRef} className="fixed inset-x-0 bottom-0 z-[90] box-border w-full max-w-full max-h-[84dvh] overflow-x-hidden overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-200 bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-[0_-12px_42px_rgba(15,23,42,0.2)] lg:inset-x-auto lg:right-5 lg:top-16 lg:w-[390px] lg:max-h-[calc(100dvh-5rem)] lg:rounded-xl lg:p-3 lg:shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">项目程序运行</p>
@@ -188,9 +224,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
             <div className="relative flex items-center gap-1"><button type="button" onClick={() => setHelpOpen((current) => !current)} className={`grid h-7 w-7 place-items-center rounded-md transition ${helpOpen ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-100"}`} aria-label="查看操作说明" aria-expanded={helpOpen} title="查看操作说明"><Info size={15}/></button><button type="button" disabled={refreshing} onClick={() => void refresh()} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="刷新"><RefreshCw size={14} className={refreshing ? "animate-spin" : undefined}/></button>{helpOpen && <RuntimeActionHelp onClose={() => setHelpOpen(false)}/>}</div>
           </div>
 
-          {project && <button type="button" disabled={busy} onClick={() => void startProfiles(runtime?.profiles ?? [], "项目")} className="mb-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300">
-            {busy ? <Loader2 size={14} className="animate-spin"/> : <Play size={14}/>}启动全部已配置程序
-          </button>}
+          {project && <ProjectGitOverview state={topGitState} summary={projectGitStatus?.message} rows={projectGitStatus?.repositories ?? []} busy={busy} onDiscard={() => { setBatchResult(null); setBatchAction("discard-and-pull"); }} onPush={() => { setBatchResult(null); setBatchAction("commit-and-push"); }} />}
 
           {project?.repositories.length ? <div className="mb-3 space-y-2">
             <p className="px-0.5 text-[11px] font-semibold text-slate-500">代码库</p>
@@ -217,13 +251,14 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     </div>
     {configDraft && <ChatConfigurationEditor draft={configDraft} busy={busy} onChange={setConfigDraft} onClose={() => !busy && setConfigDraft(null)} onSave={() => void saveConfiguration()} />}
     {pushTarget && <CommitPushDialog repository={pushTarget} busy={busy} error={error} onClose={() => !busy && setPushTarget(null)} onSubmit={(message) => void pushRepository(pushTarget, message)} />}
+    {batchAction && project && <ProjectGitBatchDialog action={batchAction} rows={visibleGitRows} busy={busy} error={error} result={batchResult} onClose={() => !busy && setBatchAction(null)} onSubmit={(message) => void runProjectGitBatch(batchAction, message)} />}
     {diffTarget && <GitDiffDialog repository={diffTarget} onClose={() => setDiffTarget(null)}/>}
   </>;
 }
 
 function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, onStart, onPackage, onOpenDiff, onDiscardAndPull, onCommitPush, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; packageStatus?: string; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onOpenDiff: () => void; onDiscardAndPull: () => void; onCommitPush: () => void; onOpenConfiguration: (path: string) => void }) {
   const repositoryProfiles = profiles.filter((profile) => profile.repository_id === repository.id && profile.is_enabled);
-  return <section className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
+  return <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
     <p className="mb-2 break-words text-xs font-semibold leading-5 text-slate-800" title={repository.display_name}>{repository.display_name}</p>
     <div className="flex flex-wrap items-center gap-1.5">
       <button type="button" disabled={busy || !repositoryProfiles.length} onClick={() => onStart(repositoryProfiles)} title={repositoryProfiles.length ? "只运行此代码库的已启用配置" : "请先为代码库保存运行配置"} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 text-[11px] font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"><Play size={13}/>运行</button>
@@ -239,7 +274,7 @@ function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, 
 function GitSyncSummary({ status }: { status: GitWorkspaceStatus }) {
   const branch = status.branch || "detached";
   const remoteBranch = status.remote_branch || "未设置上游";
-  return <div className="mt-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] leading-4 text-slate-500">
+  return <div className="mt-2 max-w-full overflow-hidden rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] leading-4 text-slate-500">
     <div className="flex min-w-0 items-center gap-1 text-slate-600" title={`本地分支 ${branch}，远程跟踪分支 ${remoteBranch}`}><GitBranch size={12} className="shrink-0 text-slate-400"/><span className="truncate font-mono">{branch}</span><span className="text-slate-300">→</span><span className="truncate font-mono">{remoteBranch}</span></div>
     {status.remote_branch ? <><div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5"><span className={status.behind ? "text-amber-700" : "text-slate-400"}><Download size={11} className="mr-0.5 inline"/>远端领先 {status.behind} 提交 · 拉取 {status.behind_files} 文件</span><span className={status.ahead ? "text-blue-700" : "text-slate-400"}><Upload size={11} className="mr-0.5 inline"/>本地领先 {status.ahead} 提交 · 推送 {status.ahead_files} 文件</span>{status.changes.length ? <span className="text-rose-600">待提交 {status.changes.length} 文件</span> : null}</div>{status.remote_refresh_error ? <p className="mt-1 truncate text-amber-700" title={status.remote_refresh_error}>远程刷新失败，当前显示本地缓存状态。</p> : null}</> : <p className="mt-1 text-slate-400">未设置远程跟踪分支，无法计算拉取/推送差异。</p>}
   </div>;
@@ -250,6 +285,43 @@ function RuntimeActionHelp({ onClose }: { onClose: () => void }) {
     <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-slate-800">代码库操作说明</p><button type="button" onClick={onClose} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭说明"><X size={13}/></button></div>
     <div className="mt-2.5 space-y-2 text-[11px] leading-5 text-slate-600"><p><strong className="text-slate-800">运行：</strong>只启动当前代码库已启用的运行配置。</p><p><strong className="text-slate-800">打包：</strong>按该代码库的发布配置构建并输出交付文件。</p><p><strong className="text-slate-800">差异：</strong>按文件查看本地工作区或远程分支差异。</p><p><strong className="text-amber-800">重置更新：</strong>撤回已跟踪文件的未提交修改，再拉取远程最新代码；额外新建的文件不会删除。</p><p><strong className="text-emerald-800">提交推送：</strong>填写提交说明后，提交并推送当前代码库。</p></div>
   </section>;
+}
+
+function ProjectGitOverview({ state, summary, rows, busy, onDiscard, onPush }: { state: string; summary?: string; rows: ProjectGitRepositoryStatus[]; busy: boolean; onDiscard: () => void; onPush: () => void }) {
+  const actionable = rows.filter((row) => row.status?.is_repository);
+  const tone = state === "synced" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : state === "attention" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-600";
+  return <section className={`mb-3 min-w-0 max-w-full overflow-hidden rounded-lg border px-3 py-2.5 text-[11px] leading-5 ${tone}`} aria-live="polite">
+    <p className="font-semibold">Git 前置检查</p>
+    <p className="mt-0.5 break-words">{summary ?? (state === "checking" ? "正在刷新远端引用并检查项目代码库…" : "请选择项目后检查 Git 状态。")}</p>
+    {rows.length > 0 && <div className="mt-2 space-y-1">{rows.map((row) => <p key={row.repository_id} className="flex gap-1.5 break-words"><span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${row.state === "synced" ? "bg-emerald-500" : row.state === "not-repository" ? "bg-slate-400" : "bg-amber-500"}`}/><span><strong>{row.display_name}</strong>：{row.message}</span></p>)}</div>}
+    {actionable.length > 0 && <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
+      <button type="button" disabled={busy || state === "checking"} onClick={onDiscard} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14}/>一键重置更新</button>
+      <button type="button" disabled={busy || state === "checking"} onClick={onPush} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Upload size={14}/>一键提交推送</button>
+    </div>}
+    {!actionable.length && state !== "checking" && <p className="mt-2 text-slate-500">没有可批量操作的 Git 代码库。</p>}
+  </section>;
+}
+
+function ProjectGitBatchDialog({ action, rows, busy, error, result, onClose, onSubmit }: { action: ProjectGitBatchAction; rows: ProjectGitRepositoryStatus[]; busy: boolean; error: string | null; result: ProjectGitBatchOperationResult | null; onClose: () => void; onSubmit: (message?: string) => void }) {
+  const [type, setType] = useState<(typeof commitTypes)[number]["value"]>("fix");
+  const [summary, setSummary] = useState("");
+  const message = summary.trim() ? `${type}: ${summary.trim()}` : "";
+  const isDiscard = action === "discard-and-pull";
+  const title = isDiscard ? "一键重置更新" : "一键提交并推送";
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="fixed inset-0 z-[145] grid items-end overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:place-items-center sm:p-4" role="presentation" onMouseDown={() => !busy && onClose()}>
+    <section className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="project-git-batch-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header className="flex items-start gap-3"><span className={`grid h-10 w-10 place-items-center rounded-xl ${isDiscard ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-600"}`}>{isDiscard ? <RotateCcw size={19}/> : <Upload size={19}/>}</span><div className="min-w-0 flex-1"><h2 id="project-git-batch-title" className="text-base font-semibold text-slate-900">{title}</h2><p className="mt-1 text-xs leading-5 text-slate-500">将按仓库依次执行，结果会逐项展示。</p></div><button type="button" onClick={onClose} disabled={busy} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={17}/></button></header>
+      {!result && <div className="mt-4 space-y-3">
+        <div className={`rounded-lg px-3 py-2 text-xs leading-5 ${isDiscard ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-800"}`}>{isDiscard ? "此操作会丢弃下列仓库中已跟踪文件的未提交修改，再以 fast-forward 拉取远端代码；未跟踪文件不会删除。无法更新或认证失败会按仓库报告。" : "使用同一提交说明提交并推送。远端领先、未设置上游或远端刷新失败的仓库会被跳过，请先一键重置更新。"}</div>
+        <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2">{rows.map((row) => <p key={row.repository_id} className="break-words px-1 text-xs leading-5 text-slate-700"><strong>{row.display_name}</strong>：未提交 {row.status?.changes.length ?? 0} 个文件，远端领先 {row.status?.behind ?? 0} 个提交</p>)}</div>
+        {!isDiscard && <><label className="grid gap-1.5 text-xs font-medium text-slate-700">提交类型<select value={type} onChange={(event) => setType(event.target.value as (typeof commitTypes)[number]["value"])} disabled={busy} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500">{commitTypes.map((item) => <option key={item.value} value={item.value}>{item.value} · {item.label}</option>)}</select></label><label className="grid gap-1.5 text-xs font-medium text-slate-700">统一提交说明<textarea value={summary} onChange={(event) => setSummary(event.target.value)} disabled={busy} autoFocus rows={3} className="resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm leading-5 text-slate-800 outline-none focus:border-blue-500" placeholder="例如：修复项目批量 Git 状态检查"/></label><p className="rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600">{message || `${type}: 请填写提交说明`}</p></>}
+      </div>}
+      {result && <div className="mt-4"><p className="mb-2 text-xs font-medium text-slate-700">操作结果</p><div className="max-h-72 space-y-2 overflow-y-auto">{result.repositories.map((row) => <div key={row.repository_id} className={`rounded-lg border px-3 py-2 text-xs leading-5 ${row.outcome === "succeeded" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : row.outcome === "skipped" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-rose-200 bg-rose-50 text-rose-700"}`}><strong>{row.display_name}</strong>：{row.outcome === "succeeded" ? "成功" : row.outcome === "skipped" ? "已跳过" : "失败"}<p className="break-words">{row.message}</p></div>)}</div></div>}
+      {error && <p className="mt-3 break-words rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+      <footer className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} disabled={busy} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 sm:w-auto">{result ? "关闭" : "取消"}</button>{!result && <button type="button" disabled={busy || (!isDiscard && !message)} onClick={() => onSubmit(message)} className={`inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-white disabled:bg-slate-300 sm:w-auto ${isDiscard ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>{busy ? <Loader2 size={14} className="animate-spin"/> : isDiscard ? <RotateCcw size={14}/> : <Upload size={14}/>}确认{title}</button>}</footer>
+    </section>
+  </div>, document.body);
 }
 
 type GitDiffLine = { kind: "context" | "add" | "remove" | "meta"; content: string; oldLine?: number; newLine?: number };

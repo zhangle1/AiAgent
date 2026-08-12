@@ -51,6 +51,13 @@ public sealed class AdminAppService : IDynamicApiController
         return result.Succeeded ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = result.Error });
     }
 
+    [HttpPut("users/{userId}/code-commit-permission")]
+    public async Task<IActionResult> UpdateUserCodeCommitPermission(string userId, [FromBody] AdminUpdateUserCodeCommitPermissionRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _admin.UpdateUserCodeCommitPermissionAsync(await RequireAdministrator(cancellationToken), userId, request.CanCommitCode, cancellationToken);
+        return result.Succeeded ? new OkObjectResult(new { ok = true }) : new BadRequestObjectResult(new { message = result.Error });
+    }
+
     [HttpGet("sessions")]
     public async Task<List<AdminSessionSummaryDto>> ListSessions([FromQuery(Name = "user_id")] string? userId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
         => await _admin.ListSessionsAsync(await RequireAdministrator(cancellationToken), userId, limit, cancellationToken);

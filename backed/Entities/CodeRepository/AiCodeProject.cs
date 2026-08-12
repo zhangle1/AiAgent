@@ -23,6 +23,21 @@ public sealed class AiCodeProject
     [SugarColumn(Length = 1024, IsNullable = true)]
     public string? Description { get; set; }
 
+    [SugarColumn(ColumnName = "AutoUpdOn", IsNullable = true)]
+    public bool AutoGitUpdateEnabled { get; set; }
+
+    [SugarColumn(ColumnName = "AutoUpdHours", IsNullable = true)]
+    public int AutoGitUpdateIntervalHours { get; set; } = 24;
+
+    [SugarColumn(ColumnName = "AutoUpdAttemptAt", IsNullable = true)]
+    public DateTime? AutoGitUpdateLastAttemptedAt { get; set; }
+
+    [SugarColumn(ColumnName = "AutoUpdSuccessAt", IsNullable = true)]
+    public DateTime? AutoGitUpdateLastSucceededAt { get; set; }
+
+    [SugarColumn(ColumnName = "AutoUpdResult", Length = 1024, IsNullable = true)]
+    public string? AutoGitUpdateLastResult { get; set; }
+
     public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -23,6 +23,8 @@ public sealed class AiUser
     [SugarColumn(Length = 64, IsNullable = true)]
     public string? Alias { get; set; }
 
+    [SugarColumn(IsNullable = true)]
+    public bool CanCommitCode { get; set; }
     public bool IsDisabled { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [SugarColumn(IsNullable = true)]

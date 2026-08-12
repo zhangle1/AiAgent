@@ -43,6 +43,7 @@ public interface IAdminService
     Task<(bool Succeeded, string? Error)> UpdateUserAliasAsync(AuthenticatedUser administrator, string userId, string? alias, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> ResetUserPasswordAsync(AuthenticatedUser administrator, string userId, string password, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> UpdateUserProjectsAsync(AuthenticatedUser administrator, string userId, IReadOnlyCollection<long> projectIds, CancellationToken cancellationToken);
+    Task<(bool Succeeded, string? Error)> UpdateUserCodeCommitPermissionAsync(AuthenticatedUser administrator, string userId, bool canCommitCode, CancellationToken cancellationToken);
     Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken);
     Task<ChatSessionDetailDto?> GetSessionAsync(AuthenticatedUser administrator, string userId, string sessionId, CancellationToken cancellationToken);
     Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken);
@@ -78,6 +79,11 @@ public sealed class AdminService : IAdminService
             {
                 _db.Ado.RollbackTran();
                 return (null, error);
+            }
+            if (request.CanCommitCode)
+            {
+                _db.Updateable<AiUser>().SetColumns(item => item.CanCommitCode == true).Where(item => item.Id == user.Id).ExecuteCommand();
+                user.CanCommitCode = true;
             }
             if (projectIds.Count > 0)
                 _db.Insertable(projectIds.Select(projectId => new AiUserCodeProject { UserId = user.Id, CodeProjectId = projectId }).ToList()).ExecuteCommand();
@@ -135,6 +141,23 @@ public sealed class AdminService : IAdminService
             _db.Ado.RollbackTran();
             throw;
         }
+    }
+
+    public Task<(bool Succeeded, string? Error)> UpdateUserCodeCommitPermissionAsync(AuthenticatedUser administrator, string userId, bool canCommitCode, CancellationToken cancellationToken)
+    {
+        RequireAdministrator(administrator);
+        cancellationToken.ThrowIfCancellationRequested();
+        var user = _db.Queryable<AiUser>().First(item => item.Id == userId);
+        if (user == null) return Task.FromResult((false, (string?)"The user does not exist."));
+        if (string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult((true, (string?)null));
+
+        _db.Updateable<AiUser>()
+            .SetColumns(item => item.CanCommitCode == canCommitCode)
+            .SetColumns(item => item.UpdatedAt == DateTime.UtcNow)
+            .Where(item => item.Id == user.Id)
+            .ExecuteCommand();
+        return Task.FromResult((true, (string?)null));
     }
 
     public Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken)
@@ -255,6 +278,7 @@ public sealed class AdminService : IAdminService
         Alias = user.Alias,
         Role = user.Role,
         IsDisabled = user.IsDisabled,
+        CanCommitCode = string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase) || user.CanCommitCode,
         CreatedAt = AsUtc(user.CreatedAt),
         ProjectIds = projectIds
     };

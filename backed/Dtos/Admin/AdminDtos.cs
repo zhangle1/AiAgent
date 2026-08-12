@@ -9,6 +9,7 @@ public sealed class AdminCreateUserRequest
     [JsonPropertyName("alias")] public string? Alias { get; set; }
     [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
     [JsonPropertyName("project_ids")] public List<long> ProjectIds { get; set; } = [];
+    [JsonPropertyName("can_commit_code")] public bool CanCommitCode { get; set; }
 }
 
 public sealed class AdminUpdateUserAliasRequest
@@ -26,6 +27,11 @@ public sealed class AdminUpdateUserProjectsRequest
     [JsonPropertyName("project_ids")] public List<long> ProjectIds { get; set; } = [];
 }
 
+public sealed class AdminUpdateUserCodeCommitPermissionRequest
+{
+    [JsonPropertyName("can_commit_code")] public bool CanCommitCode { get; set; }
+}
+
 public sealed class AdminUserDto
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
@@ -33,6 +39,7 @@ public sealed class AdminUserDto
     [JsonPropertyName("alias")] public string? Alias { get; set; }
     [JsonPropertyName("role")] public string Role { get; set; } = "user";
     [JsonPropertyName("is_disabled")] public bool IsDisabled { get; set; }
+    [JsonPropertyName("can_commit_code")] public bool CanCommitCode { get; set; }
     [JsonPropertyName("created_at")] public DateTime CreatedAt { get; set; }
     [JsonPropertyName("project_ids")] public List<long> ProjectIds { get; set; } = [];
 }

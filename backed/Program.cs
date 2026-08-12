@@ -124,6 +124,8 @@ builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
 builder.Services.AddSingleton<ICodeRuntimeManager, CodeRuntimeManager>();
 builder.Services.AddSingleton<IGitWorkspaceService, GitWorkspaceService>();
 builder.Services.AddSingleton<ICodeRepositoryGitService, CodeRepositoryGitService>();
+builder.Services.AddSingleton<IProjectAutoGitUpdateService, ProjectAutoGitUpdateService>();
+builder.Services.AddHostedService<ProjectAutoGitUpdateHostedService>();
 builder.Services.AddSingleton<IDashboardApplicationWorkspace, DashboardApplicationWorkspace>();
 builder.Services.AddSingleton<IDashboardRuntimeService, DashboardRuntimeService>();
 builder.Services.AddSingleton<IDashboardGitService, DashboardGitService>();
@@ -152,8 +154,13 @@ if (builder.Configuration.GetValue("Database:CodeFirst", true))
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "Model settings CodeFirst initialization failed.");
+        app.Logger.LogCritical(ex, "Model settings CodeFirst initialization failed. The application will not start with an incomplete database schema.");
+        throw;
     }
+}
+else
+{
+    app.Logger.LogWarning("Database:CodeFirst is disabled. Pending database schema migrations, including project automatic Git update columns, will not be applied.");
 }
 
 try

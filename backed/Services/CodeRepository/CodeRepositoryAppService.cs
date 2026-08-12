@@ -23,11 +23,12 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthService _authService;
     private readonly IProjectAccessService _projectAccess;
+    private readonly IProjectAutoGitUpdateService _autoGitUpdates;
 
     /// <summary>
     /// Creates the code repository API service.
     /// </summary>
-    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git, IHttpContextAccessor httpContextAccessor, IAuthService authService, IProjectAccessService projectAccess)
+    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git, IHttpContextAccessor httpContextAccessor, IAuthService authService, IProjectAccessService projectAccess, IProjectAutoGitUpdateService autoGitUpdates)
     {
         _manager = manager;
         _indexService = indexService;
@@ -36,6 +37,7 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         _httpContextAccessor = httpContextAccessor;
         _authService = authService;
         _projectAccess = projectAccess;
+        _autoGitUpdates = autoGitUpdates;
     }
 
     [HttpGet("list")]
@@ -49,7 +51,19 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     {
         var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
         var allowedIds = _projectAccess.GetAccessibleProjectIds(user);
-        return _manager.ListProjects().Where(project => allowedIds.Contains(project.Id)).ToList();
+        var projects = _manager.ListProjects().Where(project => allowedIds.Contains(project.Id)).ToList();
+        if (!user.IsAdministrator)
+        {
+            foreach (var project in projects)
+            {
+                project.AutoGitUpdateEnabled = false;
+                project.AutoGitUpdateIntervalHours = 0;
+                project.AutoGitUpdateLastAttemptedAt = null;
+                project.AutoGitUpdateLastSucceededAt = null;
+                project.AutoGitUpdateLastResult = null;
+            }
+        }
+        return projects;
     }
 
     [HttpGet("projects/references")]
@@ -217,6 +231,49 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         {
             return new BadRequestObjectResult(new { message = ex.Message });
         }
+    }
+
+    [HttpGet("projects/{projectId:long}/git/status")]
+    public async Task<IActionResult> ProjectGitStatus([FromRoute] long projectId, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        return new OkObjectResult(await _git.ProjectStatusAsync(projectId, cancellationToken));
+    }
+
+    [HttpPost("projects/{projectId:long}/git/discard-and-pull")]
+    public async Task<IActionResult> ProjectGitDiscardAndPull([FromRoute] long projectId, [FromBody] ProjectGitBatchRequest? request, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        return new OkObjectResult(await _git.ProjectDiscardChangesAndPullAsync(projectId, request?.RepositoryNames, cancellationToken));
+    }
+
+    [HttpPost("projects/{projectId:long}/git/commit-and-push")]
+    public async Task<IActionResult> ProjectGitCommitAndPush([FromRoute] long projectId, [FromBody] ProjectGitCommitPushRequest? request, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        if (!user.CanCommitCode) return new ForbidResult();
+        return new OkObjectResult(await _git.ProjectCommitAndPushAsync(projectId, request?.RepositoryNames, request?.Message, cancellationToken));
+    }
+
+    [HttpGet("projects/{projectId:long}/git/auto-update")]
+    public async Task<IActionResult> GetProjectAutoGitUpdate([FromRoute] long projectId, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!user.IsAdministrator) return new ForbidResult();
+        return new OkObjectResult(_autoGitUpdates.Get(projectId));
+    }
+
+    [HttpPut("projects/{projectId:long}/git/auto-update")]
+    public async Task<IActionResult> SaveProjectAutoGitUpdate([FromRoute] long projectId, [FromBody] CodeProjectAutoGitUpdateRequest request, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!user.IsAdministrator) return new ForbidResult();
+        try { return new OkObjectResult(_autoGitUpdates.Save(projectId, request)); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return new NotFoundObjectResult(new { message = ex.Message }); }
     }
 
     [HttpPost("projects")]
@@ -395,7 +452,12 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     public Task<GitOperationResult> GitPull([FromRoute] string name, CancellationToken cancellationToken) => _git.PullAsync(name, cancellationToken);
 
     [HttpPost("{name}/git/push")]
-    public Task<GitOperationResult> GitPush([FromRoute] string name, [FromBody] CodeRepositoryGitPushRequest request, CancellationToken cancellationToken) => _git.CommitAndPushAsync(name, request.Message, cancellationToken);
+    public async Task<IActionResult> GitPush([FromRoute] string name, [FromBody] CodeRepositoryGitPushRequest request, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!user.CanCommitCode) return new ForbidResult();
+        return new OkObjectResult(await _git.CommitAndPushAsync(name, request.Message, cancellationToken));
+    }
 
     [HttpDelete("{name}")]
     public object Delete([FromRoute] string name)

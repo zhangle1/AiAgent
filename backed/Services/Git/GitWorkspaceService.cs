@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace AiAgent.Backend.Services.Git;
 
@@ -20,6 +21,7 @@ public interface IGitWorkspaceService
     Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<List<GitWorkspaceLocalChange>> LocalChangesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
@@ -87,11 +89,18 @@ public sealed class GitWorkspaceDiffFile
     public string? OldPath { get; set; }
 }
 
+public sealed class GitWorkspaceLocalChange
+{
+    public string Path { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("last_write_time_utc")]
+    public DateTime? LastWriteTimeUtc { get; set; }
+}
+
 public sealed class GitWorkspaceService : IGitWorkspaceService
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _operationGates = new(StringComparer.OrdinalIgnoreCase);
     private readonly AsyncLocal<GitWorkspaceCredential?> _credential = new();
-    private static readonly ConcurrentDictionary<string, DateTimeOffset> RecentRemoteRefreshes = new(StringComparer.OrdinalIgnoreCase);
 
     public Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, () => GetStatusAsync(rootPath, cancellationToken), cancellationToken, credential);
@@ -101,6 +110,9 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
 
     public Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, () => GetDiffAsync(rootPath, comparison, cancellationToken), cancellationToken, credential);
+
+    public Task<List<GitWorkspaceLocalChange>> LocalChangesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
+        => RunExclusiveAsync(workspaceKey, () => GetLocalChangesAsync(rootPath, cancellationToken), cancellationToken, credential);
 
     public Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, async () =>
@@ -366,18 +378,57 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         return files.OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase).Take(600).ToList();
     }
 
+    private async Task<List<GitWorkspaceLocalChange>> GetLocalChangesAsync(string rootPath, CancellationToken cancellationToken)
+    {
+        await RequireRepositoryAsync(rootPath, cancellationToken);
+        var result = await RunGitAsync(rootPath, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], cancellationToken);
+        if (result.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.Output) ? "Unable to inspect local Git changes." : result.Output);
+
+        var values = result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var changes = new List<GitWorkspaceLocalChange>();
+        for (var index = 0; index < values.Length;)
+        {
+            var entry = values[index++];
+            if (entry.Length < 4) continue;
+            var status = entry[..2];
+            var path = entry[3..];
+            AddLocalChange(changes, rootPath, status, path);
+            if ((status[0] is 'R' or 'C' || status[1] is 'R' or 'C') && index < values.Length)
+            {
+                AddLocalChange(changes, rootPath, status, values[index++]);
+            }
+        }
+        return changes.OrderBy(change => change.Path, StringComparer.OrdinalIgnoreCase).Take(600).ToList();
+    }
+
+    private static void AddLocalChange(List<GitWorkspaceLocalChange> changes, string rootPath, string status, string path)
+    {
+        var normalized = path.Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(normalized) || changes.Any(change => string.Equals(change.Path, normalized, StringComparison.OrdinalIgnoreCase))) return;
+        DateTime? lastWrite = null;
+        try
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(rootPath, normalized));
+            var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (fullPath.Equals(root, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                if (File.Exists(fullPath)) lastWrite = File.GetLastWriteTimeUtc(fullPath);
+                else if (Directory.Exists(fullPath)) lastWrite = Directory.GetLastWriteTimeUtc(fullPath);
+            }
+        }
+        catch (ArgumentException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        changes.Add(new GitWorkspaceLocalChange { Path = normalized, Status = status, LastWriteTimeUtc = lastWrite });
+    }
+
     private async Task<string?> RefreshRemoteRefsAsync(string rootPath, CancellationToken cancellationToken)
     {
-        if (RecentRemoteRefreshes.TryGetValue(rootPath, out var refreshedAt) && DateTimeOffset.UtcNow - refreshedAt < TimeSpan.FromSeconds(2)) return null;
         var remotes = await RunGitAsync(rootPath, ["remote"], cancellationToken);
         if (remotes.ExitCode != 0 || ToLines(remotes.Output).Count == 0) return null;
         // Refresh tracking refs so the UI represents the current remote rather than a stale local cache.
         var fetch = await RunGitAsync(rootPath, ["fetch", "--quiet", "--prune"], cancellationToken);
-        if (fetch.ExitCode == 0)
-        {
-            RecentRemoteRefreshes[rootPath] = DateTimeOffset.UtcNow;
-            return null;
-        }
+        if (fetch.ExitCode == 0) return null;
         return string.IsNullOrWhiteSpace(fetch.Output) ? "无法刷新远程分支。" : fetch.Output;
     }
 
@@ -433,7 +484,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
             output.Append(await process.StandardOutput.ReadToEndAsync(cancellationToken));
             output.Append(await process.StandardError.ReadToEndAsync(cancellationToken));
             await process.WaitForExitAsync(cancellationToken);
-            return new GitProcessResult(process.ExitCode, output.ToString().Trim());
+            return new GitProcessResult(process.ExitCode, SanitizeOutput(output.ToString().Trim(), credential));
         }
         finally
         {
@@ -451,6 +502,13 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
     }
 
     private static string JoinOutput(IEnumerable<string> output) => string.Join("\n", output.Where(item => !string.IsNullOrWhiteSpace(item)));
+
+    private static string SanitizeOutput(string output, GitWorkspaceCredential? credential)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return output;
+        if (credential is not null && !string.IsNullOrWhiteSpace(credential.AccessToken)) output = output.Replace(credential.AccessToken, "***", StringComparison.Ordinal);
+        return Regex.Replace(output, @"(https?://[^/\s:@]+:)[^@\s/]+@", "$1***@", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
 
     private sealed record GitProcessResult(int ExitCode, string Output);
 }

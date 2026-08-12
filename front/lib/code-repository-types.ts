@@ -45,11 +45,18 @@ export type CodeProject = {
   display_name: string;
   root_path: string;
   description?: string | null;
+  auto_git_update_enabled: boolean;
+  auto_git_update_interval_hours: number;
+  auto_git_update_last_attempted_at?: string | null;
+  auto_git_update_last_succeeded_at?: string | null;
+  auto_git_update_last_result?: string | null;
   repositories: CodeRepository[];
   repository_count: number;
   created_at: string;
   updated_at?: string | null;
 };
+
+export type CodeProjectAutoGitUpdate = { project_id: number; enabled: boolean; interval_hours: number; last_attempted_at?: string | null; last_succeeded_at?: string | null; last_result?: string | null };
 
 export type CodeProjectReference = {
   id: number;
@@ -121,6 +128,10 @@ export type CodeProjectSaveRequest = {
 
 export type GitWorkspaceStatus = { is_repository: boolean; branch?: string | null; remote_branch?: string | null; remote_name?: string | null; changes: string[]; ahead: number; behind: number; ahead_files: number; behind_files: number; remote_refresh_error?: string | null; output: string };
 export type GitOperationResult = { ok: boolean; action: string; output: string; status: GitWorkspaceStatus };
+export type ProjectGitRepositoryStatus = { repository_id: number; repository_name: string; display_name: string; state: "synced" | "behind" | "no-upstream" | "not-repository" | "failed"; message: string; status?: GitWorkspaceStatus | null };
+export type ProjectGitStatus = { project_id: number; state: "synced" | "attention" | "neutral"; message: string; repositories: ProjectGitRepositoryStatus[] };
+export type ProjectGitBatchRepositoryResult = { repository_id: number; repository_name: string; display_name: string; outcome: "succeeded" | "skipped" | "failed"; message: string; result?: GitOperationResult | null };
+export type ProjectGitBatchOperationResult = { project_id: number; action: "discard-and-pull" | "commit-and-push" | "automatic-discard-and-pull"; repositories: ProjectGitBatchRepositoryResult[] };
 export type GitWorkspaceBranches = { current_branch?: string | null; local_branches: string[]; remote_branches: string[] };
 export type GitDiffComparison = "working" | "push" | "pull";
 export type GitWorkspaceDiffFile = { path: string; status: string; old_path?: string | null };

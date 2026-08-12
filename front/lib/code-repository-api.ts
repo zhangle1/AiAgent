@@ -3,6 +3,7 @@ import type {
   CodeRepositoryDirectoryBrowser,
   CodeRepositoryInspection,
   CodeProject,
+  CodeProjectAutoGitUpdate,
   CodeProjectMarkdownDirectory,
   CodeProjectMarkdownDocument,
   CodeProjectMarkdownDocumentContent,
@@ -11,6 +12,8 @@ import type {
   CodeProjectSaveRequest,
   CodeRepositorySaveRequest,
   GitOperationResult,
+  ProjectGitBatchOperationResult,
+  ProjectGitStatus,
   GitWorkspaceStatus,
   GitWorkspaceBranches,
   GitWorkspaceDiff,
@@ -124,6 +127,14 @@ export async function createCodeProject(payload: CodeProjectSaveRequest): Promis
 
 export async function updateCodeProject(id: number, payload: CodeProjectSaveRequest): Promise<CodeProject> {
   return parseJson<CodeProject>(await fetch(`/api/v1/code-repositories/projects/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+}
+
+export async function getCodeProjectAutoGitUpdate(projectId: number): Promise<CodeProjectAutoGitUpdate> {
+  return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/auto-update`, { cache: "no-store" }));
+}
+
+export async function updateCodeProjectAutoGitUpdate(projectId: number, payload: { enabled: boolean; interval_hours: number }): Promise<CodeProjectAutoGitUpdate> {
+  return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/auto-update`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
 }
 
 export async function deleteCodeProject(id: number): Promise<void> {
@@ -244,6 +255,9 @@ export async function readChatConfiguredCodeFile(name: string, path: string): Pr
 export async function writeChatConfiguredCodeFile(name: string, payload: { path: string; content: string; expected_sha256: string }): Promise<{ ok: boolean; path: string; sha256: string }> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/chat-configured-file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })); }
 
 export async function getCodeRepositoryGitStatus(name: string): Promise<GitWorkspaceStatus> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/status`, { cache: "no-store" })); }
+export async function getProjectGitStatus(projectId: number): Promise<ProjectGitStatus> { return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/status`, { cache: "no-store" })); }
+export async function discardProjectGitChangesAndPull(projectId: number, repositoryNames: string[]): Promise<ProjectGitBatchOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/discard-and-pull`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repository_names: repositoryNames }) })); }
+export async function pushProjectGit(projectId: number, repositoryNames: string[], message: string): Promise<ProjectGitBatchOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/commit-and-push`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repository_names: repositoryNames, message }) })); }
 export async function getCodeRepositoryGitBranches(name: string): Promise<GitWorkspaceBranches> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/branches`, { cache: "no-store" })); }
 export async function getCodeRepositoryGitDiff(name: string, comparison: GitDiffComparison): Promise<GitWorkspaceDiff> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/diff?comparison=${comparison}`, { cache: "no-store" })); }
 export async function checkoutCodeRepositoryGitBranch(name: string, branch: string): Promise<GitOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/checkout`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ branch }) })); }

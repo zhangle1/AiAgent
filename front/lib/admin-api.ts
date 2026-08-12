@@ -1,7 +1,7 @@
 import type { SessionDetail, SessionSummary } from "@/lib/session-api";
 import type { ChatUploadFile } from "@/lib/chat-api";
 
-export type AdminUser = { id: string; username: string; alias?: string | null; role: string; is_disabled: boolean; created_at: string; project_ids: number[] };
+export type AdminUser = { id: string; username: string; alias?: string | null; role: string; is_disabled: boolean; can_commit_code: boolean; created_at: string; project_ids: number[] };
 export type AdminSession = SessionSummary & { user_id: string; username: string };
 export type AdminUsageBucket = { key: string; label: string; total_tokens: number; turn_count: number };
 export type AdminUsageUser = { user_id: string; username: string; total_tokens: number; prompt_tokens: number; completion_tokens: number; turn_count: number };
@@ -15,9 +15,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function getAdminUsers() { return request<AdminUser[]>("/api/v1/admin/users"); }
-export function createAdminUser(payload: { username: string; alias?: string; password: string; project_ids: number[] }) { return request<AdminUser>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(payload) }); }
+export function createAdminUser(payload: { username: string; alias?: string; password: string; project_ids: number[]; can_commit_code: boolean }) { return request<AdminUser>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(payload) }); }
 export function updateAdminUserAlias(userId: string, alias: string) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/alias`, { method: "PUT", body: JSON.stringify({ alias }) }); }
 export function updateAdminUserProjects(userId: string, projectIds: number[]) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/projects`, { method: "PUT", body: JSON.stringify({ project_ids: projectIds }) }); }
+export function updateAdminUserCodeCommitPermission(userId: string, canCommitCode: boolean) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/code-commit-permission`, { method: "PUT", body: JSON.stringify({ can_commit_code: canCommitCode }) }); }
 export function resetAdminUserPassword(userId: string, password: string) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }); }
 export function getAdminSessions(userId?: string) { return request<AdminSession[]>(`/api/v1/admin/sessions?${new URLSearchParams({ limit: "100", ...(userId ? { user_id: userId } : {}) })}`); }
 export function getAdminSession(userId: string, sessionId: string) { return request<SessionDetail>(`/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`); }

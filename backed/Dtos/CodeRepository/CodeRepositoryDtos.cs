@@ -169,6 +169,21 @@ public sealed class CodeProjectDto
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
+    [JsonPropertyName("auto_git_update_enabled")]
+    public bool AutoGitUpdateEnabled { get; set; }
+
+    [JsonPropertyName("auto_git_update_interval_hours")]
+    public int AutoGitUpdateIntervalHours { get; set; }
+
+    [JsonPropertyName("auto_git_update_last_attempted_at")]
+    public DateTime? AutoGitUpdateLastAttemptedAt { get; set; }
+
+    [JsonPropertyName("auto_git_update_last_succeeded_at")]
+    public DateTime? AutoGitUpdateLastSucceededAt { get; set; }
+
+    [JsonPropertyName("auto_git_update_last_result")]
+    public string? AutoGitUpdateLastResult { get; set; }
+
     [JsonPropertyName("repositories")]
     public List<CodeRepositoryDto> Repositories { get; set; } = [];
 
@@ -180,6 +195,36 @@ public sealed class CodeProjectDto
 
     [JsonPropertyName("updated_at")]
     public DateTime? UpdatedAt { get; set; }
+}
+
+public sealed class CodeProjectAutoGitUpdateRequest
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
+    [JsonPropertyName("interval_hours")]
+    public int IntervalHours { get; set; }
+}
+
+public sealed class CodeProjectAutoGitUpdateDto
+{
+    [JsonPropertyName("project_id")]
+    public long ProjectId { get; set; }
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
+    [JsonPropertyName("interval_hours")]
+    public int IntervalHours { get; set; }
+
+    [JsonPropertyName("last_attempted_at")]
+    public DateTime? LastAttemptedAt { get; set; }
+
+    [JsonPropertyName("last_succeeded_at")]
+    public DateTime? LastSucceededAt { get; set; }
+
+    [JsonPropertyName("last_result")]
+    public string? LastResult { get; set; }
 }
 
 /// <summary>
@@ -440,6 +485,18 @@ public sealed class CodeRepositoryPathRequest
 }
 
 public sealed class CodeRepositoryGitPushRequest
+{
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+public class ProjectGitBatchRequest
+{
+    [JsonPropertyName("repository_names")]
+    public List<string>? RepositoryNames { get; set; }
+}
+
+public sealed class ProjectGitCommitPushRequest : ProjectGitBatchRequest
 {
     [JsonPropertyName("message")]
     public string? Message { get; set; }
