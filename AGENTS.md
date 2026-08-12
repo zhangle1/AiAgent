@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 所有后续新增的实体字段必须显式标注 `[SugarColumn(IsNullable = true)]`；除非已明确完成现网数据迁移、回填和非空约束验收，不得新增非空列。
+
 - 聊天图片附件必须先以不透明附件 ID 上传到后端受控临时目录；校验真实图片签名、大小、数量和当前用户归属后，才可转换为 Codex app-server 的 `localImage` 输入。发送后应将图片迁移到按用户和会话隔离的历史目录，并在聊天消息元数据保存不含真实路径的附件信息。不得接受浏览器提供的本地路径、将路径拼入 shell，也不得假定第三方 CLI 兼容该协议。
 - 第三方 `codex exec --profile` 不传递 `--image`。如管理员启用图片 OCR，只能把后端从受控图片路径提取、并明确标记为不可信附件数据的文本注入 prompt；OCR 失败必须继续文字聊天，且 Python Worker 只能读取 `PythonWorkers:AllowedRoots` 内的路径。
 
