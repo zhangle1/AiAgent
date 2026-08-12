@@ -155,8 +155,8 @@ public sealed class AdminService : IAdminService
             UserId = item.UserId,
             Username = users.GetValueOrDefault(item.UserId) ?? "Unknown user",
             Title = item.Title,
-            CreatedAt = item.CreatedAt,
-            UpdatedAt = item.UpdatedAt,
+            CreatedAt = AsUtc(item.CreatedAt),
+            UpdatedAt = AsUtc(item.UpdatedAt),
             MessageCount = messages.Count(message => message.SessionId == item.Id),
             LastMessage = messages.Where(message => message.SessionId == item.Id).OrderByDescending(message => message.Id).FirstOrDefault()?.Content ?? string.Empty,
             ProjectId = item.CodeProjectId,
@@ -181,8 +181,8 @@ public sealed class AdminService : IAdminService
         {
             Id = session.Id,
             Title = session.Title,
-            CreatedAt = session.CreatedAt,
-            UpdatedAt = session.UpdatedAt,
+            CreatedAt = AsUtc(session.CreatedAt),
+            UpdatedAt = AsUtc(session.UpdatedAt),
             MessageCount = messages.Count,
             LastMessage = messages.LastOrDefault()?.Content ?? string.Empty,
             ProjectId = session.CodeProjectId,
@@ -196,7 +196,7 @@ public sealed class AdminService : IAdminService
                 Role = item.Role,
                 Content = item.Content,
                 Thinking = item.Thinking,
-                CreatedAt = item.CreatedAt
+                CreatedAt = AsUtc(item.CreatedAt)
             }).ToList()
         });
     }
@@ -255,7 +255,7 @@ public sealed class AdminService : IAdminService
         Alias = user.Alias,
         Role = user.Role,
         IsDisabled = user.IsDisabled,
-        CreatedAt = user.CreatedAt,
+        CreatedAt = AsUtc(user.CreatedAt),
         ProjectIds = projectIds
     };
 
@@ -263,6 +263,11 @@ public sealed class AdminService : IAdminService
     {
         if (!user.IsAdministrator) throw new UnauthorizedAccessException("Administrator access is required.");
     }
+
+    // Chat and user timestamps are written as UTC. SQL Server returns DateTime
+    // without its Kind, so restore UTC before JSON serialization emits the value.
+    private static DateTime AsUtc(DateTime value)
+        => value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
     private static string NormalizePeriod(string value) => value.Trim().ToLowerInvariant() switch
     {
