@@ -30,7 +30,11 @@ public sealed class ChatDebugTrace
         if (!request.DebugTrace) return null;
         var traceId = NormalizeTraceId(request.TraceId) ?? Guid.NewGuid().ToString("N");
         var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
-        return new ChatDebugTrace(traceId, isCodex ? "codex" : "openai_compatible", isCodex ? "codex_app_server" : "http_stream");
+        var isDsh = string.Equals(request.Agent?.Trim(), "deepseek-harness", StringComparison.OrdinalIgnoreCase);
+        return new ChatDebugTrace(
+            traceId,
+            isCodex ? "codex" : isDsh ? "deepseek_harness" : "openai_compatible",
+            isCodex ? "codex_app_server" : isDsh ? "sdk_jsonrpc_stdio" : "http_stream");
     }
 
     public AgentStreamEvent Start(string stage) => Add(stage, "started", null, null);

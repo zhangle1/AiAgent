@@ -7,6 +7,7 @@ using AiAgent.Backend.Entities.Settings;
 using AiAgent.Backend.Entities.Usage;
 using AiAgent.Backend.Entities.Memory;
 using AiAgent.Backend.Entities.PromptTemplate;
+using AiAgent.Backend.Entities.Push;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.Settings;
@@ -64,12 +65,18 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiMemoryObservation),
             typeof(AiMemoryCandidate),
             typeof(AiUsageRecord),
-            typeof(AiGitAccount));
+            typeof(AiGitAccount),
+            typeof(AiPushChannel),
+            typeof(AiProjectPushBinding),
+            typeof(AiPushOutboxMessage),
+            typeof(AiPushAuditLog),
+            typeof(AiDingTalkGroupAgentSession));
 
         // InitTables creates the table for a new database. Existing tables need
         // an explicit additive migration because SqlSugar does not reliably add
         // newly introduced columns to legacy tables.
         EnsureProjectAutoGitUpdateColumns();
+        EnsurePushColumns();
         EnsureColumns();
         EnsureIndexes();
         SeedProviders();
@@ -136,6 +143,43 @@ BEGIN
         EXEC(N'UPDATE ai_code_project SET AutoUpdSuccessAt = AutoGitUpdateLastSucceededAt WHERE AutoGitUpdateLastSucceededAt IS NOT NULL;');
     IF COL_LENGTH(N'ai_code_project', N'AutoGitUpdateLastResult') IS NOT NULL
         EXEC(N'UPDATE ai_code_project SET AutoUpdResult = AutoGitUpdateLastResult WHERE AutoGitUpdateLastResult IS NOT NULL;');
+END
+""");
+    }
+
+    private void EnsurePushColumns()
+    {
+        ExecuteIndexSql("""
+IF OBJECT_ID(N'dbo.ai_push_channel', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'DingTalkRobotCode') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD DingTalkRobotCode NVARCHAR(128) NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamClientId') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamClientId NVARCHAR(128) NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamClientSecretProtected') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamClientSecretProtected NVARCHAR(MAX) NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamEnabled') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamEnabled BIT NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamStatus') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamStatus NVARCHAR(32) NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamLastErrorCode') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamLastErrorCode NVARCHAR(128) NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamConnectedAt') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamConnectedAt DATETIME2 NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamLastFrameAt') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamLastFrameAt DATETIME2 NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamLastCallbackAt') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamLastCallbackAt DATETIME2 NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamReconnectAttempt') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamReconnectAttempt INT NULL;
+    IF COL_LENGTH(N'dbo.ai_push_channel', N'StreamNextReconnectAt') IS NULL
+        ALTER TABLE dbo.ai_push_channel ADD StreamNextReconnectAt DATETIME2 NULL;
+END
+
+IF OBJECT_ID(N'dbo.ai_dingtalk_group_agent_session', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.ai_dingtalk_group_agent_session', N'ProcessingStartedAt') IS NULL
+        ALTER TABLE dbo.ai_dingtalk_group_agent_session ADD ProcessingStartedAt DATETIME2 NULL;
 END
 """);
     }
@@ -394,6 +438,32 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_git_account_User_A
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_git_account_OneActive' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))
     CREATE UNIQUE INDEX UX_ai_git_account_OneActive ON dbo.ai_git_account(UserId) WHERE IsDeleted = 0 AND IsActive = 1;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_push_channel_Name' AND object_id = OBJECT_ID(N'dbo.ai_push_channel'))
+    CREATE UNIQUE INDEX UX_ai_push_channel_Name ON dbo.ai_push_channel(Name) WHERE IsDeleted = 0;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_push_channel_Enabled' AND object_id = OBJECT_ID(N'dbo.ai_push_channel'))
+    CREATE INDEX IX_ai_push_channel_Enabled ON dbo.ai_push_channel(IsEnabled, UpdatedAt DESC) WHERE IsDeleted = 0;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_push_channel_ActiveStreamIdentity' AND object_id = OBJECT_ID(N'dbo.ai_push_channel'))
+    CREATE UNIQUE INDEX UX_ai_push_channel_ActiveStreamIdentity ON dbo.ai_push_channel(DingTalkRobotCode, StreamClientId) WHERE IsDeleted = 0 AND IsEnabled = 1 AND StreamEnabled = 1 AND DingTalkRobotCode IS NOT NULL AND StreamClientId IS NOT NULL;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_project_push_binding_Project_Channel_Trigger' AND object_id = OBJECT_ID(N'dbo.ai_project_push_binding'))
+    CREATE UNIQUE INDEX UX_ai_project_push_binding_Project_Channel_Trigger ON dbo.ai_project_push_binding(ProjectId, PushChannelId, TriggerType) WHERE IsDeleted = 0;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_project_push_binding_Project_Enabled' AND object_id = OBJECT_ID(N'dbo.ai_project_push_binding'))
+    CREATE INDEX IX_ai_project_push_binding_Project_Enabled ON dbo.ai_project_push_binding(ProjectId, TriggerType, IsEnabled) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_push_outbox_DedupKey' AND object_id = OBJECT_ID(N'dbo.ai_push_outbox_message'))
+    CREATE UNIQUE INDEX UX_ai_push_outbox_DedupKey ON dbo.ai_push_outbox_message(DedupKey);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_push_outbox_Status_Next' AND object_id = OBJECT_ID(N'dbo.ai_push_outbox_message'))
+    CREATE INDEX IX_ai_push_outbox_Status_Next ON dbo.ai_push_outbox_message(Status, NextAttemptAt, CreatedAt);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_push_audit_Time' AND object_id = OBJECT_ID(N'dbo.ai_push_audit_log'))
+    CREATE INDEX IX_ai_push_audit_Time ON dbo.ai_push_audit_log(OccurredAt DESC, PushChannelId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_dingtalk_group_agent_session_SourceMessage' AND object_id = OBJECT_ID(N'dbo.ai_dingtalk_group_agent_session'))
+    CREATE UNIQUE INDEX UX_ai_dingtalk_group_agent_session_SourceMessage ON dbo.ai_dingtalk_group_agent_session(SourceMessageId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_dingtalk_group_agent_session_Status' AND object_id = OBJECT_ID(N'dbo.ai_dingtalk_group_agent_session'))
+    CREATE INDEX IX_ai_dingtalk_group_agent_session_Status ON dbo.ai_dingtalk_group_agent_session(Status, CreatedAt);
 """);
     }
 

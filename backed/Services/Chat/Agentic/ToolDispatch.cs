@@ -16,7 +16,7 @@ namespace AiAgent.Backend.Services.Chat.Agentic;
 /// </summary>
 public interface IToolDispatcher
 {
-    IReadOnlyList<ToolDefinition> GetDefinitions();
+    IReadOnlyList<ToolDefinition> GetDefinitions(AgentContext context);
 
     /// <summary>
     /// 执行一批工具调用。
@@ -58,9 +58,12 @@ public sealed class ToolDispatcher : IToolDispatcher
         _tools = tools.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
     }
 
-    public IReadOnlyList<ToolDefinition> GetDefinitions()
+    public IReadOnlyList<ToolDefinition> GetDefinitions(AgentContext context)
     {
-        return _tools.Values.Select(x => x.GetDefinition()).ToList();
+        return _tools.Values
+            .Where(tool => !IsReadOnly(context) || !IsWriteTool(tool.Name))
+            .Select(tool => tool.GetDefinition())
+            .ToList();
     }
 
     /// <summary>
@@ -77,6 +80,12 @@ public sealed class ToolDispatcher : IToolDispatcher
                 continue;
             }
 
+            if (IsReadOnly(context) && IsWriteTool(tool.Name))
+            {
+                outcome.Results.Add(ToolResult.Failed("This DingTalk group-agent turn is read-only. It cannot modify files, commit, or push."));
+                continue;
+            }
+
             var result = await tool.ExecuteAsync(context, call.Arguments, cancellationToken);
             outcome.Results.Add(result);
             outcome.Citations.AddRange(result.Citations);
@@ -84,6 +93,9 @@ public sealed class ToolDispatcher : IToolDispatcher
 
         return outcome;
     }
+
+    private static bool IsReadOnly(AgentContext context) => string.Equals(context.Mode, "read_only", StringComparison.OrdinalIgnoreCase);
+    private static bool IsWriteTool(string name) => name is AgentToolNames.ApplyDashboardPatch or AgentToolNames.WriteDashboardFile or AgentToolNames.ValidateDashboardChange;
 }
 
 internal sealed class CodeRepositoryOverviewTool : IAgentTool

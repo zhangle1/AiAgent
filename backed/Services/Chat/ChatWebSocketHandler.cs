@@ -33,11 +33,12 @@ public sealed class ChatWebSocketHandler
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
     private readonly IChatDebugTraceStore _debugTraceStore;
+    private readonly ILogger<ChatWebSocketHandler> _logger;
 
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatWebSocketHandler> logger)
     {
         _orchestrator = orchestrator;
         _authService = authService;
@@ -52,6 +53,7 @@ public sealed class ChatWebSocketHandler
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
         _debugTraceStore = debugTraceStore;
+        _logger = logger;
     }
 
     /// <summary>
@@ -181,15 +183,16 @@ public sealed class ChatWebSocketHandler
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "cancelled", CancellationToken.None);
             }
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            _logger.LogError(exception, "Chat request failed for agent {Agent} in session {SessionId}.", request?.Agent, request?.SessionId);
             if (providerRequestStarted) await SendTraceAsync(socket, trace?.FailProvider("request_failed"), CancellationToken.None);
             await SendTraceAsync(socket, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
             if (user != null && request != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await SendEventAsync(socket, new AgentStreamEvent
             {
                 Type = "error",
-                Content = "Chat request failed."
+                Content = ToClientError(exception, request)
             }, CancellationToken.None);
 
             if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
@@ -205,6 +208,17 @@ public sealed class ChatWebSocketHandler
                 try { await clientCloseMonitor; } catch (OperationCanceledException) { }
             }
         }
+    }
+
+    private static string ToClientError(Exception exception, ChatCompleteRequest? request)
+    {
+        if (!string.Equals(request?.Agent?.Trim(), "deepseek-harness", StringComparison.OrdinalIgnoreCase)) return "Chat request failed.";
+        if (exception.Message.StartsWith("DeepSeek Harness requires Dsh:ApiKey", StringComparison.Ordinal)) return "DeepSeek Harness 缺少 Dsh:ApiKey（或后端环境变量 DEEPSEEK_API_KEY）。";
+        if (exception is FileNotFoundException) return "DeepSeek Harness 找不到配置文件；请检查 Dsh:ConfigPath。";
+        if (exception is DirectoryNotFoundException) return "DeepSeek Harness 工作区或会话目录不存在。";
+        if (exception is UnauthorizedAccessException) return "DeepSeek Harness 没有工作区或会话目录的访问权限。";
+        if (exception.Message.Contains("closed its JSON-RPC stream", StringComparison.Ordinal)) return "DeepSeek Harness 运行时在初始化期间退出；请检查后端日志中的 DSH 插件配置错误。";
+        return "DeepSeek Harness 请求失败；请检查后端日志中的 DSH 错误详情。";
     }
 
     private static async Task<string> ReceiveTextAsync(WebSocket socket, CancellationToken cancellationToken)

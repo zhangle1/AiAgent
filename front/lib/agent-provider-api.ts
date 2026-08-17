@@ -1,5 +1,5 @@
 export type AgentProviderEnvironment = {
-  id: "codex" | "codebuddy";
+  id: "codex" | "deepseek-harness" | "codebuddy";
   name: string;
   command: string;
   installed: boolean;

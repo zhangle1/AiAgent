@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Boxes, Code2, FileUp, GitBranch, Home, ScanText, Settings2, ShieldCheck } from "lucide-react";
+import { BarChart3, BellRing, Bot, Boxes, Code2, FileUp, GitBranch, Home, ScanText, Settings2, ShieldCheck } from "lucide-react";
 import { MODEL_SERVICE_CONFIGS } from "@/components/settings/models/model-service-config";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -19,6 +19,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const onAdminPage = pathname?.startsWith("/settings/admin");
   const onAdminAgentProvidersPage = pathname?.startsWith("/settings/admin/agents");
   const onAdminImageOcrPage = pathname?.startsWith("/settings/admin/image-ocr");
+  const onAdminPushPage = pathname?.startsWith("/settings/admin/push");
   const currentService = MODEL_SERVICE_CONFIGS.find((item) => item.href === pathname);
 
   return (
@@ -89,6 +90,12 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
           <>
             <span>/</span>
             <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><ScanText size={14}/>图片 OCR</span>
+          </>
+        )}
+        {onAdminPushPage && (
+          <>
+            <span>/</span>
+            <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-black"><BellRing size={14}/>推送模块</span>
           </>
         )}
         {currentService && (

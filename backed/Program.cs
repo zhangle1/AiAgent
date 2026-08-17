@@ -17,11 +17,15 @@ using AiAgent.Backend.Services.Admin;
 using AiAgent.Backend.Services.Usage;
 using AiAgent.Backend.Services.Memory;
 using AiAgent.Backend.Services.PromptTemplate;
+using AiAgent.Backend.Services.Push;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi.Models;
 using SqlSugar;
 
-var builder = WebApplication.CreateBuilder(args).Inject();
+var builder = WebApplication.CreateBuilder(args);
+// Kept outside source control for local deployment settings and credentials.
+builder.Configuration.AddJsonFile("appsettings.dev.json", optional: true, reloadOnChange: true);
+builder.Inject();
 var maxUploadBodyBytes = builder.Configuration.GetValue<long?>("Upload:MaxRequestBodySizeBytes")
     ?? 200L * 1024 * 1024;
 
@@ -37,6 +41,21 @@ builder.Services.Configure<FormOptions>(options =>
 });
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient("CodeRuntimePreview").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false,
+    UseProxy = false
+});
+builder.Services.AddHttpClient("DingTalkWebhook", client => client.Timeout = TimeSpan.FromSeconds(10)).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false,
+    UseProxy = false
+});
+builder.Services.AddHttpClient("DingTalkStreamGateway", client => client.Timeout = TimeSpan.FromSeconds(15)).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false,
+    UseProxy = false
+});
+builder.Services.AddHttpClient("DingTalkSessionWebhook", client => client.Timeout = TimeSpan.FromSeconds(15)).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
 {
     AllowAutoRedirect = false,
     UseProxy = false
@@ -117,6 +136,7 @@ builder.Services.AddSingleton<IMarkdownDocumentReferenceContextService, Markdown
 builder.Services.AddSingleton<IProjectAgentMarkdownIndexContextService, ProjectAgentMarkdownIndexContextService>();
 builder.Services.AddSingleton<IImageOcrService, ImageOcrService>();
 builder.Services.AddSingleton<ICodexChatService, CodexChatService>();
+builder.Services.AddSingleton<IDshChatService, DshChatService>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 builder.Services.AddSingleton<IUsageStatisticsService, UsageStatisticsService>();
 builder.Services.AddSingleton<ChatWebSocketHandler>();
@@ -126,6 +146,10 @@ builder.Services.AddSingleton<IGitWorkspaceService, GitWorkspaceService>();
 builder.Services.AddSingleton<ICodeRepositoryGitService, CodeRepositoryGitService>();
 builder.Services.AddSingleton<IProjectAutoGitUpdateService, ProjectAutoGitUpdateService>();
 builder.Services.AddHostedService<ProjectAutoGitUpdateHostedService>();
+builder.Services.AddSingleton<IProjectPushService, ProjectPushService>();
+builder.Services.AddHostedService<ProjectPushHostedService>();
+builder.Services.AddSingleton<IDingTalkGroupAgentService, DingTalkGroupAgentService>();
+builder.Services.AddHostedService<DingTalkStreamHostedService>();
 builder.Services.AddSingleton<IDashboardApplicationWorkspace, DashboardApplicationWorkspace>();
 builder.Services.AddSingleton<IDashboardRuntimeService, DashboardRuntimeService>();
 builder.Services.AddSingleton<IDashboardGitService, DashboardGitService>();

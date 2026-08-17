@@ -18,7 +18,9 @@ public sealed class AgentProviderEnvironmentService : IAgentProviderEnvironmentS
     public async Task<List<AgentProviderEnvironmentDto>> GetEnvironmentsAsync(CancellationToken cancellationToken)
     {
         var codex = await ProbeAsync(CodexCandidates(), cancellationToken);
+        var dsh = await ProbeAsync(DshCandidates(), cancellationToken);
         var codeBuddy = await ProbeAsync(CodeBuddyCandidates(), cancellationToken);
+        var dshConfigured = IsDshConfigured();
         return
         [
             new AgentProviderEnvironmentDto
@@ -26,6 +28,12 @@ public sealed class AgentProviderEnvironmentService : IAgentProviderEnvironmentS
                 Id = "codex", Name = "Codex", Command = codex.Command, Installed = codex.Installed, Version = codex.Version,
                 Protocol = "app-server JSONL", ChatSupported = codex.Installed,
                 Message = codex.Installed ? "已检测到 app-server CLI，可在聊天中接管项目。" : "未检测到 Codex CLI；请完成安装和登录后刷新。"
+            },
+            new AgentProviderEnvironmentDto
+            {
+                Id = "deepseek-harness", Name = "DeepSeek Harness", Command = dsh.Command, Installed = dsh.Installed, Version = dsh.Version,
+                Protocol = "SDK JSON-RPC stdio", ChatSupported = dsh.Installed && dshConfigured,
+                Message = !dsh.Installed ? "DeepSeek Harness SDK JSON-RPC command was not found." : !dshConfigured ? "DeepSeek Harness is installed but the server-side Dsh configuration is incomplete." : "DeepSeek Harness SDK JSON-RPC runtime is ready for registered code projects."
             },
             new AgentProviderEnvironmentDto
             {
@@ -50,6 +58,27 @@ public sealed class AgentProviderEnvironmentService : IAgentProviderEnvironmentS
         yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "codebuddy.cmd");
         yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "codebuddy.cmd");
         yield return "codebuddy";
+    }
+
+    private IEnumerable<string> DshCandidates()
+    {
+        return DshCommandLocator.Candidates(_configuration["Dsh:Command"] ?? Environment.GetEnvironmentVariable("AIAGENT_DSH_COMMAND"));
+    }
+
+    private bool IsDshConfigured()
+    {
+        if (!bool.TryParse(_configuration["Dsh:Enabled"], out var enabled) || !enabled) return false;
+        var configPath = _configuration["Dsh:ConfigPath"] ?? Environment.GetEnvironmentVariable("AIAGENT_DSH_CONFIG_PATH");
+        try
+        {
+            return !string.IsNullOrWhiteSpace(configPath)
+                   && File.Exists(Path.GetFullPath(configPath))
+                   && !string.IsNullOrWhiteSpace(_configuration["Dsh:SessionRoot"]);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     private static async Task<(bool Installed, string Command, string? Version)> ProbeAsync(IEnumerable<string> candidates, CancellationToken cancellationToken)

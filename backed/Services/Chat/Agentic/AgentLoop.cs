@@ -59,7 +59,7 @@ public sealed class AgentLoop : IAgentLoop
     {
         var plan = CreateInitialPlan(context);
         var dispatch = new ToolDispatchOutcome();
-        var toolDefinitions = _toolDispatcher.GetDefinitions();
+        var toolDefinitions = _toolDispatcher.GetDefinitions(context);
         var messages = _promptBuilder.BuildMessages(context, plan, dispatch, toolDefinitions).ToList();
         LabeledStepResult? step = null;
 

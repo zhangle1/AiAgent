@@ -8,17 +8,17 @@ import { activeModel, activeProfile, serviceConfigured, type Catalog, type Servi
 import { useI18n } from "@/i18n/I18nProvider";
 import type { TranslationKey } from "@/i18n/dictionaries";
 
-const cards: Array<{ titleKey?: TranslationKey; descKey?: TranslationKey; title?: string; description?: string; icon: LucideIcon; href: string }> = [
-  { titleKey: "settings.appearance", descKey: "settings.appearanceDesc", icon: Palette, href: "/settings" },
-  { titleKey: "settings.network", descKey: "settings.networkDesc", icon: Network, href: "/settings" },
-  { titleKey: "settings.models", descKey: "settings.modelsDesc", icon: Bot, href: "/settings/models" },
-  { titleKey: "settings.knowledgeBase", descKey: "settings.knowledgeBaseDesc", icon: Database, href: "/settings" },
-  { titleKey: "settings.codeRepository", descKey: "settings.codeRepositoryDesc", icon: Code2, href: "/settings/code-repositories" },
-  { titleKey: "settings.gitAccounts", descKey: "settings.gitAccountsDesc", icon: GitBranch, href: "/settings/git-accounts" },
-  { titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },
-  { titleKey: "settings.usage", descKey: "settings.usageDesc", icon: BarChart3, href: "/settings/usage" },
-  { title: "我的上传", description: "查看聊天中已发送的图片、文档和文本提取。", icon: FileUp, href: "/settings/uploads" },
-  { titleKey: "nav.memory", descKey: "settings.memoryDesc", icon: Brain, href: "/settings" },
+const cards: Array<{ id: string; titleKey?: TranslationKey; descKey?: TranslationKey; title?: string; description?: string; icon: LucideIcon; href: string }> = [
+  { id: "appearance", titleKey: "settings.appearance", descKey: "settings.appearanceDesc", icon: Palette, href: "/settings" },
+  { id: "network", titleKey: "settings.network", descKey: "settings.networkDesc", icon: Network, href: "/settings" },
+  { id: "models", titleKey: "settings.models", descKey: "settings.modelsDesc", icon: Bot, href: "/settings/models" },
+  { id: "knowledge", titleKey: "settings.knowledgeBase", descKey: "settings.knowledgeBaseDesc", icon: Database, href: "/settings" },
+  { id: "code-repository", titleKey: "settings.codeRepository", descKey: "settings.codeRepositoryDesc", icon: Code2, href: "/settings/code-repositories" },
+  { id: "git-accounts", titleKey: "settings.gitAccounts", descKey: "settings.gitAccountsDesc", icon: GitBranch, href: "/settings/git-accounts" },
+  { id: "chat", titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },
+  { id: "usage", titleKey: "settings.usage", descKey: "settings.usageDesc", icon: BarChart3, href: "/settings/usage" },
+  { id: "uploads", title: "我的上传", description: "查看聊天中已发送的图片、文档和文本提取。", icon: FileUp, href: "/settings/uploads" },
+  { id: "memory", titleKey: "nav.memory", descKey: "settings.memoryDesc", icon: Brain, href: "/settings" },
 ];
 
 const statusItems: Array<{ labelKey: TranslationKey; service?: ServiceName }> = [
@@ -83,7 +83,7 @@ export function SettingsHub({ catalog }: { catalog: Catalog | null }) {
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-          <Link key={card.href} href={card.href} className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+          <Link key={card.id} href={card.href} className="group flex min-h-[158px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Icon size={19} strokeWidth={1.6} className="text-[var(--muted-foreground)]" />

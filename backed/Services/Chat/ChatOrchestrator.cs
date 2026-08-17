@@ -29,14 +29,16 @@ public sealed class ChatOrchestrator : IChatOrchestrator
 {
     private readonly IAgentLoop _agentLoop;
     private readonly ICodexChatService _codex;
+    private readonly IDshChatService _dsh;
 
     /// <summary>
     /// 初始化聊天编排器。
     /// </summary>
-    public ChatOrchestrator(IAgentLoop agentLoop, ICodexChatService codex)
+    public ChatOrchestrator(IAgentLoop agentLoop, ICodexChatService codex, IDshChatService dsh)
     {
         _agentLoop = agentLoop;
         _codex = codex;
+        _dsh = dsh;
     }
 
     /// <summary>
@@ -48,6 +50,10 @@ public sealed class ChatOrchestrator : IChatOrchestrator
         if (IsCodexRequest(request))
         {
             return await _codex.CompleteAsync(request, null, cancellationToken);
+        }
+        if (IsDshRequest(request))
+        {
+            return await _dsh.CompleteAsync(request, null, cancellationToken);
         }
 
         var context = AgentContext.FromRequest(request);
@@ -72,6 +78,10 @@ public sealed class ChatOrchestrator : IChatOrchestrator
         if (IsCodexRequest(request))
         {
             return await _codex.CompleteAsync(request, onEvent, cancellationToken);
+        }
+        if (IsDshRequest(request))
+        {
+            return await _dsh.CompleteAsync(request, onEvent, cancellationToken);
         }
 
         var context = AgentContext.FromRequest(request);
@@ -100,11 +110,12 @@ public sealed class ChatOrchestrator : IChatOrchestrator
     }
 
     private static bool IsCodexRequest(ChatCompleteRequest request) => string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
+    private static bool IsDshRequest(ChatCompleteRequest request) => string.Equals(request.Agent?.Trim(), "deepseek-harness", StringComparison.OrdinalIgnoreCase);
 
     private static void EnsureSupportedExternalAgent(ChatCompleteRequest request)
     {
         var agent = request.Agent?.Trim();
-        if (string.IsNullOrWhiteSpace(agent) || string.Equals(agent, "codex", StringComparison.OrdinalIgnoreCase)) return;
+        if (string.IsNullOrWhiteSpace(agent) || string.Equals(agent, "codex", StringComparison.OrdinalIgnoreCase) || string.Equals(agent, "deepseek-harness", StringComparison.OrdinalIgnoreCase)) return;
         if (string.Equals(agent, "codebuddy", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("CodeBuddy CLI was detected but its app-server protocol is not yet supported.");
         throw new InvalidOperationException($"Unsupported external agent: {agent}.");

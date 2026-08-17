@@ -1,6 +1,7 @@
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Entities.Git;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Push;
 using Microsoft.AspNetCore.DataProtection;
 using SqlSugar;
 using System.Collections.Concurrent;
@@ -74,6 +75,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthService _authService;
     private readonly IDataProtector _protector;
+    private readonly IProjectPushService _pushes;
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _projectOperationGates = new();
 
     public CodeRepositoryGitService(
@@ -81,13 +83,15 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         IGitWorkspaceService git,
         IHttpContextAccessor httpContextAccessor,
         IAuthService authService,
-        IDataProtectionProvider dataProtectionProvider)
+        IDataProtectionProvider dataProtectionProvider,
+        IProjectPushService pushes)
     {
         _db = db;
         _git = git;
         _httpContextAccessor = httpContextAccessor;
         _authService = authService;
         _protector = dataProtectionProvider.CreateProtector("AiAgent.GitAccounts.AccessToken.v1");
+        _pushes = pushes;
     }
 
     public async Task<GitWorkspaceStatus> StatusAsync(string repositoryName, CancellationToken cancellationToken)
@@ -130,7 +134,10 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
     {
         var repository = Find(repositoryName);
         var commitMessage = string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message;
-        return await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, commitMessage, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
+        var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, commitMessage, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
+        if (result.Ok && repository.ProjectId.HasValue)
+            await QueuePushNotificationAsync(repository, result, commitMessage, cancellationToken);
+        return result;
     }
 
     public async Task<ProjectGitStatus> ProjectStatusAsync(long projectId, CancellationToken cancellationToken)
@@ -178,14 +185,14 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
             {
                 try
                 {
-                    var status = await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
-                    if (!status.IsRepository)
-                    {
-                        results.Repositories.Add(Skipped(repository, "该目录不是 Git 代码库，已跳过。"));
-                        continue;
-                    }
-                    var result = await _git.DiscardChangesAndPullAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
+                    var credential = await ResolveCredentialAsync(repository, cancellationToken);
+                    var result = await _git.DiscardChangesAndPullAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, credential);
                     results.Repositories.Add(new ProjectGitBatchRepositoryResult { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = result.Ok ? "succeeded" : "failed", Message = result.Ok ? "已重置本地已跟踪修改并完成快进更新。" : ToSafeOutput(result.Output, "重置更新失败。"), Result = result });
+                }
+                catch (OperationCanceledException)
+                {
+                    results.Repositories.Add(new ProjectGitBatchRepositoryResult { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = "failed", Message = "操作等待超时或请求连接已中断。代码可能已完成更新，请刷新 Git 状态确认后再重试。" });
+                    break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -199,6 +206,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         => RunProjectExclusiveAsync(projectId, async () =>
         {
             var results = new ProjectGitBatchOperationResult { ProjectId = projectId, Action = "commit-and-push" };
+            var operationId = Guid.NewGuid().ToString("N");
             foreach (var repository in FilterProjectRepositories(projectId, repositoryNames))
             {
                 try
@@ -210,6 +218,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
                     if (status.Behind > 0) { results.Repositories.Add(Skipped(repository, $"远端领先 {status.Behind} 个提交，请先一键重置更新。")); continue; }
                     var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim(), cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
                     results.Repositories.Add(new ProjectGitBatchRepositoryResult { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = result.Ok ? "succeeded" : "failed", Message = result.Ok ? "已提交并推送。" : ToSafeOutput(result.Output, "提交推送失败。"), Result = result });
+                    if (result.Ok) await QueuePushNotificationAsync(repository, result, message, cancellationToken, operationId);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -302,6 +311,22 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
     {
         var repository = _db.Queryable<AiCodeRepository>().Where(x => x.Name == name && !x.IsDeleted).First();
         return repository ?? throw new InvalidOperationException("The selected code repository does not exist.");
+    }
+
+    private async Task QueuePushNotificationAsync(AiCodeRepository repository, GitOperationResult result, string? message, CancellationToken cancellationToken, string? operationId = null)
+    {
+        if (!repository.ProjectId.HasValue) return;
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken);
+        if (user == null) return;
+        await _pushes.QueueGitPushSucceededAsync(new ProjectGitPushSucceededEvent(
+            repository.ProjectId.Value,
+            repository.Id,
+            repository.DisplayName,
+            result.Status.Branch ?? "未知分支",
+            result.CommitSha,
+            string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim(),
+            user.Username,
+            operationId ?? Guid.NewGuid().ToString("N")), cancellationToken);
     }
 
     private async Task<GitWorkspaceCredential?> ResolveCredentialAsync(AiCodeRepository repository, CancellationToken cancellationToken)
