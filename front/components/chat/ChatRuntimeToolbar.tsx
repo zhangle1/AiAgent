@@ -52,6 +52,18 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [menuOpen]);
 
+  useEffect(() => {
+    const refreshGitAfterChat = (event: Event) => {
+      const projectId = (event as CustomEvent<{ projectId?: number }>).detail?.projectId;
+      if (!project || projectId !== project.id) return;
+      window.setTimeout(() => void refresh(), 300);
+    };
+    window.addEventListener("aiagent:chat-stream-complete", refreshGitAfterChat);
+    return () => window.removeEventListener("aiagent:chat-stream-complete", refreshGitAfterChat);
+  // The selected project determines whether the finished turn can affect this Git panel.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id]);
+
   async function refresh() {
     if (!project) return;
     setRefreshing(true);

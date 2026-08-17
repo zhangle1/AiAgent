@@ -246,7 +246,21 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     {
         var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
         if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
-        return new OkObjectResult(await _git.ProjectDiscardChangesAndPullAsync(projectId, request?.RepositoryNames, cancellationToken));
+        try
+        {
+            return new OkObjectResult(await _git.ProjectDiscardChangesAndPullAsync(projectId, request?.RepositoryNames, cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            return new ObjectResult(new
+            {
+                code = "git_batch_update_timeout",
+                message = "批量重置更新等待超时或连接已中断。请刷新 Git 状态确认各代码库是否已更新，再决定是否重试。"
+            })
+            {
+                StatusCode = StatusCodes.Status504GatewayTimeout
+            };
+        }
     }
 
     [HttpPost("projects/{projectId:long}/git/commit-and-push")]

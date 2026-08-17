@@ -32,6 +32,18 @@ CodeBuddy 官方 CLI 页面说明其安装命令为 `npm install -g @tencent-ai/
 2. 新页面展示探测结果、命令、版本、协议、刷新动作和 CodeBuddy 安装/兼容性提示，并保存“默认聊天代理”首选项。
 3. 聊天输入区从固定的“Codex 接管”复选框改为“本地代理”选择器，初始值读取首选项；检测不可用时自动回退。不可接管的 CodeBuddy 显示为禁用项，不会被当作 Codex 调用。
 
+## Codex 执行权限
+
+聊天选择“Codex 本地”后显示执行权限选择器，并随聊天请求和运行时心跳传递 `codex_sandbox_mode`。允许值由后端白名单校验：
+
+| 前端选项 | 请求值 | Codex CLI 启动参数 |
+| --- | --- | --- |
+| 完全控制（默认） | `full-access` | `--dangerously-bypass-approvals-and-sandbox` |
+| 工作区写入 | `workspace-write` | `--sandbox workspace-write` |
+| 只读分析 | `read-only` | `--sandbox read-only` |
+
+完全控制以服务端运行账户执行，并跳过沙箱与逐步审批；只应对已授权、受信任的项目使用。该模式的参数由服务端按固定映射写入 `ProcessStartInfo.ArgumentList`，聊天内容不能影响命令行参数。
+
 ## 安全与验证
 
 - 探测命令来自受控配置或固定路径；不拼接用户输入，不经过 shell。

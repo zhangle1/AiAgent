@@ -196,7 +196,7 @@ public sealed class CodeRepositoryIndexService : ICodeRepositoryIndexService
     private static IEnumerable<(AiCodeRepositoryFile File, int Score)> SearchLive(List<AiCodeRepository> repositories, List<string> terms, bool symbolsOnly, CancellationToken cancellationToken)
     {
         foreach (var repository in repositories)
-            foreach (var path in EnumerateFiles(repository.RootPath).Take(400))
+            foreach (var path in EnumerateFilesForLiveSearch(repository.RootPath, terms))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var info = new FileInfo(path);
@@ -207,6 +207,23 @@ public sealed class CodeRepositoryIndexService : ICodeRepositoryIndexService
                 var score = Score(file, terms, symbolsOnly);
                 if (score > 0) yield return (file, score);
             }
+    }
+
+    /// <summary>
+    /// Live searches must not depend on the arbitrary first files returned by a recursive directory walk.
+    /// Resolve file-name candidates first so a deep symbol such as OnWIPTable is not skipped when a project
+    /// contains several sibling repositories, then retain a bounded general scan as a fallback.
+    /// </summary>
+    private static IEnumerable<string> EnumerateFilesForLiveSearch(string root, IReadOnlyList<string> terms)
+    {
+        var normalizedTerms = terms.Where(term => term.Length >= 2).ToArray();
+        var preferred = EnumerateFiles(root)
+            .Where(path => normalizedTerms.Any(term => Path.GetFileNameWithoutExtension(path).Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .Take(120)
+            .ToList();
+        var preferredPaths = new HashSet<string>(preferred, StringComparer.OrdinalIgnoreCase);
+        foreach (var path in preferred) yield return path;
+        foreach (var path in EnumerateFiles(root).Where(path => !preferredPaths.Contains(path)).Take(400)) yield return path;
     }
 
     private List<AiCodeRepository> FindSelectedRepositories(AgentContext context) => context.CodeRepositoryNames.Count == 0 ? [] : _db.Queryable<AiCodeRepository>().Where(x => context.CodeRepositoryNames.Contains(x.Name) && !x.IsDeleted).ToList();

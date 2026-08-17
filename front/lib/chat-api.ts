@@ -1,5 +1,7 @@
 import type { KnowledgeCitation } from "@/lib/knowledge-types";
 
+export type CodexSandboxMode = "full-access" | "workspace-write" | "read-only";
+
 const CHAT_RUNTIME_STORAGE_KEY = "aiagent:chat-runtime-id";
 
 function directWebSocket(path: string): string {
@@ -45,9 +47,10 @@ export type ChatCompleteRequest = {
   model_id?: string;
   codex_model_id?: string;
   codex_reasoning_effort?: string;
+  codex_sandbox_mode?: CodexSandboxMode;
   top_k?: number;
   mode?: string;
-  agent?: "codex" | "codebuddy";
+  agent?: "codex" | "deepseek-harness" | "codebuddy";
   attachment_ids?: string[];
   document_attachment_ids?: string[];
   client_runtime_id?: string;
@@ -109,13 +112,13 @@ export function getChatRuntimeId(): string {
   return created;
 }
 
-export async function heartbeatCodexRuntime(codeProjectId?: number, codexModelId?: string, codexReasoningEffort?: string): Promise<void> {
+export async function heartbeatCodexRuntime(codeProjectId?: number, codexModelId?: string, codexReasoningEffort?: string, codexSandboxMode: CodexSandboxMode = "full-access"): Promise<void> {
   if (!codeProjectId) return;
   await parseJson<{ ok: boolean }>(
     await fetch("/api/v1/chat/codex/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_runtime_id: getChatRuntimeId(), code_project_id: codeProjectId, codex_model_id: codexModelId, codex_reasoning_effort: codexReasoningEffort }),
+      body: JSON.stringify({ client_runtime_id: getChatRuntimeId(), code_project_id: codeProjectId, codex_model_id: codexModelId, codex_reasoning_effort: codexReasoningEffort, codex_sandbox_mode: codexSandboxMode }),
     }),
   );
 }

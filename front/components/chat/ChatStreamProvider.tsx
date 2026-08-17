@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent } from "@/lib/chat-api";
+import { getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 
 export type ChatStreamStatus = "streaming" | "done" | "stopped" | "error";
 export type ChatStreamRecord = {
@@ -12,7 +12,7 @@ export type ChatStreamRecord = {
   startedAt: number;
   errorMessage?: string;
   unread: boolean;
-  agent?: "codex" | "codebuddy";
+  agent?: "codex" | "deepseek-harness" | "codebuddy";
 };
 
 type ChatStreamContextValue = {
@@ -21,7 +21,7 @@ type ChatStreamContextValue = {
   cancelStream: (streamId: string) => void;
   markSessionViewed: (sessionId: string) => void;
   clearFinishedStreams: (sessionId: string) => void;
-  activateCodexRuntime: (projectId: number, codexModelId?: string, codexReasoningEffort?: string) => void;
+  activateCodexRuntime: (projectId: number, codexModelId?: string, codexReasoningEffort?: string, codexSandboxMode?: CodexSandboxMode) => void;
 };
 
 const ChatStreamContext = createContext<ChatStreamContextValue | null>(null);
@@ -37,6 +37,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const codexProjectIdRef = useRef<number | null>(null);
   const codexModelIdRef = useRef<string | undefined>(undefined);
   const codexReasoningEffortRef = useRef<string | undefined>(undefined);
+  const codexSandboxModeRef = useRef<CodexSandboxMode>("full-access");
   useEffect(() => { streamsRef.current = streams; }, [streams]);
 
   const update = useCallback((streamId: string, transform: (stream: ChatStreamRecord) => ChatStreamRecord) => {
@@ -77,7 +78,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     }, controller.signal).then(() => {
       if (controller.signal.aborted) return;
       update(streamId, (current) => ({ ...current, status: current.status === "error" ? "error" : "done", unread: true }));
-      window.dispatchEvent(new CustomEvent("aiagent:chat-stream-complete", { detail: { sessionId, streamId } }));
+      window.dispatchEvent(new CustomEvent("aiagent:chat-stream-complete", { detail: { sessionId, streamId, projectId: request.code_project_id } }));
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     }).catch((error) => {
       const stopped = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
@@ -114,12 +115,13 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     setStreams(next);
   }, []);
 
-  const activateCodexRuntime = useCallback((projectId: number, codexModelId?: string, codexReasoningEffort?: string) => {
+  const activateCodexRuntime = useCallback((projectId: number, codexModelId?: string, codexReasoningEffort?: string, codexSandboxMode: CodexSandboxMode = "full-access") => {
     if (!Number.isFinite(projectId) || projectId <= 0) return;
     codexProjectIdRef.current = projectId;
     codexModelIdRef.current = codexModelId;
     codexReasoningEffortRef.current = codexReasoningEffort;
-    void heartbeatCodexRuntime(projectId, codexModelId, codexReasoningEffort).catch(() => {
+    codexSandboxModeRef.current = codexSandboxMode;
+    void heartbeatCodexRuntime(projectId, codexModelId, codexReasoningEffort, codexSandboxMode).catch(() => {
       // Sending remains available; the stream request will surface a real Codex failure if one occurs.
     });
   }, []);
@@ -127,7 +129,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const heartbeat = () => {
       const projectId = codexProjectIdRef.current;
-      if (projectId) void heartbeatCodexRuntime(projectId, codexModelIdRef.current, codexReasoningEffortRef.current).catch(() => {});
+      if (projectId) void heartbeatCodexRuntime(projectId, codexModelIdRef.current, codexReasoningEffortRef.current, codexSandboxModeRef.current).catch(() => {});
     };
     const intervalId = window.setInterval(heartbeat, 25_000);
     document.addEventListener("visibilitychange", heartbeat);

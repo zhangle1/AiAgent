@@ -34,6 +34,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 聊天图片附件必须先以不透明附件 ID 上传到后端受控临时目录；校验真实图片签名、大小、数量和当前用户归属后，才可转换为 Codex app-server 的 `localImage` 输入。发送后应将图片迁移到按用户和会话隔离的历史目录，并在聊天消息元数据保存不含真实路径的附件信息。不得接受浏览器提供的本地路径、将路径拼入 shell，也不得假定第三方 CLI 兼容该协议。
 - 第三方 `codex exec --profile` 不传递 `--image`。如管理员启用图片 OCR，只能把后端从受控图片路径提取、并明确标记为不可信附件数据的文本注入 prompt；OCR 失败必须继续文字聊天，且 Python Worker 只能读取 `PythonWorkers:AllowedRoots` 内的路径。
+- Codex 聊天的 `codex_sandbox_mode` 只能接受 `full-access`、`workspace-write`、`read-only` 三个服务端白名单值；`full-access` 才可映射为 `--dangerously-bypass-approvals-and-sandbox`，必须通过 `ProcessStartInfo.ArgumentList` 传参，不能由聊天文本或任意配置字符串拼接命令。
 
 - Target framework：`.NET 9`。
 - 使用 Furion Dynamic API；领域入口通常位于 `backed/Services/<Domain>/*AppService.cs`。

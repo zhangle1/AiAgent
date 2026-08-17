@@ -58,6 +58,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         var model = _modelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
         request.CodexModelId = model.Id;
         request.CodexReasoningEffort = model.ReasoningEffort;
+        var sandboxMode = ResolveSandboxMode(request.CodexSandboxMode);
+        request.CodexSandboxMode = sandboxMode;
         var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
         var activeSession = AcquireActiveSession(request.RuntimeUserId, request.SessionId);
 
@@ -67,10 +69,10 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             {
                 request.ImageOcrResults = await _imageOcr.ExtractAsync(request.LocalImagePaths, onEvent, cancellationToken);
                 await EmitAsync(onEvent, new AgentStreamEvent { Type = "provider_request_started" }, cancellationToken);
-                return await CompleteWithExecAsync(request, model, workspacePath, onEvent, cancellationToken);
+                return await CompleteWithExecAsync(request, model, workspacePath, sandboxMode, onEvent, cancellationToken);
             }
 
-            var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Definition);
+            var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Definition, sandboxMode);
             CodexRunState result;
             try
             {
@@ -147,7 +149,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
         var model = _modelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
         if (!string.IsNullOrWhiteSpace(model.ProfileName)) return;
-        var lease = GetLease(user.Id, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Definition);
+        var sandboxMode = ResolveSandboxMode(request.CodexSandboxMode);
+        var lease = GetLease(user.Id, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Definition, sandboxMode);
         await lease.WarmAsync(cancellationToken);
     }
 
@@ -159,12 +162,12 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         _activeSessionsByUser.Clear();
     }
 
-    private CodexRuntimeLease GetLease(string? userId, string? clientRuntimeId, string command, string workspacePath, CodexModelDefinition model)
+    private CodexRuntimeLease GetLease(string? userId, string? clientRuntimeId, string command, string workspacePath, CodexModelDefinition model, string sandboxMode)
     {
         var normalizedUserId = string.IsNullOrWhiteSpace(userId) ? throw new UnauthorizedAccessException() : userId.Trim();
         var normalizedRuntimeId = NormalizeRuntimeId(clientRuntimeId);
         var profileName = model.ProfileName ?? string.Empty;
-        var key = $"{normalizedUserId.Length}:{normalizedUserId}:{normalizedRuntimeId}:{workspacePath.Length}:{workspacePath}:{model.Id}:{profileName}";
+        var key = $"{normalizedUserId.Length}:{normalizedUserId}:{normalizedRuntimeId}:{workspacePath.Length}:{workspacePath}:{model.Id}:{profileName}:{sandboxMode}";
         lock (_leaseSync)
         {
             RemoveExpiredLeasesUnsafe(DateTime.UtcNow);
@@ -179,7 +182,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 throw new InvalidOperationException($"A user can keep at most {_maxSessionsPerUser} active Codex sessions.");
             }
 
-            var created = new CodexRuntimeLease(normalizedUserId, command, workspacePath, model.ProfileName);
+            var created = new CodexRuntimeLease(normalizedUserId, command, workspacePath, model.ProfileName, sandboxMode);
             _runtimeLeases[key] = created;
             return created;
         }
@@ -272,7 +275,40 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         return npmCommand ?? "codex";
     }
 
-    private static Process StartCodex(string command, string workspacePath, string? profileName)
+    private static string ResolveSandboxMode(string? requestedMode)
+    {
+        return requestedMode?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "full-access" => "full-access",
+            "workspace-write" => "workspace-write",
+            "read-only" => "read-only",
+            _ => throw new ArgumentException("Unsupported Codex execution permission mode.", nameof(requestedMode))
+        };
+    }
+
+    private static string ToAppServerSandboxPolicy(string sandboxMode) => sandboxMode switch
+    {
+        "full-access" => "dangerFullAccess",
+        "workspace-write" => "workspaceWrite",
+        "read-only" => "readOnly",
+        _ => throw new ArgumentOutOfRangeException(nameof(sandboxMode))
+    };
+
+    private static string ToAppServerSandbox(string sandboxMode) => sandboxMode == "full-access" ? "danger-full-access" : sandboxMode;
+
+    private static void AddExecutionPermissionArguments(ProcessStartInfo startInfo, string sandboxMode)
+    {
+        if (sandboxMode == "full-access")
+        {
+            startInfo.ArgumentList.Add("--dangerously-bypass-approvals-and-sandbox");
+            return;
+        }
+
+        startInfo.ArgumentList.Add("--sandbox");
+        startInfo.ArgumentList.Add(sandboxMode);
+    }
+
+    private static Process StartCodex(string command, string workspacePath, string? profileName, string sandboxMode)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -292,6 +328,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             startInfo.ArgumentList.Add("--profile");
             startInfo.ArgumentList.Add(profileName);
         }
+        AddExecutionPermissionArguments(startInfo, sandboxMode);
         startInfo.ArgumentList.Add("app-server");
         startInfo.ArgumentList.Add("--stdio");
         try
@@ -304,12 +341,12 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         }
     }
 
-    private async Task<ChatCompleteResponse> CompleteWithExecAsync(ChatCompleteRequest request, CodexResolvedModel model, string workspacePath, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
+    private async Task<ChatCompleteResponse> CompleteWithExecAsync(ChatCompleteRequest request, CodexResolvedModel model, string workspacePath, string sandboxMode, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
     {
         var profileName = model.ProfileName ?? throw new InvalidOperationException("A Codex CLI profile is required.");
         var previousSessionId = GetExecSessionId(request.RuntimeUserId, request.SessionId, profileName);
         // Third-party profiles receive the OCR prompt augmentation only. Do not pass --image because a profile is not assumed to support Codex's local-image contract.
-        using var process = StartCodexExec(ResolveCodexCommand(), workspacePath, profileName, model.AppServerModelId, model.ReasoningEffort, previousSessionId, []);
+        using var process = StartCodexExec(ResolveCodexCommand(), workspacePath, profileName, sandboxMode, model.AppServerModelId, model.ReasoningEffort, previousSessionId, []);
         using var cancelRegistration = cancellationToken.Register(() => TryKillProcess(process));
         var stderrTask = process.StandardError.ReadToEndAsync();
         var state = new CodexExecRunState();
@@ -367,6 +404,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 ["agent"] = "codex",
                 ["execution_mode"] = "exec",
                 ["codex_profile_name"] = profileName,
+                ["codex_sandbox_mode"] = sandboxMode,
                 ["codex_exec_session_id"] = state.CodexSessionId,
                 ["modified_files"] = state.CompletedFiles.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList()
             }
@@ -384,7 +422,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         };
     }
 
-    private static Process StartCodexExec(string command, string workspacePath, string profileName, string? modelId, string? reasoningEffort, string? previousSessionId, IEnumerable<string> imagePaths)
+    private static Process StartCodexExec(string command, string workspacePath, string profileName, string sandboxMode, string? modelId, string? reasoningEffort, string? previousSessionId, IEnumerable<string> imagePaths)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -401,6 +439,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         };
         startInfo.ArgumentList.Add("--profile");
         startInfo.ArgumentList.Add(profileName);
+        AddExecutionPermissionArguments(startInfo, sandboxMode);
         startInfo.ArgumentList.Add("exec");
         string? resumeSessionId = null;
         if (string.IsNullOrWhiteSpace(previousSessionId))
@@ -834,10 +873,10 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         private DateTime _lastHeartbeatUtc = DateTime.UtcNow;
         private bool _disposed;
 
-        public CodexRuntimeLease(string userId, string command, string workspacePath, string? profileName)
+        public CodexRuntimeLease(string userId, string command, string workspacePath, string? profileName, string sandboxMode)
         {
             UserId = userId;
-            _pool = new CodexAppServerPool(command, workspacePath, profileName, 1);
+            _pool = new CodexAppServerPool(command, workspacePath, profileName, sandboxMode, 1);
         }
 
         public string UserId { get; }
@@ -907,15 +946,17 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         private readonly string _command;
         private readonly string _workspacePath;
         private readonly string? _profileName;
+        private readonly string _sandboxMode;
         private readonly ConcurrentQueue<CodexAppServerWorker> _idleWorkers = new();
         private readonly SemaphoreSlim _capacity;
         private int _leasedWorkers;
 
-        public CodexAppServerPool(string command, string workspacePath, string? profileName, int maxWorkers)
+        public CodexAppServerPool(string command, string workspacePath, string? profileName, string sandboxMode, int maxWorkers)
         {
             _command = command;
             _workspacePath = workspacePath;
             _profileName = profileName;
+            _sandboxMode = sandboxMode;
             _capacity = new SemaphoreSlim(maxWorkers, maxWorkers);
         }
 
@@ -945,7 +986,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
 
             try
             {
-                var worker = await CodexAppServerWorker.CreateAsync(_command, _workspacePath, _profileName, cancellationToken);
+                var worker = await CodexAppServerWorker.CreateAsync(_command, _workspacePath, _profileName, _sandboxMode, cancellationToken);
                 Interlocked.Increment(ref _leasedWorkers);
                 return worker;
             }
@@ -977,13 +1018,15 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     {
         private readonly Process _process;
         private readonly StreamReader _stdout;
+        private readonly string _sandboxMode;
         private int _nextRequestId;
         private bool _usable = true;
 
-        private CodexAppServerWorker(Process process)
+        private CodexAppServerWorker(Process process, string sandboxMode)
         {
             _process = process;
             _stdout = process.StandardOutput;
+            _sandboxMode = sandboxMode;
             _ = DrainStderrAsync(process.StandardError, CancellationToken.None);
         }
 
@@ -996,9 +1039,9 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             }
         }
 
-        public static async Task<CodexAppServerWorker> CreateAsync(string command, string workspacePath, string? profileName, CancellationToken cancellationToken)
+        public static async Task<CodexAppServerWorker> CreateAsync(string command, string workspacePath, string? profileName, string sandboxMode, CancellationToken cancellationToken)
         {
-            var worker = new CodexAppServerWorker(StartCodex(command, workspacePath, profileName));
+            var worker = new CodexAppServerWorker(StartCodex(command, workspacePath, profileName, sandboxMode), sandboxMode);
             try
             {
                 var initializeRequestId = worker.NextRequestId();
@@ -1031,7 +1074,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 {
                     ["cwd"] = workspacePath,
                     ["approvalPolicy"] = "never",
-                    ["sandbox"] = "danger-full-access",
+                    ["sandbox"] = ToAppServerSandbox(_sandboxMode),
                     ["ephemeral"] = true,
                     ["serviceName"] = "aiagent"
                 };
@@ -1053,7 +1096,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                         input = BuildTurnInput(request),
                         cwd = workspacePath,
                         approvalPolicy = "never",
-                        sandboxPolicy = new { type = "dangerFullAccess" }
+                        sandboxPolicy = new { type = ToAppServerSandboxPolicy(_sandboxMode) }
                     }
                 }, cancellationToken);
                 await ReadTurnAsync(_stdout, turnRequestId, state, onEvent, cancellationToken);

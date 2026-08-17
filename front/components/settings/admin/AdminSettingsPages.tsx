@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Bot, ChevronRight, ClipboardList, FileUp, FolderKey, History, Loader2, ScanText, ShieldCheck, UserPlus, Users } from "lucide-react";
+import { BarChart3, BellRing, Bot, ChevronRight, ClipboardList, FileUp, FolderKey, History, Loader2, ScanText, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { createAdminUser, getAdminSession, getAdminSessions, getAdminUsage, getAdminUsers, updateAdminUserProjects, type AdminSession, type AdminUsageReport, type AdminUser } from "@/lib/admin-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
@@ -17,6 +17,7 @@ const cardItems = [
   { href: "/settings/admin/agents", title: "第三方代理", description: "检测本地 CLI，并维护 Codex 模型与 Profile 配置。", icon: Bot },
   { href: "/settings/admin/image-ocr", title: "图片 OCR", description: "单独检查 PaddleOCR 环境并上传图片验证识别链路。", icon: ScanText },
   { href: "/settings/admin/uploads", title: "上传管理", description: "按用户筛选查看聊天附件、图片与文本提取。", icon: FileUp },
+  { href: "/settings/admin/push", title: "推送模块", description: "配置钉钉自定义机器人 Webhook，并绑定项目 Git 推送成功通知。", icon: BellRing },
 ];
 
 export function AdminSettingsHome() {
@@ -40,7 +41,7 @@ export function AdminUsersPage() {
 
   const load = async () => { setLoading(true); try { const [nextUsers, nextProjects] = await Promise.all([getAdminUsers(), getCodeProjects()]); setUsers(nextUsers); setProjects(nextProjects); setSelectedId((current) => current || nextUsers.find((item) => item.role !== "admin")?.id || nextUsers[0]?.id || ""); } catch (error) { setMessage(error instanceof Error ? error.message : "读取用户失败。"); } finally { setLoading(false); } };
   useEffect(() => { if (allowed) void load(); }, [allowed]);
-  const createUser = async (event: React.FormEvent) => { event.preventDefault(); setMessage(""); try { await createAdminUser({ username, password, project_ids: newProjectIds }); setUsername(""); setPassword(""); setNewProjectIds([]); setMessage("用户已创建并已保存项目权限。"); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : "创建用户失败。"); } };
+  const createUser = async (event: React.FormEvent) => { event.preventDefault(); setMessage(""); try { await createAdminUser({ username, password, project_ids: newProjectIds, can_commit_code: false }); setUsername(""); setPassword(""); setNewProjectIds([]); setMessage("用户已创建并已保存项目权限。"); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : "创建用户失败。"); } };
   const saveProjects = async (projectIds: number[]) => { if (!selected) return; setMessage(""); try { await updateAdminUserProjects(selected.id, projectIds); setUsers((current) => current.map((item) => item.id === selected.id ? { ...item, project_ids: projectIds } : item)); setMessage("项目权限已保存。"); } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败。"); } };
 
   if (allowed === null) return <LoadingState />;

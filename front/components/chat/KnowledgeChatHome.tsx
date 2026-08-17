@@ -3,8 +3,8 @@
 import { type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
-import { deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent } from "@/lib/chat-api";
+import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
@@ -43,7 +43,7 @@ type ChatMessage = {
   toolCalls?: number;
   totalTokens?: number;
   trace?: string[];
-  agent?: "codex" | "codebuddy";
+  agent?: "codex" | "deepseek-harness" | "codebuddy";
   modificationStatus?: string;
   attachments?: ChatImagePreview[];
   documentAttachments?: ChatFileAttachment[];
@@ -123,7 +123,8 @@ export function KnowledgeChatHome() {
   const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedCodexModelId, setSelectedCodexModelId] = useState("");
   const [selectedCodexReasoningEffort, setSelectedCodexReasoningEffort] = useState("");
-  const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "codebuddy" | "">("");
+  const [selectedCodexSandboxMode, setSelectedCodexSandboxMode] = useState<CodexSandboxMode>("full-access");
+  const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "deepseek-harness" | "codebuddy" | "">("");
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
@@ -223,8 +224,8 @@ export function KnowledgeChatHome() {
   }, [agentProviders, selectedAgentId]);
 
   useEffect(() => {
-    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId, selectedCodexModelId || undefined, currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined);
-  }, [activateCodexRuntime, currentCodexModel?.supports_reasoning_effort, selectedAgentId, selectedCodexModelId, selectedCodexReasoningEffort, selectedProjectId]);
+    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId, selectedCodexModelId || undefined, currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined, selectedCodexSandboxMode);
+  }, [activateCodexRuntime, currentCodexModel?.supports_reasoning_effort, selectedAgentId, selectedCodexModelId, selectedCodexReasoningEffort, selectedCodexSandboxMode, selectedProjectId]);
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
@@ -625,6 +626,7 @@ export function KnowledgeChatHome() {
         model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
         codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
         codex_reasoning_effort: selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined,
+        codex_sandbox_mode: selectedAgentId === "codex" ? selectedCodexSandboxMode : undefined,
         top_k: 6,
         mode: "chat",
         agent: selectedAgentId || undefined,
@@ -899,11 +901,12 @@ export function KnowledgeChatHome() {
               <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
               <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference}/>
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
+              {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} mobile />}
               {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
             </div>
             {composerExpanded && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
               <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600"><Braces size={14} className="shrink-0 text-blue-600"/><span className="min-w-0 flex-1 truncate">{selectedProject?.display_name || "选择项目"}</span><ChevronDown size={13} className="shrink-0"/></button>
-              <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600"><Bot size={14} className="shrink-0 text-violet-600"/><select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体"><option value="">云端模型</option><option value="codex">Codex 本地</option></select></label>
+              <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600"><Bot size={14} className="shrink-0 text-violet-600"/><select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体"><option value="">云端模型</option><option value="codex">Codex 本地</option><option value="deepseek-harness" disabled={!agentProviders.some((provider) => provider.id === "deepseek-harness" && provider.chat_supported)}>DeepSeek Harness</option></select></label>
             </div>}
             <InlineReferenceComposer value={input} cursor={composerCursor} placeholder={t("chat.placeholderShort")} className="hidden min-h-[56px] px-1 pt-1 text-[14px] leading-6 lg:block" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference}/>
             <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
@@ -923,6 +926,7 @@ export function KnowledgeChatHome() {
                 <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件">
                   {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                 </button>
+                {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}
               </div>
 
               <div className="flex min-w-0 items-center gap-2">
@@ -949,9 +953,10 @@ export function KnowledgeChatHome() {
                 />
                 <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium sm:inline-flex ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "text-slate-400"}`} title={selectedAgentProvider?.message || "选择本地编码代理"}>
                   <Bot size={15}/>
-                  <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "codebuddy" | "")} className="max-w-[150px] truncate bg-transparent outline-none">
+                  <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="max-w-[150px] truncate bg-transparent outline-none">
                     <option value="">不接管</option>
                     <option value="codex">Codex 本地</option>
+                    <option value="deepseek-harness" disabled={!agentProviders.some((provider) => provider.id === "deepseek-harness" && provider.chat_supported)}>DeepSeek Harness</option>
                     <option value="codebuddy" disabled>CodeBuddy CLI（待适配）</option>
                   </select>
                 </label>
@@ -1222,6 +1227,76 @@ function renderInlineComposerValue(element: HTMLElement, value: string) {
     fragment.append(wrapper);
   }
   element.replaceChildren(fragment);
+}
+
+function CodexExecutionPermissionControl({ mode, onChange, mobile = false }: { mode: CodexSandboxMode; onChange: (mode: CodexSandboxMode) => void; mobile?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const controlRef = useRef<HTMLDivElement | null>(null);
+  const options: Array<{ mode: CodexSandboxMode; label: string; title: string }> = [
+    { mode: "full-access", label: "完全控制", title: "不使用沙箱，允许直接修改" },
+    { mode: "workspace-write", label: "工作区写入", title: "仅允许在当前项目内写入" },
+    { mode: "read-only", label: "只读分析", title: "只读取代码，不修改文件" },
+  ];
+  const selected = options.find((option) => option.mode === mode) ?? options[0];
+  const Icon = mode === "full-access" ? ShieldAlert : mode === "workspace-write" ? ShieldCheck : Eye;
+  const tone = mode === "full-access"
+    ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+    : mode === "workspace-write"
+      ? "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !controlRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={controlRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`grid place-items-center rounded-lg border transition ${mobile ? "h-9 w-9 rounded-xl" : "h-8 w-8"} ${tone}`}
+        aria-label={`Codex 执行权限：${selected.label}`}
+        aria-expanded={open}
+        title={`Codex 执行权限：${selected.label}`}
+      >
+        <Icon size={mobile ? 17 : 16} />
+      </button>
+      {open && (
+        <div className={`absolute bottom-full z-50 mb-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ${mobile ? "right-0" : "left-0"}`} style={{ width: "184px", minWidth: "184px", maxWidth: "calc(100vw - 24px)" }} role="menu" aria-label="选择 Codex 执行权限">
+          {options.map((option) => {
+            const OptionIcon = option.mode === "full-access" ? ShieldAlert : option.mode === "workspace-write" ? ShieldCheck : Eye;
+            const active = option.mode === mode;
+            return (
+              <button
+                key={option.mode}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                onClick={() => { onChange(option.mode); setOpen(false); }}
+                title={option.title}
+                className={`flex h-9 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-xs transition ${active ? "bg-violet-50 text-violet-800" : "text-slate-700 hover:bg-slate-50"}`}
+              >
+                <OptionIcon size={16} className={`shrink-0 ${option.mode === "full-access" ? "text-amber-600" : option.mode === "workspace-write" ? "text-violet-600" : "text-slate-500"}`} />
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap font-medium">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function InlineReferenceComposer({ value, cursor, placeholder, className, onValueChange, onCursorChange, onFocus, onKeyDown, onRemove }: { value: string; cursor: number; placeholder: string; className: string; onValueChange: (value: string, cursor: number) => void; onCursorChange: (cursor: number) => void; onFocus: (element: HTMLDivElement, cursor: number) => void; onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>, cursor: number) => void; onRemove: (token: string) => void }) {

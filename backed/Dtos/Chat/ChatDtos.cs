@@ -85,6 +85,10 @@ public sealed class ChatCompleteRequest
     [JsonPropertyName("codex_reasoning_effort")]
     public string? CodexReasoningEffort { get; set; }
 
+    /// <summary>Execution permission mode for the local Codex CLI.</summary>
+    [JsonPropertyName("codex_sandbox_mode")]
+    public string? CodexSandboxMode { get; set; }
+
     /// <summary>
     /// 检索返回的引用片段数量。
     /// </summary>
@@ -226,6 +230,9 @@ public sealed class CodexRuntimeHeartbeatRequest
 
     [JsonPropertyName("codex_reasoning_effort")]
     public string? CodexReasoningEffort { get; set; }
+
+    [JsonPropertyName("codex_sandbox_mode")]
+    public string? CodexSandboxMode { get; set; }
 }
 
 public sealed class ChatImageAttachmentDto

@@ -55,6 +55,8 @@ public sealed class GitOperationResult
     public string Action { get; set; } = string.Empty;
     public string Output { get; set; } = string.Empty;
     public GitWorkspaceStatus Status { get; set; } = new();
+    [JsonPropertyName("commit_sha")]
+    public string? CommitSha { get; set; }
 }
 
 public sealed class GitWorkspaceBranches
@@ -148,7 +150,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Ok = checkout.ExitCode == 0,
                 Action = "checkout",
                 Output = checkout.Output,
-                Status = await GetStatusAsync(rootPath, cancellationToken)
+                Status = await GetStatusAsync(rootPath, cancellationToken, refreshRemoteRefs: false)
             };
         }, cancellationToken, credential);
 
@@ -168,7 +170,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Ok = pull.ExitCode == 0,
                 Action = "discard-and-pull",
                 Output = JoinOutput(output),
-                Status = await GetStatusAsync(rootPath, cancellationToken)
+                Status = await GetStatusAsync(rootPath, cancellationToken, refreshRemoteRefs: false)
             };
         }, cancellationToken, credential);
 
@@ -182,7 +184,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
                 Ok = pull.ExitCode == 0,
                 Action = "pull",
                 Output = pull.Output,
-                Status = await GetStatusAsync(rootPath, cancellationToken)
+                Status = await GetStatusAsync(rootPath, cancellationToken, refreshRemoteRefs: false)
             };
         }, cancellationToken, credential);
 
@@ -211,12 +213,14 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
 
             var push = await RunGitAsync(rootPath, ["push"], cancellationToken);
             output.Add(push.Output);
+            var commitSha = push.ExitCode == 0 ? await RunGitAsync(rootPath, ["rev-parse", "--short", "HEAD"], cancellationToken) : null;
             return new GitOperationResult
             {
                 Ok = push.ExitCode == 0,
                 Action = "push",
                 Output = JoinOutput(output),
-                Status = await GetStatusAsync(rootPath, cancellationToken)
+                Status = await GetStatusAsync(rootPath, cancellationToken),
+                CommitSha = commitSha?.ExitCode == 0 ? commitSha.Output.Trim() : null
             };
         }, cancellationToken, credential);
 
@@ -239,7 +243,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         Ok = false,
         Action = action,
         Output = JoinOutput(output),
-        Status = await GetStatusAsync(rootPath, cancellationToken)
+        Status = await GetStatusAsync(rootPath, cancellationToken, refreshRemoteRefs: false)
     };
 
     private async Task RequireRepositoryAsync(string rootPath, CancellationToken cancellationToken)
@@ -251,7 +255,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         }
     }
 
-    private async Task<GitWorkspaceStatus> GetStatusAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<GitWorkspaceStatus> GetStatusAsync(string rootPath, CancellationToken cancellationToken, bool refreshRemoteRefs = true)
     {
         if (!Directory.Exists(rootPath)) throw new DirectoryNotFoundException("The selected Git workspace no longer exists.");
         var check = await RunGitAsync(rootPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
@@ -259,7 +263,7 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
         {
             return new GitWorkspaceStatus { Output = check.Output };
         }
-        var remoteRefreshError = await RefreshRemoteRefsAsync(rootPath, cancellationToken);
+        var remoteRefreshError = refreshRemoteRefs ? await RefreshRemoteRefsAsync(rootPath, cancellationToken) : null;
 
         var branch = await RunGitAsync(rootPath, ["branch", "--show-current"], cancellationToken);
         var upstream = await RunGitAsync(rootPath, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cancellationToken);
