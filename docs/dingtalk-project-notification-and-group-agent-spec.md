@@ -1,121 +1,171 @@
-# 钉钉项目通知与群聊 AI 协作规格
+# 钉钉项目推送与 Stream 群机器人规格
 
-> 状态：待实施（本文只定义设计，不改变业务代码）
-> 范围：AiAgent 的项目 Git 成功通知、钉钉群内 @机器人任务协作、管理配置与审计。
-> 安全基线：群聊入口默认只读、只产生分析/计划/Markdown 产物；**不得自动写代码、修改工作区、Git 提交或 Git 推送**。
+> 状态：已实施初版（后续联调以钉钉开发者后台发布配置为准）
+> 当前能力：管理员在“管理设置 → 推送模块”配置钉钉**自定义机器人 Webhook**及**企业应用 Stream 凭据**，并直接在通道编辑页多选项目。
+> 本轮新增：钉钉 Stream 事件订阅、群内 `@机器人` 文本问答、自动项目定位、通道项目范围校验、原群回复，以及可读的流式进度摘要。
 
-## 1. 目标与非目标
+## 1. 目标与边界
 
 ### 1.1 目标
 
-1. 代码库或项目批量 `commit-and-push` 实际成功后，向该项目已启用且有效的钉钉群发送任务与提交摘要。
-2. 群成员 @机器人并描述“某项目，请修改某功能”时，安全接收钉钉回调，解析群—项目映射和成员身份，创建后台会话，使用 AiAgent 当前默认模型及该项目受控上下文完成分析。
-3. 完成、拒绝、失败或需要澄清时，机器人将简洁结果回复到原群；详细 Markdown 保存在 AiAgent 的受控协作产物中，并提供受权限保护的跳转链接。
-4. 让管理员能配置机器人、项目—群映射、成员授权、通知模板、开关、限流和审计保留期。
+1. 管理员可新增、编辑、启用、停用和删除钉钉自定义机器人推送通道。
+2. 管理员可安全保存 Webhook 中的 `access_token`，可选保存加签 `secret`，并在保存后发送固定、脱敏的测试消息验证连通性。
+3. 管理员可从 AiAgent 已登记的所有项目中选择一个或多个项目，分别绑定一个或多个已启用的钉钉 Webhook 推送通道。
+4. 当现有 Git 单仓库或项目批量 `commit-and-push` **实际推送成功**时，向该项目的有效绑定通道发送提交摘要；失败、跳过、仅本地提交成功均不通知“推送成功”。
+5. 推送任务、测试结果、失败重试和配置变更可审计、可定位且不暴露凭据。
 
-### 1.2 明确非目标与硬边界
+### 1.2 非目标与硬限制
 
-- 不把群消息直接拼成 shell、文件路径、Git 参数或模型工具权限。
-- 不因消息中出现“修改”“提交”“推送”而执行写入。默认仅返回分析、实施计划、风险、需要确认的操作以及 Markdown 任务产物。
-- 群内任务不调用写文件、应用补丁、代码编辑器、Git `commit`、Git `push`、重置、拉取或运行外部进程的工具。
-- 即使后续增加“执行修改”能力，也必须跳转 AiAgent 内由有项目权限且具备 `CanCommitCode` 的用户发起；每一次工作区写入、提交、推送分别沿用现有授权，并取得额外、针对目标和摘要的明确确认。钉钉消息、卡片点击、默认同意和机器人身份都不能替代确认。
-- 首期不处理私聊、跨组织群、群文件下载、图片/OCR、自动拉群成员、自动创建项目映射，也不回传完整 diff、密钥、Token、工作区绝对路径或未脱敏 Git 输出。
+- 不新增任何入站 HTTP 回调端点；Stream 使用服务端主动建立的 WebSocket，不需要公网回调地址、Callback Token 或 AES Key。
+- 自定义机器人只能出站发送到其创建时所属群；AiAgent 不通过群名、群 ID 或任意 URL 路由消息。
+- Stream 机器人仅接收群内 `@机器人` 的文本消息；处理范围仅限通道勾选的项目及其已登记仓库。模型可按当前产品授权修改仓库代码；不提供 Git 提交或推送 Agent 工具。
+- 推送模块不绕过现有项目访问和 Git 授权；它只消费现有 Git 操作成功结果，不调用 `ICodeRepositoryGitService` 发起 Git 动作。
+- 不在前端、日志、审计、错误响应、导出文件或 Markdown 中显示 access token、加签 secret 或完整 Webhook URL。
 
-## 2. 已有能力与复用边界
+## 2. 钉钉自定义机器人约定
 
-| 能力 | 当前入口/服务 | 本方案的复用方式 |
-| --- | --- | --- |
-| 项目访问 | `IProjectAccessService.CanAccess` | 钉钉成员必须绑定 AiAgent 用户；以该用户身份校验项目访问。管理员可额外配置机器人服务身份，但不得绕过成员访问校验。 |
-| 代码提交/推送 | `ICodeRepositoryGitService.ProjectCommitAndPushAsync`、`CommitAndPushAsync` | 仅在其返回逐仓库实际成功结果后发布领域事件；不由钉钉任务反向调用。 |
-| Git 提交权限 | `AuthenticatedUser.CanCommitCode` | 将来任何写入/提交/推送仍由现有权限与明确确认共同控制。 |
-| 会话与消息 | `IChatSessionService`、`AiChatSession`/`AiChatMessage` | 新建 `channel=dingtalk` 的后台会话与受控群任务；会话不能被未绑定的群成员当作普通用户会话读取。 |
-| 项目上下文 | `IProjectReferenceContextService`、Markdown 索引上下文、代码库索引 | 仅在已通过项目访问校验后加载已登记代码库、项目 Markdown、索引与 RAG 上下文。 |
-| 默认模型 | `ICodexModelPolicyService.ResolveModel(null, null)` | 群聊任务固定取当前管理员配置的默认模型/推理强度，忽略群消息的模型覆盖指令。 |
-| 审计与设置快照 | `AiSettingSnapshot`、现有 Admin/Settings 模式 | 配置修改保留版本与操作者；运行审计独立持久化。 |
+管理员在目标钉钉群中按“群设置 → 智能群助手 → 添加机器人”创建自定义机器人，取得类似下列地址的 Webhook：
 
-## 3. 总体架构
+```text
+https://oapi.dingtalk.com/robot/send?access_token=xxxx
+```
+
+AiAgent 不持久化完整 URL，而是在管理 UI 中粘贴时仅提取并加密保存 `access_token`；发送时由服务端固定构造官方发送地址，POST JSON，例如：
+
+```json
+{
+  "msgtype": "text",
+  "text": { "content": "【AiAgent】钉钉推送通道测试成功。" }
+}
+```
+
+如机器人启用“加签”安全设置，管理员还须在同一通道保存 `secret`。发送时服务端按钉钉当前协议生成 `timestamp` 和 `sign` 查询参数；不得由浏览器生成签名或接触 secret。机器人关键字/IP 白名单等安全设置由钉钉侧控制，AiAgent 只提示其当前部署出口 IP 可能需要加入白名单，不记录或猜测钉钉侧策略。
+
+实现与联调须以钉钉官方[自定义机器人接入文档](https://open.dingtalk.com/document/orgapp/custom-robot-access)为准；协议字段、消息长度和签名算法变更时，先完成沙箱/测试群互操作验证再升级生产实现。
+
+## 3. 架构与处理流程
 
 ```mermaid
 flowchart LR
-  A["AiAgent Git 提交/推送成功"] --> B["Git 成功领域事件"]
-  B --> Q["持久化 Outbox / 队列"]
-  C["钉钉群 @机器人回调"] --> V["回调验签、解密、去重、限流"]
-  V --> M["群/机器人/项目映射与成员绑定"]
-  M --> Q
-  Q --> W["DingTalkWorker"]
-  W --> S["只读群协作会话编排"]
-  S --> X["项目上下文、默认模型、Markdown 产物"]
-  X --> O["出站消息 Outbox"]
-  O --> D["钉钉机器人/应用消息 API"]
-  D --> G["原项目群"]
-  Q --> L["运行状态、审计、告警"]
+  A["管理员：管理设置 / 推送模块"] --> C["加密保存推送通道"]
+  C --> T["固定文本测试发送"]
+  G["现有 Git commit-and-push 成功"] --> E["ProjectGitPushSucceeded 领域事件"]
+  E --> O["持久化 Outbox"]
+  O --> W["PushWorker"]
+  W --> V["项目绑定、通道状态与载荷校验"]
+  V --> S["服务端生成 sign（可选）"]
+  S --> D["钉钉自定义机器人 Webhook"]
+  D --> L["项目绑定的钉钉群"]
+  W --> A1["发送记录、重试与审计"]
+  R["钉钉 Stream WebSocket"] --> I["@机器人文本消息"]
+  I --> Q["按群串行、跨群并行的会话队列"]
+  Q --> P["按通道已勾选项目定位"]
+  P --> M["默认模型 / 已登记项目上下文"]
+  M --> R
 ```
 
-所有 HTTP 回调只做认证、最小结构校验、幂等登记和快速应答；耗时的模型调用、上下文读取、消息发送均在后台 worker 中完成。出站消息也使用 outbox，避免数据库状态已完成而网络发送丢失。
+Git 请求线程只产生成功事件并与 outbox 同步持久化，不直接调用外部 Webhook。后台 `PushWorker` 领取 outbox 后重新检查项目绑定和通道启用状态，再发送。多实例部署使用数据库行锁或租约领取消息，不能依赖单机内存队列。
 
-## 4. 身份、映射与授权模型
+## 4. 推送模块数据模型
 
-### 4.1 机器人类型
+所有新实体字段遵循现有 SqlSugar 约定显式标注 `[SugarColumn(IsNullable = true)]`；通过 Schema initializer/CodeFirst 增量建表，不能把 token 放进 `AiCodeProject`、前端环境变量或 `appsettings.json`。
 
-支持两类经过管理员配置的出站通道，统一抽象为 `DingTalkBot`：
-
-| 类型 | 用途 | 机密与限制 |
+| 实体 | 关键字段 | 约束与用途 |
 | --- | --- | --- |
-| `custom_webhook` | 向固定项目群发送提交通知、任务结果 | Webhook access token 与加签 secret 加密保存；只能发到已配置 webhook 所属群，不能接收 @ 回调。 |
-| `enterprise_app_bot` | 接收群消息/事件、向原群回复 | 保存 app key、app secret、事件回调 token、AES key 等最小必要配置并加密；仅接受配置的企业与机器人 ID。 |
+| `AiPushChannel` | `Id`、`Name`、`ProviderType`、`Enabled`、Webhook 密文、`DingTalkRobotCode`、`StreamClientId`、Stream Secret 密文、`StreamEnabled`、连接/最后帧/最后回调/重连状态 | `ProviderType` 固定 `dingtalk_custom_webhook`；名称唯一；同一 `robotCode + Client ID` 只能有一个启用的 Stream 通道；Webhook 与 Stream Secret 分别加密。 |
+| `AiProjectPushBinding` | `Id`、`ProjectId`、`PushChannelId`、`TriggerType`、`Enabled`、`TemplateCode`、`CreatedBy` | `(ProjectId, PushChannelId, TriggerType)` 唯一；本期 `TriggerType` 固定 `git_push_succeeded`。 |
+| `AiPushOutboxMessage` | `Id`、`CorrelationId`、`ProjectId`、`PushChannelId`、`EventType`、`DedupKey`、`PayloadJson`、`Status`、`AttemptCount`、`NextAttemptAt` | `DedupKey` 唯一；保存已脱敏、可重建的消息负载，不保存 token/secret。 |
+| `AiPushAuditLog` | `Id`、`CorrelationId`、`ActorType`、`ActorId`、`Action`、`ProjectId`、`PushChannelId`、`Outcome`、`MetadataJson`、`OccurredAt` | 只追加；记录配置、测试、绑定、入队、发送、重试和停用原因。 |
+| `AiDingTalkGroupAgentSession` | 源消息 ID、通道、群会话、发送者、sessionWebhook 密文、问题、项目、状态、处理开始时间、回答 | 源消息 ID 唯一；收到 Stream 消息先确认 ACK，再异步处理与回复；异常遗留的处理状态在 15 分钟后可恢复排队。 |
 
-“接收 @机器人并回复原群”需要使用企业应用机器人及钉钉支持的消息/事件能力；自定义 Webhook 仅可作为通知降级通道。实施前须在目标租户的钉钉开放平台按版本确认可用的群消息事件、回调协议与机器人回复 API。
+`CredentialCiphertext` 通过 ASP.NET Data Protection 加密，逻辑字段为 `access_token` 与可选 `sign_secret`；读 API 仅返回 `has_access_token`、`has_sign_secret` 和掩码尾部（若安全审查允许），绝不返回实际值。密钥轮换使用 `KeyVersion`；旧密文仅在必要的迁移窗口内解密后立即以新版本重加密。
 
-### 4.2 映射规则
+## 5. 配置输入与校验
 
-一条 `DingTalkProjectBinding` 绑定一个 `ProjectId + ConversationId + BotId`。`ConversationId` 是钉钉回调提供的不可伪造会话标识，不以群名称匹配。建议唯一约束：`(TenantId, ConversationId, BotId)`；一群默认只绑定一个项目。若业务需要多项目群，必须显式启用并要求消息带精确项目别名。
+### 5.1 Webhook 输入
 
-解析优先级：
+新增或更新通道时，管理员可以粘贴完整 Webhook，服务端验证后仅提取 token：
 
-1. 校验回调租户、机器人、会话 ID。
-2. 取得启用的群绑定；没有绑定则仅回复“该群尚未绑定项目”，不透露项目列表。
-3. 单项目绑定时，项目名可作为描述性文字但不改变目标项目；多项目绑定时只允许匹配管理员定义的唯一别名。
-4. 成员 DingTalk `senderId` 必须映射到已启用 AiAgent 用户，且该用户通过 `IProjectAccessService.CanAccess(user, projectId)`。
-5. 群成员是否被允许使用机器人还要通过绑定的 `AllowedMemberMode`：`linked_project_users`（默认）、`allowlist` 或 `admins_only`。
+1. URL 必须为 `https`，host 必须精确为 `oapi.dingtalk.com`，路径必须精确为 `/robot/send`；拒绝 IP、其他 host、额外路径、片段、用户名密码和重复 query key。
+2. query 必须恰好包含一个非空 `access_token`；token 长度限制为 1–512 字符，不允许控制字符或空白。校验通过后丢弃原 URL 字符串。
+3. `sign_secret` 可空；若填写，长度限制为 1–512 字符，不允许控制字符、空白或换行。是否启用加签由“已配置 secret”推导，不提供单独的可误配开关。
+4. `Name` 长度 2–80、去首尾空白、不可重复；`Enabled` 默认 `true`。
+5. 编辑时 token/secret 是“仅写入”字段：空值代表保留已有密文，显式“清除 secret”才会移除加签配置；若无 token 则不可启用或测试。
 
-未知成员、用户未绑定、项目无权、群/机器人不匹配都以通用拒绝文案结束，审计记录原因但不向群泄露权限或项目详情。
+校验错误只返回字段名和安全提示，不能回显粘贴原文。请求体、模型绑定、诊断日志和异常栈中均使用 `[REDACTED]` 替换敏感值。
 
-### 4.3 用户绑定
+### 5.2 发送前校验
 
-新增 `DingTalkUserBinding`，由登录 AiAgent 的用户完成一次经钉钉 OAuth/免登校验的绑定；后台不得让管理员手工填写或信任任意 `senderId`。绑定以 `(TenantId, DingTalkUserId)` 唯一，冲突时拒绝并要求原账号解除或管理员走审计化的账户恢复流程。
+每次发送（包括测试）均校验：通道存在且启用、密文可解密、token 合法、项目绑定仍启用、模板字段在白名单内、消息非空且不超过服务端配置上限。发送地址由服务端构造为：
 
-群会话“发起人”必须是该绑定 AiAgent 用户。系统可设单独、最小权限的 `DingTalkServiceAccount` 作为技术执行身份，但它只能发送/存储受控通道数据，不能获得用户项目权限或 `CanCommitCode`。
+```text
+https://oapi.dingtalk.com/robot/send?access_token={url_encoded_token}
+```
 
-## 5. 入站回调安全
+若存在 secret，再追加按官方规则生成的 `timestamp`/`sign`。`sign`、token、完整 URL 不写入 `PayloadJson`、日志或审计；HTTP 客户端禁用自动重定向，超时默认 10 秒，仅接受 HTTPS。
 
-### 5.1 端点与处理顺序
+## 6. 管理设置 UI
 
-建议专用匿名入口：`POST /api/v1/integrations/dingtalk/callback`。该端点不接收浏览器 JWT，且不复用普通聊天接口的“当前 HTTP 用户”。处理顺序为：
+入口固定在 **管理设置 → 推送模块**，其中提供两个页签或相邻子页。
 
-1. 从原始请求读取钉钉规定的 timestamp、nonce、signature、encrypt/body 等字段，限制 body 最大 256 KB、Content-Type、字符集和请求方法。
-2. 根据不可敏感的应用/机器人路由键找到候选配置；不存在时统一返回钉钉协议要求的失败响应。
-3. 按钉钉当前官方协议验证签名/时间戳，并在适用时以 AES key 解密、校验明文签名、encrypt 字段及接收方/应用标识；使用官方 SDK 或经过互操作测试的等价实现，禁止自创加密协议。
-4. 校验事件类型为已允许的群消息/@机器人事件，校验 tenant、bot、conversation、sender 等必需字段及长度；消息正文按不可信文本处理。
-5. 使用平台 `eventId/messageId`（优先）或经规范化字段计算的不可逆摘要写入 `DingTalkInboundEvent` 的唯一键；冲突表示重投，直接返回成功 ack，不再次排队。
-6. 对 `BotId + ConversationId + SenderId` 执行滑动窗口限流（建议 5 条/分钟、30 条/小时），超限也 ack 并通过受控消息提示稍后再试。
-7. 保存最小化入站事件、创建 `dingtalk_inbound` outbox；在平台时限内返回 ack。绝不在回调线程运行 LLM 或 Git。
+### 6.1 推送通道
 
-### 5.2 防重放、保密与日志
+管理员可看到通道名称、类型（`钉钉自定义机器人 Webhook`）、启用状态、是否已保存 token/加签 secret、最近测试时间/结果与脱敏错误码。新建/编辑抽屉包含：
 
-- timestamp 允许窗口默认 ±5 分钟；超过窗口拒绝。nonce 在有效窗口内记录并拒绝重复。若钉钉事件协议不含 nonce，使用 `eventId/messageId` 幂等键和时间窗组合。
-- 配置密钥用 ASP.NET Data Protection 保护后保存；密钥轮换保留 `KeyVersion`，旧版本仅用于未完成的解密/重试窗口。日志、审计、HTTP 错误和健康检查绝不输出 secret、access token、完整 webhook URL、AES key、Authorization 或解密后的原文。
-- 原始密文最多保存 24 小时用于故障排查；默认只保存经截断和脱敏的消息摘要、哈希和结构化字段。明文/模型输出按项目审计保留期控制，支持管理员授权的受控查看。
-- 拒绝任意来源 IP 的“信任”作为唯一鉴权依据；可在反向代理/WAF 增加钉钉公开网段 allowlist，但仍必须验证签名与加密。
+- 通道名称；
+- 完整 Webhook 粘贴框（仅写入，保存后只显示“token 已保存”）；
+- 可选加签 secret（仅写入，提供“清除已保存 secret”复选项）；
+- 启用开关；
+- “保存”与“发送测试消息”动作。
+- 项目范围多选；这里勾选的项目同时控制 Git 通知和群机器人可访问范围。
+- 可选 Stream 机器人配置：`robotCode`、Client ID（AppKey）、Client Secret（AppSecret）及 Stream 启用开关；Secret 仅写入。
 
-## 6. 两条业务流程
+测试发送只能使用已保存的当前通道，固定发送 `【AiAgent】钉钉推送通道测试成功。时间：{beijing_time} 北京时间（UTC+08:00）`；点击后出现二次确认，说明将向该机器人所在群发送一条真实消息。UI 显示发送中、成功时间或经过脱敏的失败码，不显示完整响应。每通道限制 10 分钟内最多 3 次测试，防止误刷屏。
 
-### 6.1 Git 成功后的项目群通知
+### 6.2 通道内项目范围
 
-`CodeRepositoryGitService` 完成一次单仓库或项目批量 `CommitAndPushAsync` 后，在同一应用服务层根据返回结果构造 `ProjectGitPushSucceeded` 领域事件。只有 `Outcome=result.Ok/succeeded` 的仓库进入通知；跳过、认证失败、远端领先、仅本地提交成功但 push 失败均不能通知“推送成功”。
+管理员在通道编辑页从现有 `AiCodeProject` 列表多选项目，服务端同步 `git_push_succeeded` 绑定。一个通道可绑定多个项目，一个项目也可绑定多个通道。
 
-事件载荷只含：项目 ID、仓库 ID/显示名、分支、提交 SHA（短 SHA）、提交摘要、触发 AiAgent 用户 ID、发生时间、关联操作 ID 和可选 `TaskSummary`。`TaskSummary` 取本次操作已显式关联的 AiAgent 任务标题/编号；未关联时明确标记“未关联任务”，不得从 Git 输出或模型推断。Git 子进程原始输出不进入消息正文。事务性 outbox 负责将成功事件与出站计划可靠落库；同一 `operationId + repositoryId + bindingId` 唯一，防止重试重复通知。
+绑定列表展示：项目、推送类型、通道名称、触发事件、启用状态、最近发送结果。停用通道或绑定后，尚未领取的 outbox 消息标记 `cancelled`，已在发送中的消息在发送前最后一次状态检查后才允许继续，避免重复或向已停用群持续推送。
 
-通知模板默认：
+普通用户不显示推送模块；项目成员也不能读取 token、编辑绑定或发送测试消息。
+
+## 7. API 与服务边界
+
+所有接口仅管理员可访问，并沿用现有 `IAuthService` 的管理员判定；Controller/Dynamic API 只承载 HTTP，敏感校验、加密、发送、outbox 和模板在 Service 中实现。DTO 用 `JsonPropertyName`，前端经 `front/lib/push-api.ts` 和 `front/lib/push-types.ts` 统一访问。
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/push/channels` | 获取脱敏后的推送通道列表。 |
+| `POST` | `/api/v1/admin/push/channels` | 校验并创建钉钉 Webhook 通道。 |
+| `PUT` | `/api/v1/admin/push/channels/{id}` | 修改名称、启用状态或仅写入的新 token/secret。 |
+| `DELETE` | `/api/v1/admin/push/channels/{id}` | 二次确认后停用并逻辑删除；不删除历史审计。 |
+| `POST` | `/api/v1/admin/push/channels/{id}/test` | 发送固定测试消息，应用管理员、通道状态和测试频率校验。 |
+| `POST` | `/api/v1/admin/push/channels/{id}/stream-test` | 使用已加密保存的 Stream 凭据申请 ticket 并短暂建立 WebSocket；返回脱敏的网关、ticket 或连接阶段错误。 |
+| `GET` | `/api/v1/admin/push/project-bindings` | 查询项目—推送通道绑定与最近结果。 |
+| `POST` | `/api/v1/admin/push/project-bindings` | 创建项目与 `git_push_succeeded` 绑定。 |
+| `PUT/DELETE` | `/api/v1/admin/push/project-bindings/{id}` | 启用/停用或删除绑定。 |
+| `GET` | `/api/v1/admin/push/audit` | 查询脱敏的审计和发送状态。 |
+
+Git 集成点位于现有 `CodeRepositoryGitService` 上层调用完成处：基于 `ProjectCommitAndPushAsync` 或单仓库 `CommitAndPushAsync` 的成功结果发布 `ProjectGitPushSucceeded`，包含项目、仓库显示名、分支、短 SHA、提交摘要、操作者、操作 ID 和可选的显式 `TaskSummary`。不得从 Git 子进程原始输出、提交正文或模型推断任务信息。
+
+## 7.1 Stream 订阅与群机器人
+
+管理员需在钉钉企业内部应用中启用机器人能力并选择 Stream 模式，发布后把该应用的 `robotCode`、Client ID 与 Client Secret 填入同一推送通道。后端向 `POST https://api.dingtalk.com/v1.0/gateway/connections/open` 申请短效 ticket，订阅 `CALLBACK /v1.0/im/bot/messages/get` 及钉钉后台已勾选的 `EVENT *`，再由服务器主动建立 WebSocket。实现依据钉钉 [Stream 协议](https://opensource.dingtalk.com/developerpedia/docs/learn/stream/protocol/)：ticket 不持久化、不写日志，收到消息立即 ACK，随后写入异步会话队列。
+
+每个启用的 Stream 通道保持一条 WebSocket 长连接；管理员应在该通道中多选项目，而不是为同一 `robotCode + Client ID` 重复配置通道。连接成功时记录连接时间与最后活动时间；每个收到的 Stream 帧会更新最后帧时间，合格的 `@机器人` 文本消息会更新最后有效回调时间。关闭或连接失败后按 2、4、8…秒指数退避重试，最大间隔 5 分钟，并在管理页与审计中显示错误码、重试次数和下次重连时间。
+
+通道列表提供“Stream 测试”。它不发送群消息，而是依次验证配置完整性、调用网关取得短效 ticket、建立一次 WSS 连接并主动关闭。结果会标出安全错误码：`gateway_http_*`（凭据/应用能力/发布状态）、`gateway_network_error`（网关网络）、`websocket_connect_failed`（WSS 网络策略）或 `stream_test_timeout`（超时）。通过后仍需在群中实际 `@机器人` 验证机器人发布和回调权限。
+
+群聊只处理 `isInAtList=true` 的文本消息。系统从问题中匹配项目名称：匹配到且项目已在该通道勾选时，才将该项目的已登记仓库交给默认模型；未写项目名时列出通道允许项目，项目存在但未勾选时明确拒绝。机器人收到任务后立即在原群回复“开始分析”，并明确展示已定位的项目和本次使用的仓库名；随后将已有 Agent 流式事件转换为简短的过程摘要，例如“读取仓库概览”“搜索表名/字段”“定位实体定义”“整理最终回答”。不转发模型原始私密思考、工具原始输出、绝对服务器路径或凭据。若 20 秒内未出现新的阶段事件，才发送一次携带当前阶段的兜底进度，避免重复刷屏。最终回答通过钉钉消息内携带的短效 `sessionWebhook` 回到原群；该地址仅加密保存到会话完成，不能作为通用出站 URL 使用。
+
+群会话按 `通道 + conversationId` 串行，保证同一群内请求顺序；不同群最多四路并行，避免一个项目或模型请求阻塞其他群。审计分别记录回调被接受/忽略及原因、会话出队、处理完成、原群回复失败、Stream 断开和重连排期。
+
+群机器人使用服务器内部固定的可用管理员执行身份，而不读取浏览器 Cookie 或 `AiUserSession`，因此不会因为网页登录 token 过期失效。它只在通道已勾选的项目范围内执行；按当前产品授权，模型可以使用已登记仓库的文件写入工具修改代码。Git 提交和推送尚未作为 Agent 工具提供，因而不会由群消息自动触发。
+
+## 8. 消息模板与发送语义
+
+本期只提供服务端内置的 `git_push_succeeded` 文本模板，不开放自由 JSON、自由 URL 或任意请求头：
 
 ```text
 【{project}】代码已推送
@@ -123,154 +173,42 @@ flowchart LR
 任务：{task_summary_or_unlinked}
 提交：{short_sha} {commit_summary}
 触发人：{operator_display_name}
-下一步：请在群内 @机器人 描述需要分析的任务；机器人默认只生成计划和 Markdown，不会自动改代码或推送。
 ```
 
-模板允许管理员选择是否展示提交人和短 SHA，字段白名单固定，输出经过长度限制和 Markdown/链接安全转义。单次批量操作可合并为一条项目摘要消息（默认最多 10 个仓库，超出时显示数量），避免群刷屏。
+模板变量采用固定白名单，逐字段长度限制并对控制字符、链接和敏感模式进行转义/脱敏。一次项目批量推送对同一 `operation_id + project_id + push_channel_id` 合并为一条消息，默认最多列出 10 个仓库；超出部分显示数量。唯一 `DedupKey` 防止任务重试、页面刷新或 Worker 重启重复发送。
 
-### 6.2 群内 @机器人任务协作
+## 9. 队列、状态机与失败处理
 
-1. 成员在已绑定群 @机器人并输入需求；未 @ 不处理。机器人回复“已接收，正在生成分析与计划（不会改代码/提交/推送）”。
-2. worker 完成映射、账户绑定、项目访问和限流检查，创建 `DingTalkGroupTask`，同时以绑定用户创建/关联 `AiChatSession`，并写入来源元数据（只保存 external ID 摘要）。
-3. 将用户原话作为不可信输入，并注入固定通道系统约束：仅分析、澄清、计划、风险、测试建议和 Markdown；禁止任何写入/执行/Git 工具；不得泄露项目外信息或敏感配置。
-4. 调用当前 `ICodexModelPolicyService.ResolveModel(null, null)` 的默认模型，复用项目引用与 Markdown 索引上下文；模型选择、推理强度和 agent 不接受群消息覆盖。
-5. 模型完成后，生成受控 Markdown 产物（标题、需求复述、影响范围、实施步骤、风险、验证、需要人工确认的写入/Git 动作），将短摘要回复**同一个** `ConversationId`。输出过长时群内只发摘要和有权限的 AiAgent 链接。
-6. 失败、超时、内容安全拦截、权限拒绝或映射缺失使用对应状态和不泄密文案。任何情况下均不继续尝试代码写入或 Git 操作。
+`AiPushOutboxMessage` 状态为 `pending → sending → sent | retry_wait | failed | cancelled`。`sent` 仅表示钉钉 HTTP API 已接受请求，不等同于群成员已阅读。接收 2xx 且平台业务结果成功才记为 `sent`；非 2xx 或业务错误记录安全错误码。
 
-提示注入、项目别名冲突、要求查看密钥、越权项目、让机器人“忽略规则”都视为不可信输入；固定系统策略和服务端工具白名单的优先级高于群消息。
+- 可重试：网络故障、超时、429、5xx。采用指数退避并抖动（1 分钟、5 分钟、15 分钟、1 小时，最多 5 次），尊重 `Retry-After`。
+- 不可重试：密文无法解密、输入/模板校验失败、通道/绑定已停用、钉钉业务 4xx、token/secret 配置错误。
+- 通道连续失败或 dead-letter 超阈值时告警管理员；健康检查只输出积压数、最早等待时间和脱敏错误码。
+- 测试发送不进入项目 Git 事件队列，但会写入同一审计体系；测试的网络重试最多一次，避免在群里制造多条测试消息。
 
-## 7. 只读协作执行配置与确认升级
+## 10. 审计与安全
 
-为避免仅靠 prompt 的软限制，定义 `DingTalkReadOnly` 通道执行策略，并在请求 DTO、编排器、工具注册和审计四层执行：
+记录管理员创建/编辑/删除通道、凭据轮换（不记录值）、测试请求与结果、项目绑定变更、Git 成功事件入队、发送、重试、取消与失败。审计以 UTC 保存、前端本地化显示，默认保留 180 天；元数据只保存 token/secret 是否存在及哈希指纹，不保存原值或完整 Webhook URL。
 
-| 能力 | 群聊默认 | 说明 |
+出站 HTTP 使用命名 `HttpClient`、固定基地址、10 秒超时、无自动重定向和最小必要请求头。日志过滤器应覆盖 URL query、JSON 字段 `access_token`/`secret`/`sign` 和 Authorization；故障诊断使用关联 ID、HTTP 状态和钉钉错误码，不记录响应正文中的敏感片段。
+
+## 11. 分期实施
+
+| 阶段 | 交付 | 明确不做 |
 | --- | --- | --- |
-| 项目/RAG/已登记代码索引读取 | 允许 | 每次都按绑定用户项目权限检查；不读取本地配置、密钥或任意绝对路径。 |
-| 创建会话、任务记录与受控 Markdown 产物 | 允许 | 仅写入 AiAgent 通道专属记录，不写入项目工作区或 Git 仓库。 |
-| 生成分析、计划、测试建议 | 允许 | 可在群内发送脱敏摘要。 |
-| 写代码、补丁、文件创建/编辑、运行命令 | 禁止 | 后端不注册相应 tool，拒绝模型指令。 |
-| Git add/commit/push/pull/reset/checkout | 禁止 | 后端不调用现有 Git 服务。 |
+| P1：推送通道基础 | 数据模型、密文保护、Webhook 解析校验、管理员推送模块、保存/编辑/停用、固定测试发送与审计 | 事件订阅、回调、群聊、AI。 |
+| P2：项目绑定与 Git 通知 | 项目—通道绑定、Git 成功领域事件、outbox、模板、幂等、重试与告警 | 任何反向 Git 或群消息能力。 |
+| P3：运营完善 | 审计筛选、死信处理、通道轮换演练、限流和监控 | 不开放自由 URL/请求体。 |
+| P4：Stream 群机器人 | 服务器主动 WebSocket、机器人回调 ACK、异步会话、原群回复、项目/仓库定位回显、流式过程摘要、通道项目范围校验 | 不开放 HTTP 回调或 Git 提交/推送 Agent 工具。 |
 
-未来升级必须是 AiAgent 内显式“执行计划”工作流：群回复中的链接打开待确认的 Markdown；项目授权用户审阅目标仓库/文件、变更范围和风险，分别确认“允许写入”“允许提交”“允许推送”。服务端须为每项确认签发短时、单用途、绑定 `userId + projectId + taskId + action + targetDigest` 的确认令牌。确认不可由群消息、机器人回调或模型输出自动产生、复用或续期。
+## 12. 验收标准
 
-## 8. 数据模型
-
-新实体遵循现有 SqlSugar 约定：所有新增字段显式 `[SugarColumn(IsNullable = true)]`；通过 CodeFirst/Schema initializer 增量建表，不修改既有聊天/Git 数据语义。
-
-| 实体 | 关键字段 | 约束/用途 |
-| --- | --- | --- |
-| `AiDingTalkBot` | `Id`、`TenantId`、`BotType`、`BotIdentity`、`CredentialCiphertext`、`KeyVersion`、`Enabled`、`OutboundEnabled`、`InboundEnabled` | `(TenantId, BotIdentity)` 唯一；所有机密加密保存。 |
-| `AiDingTalkProjectBinding` | `Id`、`ProjectId`、`BotId`、`ConversationId`、`ProjectAlias`、`AllowedMemberMode`、`AllowedMemberIdsJson`、`NotificationEnabled`、`GroupAgentEnabled` | `(BotId, ConversationId)` 唯一；项目删除/禁用后禁止路由。 |
-| `AiDingTalkUserBinding` | `Id`、`AiUserId`、`TenantId`、`DingTalkUserId`、`VerifiedAt`、`RevokedAt` | `(TenantId, DingTalkUserId)` 唯一；保留绑定验证证据摘要。 |
-| `AiDingTalkInboundEvent` | `Id`、`BotId`、`EventId`、`MessageId`、`NonceHash`、`OccurredAt`、`ReceivedAt`、`PayloadHash`、`Status` | `EventId`/`MessageId` 唯一；密文 TTL 与最小化摘要。 |
-| `AiDingTalkGroupTask` | `Id`、`BindingId`、`InboundEventId`、`InitiatorUserId`、`ChatSessionId`、`RequestExcerpt`、`Status`、`AttemptCount`、`ResultArtifactId`、`ErrorCode` | `InboundEventId` 唯一；连接会话、产物和群消息。 |
-| `AiDingTalkOutboundMessage` | `Id`、`BotId`、`ConversationId`、`Kind`、`DedupKey`、`PayloadJson`、`Status`、`AttemptCount`、`NextAttemptAt`、`ProviderMessageId` | `DedupKey` 唯一；出站 outbox。 |
-| `AiDingTalkAuditLog` | `Id`、`CorrelationId`、`ActorType`、`ActorId`、`Action`、`ProjectId`、`TaskId`、`Outcome`、`MetadataJson`、`OccurredAt` | 追加写入；元数据脱敏，不保存机密。 |
-
-建议单独的 `AiChannelMarkdownArtifact` 保存群任务 Markdown（`OwnerUserId`、`ProjectId`、`TaskId`、`Content`、`ContentHash`、`RetentionUntil`），而不是写入代码仓库。与普通 `AiChatSession` 的来源关系放在 `MetadataJson`/关联表中，避免前端把群会话误显示给非发起人。
-
-## 9. API、后台设置与 UI
-
-### 9.1 服务端 API
-
-| 方法 | 路径 | 权限 | 作用 |
-| --- | --- | --- | --- |
-| `POST` | `/api/v1/integrations/dingtalk/callback` | 钉钉签名/加密验证 | 匿名回调入口，仅快速 ack 和入队。 |
-| `GET/POST/PUT` | `/api/v1/admin/dingtalk/bots`、`/{id}` | 管理员 | 管理机器人配置；读响应永不返回 secret。 |
-| `GET/POST/PUT/DELETE` | `/api/v1/admin/dingtalk/project-bindings`、`/{id}` | 管理员 + 项目存在校验 | 管理项目—群—机器人映射、通知与群协作开关。 |
-| `POST` | `/api/v1/dingtalk/user-bindings/authorize` | 当前登录用户 | 发起/完成可验证的钉钉身份绑定。 |
-| `DELETE` | `/api/v1/dingtalk/user-bindings/me` | 当前登录用户 | 撤销本人绑定；之后不再接受其群任务。 |
-| `GET` | `/api/v1/dingtalk/tasks/{taskId}` | 发起人或管理员且有项目权限 | 查看任务状态、受控 Markdown 和安全摘要。 |
-| `GET` | `/api/v1/admin/dingtalk/audit` | 管理员 | 按时间、机器人、群绑定、项目、任务和结果检索审计。 |
-| `POST` | `/api/v1/admin/dingtalk/bots/{id}/test-outbound` | 管理员 + 二次确认 | 向已绑定测试群发送固定测试消息；不使用任意 webhook URL。 |
-
-后台 Service 承担签名、解密、映射、出站、模板和限流逻辑；Dynamic API/Controller 只负责 HTTP 与授权适配。DTO 使用 `JsonPropertyName`，前端经 `front/lib/dingtalk-*-api.ts` 与 `front/lib/dingtalk-*-types.ts` 调用，组件不得直接 `fetch`。
-
-### 9.2 管理 UI
-
-在“管理员设置 → 钉钉协作”提供：
-
-1. **机器人**：类型、租户、Bot 标识、启用状态、回调地址复制、secret 仅写入/轮换、连通性测试、最近错误（已脱敏）。
-2. **项目群绑定**：选择已登记项目与机器人、展示从钉钉事件获得并确认的群会话 ID/群名、项目别名、成员策略、推送通知和群协作开关、消息模板预览。
-3. **成员绑定**：显示用户、已验证钉钉账号掩码、状态和撤销；管理员不可见完整身份凭据。
-4. **任务与审计**：状态、重试次数、关联项目/会话、脱敏摘要、时间线、失败原因和重发按钮；重发仅重发既有安全内容，不重新运行任务。
-5. **安全策略**：速率限制、最大输入/输出长度、超时、重试次数、保留期和“只读群协作”固定为开启且不可关闭；未来写入升级的确认策略单列但初期禁用。
-
-普通用户在自己的会话/任务列表中只能看到本人发起且当前仍有项目访问权的群任务与 Markdown；群内链接需要 AiAgent 登录并重新授权，不能因为拿到 URL 便读取。
-
-## 10. 队列、状态机、失败重试与可观测性
-
-### 10.1 队列与并发
-
-- 初期采用数据库 outbox + `BackgroundService` 轮询；多实例部署时以数据库行锁/租约领取，不能依赖单机内存队列。生产规模可替换为消息队列，但保留 outbox 边界。
-- 按 `ProjectId` 和 `ConversationId` 串行处理同一群同一项目的群任务，保证上下文与回复顺序；不同项目可并行，设置全局模型调用并发上限。
-- 每条任务携带 `CorrelationId`，贯穿入站事件、后台会话、模型运行、出站消息和审计。取消、群绑定禁用、用户撤销绑定或失去项目访问权时，worker 在每个阶段重新检查并安全终止。
-
-### 10.2 状态机
-
-```mermaid
-stateDiagram-v2
-  [*] --> received
-  received --> deduplicated: 重放/重复
-  received --> rejected: 验签、映射、限流或权限失败
-  received --> queued
-  queued --> validating
-  validating --> rejected: 绑定/访问失效
-  validating --> running: 创建只读会话
-  running --> rendering: 模型完成
-  running --> retry_wait: 可重试故障
-  running --> failed: 不可重试/超时
-  rendering --> sending
-  sending --> completed
-  sending --> retry_wait: 出站暂时失败
-  retry_wait --> queued
-  retry_wait --> failed: 达最大重试
-  completed --> [*]
-  rejected --> [*]
-  failed --> [*]
-  deduplicated --> [*]
-```
-
-`DingTalkOutboundMessage` 独立使用 `pending → sending → sent | retry_wait | dead_letter`。任务在模型完成后即持久化产物；出站重试不会再次执行模型，除非管理员明确创建新的任务。
-
-### 10.3 重试与告警
-
-- 网络超时、429、5xx、临时 token 获取失败等可重试错误采用指数退避并随机抖动（建议 1 分钟、5 分钟、15 分钟、1 小时，最多 5 次）；尊重 `Retry-After`。
-- 验签失败、解密失败、未知群/机器人、用户无权、输入违规、无效配置、模型策略拒绝、4xx 业务错误均不可重试。
-- 模型超时默认 10 分钟；达到任务级超时后取消运行，输出“未完成”而非猜测成功。模型输出/消息超过限制时截断并附任务链接。
-- 连续验签失败、dead-letter 堆积、机器人 token 连续失败、任务失败率超阈值应产生管理员告警。健康检查只输出计数、延迟与最近脱敏错误码。
-
-## 11. 审计、隐私与内容安全
-
-每个关键动作追加审计：机器人配置变更/轮换、群绑定变更、用户绑定/撤销、回调验签结果、去重、权限决策、任务状态迁移、模型/上下文版本、产物哈希、出站发送、重试、链接访问和未来任何确认。审计以 UTC 存储、UI 本地化展示；默认保留 180 天，可配置且不能低于企业合规下限。
-
-群消息和模型输出先经过大小、控制字符、恶意链接及敏感信息检测；涉及凭据、个人敏感信息、项目外数据或不安全指令时，停止或转为安全提醒。对群内输出执行保守脱敏（token、密码、连接串、私钥格式）；不得把模型思考过程、工具内部日志、Git credential 或工作区路径发到钉钉。
-
-## 12. 钉钉协议与配置前置
-
-实现必须以目标租户和当前钉钉开放平台版本为准，并在集成测试环境完成互操作验证。重点参考钉钉官方文档中的[自定义机器人接入](https://open.dingtalk.com/document/orgapp/custom-robot-access)、[应用回调消息加解密](https://open.dingtalk.com/document/app/callback-event-message-body-encryption-and-decryption)与[事件订阅配置](https://open.dingtalk.com/document/development/event-subscription-enables-disables-application-events)。
-
-上线前需要管理员完成：企业应用/机器人创建与发布范围配置、群内安装机器人、消息事件订阅、HTTPS 公网回调地址、回调 token/AES key 配置、出站权限授权、测试群绑定，以及钉钉侧的签名/加密/回复 API 联调。不得将真实密钥写入 `appsettings.json`、前端环境变量、代码仓库或本文档；生产密钥应来自受控密钥存储或既有安全配置机制。
-
-## 13. 分期实施
-
-| 阶段 | 交付 | 不做的事 |
-| --- | --- | --- |
-| P0：设计验证 | 钉钉应用能力矩阵、回调/回复 API 联调样例、威胁建模、数据保留确认 | 不接生产群，不接模型。 |
-| P1：安全基础 | 实体/DTO、加密配置、机器人与群绑定后台、用户身份绑定、回调验签/解密/去重、审计和 outbox | 不执行群任务，不发 Git 通知。 |
-| P2：推送通知 | Git 成功领域事件、模板化出站、幂等/重试、测试群与监控 | 不从群发起模型任务。 |
-| P3：只读群协作 | @机器人任务、项目权限复核、后台会话、固定默认模型、只读工具策略、Markdown 产物、原群回复 | 不写项目文件、不运行命令、不做 Git 操作。 |
-| P4：运营完善 | 管理仪表盘、dead-letter 处理、限流/内容安全调优、灾备演练 | 不放开只读限制。 |
-| P5：可选受控执行 | 仅在独立评审后，AiAgent 内多次明确确认的写入/提交/推送工作流 | 永不允许群消息直接触发写入或 Git。 |
-
-## 14. 验收标准
-
-1. 单仓库和项目批量操作中，只有实际 `push` 成功的仓库会生成一次对应项目群通知；重试、刷新页面和 outbox 重放不重复发消息。
-2. 自定义 Webhook 只能发送；企业应用机器人收到合法 @事件后可在原群回复。未 @ 的消息、未绑定群、未知机器人和错误租户均不创建任务。
-3. 篡改 signature、过期 timestamp、错误 AES 解密、重复 event/message ID、重复 nonce 与超限请求均不能进入模型队列或造成重复回复。
-4. 已绑定但没有项目访问权的成员、未绑定成员和被撤销成员无法触发项目任务；群中不会显示可用于枚举项目/权限的细节。
-5. 合法任务会创建关联的后台会话和受控 Markdown 产物，并使用当前默认模型与项目上下文；群消息中的模型参数和“忽略规则”指令无效。
-6. 在 P3，审计与运行记录证明任务没有调用文件写入、外部进程、Git add/commit/push/pull/reset/checkout；任何“请直接修改并推送”仅得到计划和明确确认说明。
-7. 网络临时失败按策略重试，模型结果不会因出站失败被重复生成；不可重试故障进入可检索 dead-letter，且不泄露密钥或原文。
-8. 管理员可安全配置、轮换、禁用机器人和群绑定；普通用户只能查看本人且仍有项目权限的任务。所有配置/任务/发送动作具有可关联、脱敏的审计记录。
-9. 钉钉密钥、webhook 完整 URL、Git 凭据、连接串、工作区绝对路径和模型内部日志不出现在前端、群消息、审计搜索结果或错误响应中。
+1. 管理员只能在“管理设置 → 推送模块”新增钉钉自定义机器人通道；保存后 token/secret 从不回显，普通用户不能访问任何推送配置接口或页面。
+2. 非 HTTPS、非官方 host/path、缺失/重复 token、控制字符 token/secret 和重复名称均被服务端拒绝；数据库、日志、审计和 API 响应没有完整 Webhook 或凭据。
+3. 保存有效通道后，管理员确认测试可向对应群发送固定测试消息；测试状态、时间、关联 ID 和脱敏失败码可查，频率限制生效。
+4. 管理员可选择任意已登记项目，并将其与一个或多个已启用 Webhook 通道绑定；通道可被多个项目复用，项目也可绑定多个通道。
+5. 仅 `commit-and-push` 的实际推送成功结果产生出站消息；跳过、失败、远端领先或仅本地提交的仓库绝不显示“代码已推送”。
+6. 同一 Git 操作、项目和通道即使在重试、服务重启或刷新后最多发送一次成功通知；批量推送按规则合并摘要。
+7. 临时网络错误可按策略重试；凭据错误、通道/绑定停用和输入校验错误不重试，并在审计中留下脱敏原因。
+8. 不暴露 `/callback` 等入站 HTTP 端点；Stream 连接无需公网回调。`@机器人` 仅创建受通道项目范围限制的异步会话；其过程消息必须显示已定位项目、已选仓库和可理解的检索/整理阶段，且不得泄露原始思考、凭据或绝对服务器路径；未勾选的项目必须被明确拒绝。Git 提交或推送不可由机器人自动触发。
+9. 每个启用的 `robotCode + Client ID` 至多维护一个 Stream 连接；管理页必须显示最近 Stream 帧、最近有效回调和重连计划。单群请求顺序执行，不同群可并行处理；重连和会话/回复失败均需产生脱敏审计。

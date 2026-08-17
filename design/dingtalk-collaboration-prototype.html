@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>钉钉项目协作原型</title>
+<title>钉钉项目推送模块原型</title>
 <style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
 </head>
 <body>
-<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="钉钉项目协作原型" srcdoc="&lt;!doctype html&gt;
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="钉钉项目推送模块原型" srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;en&quot;&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
 &lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
 &lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
-&lt;title&gt;钉钉项目协作原型&lt;/title&gt;
+&lt;title&gt;钉钉项目推送模块原型&lt;/title&gt;
 &lt;style&gt;:root {
   color-scheme: light dark;
   background-color: var(
@@ -947,6 +947,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     #dingtalk-collaboration-prototype .dw-quiet::before { display: none; }
     #dingtalk-collaboration-prototype .dw-link { border: 0; padding: 0; color: #3d66bd; background: transparent; font: inherit; cursor: pointer; }
     #dingtalk-collaboration-prototype .dw-policy { padding: 18px; }
+    #dingtalk-collaboration-prototype .dw-field { display: grid; gap: 6px; margin-top: 12px; color: light-dark(#59667d, #b8c4d6); font-size: 12px; }
+    #dingtalk-collaboration-prototype .dw-field input { width: 100%; padding: 9px 10px; border: 1px solid light-dark(#d9e1ed, #435067); border-radius: 7px; color: light-dark(#263248, #e7edf8); background: light-dark(#fff, #202a3a); font: inherit; }
+    #dingtalk-collaboration-prototype .dw-test-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+    #dingtalk-collaboration-prototype .dw-test-result { color: light-dark(#55708c, #b3c0d4); font-size: 12px; line-height: 1.4; }
     #dingtalk-collaboration-prototype .dw-policy-main { padding: 14px; border-radius: 10px; color: light-dark(#174a35, #a9ebc8); background: light-dark(#effaf4, #173729); font-size: 13px; line-height: 1.55; }
     #dingtalk-collaboration-prototype .dw-policy-main strong { display: block; margin-bottom: 4px; font-weight: 500; }
     #dingtalk-collaboration-prototype .dw-list { display: grid; gap: 0; margin-top: 16px; }
@@ -958,8 +962,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     #dingtalk-collaboration-prototype .dw-flow b { display: grid; place-items: center; min-width: 24px; height: 24px; border-radius: 50%; color: #fff; background: #5576c7; font-size: 11px; font-weight: 500; }
     #dingtalk-collaboration-prototype .dw-flow i { flex: 1; min-width: 12px; height: 1px; background: light-dark(#cbd3e0, #465166); }
     #dingtalk-collaboration-prototype .dw-scenario { display: none; }
-    #dingtalk-collaboration-prototype[data-view=&quot;tasks&quot;] .dw-settings { display: none; }
-    #dingtalk-collaboration-prototype[data-view=&quot;tasks&quot;] .dw-scenario { display: block; }
+    #dingtalk-collaboration-prototype[data-view=&quot;bindings&quot;] .dw-settings { display: none; }
+    #dingtalk-collaboration-prototype[data-view=&quot;bindings&quot;] .dw-scenario { display: block; }
     #dingtalk-collaboration-prototype .dw-task-shell { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(270px, .82fr); gap: 18px; }
     #dingtalk-collaboration-prototype .dw-chat { padding: 20px; }
     #dingtalk-collaboration-prototype .dw-chat-label { margin-bottom: 16px; color: light-dark(#7a879a, #a8b5c6); font-size: 12px; }
@@ -992,42 +996,44 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;aside class=&quot;dw-sidebar&quot; aria-label=&quot;管理导航&quot;&gt;
       &lt;div class=&quot;dw-brand&quot;&gt;&lt;span class=&quot;dw-mark&quot; aria-hidden=&quot;true&quot;&gt;A&lt;/span&gt;AiAgent 管理台&lt;/div&gt;
       &lt;button class=&quot;dw-nav&quot; type=&quot;button&quot; aria-selected=&quot;false&quot;&gt;项目与代码库&lt;small&gt;Git、上下文与访问范围&lt;/small&gt;&lt;/button&gt;
-      &lt;button class=&quot;dw-nav&quot; type=&quot;button&quot; aria-selected=&quot;true&quot; data-view-target=&quot;settings&quot;&gt;钉钉协作&lt;small&gt;机器人、项目群与安全策略&lt;/small&gt;&lt;/button&gt;
-      &lt;button class=&quot;dw-nav&quot; type=&quot;button&quot; aria-selected=&quot;false&quot; data-view-target=&quot;tasks&quot;&gt;群任务运营&lt;small&gt;任务状态与只读产物&lt;/small&gt;&lt;/button&gt;
-      &lt;div class=&quot;dw-sidebar-foot&quot;&gt;群消息默认只创建分析、计划和 Markdown。任何代码写入、提交或推送都必须在 AiAgent 内单独授权并明确确认。&lt;/div&gt;
+      &lt;button class=&quot;dw-nav&quot; type=&quot;button&quot; aria-selected=&quot;true&quot; data-view-target=&quot;settings&quot;&gt;推送模块&lt;small&gt;钉钉 Webhook 与测试发送&lt;/small&gt;&lt;/button&gt;
+      &lt;button class=&quot;dw-nav&quot; type=&quot;button&quot; aria-selected=&quot;false&quot; data-view-target=&quot;bindings&quot;&gt;项目推送绑定&lt;small&gt;项目、触发事件与推送通道&lt;/small&gt;&lt;/button&gt;
+      &lt;div class=&quot;dw-sidebar-foot&quot;&gt;本期仅支持钉钉自定义机器人 Webhook 出站推送。事件订阅、群消息和 AI 协作尚未启用。&lt;/div&gt;
     &lt;/aside&gt;
     &lt;section class=&quot;dw-main&quot;&gt;
       &lt;header class=&quot;dw-topbar&quot;&gt;
-        &lt;div class=&quot;dw-crumb&quot; data-crumb&gt;管理员设置 / 钉钉协作&lt;/div&gt;
+        &lt;div class=&quot;dw-crumb&quot; data-crumb&gt;管理设置 / 推送模块&lt;/div&gt;
         &lt;div class=&quot;dw-operator&quot;&gt;&lt;span&gt;管理员&lt;/span&gt;&lt;span class=&quot;dw-avatar&quot;&gt;张&lt;/span&gt;&lt;/div&gt;
       &lt;/header&gt;
       &lt;section class=&quot;dw-page dw-settings&quot;&gt;
         &lt;div class=&quot;dw-heading&quot;&gt;
-          &lt;div&gt;&lt;h1&gt;钉钉协作&lt;/h1&gt;&lt;p&gt;将已登记项目安全连接到对应群聊；群内协作固定为只读通道。&lt;/p&gt;&lt;/div&gt;
-          &lt;button class=&quot;dw-primary&quot; type=&quot;button&quot;&gt;+ 新建项目群绑定&lt;/button&gt;
+          &lt;div&gt;&lt;h1&gt;推送模块&lt;/h1&gt;&lt;p&gt;配置钉钉自定义机器人 Webhook；令牌加密保存，测试消息仅向该机器人所属群发送。&lt;/p&gt;&lt;/div&gt;
+          &lt;button class=&quot;dw-primary&quot; type=&quot;button&quot;&gt;+ 新建 Webhook 通道&lt;/button&gt;
         &lt;/div&gt;
         &lt;div class=&quot;dw-grid&quot;&gt;
-          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;项目群绑定&quot;&gt;
-            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;项目群绑定&lt;/h2&gt;&lt;span&gt;2 个已启用&lt;/span&gt;&lt;/div&gt;
-            &lt;div class=&quot;dw-flow&quot; aria-label=&quot;绑定流程&quot;&gt;&lt;b&gt;1&lt;/b&gt;项目&lt;i&gt;&lt;/i&gt;&lt;b&gt;2&lt;/b&gt;机器人&lt;i&gt;&lt;/i&gt;&lt;b&gt;3&lt;/b&gt;钉钉群&lt;i&gt;&lt;/i&gt;&lt;b&gt;4&lt;/b&gt;成员策略&lt;/div&gt;
-            &lt;table class=&quot;dw-table&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;项目与群&lt;/th&gt;&lt;th&gt;机器人与策略&lt;/th&gt;&lt;th&gt;最近活动&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;钉钉推送通道&quot;&gt;
+            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;钉钉推送通道&lt;/h2&gt;&lt;span&gt;2 个已启用&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;dw-flow&quot; aria-label=&quot;配置流程&quot;&gt;&lt;b&gt;1&lt;/b&gt;粘贴 Webhook&lt;i&gt;&lt;/i&gt;&lt;b&gt;2&lt;/b&gt;加密保存令牌&lt;i&gt;&lt;/i&gt;&lt;b&gt;3&lt;/b&gt;发送测试&lt;i&gt;&lt;/i&gt;&lt;b&gt;4&lt;/b&gt;绑定项目&lt;/div&gt;
+            &lt;table class=&quot;dw-table&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;通道&lt;/th&gt;&lt;th&gt;凭据与状态&lt;/th&gt;&lt;th&gt;最近测试&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
               &lt;tbody&gt;
-                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;商城运营平台&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;研发协作群 · DT-7F2A…9C&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag&quot;&gt;通知 + 群协作&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;已绑定项目成员&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;div class=&quot;dw-sub&quot;&gt;16:42 推送 2 个仓库摘要&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
-                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;客户门户&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;门户迭代群 · DT-15C8…44&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag&quot;&gt;通知 + 群协作&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;白名单成员&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;div class=&quot;dw-sub&quot;&gt;昨天 18:10 生成分析计划&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
-                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;数据中台&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;数据平台群 · DT-998E…12&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag dw-quiet&quot;&gt;仅推送通知&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;群协作尚未启用&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;button class=&quot;dw-link&quot; type=&quot;button&quot;&gt;完成机器人验证&lt;/button&gt;&lt;/td&gt;&lt;/tr&gt;
+                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;商城研发群机器人&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;钉钉自定义机器人 Webhook&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag&quot;&gt;已启用&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;token 已加密保存 · 已配置加签&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;div class=&quot;dw-sub&quot;&gt;今天 16:42 · 成功&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
+                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;门户迭代群机器人&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;钉钉自定义机器人 Webhook&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag&quot;&gt;已启用&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;token 已加密保存 · 未启用加签&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;div class=&quot;dw-sub&quot;&gt;昨天 18:10 · 成功&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
+                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;数据平台告警机器人&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;钉钉自定义机器人 Webhook&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag dw-quiet&quot;&gt;已停用&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;token 已加密保存&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;button class=&quot;dw-link&quot; type=&quot;button&quot;&gt;查看失败原因&lt;/button&gt;&lt;/td&gt;&lt;/tr&gt;
               &lt;/tbody&gt;
             &lt;/table&gt;
           &lt;/section&gt;
-          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;群协作安全策略&quot;&gt;
-            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;群协作安全策略&lt;/h2&gt;&lt;span&gt;固定开启&lt;/span&gt;&lt;/div&gt;
+          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;Webhook 安全与测试&quot;&gt;
+            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;Webhook 安全与测试&lt;/h2&gt;&lt;span&gt;当前通道&lt;/span&gt;&lt;/div&gt;
             &lt;div class=&quot;dw-policy&quot;&gt;
-              &lt;div class=&quot;dw-policy-main&quot;&gt;&lt;strong&gt;只读群协作&lt;/strong&gt;收到 @机器人需求后，只创建后台会话和 Markdown 任务产物。&lt;/div&gt;
+              &lt;div class=&quot;dw-policy-main&quot;&gt;&lt;strong&gt;商城研发群机器人&lt;/strong&gt;完整 Webhook 仅在保存时输入；读取时不回显 token 或 secret。&lt;/div&gt;
+              &lt;label class=&quot;dw-field&quot;&gt;Webhook token&lt;input aria-label=&quot;已保存的 Webhook token&quot; value=&quot;已加密保存 · ····9F2A&quot; readonly&gt;&lt;/label&gt;
+              &lt;label class=&quot;dw-field&quot;&gt;加签 secret&lt;input aria-label=&quot;已保存的加签 secret&quot; value=&quot;已加密保存&quot; readonly&gt;&lt;/label&gt;
+              &lt;div class=&quot;dw-test-row&quot;&gt;&lt;button class=&quot;dw-primary&quot; id=&quot;dw-test-button&quot; type=&quot;button&quot;&gt;发送测试消息&lt;/button&gt;&lt;span class=&quot;dw-test-result&quot; id=&quot;dw-test-result&quot;&gt;测试消息为固定文本，发送前需二次确认&lt;/span&gt;&lt;/div&gt;
               &lt;div class=&quot;dw-list&quot;&gt;
-                &lt;div class=&quot;dw-rule allow&quot;&gt;&lt;span&gt;项目索引、RAG 与 Markdown&lt;/span&gt;&lt;span&gt;允许读取&lt;/span&gt;&lt;/div&gt;
-                &lt;div class=&quot;dw-rule allow&quot;&gt;&lt;span&gt;分析、实施计划与验证建议&lt;/span&gt;&lt;span&gt;允许生成&lt;/span&gt;&lt;/div&gt;
-                &lt;div class=&quot;dw-rule&quot;&gt;&lt;span&gt;代码文件 / 工作区写入&lt;/span&gt;&lt;span&gt;禁止&lt;/span&gt;&lt;/div&gt;
-                &lt;div class=&quot;dw-rule&quot;&gt;&lt;span&gt;Git 提交、推送与重置&lt;/span&gt;&lt;span&gt;禁止&lt;/span&gt;&lt;/div&gt;
-                &lt;div class=&quot;dw-rule&quot;&gt;&lt;span&gt;运行命令与外部进程&lt;/span&gt;&lt;span&gt;禁止&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;dw-rule allow&quot;&gt;&lt;span&gt;固定 Webhook 地址与 HTTPS&lt;/span&gt;&lt;span&gt;服务端校验&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;dw-rule allow&quot;&gt;&lt;span&gt;token / secret&lt;/span&gt;&lt;span&gt;加密保存&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;dw-rule&quot;&gt;&lt;span&gt;完整 URL、token、secret 回显&lt;/span&gt;&lt;span&gt;禁止&lt;/span&gt;&lt;/div&gt;
+                &lt;div class=&quot;dw-rule&quot;&gt;&lt;span&gt;任意 URL / 自定义请求体&lt;/span&gt;&lt;span&gt;禁止&lt;/span&gt;&lt;/div&gt;
               &lt;/div&gt;
             &lt;/div&gt;
           &lt;/section&gt;
@@ -1035,27 +1041,27 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;/section&gt;
       &lt;section class=&quot;dw-page dw-scenario&quot;&gt;
         &lt;div class=&quot;dw-heading&quot;&gt;
-          &lt;div&gt;&lt;h1&gt;群任务运营&lt;/h1&gt;&lt;p&gt;原群回复保持简洁；详细分析保存在 AiAgent 的受控 Markdown 产物中。&lt;/p&gt;&lt;/div&gt;
-          &lt;span class=&quot;dw-tag&quot;&gt;任务已完成&lt;/span&gt;
+          &lt;div&gt;&lt;h1&gt;项目推送绑定&lt;/h1&gt;&lt;p&gt;从已登记项目中选择触发来源，并绑定一个或多个已启用的钉钉 Webhook 通道。&lt;/p&gt;&lt;/div&gt;
+          &lt;button class=&quot;dw-primary&quot; type=&quot;button&quot;&gt;+ 新建项目绑定&lt;/button&gt;
         &lt;/div&gt;
         &lt;div class=&quot;dw-task-shell&quot;&gt;
-          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;钉钉群聊任务示例&quot;&gt;
-            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;研发协作群 · 商城运营平台&lt;/h2&gt;&lt;span&gt;关联任务 DT-2026-0812-024&lt;/span&gt;&lt;/div&gt;
-            &lt;div class=&quot;dw-chat&quot;&gt;
-              &lt;div class=&quot;dw-chat-label&quot;&gt;今天&lt;/div&gt;
-              &lt;div class=&quot;dw-message&quot;&gt;&lt;b&gt;王敏&lt;/b&gt;&lt;br&gt;@AiAgent 商城运营平台，请修改订单列表的筛选功能，支持按付款状态筛选。&lt;span class=&quot;dw-smalltime&quot;&gt;10:18&lt;/span&gt;&lt;/div&gt;
-              &lt;div class=&quot;dw-message bot&quot;&gt;&lt;b&gt;AiAgent 机器人&lt;/b&gt;&lt;br&gt;已接收。我将基于“商城运营平台”生成影响分析和实施计划；不会修改代码、提交或推送。&lt;span class=&quot;dw-smalltime&quot;&gt;10:18&lt;/span&gt;&lt;/div&gt;
-              &lt;div class=&quot;dw-message bot&quot;&gt;&lt;b&gt;AiAgent 机器人&lt;/b&gt;&lt;br&gt;分析已完成：订单列表筛选涉及前端查询条件、后端列表 API 和枚举映射。已生成 5 步实施计划与验收建议。&lt;br&gt;&lt;button class=&quot;dw-link&quot; type=&quot;button&quot;&gt;在 AiAgent 查看 Markdown 任务&lt;/button&gt;&lt;span class=&quot;dw-smalltime&quot;&gt;10:20&lt;/span&gt;&lt;/div&gt;
-            &lt;/div&gt;
+          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;项目推送绑定列表&quot;&gt;
+            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;已启用绑定&lt;/h2&gt;&lt;span&gt;触发事件：推送成功&lt;/span&gt;&lt;/div&gt;
+            &lt;table class=&quot;dw-table&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;项目&lt;/th&gt;&lt;th&gt;推送通道&lt;/th&gt;&lt;th&gt;最近结果&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+              &lt;tbody&gt;
+                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;商城运营平台&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;Git 提交并推送成功&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;strong&gt;商城研发群机器人&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;钉钉自定义机器人 Webhook&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag&quot;&gt;已发送&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;16:42 · 2 个仓库摘要&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
+                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;商城运营平台&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;Git 提交并推送成功&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;strong&gt;数据平台告警机器人&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;当前通道已停用&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag dw-quiet&quot;&gt;已暂停&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;不再创建新消息&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
+                &lt;tr&gt;&lt;td&gt;&lt;strong&gt;客户门户&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;Git 提交并推送成功&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;strong&gt;门户迭代群机器人&lt;/strong&gt;&lt;div class=&quot;dw-sub&quot;&gt;钉钉自定义机器人 Webhook&lt;/div&gt;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;dw-tag&quot;&gt;已发送&lt;/span&gt;&lt;div class=&quot;dw-sub&quot;&gt;昨天 18:10&lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;
+              &lt;/tbody&gt;
+            &lt;/table&gt;
           &lt;/section&gt;
-          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;任务 Markdown 摘要&quot;&gt;
-            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;Markdown 任务产物&lt;/h2&gt;&lt;span&gt;只读&lt;/span&gt;&lt;/div&gt;
+          &lt;section class=&quot;dw-panel&quot; aria-label=&quot;推送事件规则&quot;&gt;
+            &lt;div class=&quot;dw-panel-head&quot;&gt;&lt;h2&gt;推送事件规则&lt;/h2&gt;&lt;span&gt;内置模板&lt;/span&gt;&lt;/div&gt;
             &lt;div class=&quot;dw-artifact&quot;&gt;
-              &lt;h3&gt;订单列表付款状态筛选&lt;/h3&gt;
-              &lt;div class=&quot;dw-section&quot;&gt;&lt;strong&gt;影响范围&lt;/strong&gt;&lt;p&gt;订单列表查询参数、服务端筛选条件、筛选控件与枚举文案。&lt;/p&gt;&lt;/div&gt;
-              &lt;div class=&quot;dw-section&quot;&gt;&lt;strong&gt;实施计划&lt;/strong&gt;&lt;ul&gt;&lt;li&gt;确认付款状态枚举及“全部”语义。&lt;/li&gt;&lt;li&gt;扩展受控列表查询 DTO 与 API。&lt;/li&gt;&lt;li&gt;新增前端筛选控件并保留现有组合条件。&lt;/li&gt;&lt;li&gt;补充权限、空状态与回归验证。&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;
-              &lt;div class=&quot;dw-section&quot;&gt;&lt;strong&gt;需要人工确认&lt;/strong&gt;&lt;p&gt;是否包含退款中/退款完成状态，以及筛选是否需要写入 URL。&lt;/p&gt;&lt;/div&gt;
-              &lt;div class=&quot;dw-locked&quot;&gt;&lt;i aria-hidden=&quot;true&quot;&gt;🔒&lt;/i&gt;&lt;span&gt;本任务未获得文件写入、Git 提交或推送权限。需要执行时，请由具备项目权限的用户在 AiAgent 内分别确认。&lt;/span&gt;&lt;/div&gt;
+              &lt;h3&gt;Git 推送成功通知&lt;/h3&gt;
+              &lt;div class=&quot;dw-section&quot;&gt;&lt;strong&gt;只在实际推送成功后触发&lt;/strong&gt;&lt;p&gt;跳过、认证失败、远端领先或仅本地提交不会发送“代码已推送”。&lt;/p&gt;&lt;/div&gt;
+              &lt;div class=&quot;dw-section&quot;&gt;&lt;strong&gt;消息摘要&lt;/strong&gt;&lt;ul&gt;&lt;li&gt;项目、仓库、分支与短提交 SHA。&lt;/li&gt;&lt;li&gt;显式关联的任务摘要；未关联时标记“未关联任务”。&lt;/li&gt;&lt;li&gt;触发人和最多 10 个仓库的合并摘要。&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;
+              &lt;div class=&quot;dw-locked&quot;&gt;&lt;i aria-hidden=&quot;true&quot;&gt;🔒&lt;/i&gt;&lt;span&gt;推送模块仅消费现有 Git 成功结果；不会从钉钉接收事件、执行代码写入或发起任何 Git 操作。&lt;/span&gt;&lt;/div&gt;
             &lt;/div&gt;
           &lt;/section&gt;
         &lt;/div&gt;
@@ -1067,13 +1073,20 @@ html&gt;body{padding:0}&lt;/style&gt;
       const root = document.getElementById(&quot;dingtalk-collaboration-prototype&quot;);
       const buttons = root.querySelectorAll(&quot;[data-view-target]&quot;);
       const crumb = root.querySelector(&quot;[data-crumb]&quot;);
+      const testButton = root.querySelector(&quot;#dw-test-button&quot;);
+      const testResult = root.querySelector(&quot;#dw-test-result&quot;);
       buttons.forEach((button) =&gt; {
         button.addEventListener(&quot;click&quot;, () =&gt; {
           const view = button.dataset.viewTarget;
           root.dataset.view = view;
           buttons.forEach((item) =&gt; item.setAttribute(&quot;aria-selected&quot;, String(item === button)));
-          crumb.textContent = view === &quot;tasks&quot; ? &quot;管理员设置 / 群任务运营&quot; : &quot;管理员设置 / 钉钉协作&quot;;
+          crumb.textContent = view === &quot;bindings&quot; ? &quot;管理设置 / 项目推送绑定&quot; : &quot;管理设置 / 推送模块&quot;;
         });
+      });
+      testButton.addEventListener(&quot;click&quot;, () =&gt; {
+        if (window.confirm(&quot;确认向“商城研发群机器人”所在钉钉群发送一条固定测试消息？&quot;)) {
+          testResult.textContent = &quot;测试请求已提交 · 结果将记录在审计日志中&quot;;
+        }
       });
     })();
   &lt;/script&gt;
