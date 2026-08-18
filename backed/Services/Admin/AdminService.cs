@@ -61,7 +61,16 @@ public sealed class AdminService : IAdminService
         RequireAdministrator(administrator);
         cancellationToken.ThrowIfCancellationRequested();
         var users = _db.Queryable<AiUser>().OrderBy(item => item.CreatedAt).ToList();
+        // Historical assignments may still reference soft-deleted projects. Do not
+        // return those IDs to the editor, or a save of an old account resubmits an
+        // invalid project ID and fails validation.
+        var activeProjectIds = _db.Queryable<AiCodeProject>()
+            .Where(item => !item.IsDeleted)
+            .Select(item => item.Id)
+            .ToList()
+            .ToHashSet();
         var permissions = _db.Queryable<AiUserCodeProject>().ToList()
+            .Where(item => activeProjectIds.Contains(item.CodeProjectId))
             .GroupBy(item => item.UserId).ToDictionary(group => group.Key, group => group.Select(item => item.CodeProjectId).Distinct().OrderBy(item => item).ToList());
         return Task.FromResult(users.Select(item => ToUserDto(item, permissions.GetValueOrDefault(item.Id) ?? [])).ToList());
     }
