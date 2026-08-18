@@ -8,6 +8,7 @@ using AiAgent.Backend.Entities.Usage;
 using AiAgent.Backend.Entities.Memory;
 using AiAgent.Backend.Entities.PromptTemplate;
 using AiAgent.Backend.Entities.Push;
+using AiAgent.Backend.Entities.Task;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.Settings;
@@ -66,6 +67,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiMemoryCandidate),
             typeof(AiUsageRecord),
             typeof(AiGitAccount),
+            typeof(AiProjectTask),
             typeof(AiPushChannel),
             typeof(AiProjectPushBinding),
             typeof(AiPushOutboxMessage),
