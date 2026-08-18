@@ -300,17 +300,18 @@ function RuntimeActionHelp({ onClose }: { onClose: () => void }) {
 }
 
 function ProjectGitOverview({ state, summary, rows, busy, onDiscard, onPush }: { state: string; summary?: string; rows: ProjectGitRepositoryStatus[]; busy: boolean; onDiscard: () => void; onPush: () => void }) {
-  const actionable = rows.filter((row) => row.status?.is_repository);
+  const discardable = rows.filter((row) => row.status?.is_repository && (row.status.changes.length > 0 || row.status.behind > 0));
+  const pushable = rows.filter((row) => row.status?.is_repository && (row.status.changes.length > 0 || row.status.ahead > 0));
   const tone = state === "synced" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : state === "attention" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-600";
   return <section className={`mb-3 min-w-0 max-w-full overflow-hidden rounded-lg border px-3 py-2.5 text-[11px] leading-5 ${tone}`} aria-live="polite">
     <p className="font-semibold">Git 前置检查</p>
     <p className="mt-0.5 break-words">{summary ?? (state === "checking" ? "正在刷新远端引用并检查项目代码库…" : "请选择项目后检查 Git 状态。")}</p>
     {rows.length > 0 && <div className="mt-2 space-y-1">{rows.map((row) => <p key={row.repository_id} className="flex gap-1.5 break-words"><span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${row.state === "synced" ? "bg-emerald-500" : row.state === "not-repository" ? "bg-slate-400" : "bg-amber-500"}`}/><span><strong>{row.display_name}</strong>：{row.message}</span></p>)}</div>}
-    {actionable.length > 0 && <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
-      <button type="button" disabled={busy || state === "checking"} onClick={onDiscard} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14}/>一键重置更新</button>
-      <button type="button" disabled={busy || state === "checking"} onClick={onPush} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Upload size={14}/>一键提交推送</button>
+    {(discardable.length > 0 || pushable.length > 0) && <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
+      <button type="button" disabled={busy || state === "checking" || discardable.length === 0} onClick={onDiscard} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14}/>一键重置更新</button>
+      <button type="button" disabled={busy || state === "checking" || pushable.length === 0} onClick={onPush} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Upload size={14}/>一键提交推送</button>
     </div>}
-    {!actionable.length && state !== "checking" && <p className="mt-2 text-slate-500">没有可批量操作的 Git 代码库。</p>}
+    {!discardable.length && !pushable.length && state !== "checking" && <p className="mt-2 text-slate-500">没有待拉取或待推送的 Git 代码库。</p>}
   </section>;
 }
 

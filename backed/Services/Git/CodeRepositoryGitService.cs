@@ -134,7 +134,11 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
     {
         var repository = Find(repositoryName);
         var commitMessage = string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message;
-        var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, commitMessage, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
+        var credential = await ResolveCredentialAsync(repository, cancellationToken);
+        var status = await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, credential);
+        if (!HasPushWork(status)) return NoPushRequired(status);
+
+        var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, commitMessage, cancellationToken, credential);
         if (result.Ok && repository.ProjectId.HasValue)
             await QueuePushNotificationAsync(repository, result, commitMessage, cancellationToken);
         return result;
@@ -166,11 +170,11 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
 
         var state = rows.Count == 0 || (!rows.Any(row => row.Status?.IsRepository == true) && !rows.Any(row => row.State == "failed"))
             ? "neutral"
-            : rows.Any(row => row.State is "behind" or "no-upstream" or "failed") ? "attention" : "synced";
+            : rows.Any(row => row.State is "ahead" or "behind" or "changes" or "no-upstream" or "failed") ? "attention" : "synced";
         var message = state switch
         {
             "synced" => "所有 Git 代码库已与远端同步。",
-            "attention" => $"{rows.Count(row => row.State is "behind" or "no-upstream" or "failed")} 个代码库需要处理。",
+            "attention" => $"{rows.Count(row => row.State is "ahead" or "behind" or "changes" or "no-upstream" or "failed")} 个代码库需要处理。",
             _ when rows.Count == 0 => "当前项目没有已登记的代码库。",
             _ => "当前项目没有可检查的 Git 代码库。"
         };
@@ -186,6 +190,11 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
                 try
                 {
                     var credential = await ResolveCredentialAsync(repository, cancellationToken);
+                    var status = await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, credential);
+                    if (!status.IsRepository) { results.Repositories.Add(Skipped(repository, "该目录不是 Git 代码库，已跳过。")); continue; }
+                    if (!string.IsNullOrWhiteSpace(status.RemoteRefreshError)) { results.Repositories.Add(Skipped(repository, "远端刷新失败，已跳过重置更新。")); continue; }
+                    if (string.IsNullOrWhiteSpace(status.RemoteBranch)) { results.Repositories.Add(Skipped(repository, "未设置远端跟踪分支，已跳过重置更新。")); continue; }
+                    if (!HasDiscardAndPullWork(status)) { results.Repositories.Add(Skipped(repository, "没有待还原的本地修改，也没有待拉取的远端提交，已跳过。")); continue; }
                     var result = await _git.DiscardChangesAndPullAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, credential);
                     results.Repositories.Add(new ProjectGitBatchRepositoryResult { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = result.Ok ? "succeeded" : "failed", Message = result.Ok ? "已重置本地已跟踪修改并完成快进更新。" : ToSafeOutput(result.Output, "重置更新失败。"), Result = result });
                 }
@@ -216,6 +225,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
                     if (!string.IsNullOrWhiteSpace(status.RemoteRefreshError)) { results.Repositories.Add(Skipped(repository, "远端刷新失败，已跳过提交推送。")); continue; }
                     if (string.IsNullOrWhiteSpace(status.RemoteBranch)) { results.Repositories.Add(Skipped(repository, "未设置远端跟踪分支，已跳过提交推送。")); continue; }
                     if (status.Behind > 0) { results.Repositories.Add(Skipped(repository, $"远端领先 {status.Behind} 个提交，请先一键重置更新。")); continue; }
+                    if (!HasPushWork(status)) { results.Repositories.Add(Skipped(repository, "没有待提交文件或待推送提交，已跳过；不会发送钉钉通知。")); continue; }
                     var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim(), cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
                     results.Repositories.Add(new ProjectGitBatchRepositoryResult { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = result.Ok ? "succeeded" : "failed", Message = result.Ok ? "已提交并推送。" : ToSafeOutput(result.Output, "提交推送失败。"), Result = result });
                     if (result.Ok) await QueuePushNotificationAsync(repository, result, message, cancellationToken, operationId);
@@ -290,10 +300,14 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         var state = !status.IsRepository ? "not-repository"
             : !string.IsNullOrWhiteSpace(status.RemoteRefreshError) ? "failed"
             : string.IsNullOrWhiteSpace(status.RemoteBranch) ? "no-upstream"
-            : status.Behind > 0 ? "behind" : "synced";
+            : status.Behind > 0 ? "behind"
+            : status.Changes.Count > 0 ? "changes"
+            : status.Ahead > 0 ? "ahead" : "synced";
         var message = state switch
         {
             "synced" => "已同步。",
+            "changes" => $"有 {status.Changes.Count} 个本地修改待提交并推送。",
+            "ahead" => $"本地领先 {status.Ahead} 个提交，待推送。",
             "behind" => $"远端领先 {status.Behind} 个提交。",
             "no-upstream" => "未设置远端或上游分支。",
             "not-repository" => "该目录不是 Git 代码库。",
@@ -301,6 +315,16 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         };
         return new ProjectGitRepositoryStatus { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, State = state, Message = message, Status = status };
     }
+
+    private static bool HasPushWork(GitWorkspaceStatus status) => status.Changes.Count > 0 || status.Ahead > 0;
+    private static bool HasDiscardAndPullWork(GitWorkspaceStatus status) => status.Changes.Count > 0 || status.Behind > 0;
+    private static GitOperationResult NoPushRequired(GitWorkspaceStatus status) => new()
+    {
+        Ok = true,
+        Action = "push",
+        Output = "没有待提交文件或待推送提交，已跳过；不会发送钉钉通知。",
+        Status = status
+    };
 
     private static ProjectGitBatchRepositoryResult Skipped(AiCodeRepository repository, string message) => new() { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = "skipped", Message = message };
     private static ProjectGitBatchRepositoryResult Failed(AiCodeRepository repository, Exception exception) => new() { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = "failed", Message = ToSafeMessage(exception) };

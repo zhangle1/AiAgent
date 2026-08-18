@@ -128,7 +128,7 @@ export type CodeProjectSaveRequest = {
 
 export type GitWorkspaceStatus = { is_repository: boolean; branch?: string | null; remote_branch?: string | null; remote_name?: string | null; changes: string[]; ahead: number; behind: number; ahead_files: number; behind_files: number; remote_refresh_error?: string | null; output: string };
 export type GitOperationResult = { ok: boolean; action: string; output: string; status: GitWorkspaceStatus };
-export type ProjectGitRepositoryStatus = { repository_id: number; repository_name: string; display_name: string; state: "synced" | "behind" | "no-upstream" | "not-repository" | "failed"; message: string; status?: GitWorkspaceStatus | null };
+export type ProjectGitRepositoryStatus = { repository_id: number; repository_name: string; display_name: string; state: "synced" | "changes" | "ahead" | "behind" | "no-upstream" | "not-repository" | "failed"; message: string; status?: GitWorkspaceStatus | null };
 export type ProjectGitStatus = { project_id: number; state: "synced" | "attention" | "neutral"; message: string; repositories: ProjectGitRepositoryStatus[] };
 export type ProjectGitBatchRepositoryResult = { repository_id: number; repository_name: string; display_name: string; outcome: "succeeded" | "skipped" | "failed"; message: string; result?: GitOperationResult | null };
 export type ProjectGitBatchOperationResult = { project_id: number; action: "discard-and-pull" | "commit-and-push" | "automatic-discard-and-pull"; repositories: ProjectGitBatchRepositoryResult[] };
