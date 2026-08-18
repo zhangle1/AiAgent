@@ -189,11 +189,12 @@ else
 
 try
 {
-    await app.Services.GetRequiredService<IAuthService>().EnsureDefaultAdministratorAsync(CancellationToken.None);
+    await app.Services.GetRequiredService<IAuthService>().EnsureInitialAdministratorAsync(CancellationToken.None);
 }
 catch (Exception ex)
 {
-    app.Logger.LogError(ex, "Default administrator initialization failed.");
+    app.Logger.LogCritical(ex, "Administrator initialization failed. Startup is aborted.");
+    throw;
 }
 
 app.UseInject();

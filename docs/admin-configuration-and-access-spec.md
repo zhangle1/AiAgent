@@ -6,8 +6,10 @@
 
 ## 身份与初始数据
 
-- 启动 CodeFirst 后，服务确保 `superadmin` 存在并具备 `admin` 角色。
-- 默认密码仅用于首次创建；如果该账号已存在，绝不覆盖密码。
+- 启动 CodeFirst 后，服务先检查是否已有未禁用的 `admin` 账号；有则不执行初始化。
+- 首次部署必须显式配置 `Authentication:InitialAdministratorUsername` 与 `Authentication:InitialAdministratorPassword`。初始化口令至少 16 个字符且没有默认值；缺少任一配置时启动失败，不创建管理员。
+- 若使用环境变量，对应名称为 `Authentication__InitialAdministratorUsername` 与 `Authentication__InitialAdministratorPassword`；初始化口令只能通过受控环境或 Secret Store 注入，不得放入命令行、日志或版本库。
+- 配置的账号必须尚未存在。创建成功后应立即从配置文件和环境变量/Secret Store 中移除初始化口令；升级、重启和后续初始化检查不会重置任何已有用户或管理员密码。
 - `/api/v1/auth/register` 固定返回 403，前端 `/register` 重定向至登录页。
 - 管理权限取自服务端 `AiUser.Role`，不可由请求参数或前端状态授予。
 - 用户可选填最长 64 个字符的别名；管理员可按账号或别名搜索。密码重置会重新生成密码哈希并撤销该用户的所有有效登录会话。

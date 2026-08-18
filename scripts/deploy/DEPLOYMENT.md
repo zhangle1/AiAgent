@@ -38,8 +38,9 @@ AiAgent-server/
 ## 二、服务器配置与运行
 
 1. 解压 `AiAgent-server.zip` 到固定目录，例如 `D:\AiAgent`。
-2. 将 `backend\appsettings.Production.json.example` 复制为 `backend\appsettings.Production.json`，再填写 SQL Server、`Cors:Origins`、代码库根目录、模型和 Python/RAG 配置。
-3. 除非使用 `-SelfContained` 打包，否则服务器还需要安装 .NET 9 Runtime。新生成的部署包会自带前端运行所需的 `front\node.exe`，服务器无需另行安装 Node.js。
+2. 将 `backend\appsettings.Production.json.example` 复制为 `backend\appsettings.Production.json`，再填写 SQL Server、`Cors:Origins`、代码库根目录、模型和 Python/RAG 配置。首次部署还必须通过受控配置设置 `Authentication:InitialAdministratorUsername` 和 `Authentication:InitialAdministratorPassword`；若用环境变量，对应名称为 `Authentication__InitialAdministratorUsername` 和 `Authentication__InitialAdministratorPassword`。初始化口令至少 16 个字符，不要把真实口令写入脚本、命令行、日志或文档。
+3. 首次启动成功并确认可以登录后，立即从配置文件和环境变量/Secret Store 中移除 `Authentication:InitialAdministratorPassword`。已有管理员或用户的密码不会在升级、重启时被重置；如果没有可用管理员且初始化配置缺失，后端会以启动失败方式保护部署。
+4. 除非使用 `-SelfContained` 打包，否则服务器还需要安装 .NET 9 Runtime。新生成的部署包会自带前端运行所需的 `front\node.exe`，服务器无需另行安装 Node.js。
 
 在解压目录根部执行唯一运行脚本：
 

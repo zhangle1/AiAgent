@@ -20,7 +20,7 @@ public interface IAuthService
     Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task LogoutAsync(HttpContext context, CancellationToken cancellationToken);
-    Task EnsureDefaultAdministratorAsync(CancellationToken cancellationToken);
+    Task EnsureInitialAdministratorAsync(CancellationToken cancellationToken);
 }
 
 public sealed class AuthService : IAuthService
@@ -28,8 +28,9 @@ public sealed class AuthService : IAuthService
     public const string CookieName = "aiagent_auth";
     private const int Iterations = 210_000;
     private readonly ISqlSugarClient _db;
+    private readonly IConfiguration _configuration;
 
-    public AuthService(ISqlSugarClient db) => _db = db;
+    public AuthService(ISqlSugarClient db, IConfiguration configuration) => (_db, _configuration) = (db, configuration);
 
     public Task<(bool Succeeded, string? Error)> RegisterAsync(string username, string password, CancellationToken cancellationToken)
         => Task.FromResult((false, (string?)"Public registration is disabled. Please ask an administrator to create an account."));
@@ -116,22 +117,23 @@ public sealed class AuthService : IAuthService
         return Task.CompletedTask;
     }
 
-    public async Task EnsureDefaultAdministratorAsync(CancellationToken cancellationToken)
+    public async Task EnsureInitialAdministratorAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        const string username = "superadmin";
-        var user = _db.Queryable<AiUser>().First(item => item.Username == username);
-        if (user == null)
-        {
-            var (created, error) = await CreateUserAsync(username, "123123", null, cancellationToken);
-            if (created == null) throw new InvalidOperationException(error ?? "Failed to create the default administrator.");
-            created.Role = "admin";
-            _db.Updateable(created).UpdateColumns(item => item.Role).ExecuteCommand();
-            return;
-        }
+        if (_db.Queryable<AiUser>().Any(item => item.Role == "admin" && !item.IsDisabled)) return;
 
-        if (!string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase))
-            _db.Updateable<AiUser>().SetColumns(item => item.Role == "admin").Where(item => item.Id == user.Id).ExecuteCommand();
+        var username = _configuration["Authentication:InitialAdministratorUsername"]?.Trim();
+        var password = _configuration["Authentication:InitialAdministratorPassword"];
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
+            throw new InvalidOperationException("No usable administrator exists. Set Authentication:InitialAdministratorUsername and Authentication:InitialAdministratorPassword before first startup.");
+        if (password.Length < 16)
+            throw new InvalidOperationException("Authentication:InitialAdministratorPassword must contain at least 16 characters.");
+        if (_db.Queryable<AiUser>().Any(item => item.Username == username))
+            throw new InvalidOperationException("Authentication:InitialAdministratorUsername is already in use. Choose an unused username or recover an existing administrator.");
+
+        var (created, error) = await CreateUserAsync(username, password, null, cancellationToken);
+        if (created == null) throw new InvalidOperationException(error ?? "Failed to create the initial administrator.");
+        _db.Updateable<AiUser>().SetColumns(item => item.Role == "admin").Where(item => item.Id == created.Id).ExecuteCommand();
     }
 
     private static string HashPassword(string password, byte[] salt) => Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, Iterations, HashAlgorithmName.SHA256, 32));

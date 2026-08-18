@@ -165,7 +165,9 @@ npm run dev
 
 ## 管理配置与账户权限
 
-- 首次以 CodeFirst 启动后会确保存在默认管理员：账号 `superadmin`、密码 `123456`。如果该账号已经存在，只会补齐管理员角色，不会重置其密码；首次登录后请立即修改默认密码。
+- 首次部署必须通过受控配置提供 `Authentication:InitialAdministratorUsername` 和 `Authentication:InitialAdministratorPassword`，两者只用于创建第一个管理员；初始化口令至少 16 个字符，不提供默认值。找不到可用管理员且缺少配置时，后端会拒绝启动，不会创建可猜测账户。
+- 使用环境变量注入时，对应名称为 `Authentication__InitialAdministratorUsername` 和 `Authentication__InitialAdministratorPassword`；初始化口令应由服务账户环境或 Secret Store 提供，不要放在命令行参数、脚本、日志或版本库中。
+- 初始化成功后立即从配置文件和环境变量/Secret Store 中移除 `Authentication:InitialAdministratorPassword`。已有管理员或用户的密码不会因升级、重启或初始化检查而被重置；后续忘记密码时由现有管理员在管理配置中执行重置，若没有任何可用管理员则需按部署环境的人工账户恢复流程处理。
 - 公开注册已关闭，`/register` 会返回登录页，创建新账号只能通过“设置 → 管理配置 → 用户管理”。
 - 管理员可为普通用户分配一个或多个代码项目。聊天的项目选择菜单、项目偏好保存和实际聊天请求都会使用同一授权校验，用户不能通过直接调用接口绕过项目范围。
 - 用户管理采用可搜索表格，可按账号或别名筛选；新增、编辑授权和重置密码均在弹窗内完成。重置密码会使该用户所有现有登录会话失效。
