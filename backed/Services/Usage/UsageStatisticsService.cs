@@ -74,15 +74,42 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
 
         var query = _db.Queryable<AiUsageRecord>().Where(item => item.CreatedAt >= from && item.CreatedAt < to);
         if (!useAll) query = query.Where(item => item.UserId == user.Id);
-        var rows = query.ToList();
-
-        var activityByDay = rows
-            .GroupBy(item => item.CreatedAt.Date)
-            .ToDictionary(group => group.Key, group => new { Tokens = group.Sum(item => (long)item.TotalTokens), Turns = group.Count() });
+        var totals = query.Select(item => new UsageTotalsRow
+        {
+            TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
+            PromptTokens = SqlFunc.AggregateSum(item.PromptTokens),
+            CompletionTokens = SqlFunc.AggregateSum(item.CompletionTokens),
+            TurnCount = SqlFunc.AggregateCount(item.Id),
+            EstimatedTurnCount = SqlFunc.AggregateSum(item.IsEstimated ? 1 : 0)
+        }).First();
+        var activityByDay = query
+            .GroupBy(item => SqlFunc.DateValue(item.CreatedAt))
+            .Select(item => new UsageActivityAggregateRow
+            {
+                Date = SqlFunc.DateValue(item.CreatedAt),
+                TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
+                TurnCount = SqlFunc.AggregateCount(item.Id)
+            })
+            .ToList()
+            .ToDictionary(item => item.Date.Date, item => item);
+        var providers = query
+            .GroupBy(item => new { item.ProviderKind, item.ProviderId, Model = item.ModelName ?? item.ModelId })
+            .Select(item => new UsageProviderAggregateRow
+            {
+                ProviderKind = item.ProviderKind,
+                ProviderId = item.ProviderId,
+                Model = item.ModelName ?? item.ModelId,
+                TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
+                PromptTokens = SqlFunc.AggregateSum(item.PromptTokens),
+                CompletionTokens = SqlFunc.AggregateSum(item.CompletionTokens),
+                TurnCount = SqlFunc.AggregateCount(item.Id),
+                EstimatedTurnCount = SqlFunc.AggregateSum(item.IsEstimated ? 1 : 0)
+            })
+            .ToList();
         var activity = Enumerable.Range(0, periodDays)
             .Select(offset => from.AddDays(offset).Date)
             .Select(date => activityByDay.TryGetValue(date, out var value)
-                ? new UsageActivityDayDto { Date = date, TotalTokens = value.Tokens, TurnCount = value.Turns }
+                ? new UsageActivityDayDto { Date = date, TotalTokens = value.TotalTokens, TurnCount = value.TurnCount }
                 : new UsageActivityDayDto { Date = date })
             .ToList();
 
@@ -93,24 +120,12 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
             PeriodDays = periodDays,
             From = from,
             To = to,
-            TotalTokens = rows.Sum(item => (long)item.TotalTokens),
-            PromptTokens = rows.Sum(item => (long)item.PromptTokens),
-            CompletionTokens = rows.Sum(item => (long)item.CompletionTokens),
-            TurnCount = rows.Count,
-            EstimatedTurnCount = rows.Count(item => item.IsEstimated),
-            Providers = rows
-                .GroupBy(item => new { item.ProviderKind, item.ProviderId, Model = item.ModelName ?? item.ModelId })
-                .Select(group => new UsageProviderSummaryDto
-                {
-                    ProviderKind = group.Key.ProviderKind,
-                    ProviderId = group.Key.ProviderId,
-                    Model = group.Key.Model,
-                    TotalTokens = group.Sum(item => (long)item.TotalTokens),
-                    PromptTokens = group.Sum(item => (long)item.PromptTokens),
-                    CompletionTokens = group.Sum(item => (long)item.CompletionTokens),
-                    TurnCount = group.Count(),
-                    EstimatedTurnCount = group.Count(item => item.IsEstimated)
-                })
+            TotalTokens = totals.TotalTokens,
+            PromptTokens = totals.PromptTokens,
+            CompletionTokens = totals.CompletionTokens,
+            TurnCount = totals.TurnCount,
+            EstimatedTurnCount = totals.EstimatedTurnCount,
+            Providers = providers.Select(ToProviderSummary)
                 .OrderByDescending(item => item.TotalTokens)
                 .ThenBy(item => item.ProviderKind)
                 .ToList(),
@@ -128,30 +143,39 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
         var to = from.AddDays(1);
         var query = _db.Queryable<AiUsageRecord>().Where(item => item.CreatedAt >= from && item.CreatedAt < to);
         if (!useAll) query = query.Where(item => item.UserId == user.Id);
-        var rows = query.ToList();
+        var totals = query.Select(item => new UsageTotalsRow
+        {
+            TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
+            PromptTokens = SqlFunc.AggregateSum(item.PromptTokens),
+            CompletionTokens = SqlFunc.AggregateSum(item.CompletionTokens),
+            TurnCount = SqlFunc.AggregateCount(item.Id),
+            EstimatedTurnCount = SqlFunc.AggregateSum(item.IsEstimated ? 1 : 0)
+        }).First();
+        var providers = query
+            .GroupBy(item => new { item.ProviderKind, item.ProviderId, Model = item.ModelName ?? item.ModelId })
+            .Select(item => new UsageProviderAggregateRow
+            {
+                ProviderKind = item.ProviderKind,
+                ProviderId = item.ProviderId,
+                Model = item.ModelName ?? item.ModelId,
+                TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
+                PromptTokens = SqlFunc.AggregateSum(item.PromptTokens),
+                CompletionTokens = SqlFunc.AggregateSum(item.CompletionTokens),
+                TurnCount = SqlFunc.AggregateCount(item.Id),
+                EstimatedTurnCount = SqlFunc.AggregateSum(item.IsEstimated ? 1 : 0)
+            })
+            .ToList();
 
         return Task.FromResult(new UsageDayDetailDto
         {
             Scope = useAll ? "all" : "me",
             CanViewAll = canViewAll,
             Date = from,
-            TotalTokens = rows.Sum(item => (long)item.TotalTokens),
-            PromptTokens = rows.Sum(item => (long)item.PromptTokens),
-            CompletionTokens = rows.Sum(item => (long)item.CompletionTokens),
-            TurnCount = rows.Count,
-            Providers = rows
-                .GroupBy(item => new { item.ProviderKind, item.ProviderId, Model = item.ModelName ?? item.ModelId })
-                .Select(group => new UsageProviderSummaryDto
-                {
-                    ProviderKind = group.Key.ProviderKind,
-                    ProviderId = group.Key.ProviderId,
-                    Model = group.Key.Model,
-                    TotalTokens = group.Sum(item => (long)item.TotalTokens),
-                    PromptTokens = group.Sum(item => (long)item.PromptTokens),
-                    CompletionTokens = group.Sum(item => (long)item.CompletionTokens),
-                    TurnCount = group.Count(),
-                    EstimatedTurnCount = group.Count(item => item.IsEstimated)
-                })
+            TotalTokens = totals.TotalTokens,
+            PromptTokens = totals.PromptTokens,
+            CompletionTokens = totals.CompletionTokens,
+            TurnCount = totals.TurnCount,
+            Providers = providers.Select(ToProviderSummary)
                 .OrderByDescending(item => item.TotalTokens)
                 .ThenBy(item => item.ProviderKind)
                 .ToList()
@@ -159,6 +183,46 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
     }
 
     private static bool CanViewAll(AuthenticatedUser user) => user.IsAdministrator;
+
+    private static UsageProviderSummaryDto ToProviderSummary(UsageProviderAggregateRow item) => new()
+    {
+        ProviderKind = item.ProviderKind,
+        ProviderId = item.ProviderId,
+        Model = item.Model,
+        TotalTokens = item.TotalTokens,
+        PromptTokens = item.PromptTokens,
+        CompletionTokens = item.CompletionTokens,
+        TurnCount = item.TurnCount,
+        EstimatedTurnCount = item.EstimatedTurnCount
+    };
+
+    private sealed class UsageTotalsRow
+    {
+        public long TotalTokens { get; set; }
+        public long PromptTokens { get; set; }
+        public long CompletionTokens { get; set; }
+        public int TurnCount { get; set; }
+        public int EstimatedTurnCount { get; set; }
+    }
+
+    private sealed class UsageActivityAggregateRow
+    {
+        public DateTime Date { get; set; }
+        public long TotalTokens { get; set; }
+        public int TurnCount { get; set; }
+    }
+
+    private sealed class UsageProviderAggregateRow
+    {
+        public string ProviderKind { get; set; } = string.Empty;
+        public string ProviderId { get; set; } = string.Empty;
+        public string? Model { get; set; }
+        public long TotalTokens { get; set; }
+        public long PromptTokens { get; set; }
+        public long CompletionTokens { get; set; }
+        public int TurnCount { get; set; }
+        public int EstimatedTurnCount { get; set; }
+    }
 
     private static ChatTokenUsage EstimateUsage(string prompt, string completion)
     {
