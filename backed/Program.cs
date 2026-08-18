@@ -18,6 +18,7 @@ using AiAgent.Backend.Services.Usage;
 using AiAgent.Backend.Services.Memory;
 using AiAgent.Backend.Services.PromptTemplate;
 using AiAgent.Backend.Services.Push;
+using AiAgent.Backend.Services.WorkCanvas;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi.Models;
 using SqlSugar;
@@ -101,6 +102,7 @@ builder.Services.AddSingleton<IMemoryCandidateService, MemoryCandidateService>()
 builder.Services.AddHostedService<MemoryCandidateHostedService>();
 builder.Services.AddSingleton<IAdminService, AdminService>();
 builder.Services.AddSingleton<IChatSessionService, ChatSessionService>();
+builder.Services.AddSingleton<IWorkCanvasService, WorkCanvasService>();
 builder.Services.AddSingleton<IChatDebugTraceStore, ChatDebugTraceStore>();
 builder.Services.AddSingleton<IPromptTemplateService, PromptTemplateService>();
 builder.Services.AddSingleton<IModelProviderOptionsService, ModelProviderOptionsService>();
