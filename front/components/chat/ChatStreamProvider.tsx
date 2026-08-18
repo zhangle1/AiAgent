@@ -69,6 +69,9 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     setStreams(next);
 
     void streamCompleteChat(streamRequest, (event) => {
+      // The server emits this only after the first user message is persisted. Refreshing here
+      // makes a brand-new conversation appear in the sidebar while the answer is still streaming.
+      if (event.type === "session_ready") window.dispatchEvent(new Event("aiagent:sessions-updated"));
       update(streamId, (current) => ({
         ...current,
         status: event.type === "error" ? "error" : current.status,

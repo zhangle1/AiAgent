@@ -118,6 +118,7 @@ public sealed class ChatAppService : IDynamicApiController
         await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
         await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+        await WriteSseAsync(response, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
         await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
         var content = new System.Text.StringBuilder();

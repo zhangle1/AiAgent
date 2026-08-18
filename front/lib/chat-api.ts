@@ -181,7 +181,7 @@ export async function getChatUploadText(attachmentId: string, adminUserId?: stri
 }
 
 export type ChatStreamEvent = {
-  type: "debug_trace" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
+  type: "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
   debug_trace?: ChatDebugTraceEvent | null;
   label?: string | null;
   content?: string;

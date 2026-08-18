@@ -121,6 +121,7 @@ public sealed class ChatWebSocketHandler
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+            await SendEventAsync(socket, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             await SendTraceAsync(socket, trace?.Complete("auth_session_context"), cancellationToken);
             var content = new StringBuilder();
