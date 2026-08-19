@@ -53,8 +53,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     if (!sessionId) throw new Error("Chat session is required.");
     if (Object.values(streamsRef.current).some((stream) => stream.sessionId === sessionId && stream.status === "streaming"))
       throw new Error("This session already has an active stream.");
-    if (Object.values(streamsRef.current).filter((stream) => stream.status === "streaming").length >= 3)
-      throw new Error("A user can run at most 3 chat sessions at the same time.");
+    if (Object.values(streamsRef.current).filter((stream) => stream.status === "streaming").length >= 10)
+      throw new Error("A user can run at most 10 chat sessions at the same time.");
 
     const streamId = createStreamId();
     const controller = new AbortController();

@@ -57,8 +57,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         _turnIdleTimeout = TimeSpan.FromSeconds(Math.Min(configuredIdleTimeoutSeconds, configuredTurnTimeoutSeconds));
         _turnTimeout = TimeSpan.FromSeconds(configuredTurnTimeoutSeconds);
         _maxSessionsPerUser = int.TryParse(_configuration["Codex:MaxSessionsPerUser"], out var configuredMaxSessions)
-            ? Math.Clamp(configuredMaxSessions, 1, 3)
-            : 3;
+            ? Math.Clamp(configuredMaxSessions, 1, 10)
+            : 10;
         _leaseReaper = new Timer(_ => ReapExpiredLeases(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 

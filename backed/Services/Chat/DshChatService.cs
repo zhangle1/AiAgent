@@ -598,7 +598,7 @@ public sealed class DshChatService : IDshChatService, IDisposable
                 throw new InvalidOperationException("DeepSeek Harness requires Dsh:ApiKey or DEEPSEEK_API_KEY for the deepseek-official provider.");
             }
             var seconds = int.TryParse(configuration["Dsh:RuntimeLeaseSeconds"], out var configuredSeconds) ? Math.Clamp(configuredSeconds, 30, 600) : 90;
-            var maxSessions = int.TryParse(configuration["Dsh:MaxSessionsPerUser"], out var configuredMaxSessions) ? Math.Clamp(configuredMaxSessions, 1, 3) : 3;
+            var maxSessions = int.TryParse(configuration["Dsh:MaxSessionsPerUser"], out var configuredMaxSessions) ? Math.Clamp(configuredMaxSessions, 1, 10) : 10;
             return new DshRuntimeSettings(command.Trim(), configPath, provider.Trim(), model.Trim(), apiKey, baseUrl, permissionMode, sessionRoot, TimeSpan.FromSeconds(seconds), maxSessions);
         }
 
