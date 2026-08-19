@@ -1924,10 +1924,58 @@ function EmptyState({ title }: { title: string }) {
   );
 }
 
+function copyPlainText(value: string) {
+  const plainText = value
+    .replace(/```[^\n]*\n([\s\S]*?)```/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]*>/g, "")
+    .replace(/(^|\n)#{1,6}\s+/g, "$1")
+    .replace(/(^|\n)\s*(?:[-*+]\s+|\d+[.)]\s+)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  return navigator.clipboard?.writeText(plainText);
+}
+
 function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [selectionCopy, setSelectionCopy] = useState<{ text: string; top: number; left: number } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!selectionCopy) return;
+    const dismiss = () => setSelectionCopy(null);
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismiss);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
+  }, [selectionCopy]);
+
+  function showSelectionCopyMenu() {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    if (!text || !selection?.rangeCount || !contentRef.current?.contains(selection.anchorNode)) {
+      setSelectionCopy(null);
+      return;
+    }
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    setCopied(false);
+    setSelectionCopy({ text, top: Math.max(8, rect.top - 42), left: Math.min(window.innerWidth - 104, Math.max(8, rect.left + rect.width / 2 - 44)) });
+  }
+
+  async function copySelection() {
+    if (!selectionCopy) return;
+    await navigator.clipboard?.writeText(selectionCopy.text);
+    setCopied(true);
+    window.setTimeout(() => setSelectionCopy(null), 900);
+  }
+
   return (
     <article className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`${isUser ? "max-w-[82%] rounded-2xl bg-blue-600 px-4 py-3 text-[13px] leading-6 text-white" : "w-full max-w-[860px] text-zinc-900"}`}>
@@ -1967,7 +2015,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
             )}
           </>
         ) : (
-          <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
+          <div ref={contentRef} onMouseUp={showSelectionCopyMenu} className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
         )}
         {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
@@ -2008,7 +2056,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
               <Activity size={14} />
             </button>
             {canCopy && (
-              <button type="button" onClick={() => void navigator.clipboard?.writeText(message.content)} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-zinc-100" aria-label="Copy">
+              <button type="button" onClick={() => void copyPlainText(message.content)} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-zinc-100" aria-label="复制纯文本" title="复制纯文本">
                 <Copy size={14} />
               </button>
             )}
@@ -2020,6 +2068,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
           </div>
         )}
       </div>
+      {selectionCopy && <div style={{ top: selectionCopy.top, left: selectionCopy.left }} className="fixed z-[90] rounded-lg bg-slate-900 p-1 shadow-lg"><button type="button" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => void copySelection()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-white hover:bg-slate-700">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "已复制" : "复制"}</button></div>}
     </article>
   );
 }
