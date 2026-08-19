@@ -34,6 +34,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     private readonly object _leaseSync = new();
     private readonly Timer _leaseReaper;
     private readonly TimeSpan _leaseTtl;
+    private readonly TimeSpan _turnIdleTimeout;
+    private readonly TimeSpan _turnTimeout;
     private readonly int _maxSessionsPerUser;
 
     public CodexChatService(ISqlSugarClient db, IConfiguration configuration, ICodexModelPolicyService modelPolicy, IImageOcrService imageOcr)
@@ -46,6 +48,14 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             ? Math.Clamp(seconds, 30, 600)
             : 90;
         _leaseTtl = TimeSpan.FromSeconds(configuredLeaseSeconds);
+        var configuredIdleTimeoutSeconds = int.TryParse(_configuration["Codex:TurnIdleTimeoutSeconds"], out var idleTimeoutSeconds)
+            ? Math.Clamp(idleTimeoutSeconds, 30, 1800)
+            : 300;
+        var configuredTurnTimeoutSeconds = int.TryParse(_configuration["Codex:TurnTimeoutSeconds"], out var turnTimeoutSeconds)
+            ? Math.Clamp(turnTimeoutSeconds, 60, 7200)
+            : 1800;
+        _turnIdleTimeout = TimeSpan.FromSeconds(Math.Min(configuredIdleTimeoutSeconds, configuredTurnTimeoutSeconds));
+        _turnTimeout = TimeSpan.FromSeconds(configuredTurnTimeoutSeconds);
         _maxSessionsPerUser = int.TryParse(_configuration["Codex:MaxSessionsPerUser"], out var configuredMaxSessions)
             ? Math.Clamp(configuredMaxSessions, 1, 3)
             : 3;
@@ -182,7 +192,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 throw new InvalidOperationException($"A user can keep at most {_maxSessionsPerUser} active Codex sessions.");
             }
 
-            var created = new CodexRuntimeLease(normalizedUserId, command, workspacePath, model.ProfileName, sandboxMode);
+            var created = new CodexRuntimeLease(normalizedUserId, command, workspacePath, model.ProfileName, sandboxMode, _turnIdleTimeout, _turnTimeout);
             _runtimeLeases[key] = created;
             return created;
         }
@@ -347,11 +357,14 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         var previousSessionId = GetExecSessionId(request.RuntimeUserId, request.SessionId, profileName);
         // Third-party profiles receive the OCR prompt augmentation only. Do not pass --image because a profile is not assumed to support Codex's local-image contract.
         using var process = StartCodexExec(ResolveCodexCommand(), workspacePath, profileName, sandboxMode, model.AppServerModelId, model.ReasoningEffort, previousSessionId, []);
-        using var cancelRegistration = cancellationToken.Register(() => TryKillProcess(process));
+        using var turnTimeout = new CancellationTokenSource(_turnTimeout);
+        using var executionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, turnTimeout.Token);
+        var executionToken = executionCancellation.Token;
+        using var cancelRegistration = executionToken.Register(() => TryKillProcess(process));
         var stderrTask = process.StandardError.ReadToEndAsync();
         var state = new CodexExecRunState();
         await process.StandardInput.WriteLineAsync(BuildPromptText(request));
-        await process.StandardInput.FlushAsync(cancellationToken);
+        await process.StandardInput.FlushAsync(executionToken);
         process.StandardInput.Close();
         await EmitAsync(onEvent, new AgentStreamEvent
         {
@@ -363,21 +376,35 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         }, cancellationToken);
 
         var elapsed = Stopwatch.StartNew();
-        while (true)
+        var lastCliOutputAt = elapsed.Elapsed;
+        try
         {
-            var lineTask = process.StandardOutput.ReadLineAsync(cancellationToken).AsTask();
-            while (!lineTask.IsCompleted)
+            while (true)
             {
-                var completedTask = await Task.WhenAny(lineTask, Task.Delay(TimeSpan.FromSeconds(8), cancellationToken));
-                if (completedTask == lineTask) break;
-                await EmitAsync(onEvent, ExecTraceEvent($"{model.Name} 正在处理请求（已运行 {Math.Max(1, (int)elapsed.Elapsed.TotalSeconds)} 秒，等待 CLI 新事件）。", model, profileName), cancellationToken);
-            }
+                var lineTask = process.StandardOutput.ReadLineAsync(executionToken).AsTask();
+                while (!lineTask.IsCompleted)
+                {
+                    var completedTask = await Task.WhenAny(lineTask, Task.Delay(TimeSpan.FromSeconds(8), executionToken));
+                    if (completedTask == lineTask) break;
+                    if (elapsed.Elapsed - lastCliOutputAt >= _turnIdleTimeout)
+                    {
+                        TryKillProcess(process);
+                        throw new CodexExecutionTimeoutException($"Codex stopped after receiving no CLI output for {(int)_turnIdleTimeout.TotalSeconds} seconds. Please retry the task.");
+                    }
+                    await EmitAsync(onEvent, ExecTraceEvent($"{model.Name} 正在处理请求（已运行 {Math.Max(1, (int)elapsed.Elapsed.TotalSeconds)} 秒，等待 CLI 新事件）。", model, profileName), cancellationToken);
+                }
 
-            var line = await lineTask;
-            if (line == null) break;
-            await HandleExecJsonLineAsync(line, state, model, profileName, onEvent, cancellationToken);
+                var line = await lineTask;
+                if (line == null) break;
+                lastCliOutputAt = elapsed.Elapsed;
+                await HandleExecJsonLineAsync(line, state, model, profileName, onEvent, executionToken);
+            }
+            await process.WaitForExitAsync(executionToken);
         }
-        await process.WaitForExitAsync(cancellationToken);
+        catch (OperationCanceledException) when (turnTimeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new CodexExecutionTimeoutException($"Codex exceeded the maximum execution time of {(int)_turnTimeout.TotalSeconds} seconds. Please retry the task.");
+        }
         var stderr = await stderrTask;
         if (process.ExitCode != 0)
         {
@@ -651,24 +678,24 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         await process.StandardInput.FlushAsync(cancellationToken);
     }
 
-    private static async Task<JsonElement> ReadResponseAsync(StreamReader stdout, int requestId, CodexRunState state, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
+    private static async Task<JsonElement> ReadResponseAsync(StreamReader stdout, int requestId, CodexRunState state, AgentStreamEventHandler? onEvent, TimeSpan idleTimeout, CancellationToken cancellationToken)
     {
         while (true)
         {
-            using var document = await ReadMessageAsync(stdout, cancellationToken);
+            using var document = await ReadMessageAsync(stdout, idleTimeout, cancellationToken);
             var root = document.RootElement;
             if (TryGetResponse(root, requestId, out var result)) return result;
             await HandleNotificationAsync(root, state, onEvent, cancellationToken);
         }
     }
 
-    private static async Task ReadTurnAsync(StreamReader stdout, int requestId, CodexRunState state, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
+    private static async Task ReadTurnAsync(StreamReader stdout, int requestId, CodexRunState state, AgentStreamEventHandler? onEvent, TimeSpan idleTimeout, CancellationToken cancellationToken)
     {
         var requestAccepted = false;
         var turnCompleted = false;
         while (true)
         {
-            using var document = await ReadMessageAsync(stdout, cancellationToken);
+            using var document = await ReadMessageAsync(stdout, idleTimeout, cancellationToken);
             var root = document.RootElement;
             if (TryGetResponse(root, requestId, out _))
             {
@@ -682,9 +709,19 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         }
     }
 
-    private static async Task<JsonDocument> ReadMessageAsync(StreamReader stdout, CancellationToken cancellationToken)
+    private static async Task<JsonDocument> ReadMessageAsync(StreamReader stdout, TimeSpan idleTimeout, CancellationToken cancellationToken)
     {
-        var line = await stdout.ReadLineAsync(cancellationToken);
+        using var idleCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        idleCancellation.CancelAfter(idleTimeout);
+        string? line;
+        try
+        {
+            line = await stdout.ReadLineAsync(idleCancellation.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && idleCancellation.IsCancellationRequested)
+        {
+            throw new CodexExecutionTimeoutException($"Codex stopped after receiving no app-server event for {(int)idleTimeout.TotalSeconds} seconds. Please retry the task.");
+        }
         if (line == null) throw new InvalidOperationException("Codex app-server closed before the task completed.");
         try { return JsonDocument.Parse(line); }
         catch (JsonException) { throw new InvalidOperationException("Codex app-server returned an invalid protocol message."); }
@@ -873,10 +910,10 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         private DateTime _lastHeartbeatUtc = DateTime.UtcNow;
         private bool _disposed;
 
-        public CodexRuntimeLease(string userId, string command, string workspacePath, string? profileName, string sandboxMode)
+        public CodexRuntimeLease(string userId, string command, string workspacePath, string? profileName, string sandboxMode, TimeSpan turnIdleTimeout, TimeSpan turnTimeout)
         {
             UserId = userId;
-            _pool = new CodexAppServerPool(command, workspacePath, profileName, sandboxMode, 1);
+            _pool = new CodexAppServerPool(command, workspacePath, profileName, sandboxMode, turnIdleTimeout, turnTimeout, 1);
         }
 
         public string UserId { get; }
@@ -947,16 +984,20 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         private readonly string _workspacePath;
         private readonly string? _profileName;
         private readonly string _sandboxMode;
+        private readonly TimeSpan _turnIdleTimeout;
+        private readonly TimeSpan _turnTimeout;
         private readonly ConcurrentQueue<CodexAppServerWorker> _idleWorkers = new();
         private readonly SemaphoreSlim _capacity;
         private int _leasedWorkers;
 
-        public CodexAppServerPool(string command, string workspacePath, string? profileName, string sandboxMode, int maxWorkers)
+        public CodexAppServerPool(string command, string workspacePath, string? profileName, string sandboxMode, TimeSpan turnIdleTimeout, TimeSpan turnTimeout, int maxWorkers)
         {
             _command = command;
             _workspacePath = workspacePath;
             _profileName = profileName;
             _sandboxMode = sandboxMode;
+            _turnIdleTimeout = turnIdleTimeout;
+            _turnTimeout = turnTimeout;
             _capacity = new SemaphoreSlim(maxWorkers, maxWorkers);
         }
 
@@ -986,7 +1027,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
 
             try
             {
-                var worker = await CodexAppServerWorker.CreateAsync(_command, _workspacePath, _profileName, _sandboxMode, cancellationToken);
+                var worker = await CodexAppServerWorker.CreateAsync(_command, _workspacePath, _profileName, _sandboxMode, _turnIdleTimeout, _turnTimeout, cancellationToken);
                 Interlocked.Increment(ref _leasedWorkers);
                 return worker;
             }
@@ -1019,14 +1060,18 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         private readonly Process _process;
         private readonly StreamReader _stdout;
         private readonly string _sandboxMode;
+        private readonly TimeSpan _turnIdleTimeout;
+        private readonly TimeSpan _turnTimeout;
         private int _nextRequestId;
         private bool _usable = true;
 
-        private CodexAppServerWorker(Process process, string sandboxMode)
+        private CodexAppServerWorker(Process process, string sandboxMode, TimeSpan turnIdleTimeout, TimeSpan turnTimeout)
         {
             _process = process;
             _stdout = process.StandardOutput;
             _sandboxMode = sandboxMode;
+            _turnIdleTimeout = turnIdleTimeout;
+            _turnTimeout = turnTimeout;
             _ = DrainStderrAsync(process.StandardError, CancellationToken.None);
         }
 
@@ -1039,9 +1084,9 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             }
         }
 
-        public static async Task<CodexAppServerWorker> CreateAsync(string command, string workspacePath, string? profileName, string sandboxMode, CancellationToken cancellationToken)
+        public static async Task<CodexAppServerWorker> CreateAsync(string command, string workspacePath, string? profileName, string sandboxMode, TimeSpan turnIdleTimeout, TimeSpan turnTimeout, CancellationToken cancellationToken)
         {
-            var worker = new CodexAppServerWorker(StartCodex(command, workspacePath, profileName, sandboxMode), sandboxMode);
+            var worker = new CodexAppServerWorker(StartCodex(command, workspacePath, profileName, sandboxMode), sandboxMode, turnIdleTimeout, turnTimeout);
             try
             {
                 var initializeRequestId = worker.NextRequestId();
@@ -1051,7 +1096,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                     id = initializeRequestId,
                     @params = new { clientInfo = new { name = "aiagent", title = "AiAgent", version = "1.0" } }
                 }, cancellationToken);
-                await ReadResponseAsync(worker._stdout, initializeRequestId, new CodexRunState(), null, cancellationToken);
+                await ReadResponseAsync(worker._stdout, initializeRequestId, new CodexRunState(), null, turnIdleTimeout, cancellationToken);
                 await SendAsync(worker._process, new { method = "initialized" }, cancellationToken);
                 return worker;
             }
@@ -1067,6 +1112,10 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         {
             if (!IsUsable) throw new InvalidOperationException("Codex app-server worker is unavailable.");
             var state = new CodexRunState();
+            using var turnTimeout = new CancellationTokenSource(_turnTimeout);
+            using var executionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, turnTimeout.Token);
+            var executionToken = executionCancellation.Token;
+            using var cancelRegistration = executionToken.Register(() => TryKillProcess(_process));
             try
             {
                 var threadRequestId = NextRequestId();
@@ -1080,8 +1129,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 };
                 if (!string.IsNullOrWhiteSpace(model.AppServerModelId)) threadParameters["model"] = model.AppServerModelId;
                 if (!string.IsNullOrWhiteSpace(model.ReasoningEffort)) threadParameters["modelReasoningEffort"] = model.ReasoningEffort;
-                await SendAsync(_process, new { method = "thread/start", id = threadRequestId, @params = threadParameters }, cancellationToken);
-                var threadResponse = await ReadResponseAsync(_stdout, threadRequestId, state, onEvent, cancellationToken);
+                await SendAsync(_process, new { method = "thread/start", id = threadRequestId, @params = threadParameters }, executionToken);
+                var threadResponse = await ReadResponseAsync(_stdout, threadRequestId, state, onEvent, _turnIdleTimeout, executionToken);
                 var threadId = ReadRequiredString(threadResponse, "thread", "id");
 
                 var turnRequestId = NextRequestId();
@@ -1098,9 +1147,14 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                         approvalPolicy = "never",
                         sandboxPolicy = new { type = ToAppServerSandboxPolicy(_sandboxMode) }
                     }
-                }, cancellationToken);
-                await ReadTurnAsync(_stdout, turnRequestId, state, onEvent, cancellationToken);
+                }, executionToken);
+                await ReadTurnAsync(_stdout, turnRequestId, state, onEvent, _turnIdleTimeout, executionToken);
                 return state;
+            }
+            catch (OperationCanceledException) when (turnTimeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                _usable = false;
+                throw new CodexExecutionTimeoutException($"Codex exceeded the maximum execution time of {(int)_turnTimeout.TotalSeconds} seconds. Please retry the task.");
             }
             catch
             {
@@ -1125,6 +1179,11 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 _process.Dispose();
             }
         }
+    }
+
+    private sealed class CodexExecutionTimeoutException : TimeoutException
+    {
+        public CodexExecutionTimeoutException(string message) : base(message) { }
     }
 
     private sealed class CodexRunState
