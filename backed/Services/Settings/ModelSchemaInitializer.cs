@@ -9,6 +9,7 @@ using AiAgent.Backend.Entities.Memory;
 using AiAgent.Backend.Entities.PromptTemplate;
 using AiAgent.Backend.Entities.Push;
 using AiAgent.Backend.Entities.Task;
+using AiAgent.Backend.Entities.WorkCanvas;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.Settings;
@@ -73,6 +74,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiPushOutboxMessage),
             typeof(AiPushAuditLog),
             typeof(AiDingTalkGroupAgentSession));
+        _db.CodeFirst.InitTables(typeof(AiWorkCanvas), typeof(AiWorkCanvasNode), typeof(AiWorkCanvasEdge));
 
         // InitTables creates the table for a new database. Existing tables need
         // an explicit additive migration because SqlSugar does not reliably add

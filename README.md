@@ -8,6 +8,7 @@
 
 ## 当前能力
 
+- 多会话工作画布：在 `/work-canvas` 创建多个个人画布，把已有会话作为节点加入并拖拽布局；支持项目/关键词筛选、实时运行状态、会话检查器和跳回完整聊天。画布只引用当前用户有权访问的会话，不复制消息，也不绕过现有 Agent 并发与权限控制。
 - Codex 图片上下文：选择 Codex 本地代理后，聊天框可上传 PNG、JPEG、WebP 或 GIF 截图；后端校验文件签名并以受控 `localImage` 输入传给原生 Codex，不会将浏览器提供的路径交给 CLI。第三方 Codex profile 可选择启用本机 PaddleOCR，将带不可信边界的识别文本附加到 prompt，而不假定该 profile 支持图片参数。
 
 - 模型服务配置：LLM、Embedding、Search、TTS、STT、图像与视频模型。
