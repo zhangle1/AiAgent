@@ -83,10 +83,10 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
             EstimatedTurnCount = SqlFunc.AggregateSum(item.IsEstimated ? 1 : 0)
         }).First();
         var activityByDay = query
-            .GroupBy(item => SqlFunc.DateValue(item.CreatedAt))
+            .GroupBy(item => SqlFunc.ToDateShort(item.CreatedAt))
             .Select(item => new UsageActivityAggregateRow
             {
-                Date = SqlFunc.DateValue(item.CreatedAt),
+                Date = SqlFunc.ToDateShort(item.CreatedAt),
                 TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
                 TurnCount = SqlFunc.AggregateCount(item.Id)
             })
