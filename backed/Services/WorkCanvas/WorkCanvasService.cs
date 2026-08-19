@@ -27,7 +27,7 @@ public sealed class WorkCanvasService : IWorkCanvasService
 
     public List<WorkCanvasSummaryDto> List(AuthenticatedUser user)
     {
-        var canvases = _db.Queryable<AiWorkCanvas>().Where(x => x.UserId == user.Id && x.IsArchived != true).OrderByDescending(x => x.UpdatedAt).ToList();
+        var canvases = _db.Queryable<AiWorkCanvas>().Where(x => x.UserId == user.Id && (x.IsArchived == false || x.IsArchived == null)).OrderByDescending(x => x.UpdatedAt).ToList();
         var ids = canvases.Select(x => x.Id).ToList();
         var counts = ids.Count == 0 ? new Dictionary<string, int>() : _db.Queryable<AiWorkCanvasNode>().Where(x => ids.Contains(x.CanvasId)).GroupBy(x => x.CanvasId).Select(x => new { CanvasId = x.CanvasId, Count = SqlFunc.AggregateCount(x.Id) }).ToList().ToDictionary(x => x.CanvasId, x => x.Count);
         return canvases.Select(x => Summary(x, counts.GetValueOrDefault(x.Id))).ToList();
@@ -36,7 +36,7 @@ public sealed class WorkCanvasService : IWorkCanvasService
     public WorkCanvasSnapshotDto Create(AuthenticatedUser user, CreateWorkCanvasRequest request)
     {
         var name = string.IsNullOrWhiteSpace(request.Name) ? "新建工作画布" : request.Name.Trim();
-        var canvas = new AiWorkCanvas { UserId = user.Id, Name = name[..Math.Min(160, name.Length)], ScopeProjectId = request.ScopeProjectId, Version = 1 };
+        var canvas = new AiWorkCanvas { UserId = user.Id, Name = name[..Math.Min(160, name.Length)], ScopeProjectId = request.ScopeProjectId, Version = 1, IsArchived = false };
         _db.Insertable(canvas).ExecuteCommand();
         return Snapshot(canvas, [], []);
     }
@@ -118,7 +118,7 @@ public sealed class WorkCanvasService : IWorkCanvasService
         return canvas.Version;
     }
 
-    private AiWorkCanvas? Owned(AuthenticatedUser user, string id) => _db.Queryable<AiWorkCanvas>().First(x => x.Id == id && x.UserId == user.Id && x.IsArchived != true);
+    private AiWorkCanvas? Owned(AuthenticatedUser user, string id) => _db.Queryable<AiWorkCanvas>().First(x => x.Id == id && x.UserId == user.Id && (x.IsArchived == false || x.IsArchived == null));
     private void Touch(AiWorkCanvas canvas) { canvas.Version = (canvas.Version ?? 1) + 1; canvas.UpdatedAt = DateTime.UtcNow; _db.Updateable(canvas).UpdateColumns(x => new { x.Version, x.UpdatedAt }).ExecuteCommand(); }
     private WorkCanvasSnapshotDto Snapshot(AiWorkCanvas canvas, List<AiWorkCanvasNode> nodes, List<AiWorkCanvasEdge> edges)
     {

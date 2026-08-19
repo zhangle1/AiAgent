@@ -5,7 +5,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   if (response.status === 401 && typeof window !== "undefined") window.location.assign(buildLoginRedirect(window.location.pathname + window.location.search));
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof payload.message === "string" ? payload.message : "工作画布请求失败。");
+  if (!response.ok) throw new Error(typeof payload.message === "string" ? payload.message : `工作画布请求失败（HTTP ${response.status}）。`);
   return payload as T;
 }
 
