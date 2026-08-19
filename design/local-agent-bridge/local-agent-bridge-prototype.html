@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AiAgent · 本地工作区连接器</title>
+  <style>
+    :root{--bg:#f4f6f9;--panel:#fff;--ink:#172033;--muted:#667085;--line:#e5e9f0;--blue:#315efb;--blue2:#eef3ff;--green:#13966f;--amber:#b76e00;--red:#d14343;--shadow:0 8px 28px rgba(24,39,75,.07)}
+    *{box-sizing:border-box} body{margin:0;font:14px/1.5 Inter,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+    button,select{font:inherit} button{cursor:pointer}.app{display:grid;grid-template-columns:228px 1fr;min-height:100vh}.side{background:#111827;color:#d7dce5;padding:24px 16px;display:flex;flex-direction:column}.brand{display:flex;gap:11px;align-items:center;padding:0 10px 28px;font-size:17px;font-weight:700;color:white}.mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#6688ff,#315efb);display:grid;place-items:center}.nav{display:grid;gap:6px}.nav button{border:0;background:transparent;color:#aeb7c6;text-align:left;padding:11px 12px;border-radius:9px}.nav button.active{background:#24304a;color:#fff}.nav button:hover{color:white}.side-foot{margin-top:auto;padding:14px 10px;border-top:1px solid #293143;color:#9aa4b4;font-size:12px}.main{min-width:0}.top{height:68px;background:white;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 30px}.crumb{font-weight:650;font-size:16px}.user{display:flex;align-items:center;gap:10px;color:var(--muted)}.avatar{width:31px;height:31px;border-radius:50%;background:#e6ebff;color:var(--blue);display:grid;place-items:center;font-weight:700}.content{padding:28px 30px 50px;max-width:1440px;margin:auto}.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:24px}.hero h1{font-size:25px;margin:0 0 7px}.hero p{margin:0;color:var(--muted)}.actions{display:flex;gap:10px}.btn{border:1px solid var(--line);background:white;border-radius:9px;padding:9px 14px;color:var(--ink)}.btn.primary{background:var(--blue);border-color:var(--blue);color:white}.btn.danger{color:var(--red);border-color:#f2caca;background:#fffafa}.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.75fr);gap:18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow)}.card-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}.card-head h2{font-size:15px;margin:0}.card-body{padding:20px}.status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--green);background:#edf9f5;padding:5px 9px;border-radius:20px}.dot{width:7px;height:7px;border-radius:50%;background:currentColor}.status.paused{color:var(--amber);background:#fff7e8}.device{display:flex;gap:16px;align-items:center}.device-icon{width:48px;height:48px;border-radius:12px;background:var(--blue2);display:grid;place-items:center;font-size:22px}.device h3{margin:0 0 3px;font-size:16px}.meta{color:var(--muted);font-size:12px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.metric{background:#f8f9fb;border-radius:9px;padding:12px}.metric b{display:block;font-size:17px}.metric span{font-size:12px;color:var(--muted)}.section-title{display:flex;justify-content:space-between;align-items:center;margin:26px 0 11px}.section-title h3{margin:0;font-size:14px}.workspace{border:1px solid var(--line);border-radius:10px;padding:13px 14px;display:flex;align-items:center;gap:12px;margin-top:9px;cursor:pointer}.workspace.selected{border-color:#8ca4ff;background:#f7f9ff}.folder{font-size:20px}.grow{flex:1;min-width:0}.workspace b{display:block}.path{font:12px ui-monospace,Consolas,monospace;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pill{font-size:11px;padding:3px 7px;border-radius:12px;background:#f0f2f5;color:#586174}.session-box{border:1px solid #cfd9ff;background:#f7f9ff;border-radius:11px;padding:15px}.row{display:flex;justify-content:space-between;align-items:center;gap:12px}.session-box h3{margin:0;font-size:15px}.select{border:1px solid var(--line);background:white;padding:7px 9px;border-radius:8px}.scope{display:grid;gap:8px;margin-top:14px}.scope-line{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}.scope-line strong{color:var(--ink)}.warning{margin-top:14px;padding:10px;border-radius:8px;background:#fff6e5;color:#875b08;font-size:12px}.log-list{display:grid;gap:0}.log{display:grid;grid-template-columns:29px 1fr auto;gap:10px;padding:13px 0;border-bottom:1px solid var(--line)}.log:last-child{border:0}.log-icon{width:27px;height:27px;border-radius:8px;background:#eff3f8;display:grid;place-items:center}.log-title{font-weight:600}.log-detail{font:12px ui-monospace,Consolas,monospace;color:var(--muted);margin-top:2px}.time{font-size:11px;color:#98a2b3;white-space:nowrap}.risk{color:var(--amber)}.empty{padding:38px;text-align:center;color:var(--muted)}.banner{display:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding:12px 15px;border:1px solid #f2cccc;background:#fff7f7;color:#a93434;border-radius:10px}.banner.show{display:flex}.modal-wrap{display:none;position:fixed;inset:0;background:rgba(13,20,34,.48);align-items:center;justify-content:center;padding:20px;z-index:3}.modal-wrap.show{display:flex}.modal{width:min(520px,100%);background:white;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.25)}.modal h2{margin:0;padding:19px 21px;border-bottom:1px solid var(--line);font-size:17px}.modal-body{padding:20px}.modal-foot{display:flex;justify-content:flex-end;gap:9px;padding:14px 20px;border-top:1px solid var(--line)}.choice{display:flex;gap:11px;border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0}.choice input{margin-top:3px}.choice b,.choice span{display:block}.choice span{font-size:12px;color:var(--muted)}.local-note{padding:11px;background:#eef7ff;border-radius:8px;color:#315373;font-size:12px}.toast{position:fixed;right:24px;bottom:24px;background:#172033;color:white;padding:11px 15px;border-radius:9px;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}.toast.show{opacity:1;transform:none}@media(max-width:900px){.app{grid-template-columns:1fr}.side{display:none}.grid{grid-template-columns:1fr}.top,.content{padding-left:18px;padding-right:18px}.hero{flex-direction:column}.metrics{grid-template-columns:1fr 1fr 1fr}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="mark">A</span> AiAgent</div>
+    <nav class="nav"><button>工作台</button><button>AI 会话</button><button class="active">本地连接器</button><button>代码仓库</button><button>审计记录</button><button>设置</button></nav>
+    <div class="side-foot">服务器运行 Codex<br/>本机保管代码与最终执行权</div>
+  </aside>
+  <main class="main">
+    <header class="top"><div class="crumb">设置 / 本地连接器</div><div class="user"><span>陈开发</span><span class="avatar">陈</span></div></header>
+    <div class="content">
+      <div id="offlineBanner" class="banner"><span>设备连接已暂停。服务器无法向此设备发送新的工作区操作。</span><button class="btn" onclick="toggleDevice()">恢复连接</button></div>
+      <section class="hero"><div><h1>本地工作区连接器</h1><p>Codex 在服务器运行，文件与命令在你的电脑、你的授权边界内执行。</p></div><div class="actions"><button class="btn" onclick="openBind()">＋ 绑定新设备</button><button class="btn primary" onclick="openGrant()">＋ 授权工作区</button></div></section>
+      <div class="grid">
+        <section class="card">
+          <div class="card-head"><h2>当前设备</h2><span id="deviceStatus" class="status"><i class="dot"></i><span>在线</span></span></div>
+          <div class="card-body">
+            <div class="device"><div class="device-icon">▣</div><div class="grow"><h3>CHEN-LAPTOP</h3><div class="meta">Windows 11 · Local Agent 0.1.0 · 上次心跳：刚刚</div></div><button id="pauseBtn" class="btn" onclick="toggleDevice()">暂停连接</button></div>
+            <div class="metrics"><div class="metric"><b id="workspaceCount">2</b><span>授权工作区</span></div><div class="metric"><b>1</b><span>活动会话</span></div><div class="metric"><b>18 ms</b><span>连接延迟</span></div></div>
+            <div class="section-title"><h3>已授权工作区</h3><span class="meta">真实路径仅保存在本机</span></div>
+            <div id="workspaces">
+              <div class="workspace selected" onclick="selectWorkspace(this,'AiAgent 主仓库','workspace-write')"><span class="folder">📁</span><div class="grow"><b>AiAgent 主仓库</b><div class="path">D:\AiAgent\Project\AIAGENT\ai-agents</div></div><span class="pill">可写</span></div>
+              <div class="workspace" onclick="selectWorkspace(this,'支付服务','read-only')"><span class="folder">📁</span><div class="grow"><b>支付服务</b><div class="path">D:\Projects\payment-service</div></div><span class="pill">只读</span></div>
+            </div>
+          </div>
+        </section>
+        <aside class="card">
+          <div class="card-head"><h2>活动会话</h2><span class="status"><i class="dot"></i>执行中</span></div>
+          <div class="card-body">
+            <div class="session-box"><div class="row"><div><div class="meta">会话 #A-2048</div><h3>实现本地连接器原型</h3></div><span class="pill">Codex</span></div>
+              <div class="scope"><div class="scope-line"><span>执行设备</span><strong>CHEN-LAPTOP</strong></div><div class="scope-line"><span>工作区</span><strong id="sessionWorkspace">AiAgent 主仓库</strong></div><div class="scope-line"><span>权限档位</span><select id="permission" class="select" onchange="permissionChanged()"><option value="read-only">只读</option><option selected value="workspace-write">工作区可写</option><option value="full-access">高级权限</option></select></div></div>
+              <div id="permissionNote" class="warning">可读取和修改授权目录；测试与高风险命令仍需本机审批。</div>
+            </div>
+            <div class="section-title"><h3>实时执行</h3><button class="btn danger" onclick="emergencyStop()">紧急断开</button></div>
+            <div id="logs" class="log-list">
+              <div class="log"><span class="log-icon">✓</span><div><div class="log-title">读取设计规范</div><div class="log-detail">fs.read · AGENTS.md</div></div><span class="time">14:32:08</span></div>
+              <div class="log"><span class="log-icon">✓</span><div><div class="log-title">搜索相关模块</div><div class="log-detail">search.rg · LocalAgent</div></div><span class="time">14:32:11</span></div>
+              <div class="log"><span class="log-icon">↻</span><div><div class="log-title">应用文件补丁</div><div class="log-detail">fs.patch · 3 files</div></div><span class="time">进行中</span></div>
+            </div>
+            <button class="btn" style="width:100%;margin-top:15px" onclick="simulateRisk()">模拟下一次高风险操作</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="grantModal" class="modal-wrap"><div class="modal"><h2>授权一个本地工作区</h2><div class="modal-body"><div class="local-note">目录选择器将在 CHEN-LAPTOP 本机打开。网页不会接收或指定你的绝对路径。</div><label class="choice"><input type="radio" name="scope" value="read-only"><span><b>只读</b><span>读取文件、搜索以及查看 Git 状态和差异。</span></span></label><label class="choice"><input type="radio" name="scope" checked value="workspace-write"><span><b>工作区可写（推荐）</b><span>允许应用补丁；测试和风险命令仍按策略审批。</span></span></label><label class="choice"><input type="radio" name="scope" value="full-access"><span><b>高级权限</b><span>扩大命令能力，但永不绕过授权目录与本机审批。</span></span></label></div><div class="modal-foot"><button class="btn" onclick="closeModal('grantModal')">取消</button><button class="btn primary" onclick="grantWorkspace()">在本机选择目录</button></div></div></div>
+<div id="bindModal" class="modal-wrap"><div class="modal"><h2>绑定新设备</h2><div class="modal-body"><p>在开发者电脑安装 Local Agent，然后输入以下一次性设备码：</p><div style="font:700 28px ui-monospace;text-align:center;letter-spacing:5px;padding:18px;background:#f4f6fa;border-radius:10px">Y7KD-29QP</div><p class="meta">设备码 9 分 42 秒后失效。确认页面将显示设备名称和密钥指纹。</p></div><div class="modal-foot"><button class="btn" onclick="closeModal('bindModal')">关闭</button><button class="btn primary" onclick="toast('安装命令已复制（原型）')">复制安装命令</button></div></div></div>
+<div id="riskModal" class="modal-wrap"><div class="modal"><h2>需要在本机确认</h2><div class="modal-body"><div class="warning">高风险操作不会仅凭网页授权执行。Local Agent 已在 CHEN-LAPTOP 弹出确认窗口。</div><p><b>操作：</b>运行包含网络访问的依赖安装</p><div class="path" style="white-space:normal;background:#f6f7f9;padding:12px;border-radius:8px">npm install · cwd: AiAgent 主仓库 · timeout: 120s</div></div><div class="modal-foot"><button class="btn" onclick="denyRisk()">模拟本机拒绝</button><button class="btn primary" onclick="approveRisk()">模拟本机批准</button></div></div></div>
+<div id="toast" class="toast"></div>
+<script>
+  let online=true;
+  function openGrant(){document.getElementById('grantModal').classList.add('show')}
+  function openBind(){document.getElementById('bindModal').classList.add('show')}
+  function closeModal(id){document.getElementById(id).classList.remove('show')}
+  function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200)}
+  function toggleDevice(){online=!online;const s=document.getElementById('deviceStatus'),b=document.getElementById('pauseBtn');s.className='status '+(online?'':'paused');s.querySelector('span').textContent=online?'在线':'已暂停';b.textContent=online?'暂停连接':'恢复连接';document.getElementById('offlineBanner').classList.toggle('show',!online);toast(online?'设备已恢复连接':'已暂停接收新任务')}
+  function selectWorkspace(el,name,scope){document.querySelectorAll('.workspace').forEach(x=>x.classList.remove('selected'));el.classList.add('selected');document.getElementById('sessionWorkspace').textContent=name;document.getElementById('permission').value=scope;permissionChanged();toast('会话已切换到 '+name)}
+  function permissionChanged(){const v=document.getElementById('permission').value,n=document.getElementById('permissionNote');n.textContent=v==='read-only'?'只允许读取、搜索和查看 Git 信息，所有写入都会被本机拒绝。':v==='full-access'?'扩大命令能力，但仍限制在授权工作区；危险操作必须本机单次审批。':'可读取和修改授权目录；测试与高风险命令仍需本机审批。'}
+  function grantWorkspace(){closeModal('grantModal');const list=document.getElementById('workspaces'),div=document.createElement('div');div.className='workspace';div.onclick=()=>selectWorkspace(div,'前端实验项目','workspace-write');div.innerHTML='<span class="folder">📁</span><div class="grow"><b>前端实验项目</b><div class="path">本机路径已隐藏</div></div><span class="pill">可写</span>';list.appendChild(div);document.getElementById('workspaceCount').textContent=list.children.length;toast('已模拟授权新工作区')}
+  function simulateRisk(){document.getElementById('riskModal').classList.add('show')}
+  function approveRisk(){closeModal('riskModal');addLog('✓','依赖安装已由本机批准','process.run · npm install');toast('操作已批准并完成')}
+  function denyRisk(){closeModal('riskModal');addLog('×','本机用户拒绝高风险操作','process.denied · npm install','risk');toast('操作已拒绝')}
+  function addLog(icon,title,detail,cls=''){const l=document.getElementById('logs'),d=document.createElement('div');d.className='log '+cls;d.innerHTML='<span class="log-icon">'+icon+'</span><div><div class="log-title">'+title+'</div><div class="log-detail">'+detail+'</div></div><span class="time">刚刚</span>';l.prepend(d)}
+  function emergencyStop(){if(!online){toast('设备当前已断开');return} toggleDevice();addLog('■','会话已被开发者紧急断开','session.revoked','risk');toast('已撤销会话权限并停止派发任务')}
+  document.querySelectorAll('.modal-wrap').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
+</script>
+</body>
+</html>
