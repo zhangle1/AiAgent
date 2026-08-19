@@ -271,7 +271,7 @@ function WorkspaceSearchDialog({ projects, sessions, onClose, onSelectProject, o
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const matchingProjects = useMemo(() => projects.filter((project) => matchesWorkspaceSearch(normalizedQuery, [project.display_name, project.name, project.description, project.root_path])).sort((left, right) => left.display_name.localeCompare(right.display_name)).slice(0, 8), [normalizedQuery, projects]);
+  const matchingProjects = useMemo(() => projects.filter((project) => matchesWorkspaceSearch(normalizedQuery, [project.display_name, project.name, project.description, project.root_path])).sort((left, right) => left.display_name.localeCompare(right.display_name)), [normalizedQuery, projects]);
   const matchingSessions = useMemo(() => sessions.filter((session) => matchesWorkspaceSearch(normalizedQuery, [session.title, session.project_name, session.last_message])).sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()).slice(0, 10), [normalizedQuery, sessions]);
 
   useEffect(() => {
