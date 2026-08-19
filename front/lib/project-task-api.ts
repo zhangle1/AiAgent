@@ -19,6 +19,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 export async function listProjectTasks(projectId?: number) { return (await request<{ tasks: ProjectTask[] }>(`/api/v1/project-tasks/list${projectId ? `?projectId=${projectId}` : ""}`)).tasks; }
 export async function createProjectTask(payload: { project_id: number; title: string; description?: string; gitee_issue?: GiteeIssue }) { return (await request<{ task: ProjectTask }>("/api/v1/project-tasks/create", { method: "POST", body: JSON.stringify(payload) })).task; }
+export async function updateProjectTaskStatus(taskId: number, status: "todo" | "in_progress" | "in_review" | "done") { return (await request<{ task: ProjectTask }>(`/api/v1/project-tasks/${taskId}/status`, { method: "PATCH", body: JSON.stringify({ status }) })).task; }
+export async function deleteProjectTask(taskId: number) { return request<{ deleted: boolean }>(`/api/v1/project-tasks/${taskId}`, { method: "DELETE" }); }
 export async function importProjectTasks(payload: { projectId: number; file: File; mappings: Record<string, string> }): Promise<TaskImportResult> {
   const body = new FormData();
   body.set("project_id", String(payload.projectId));

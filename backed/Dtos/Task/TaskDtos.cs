@@ -32,6 +32,11 @@ public sealed class CreateProjectTaskRequest
     [JsonPropertyName("gitee_issue")] public GiteeIssueLinkRequest? GiteeIssue { get; set; }
 }
 
+public sealed class UpdateProjectTaskStatusRequest
+{
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+}
+
 /// <summary>用户从受控 Gitee 查询结果中主动选择的一条关联。</summary>
 public sealed class GiteeIssueLinkRequest
 {

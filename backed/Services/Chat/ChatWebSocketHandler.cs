@@ -213,6 +213,12 @@ public sealed class ChatWebSocketHandler
 
     private static string ToClientError(Exception exception, ChatCompleteRequest? request)
     {
+        if (string.Equals(request?.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase)
+            && (exception.Message.StartsWith("Codex stopped after", StringComparison.Ordinal)
+                || exception.Message.StartsWith("Codex exceeded", StringComparison.Ordinal)))
+        {
+            return exception.Message;
+        }
         if (!string.Equals(request?.Agent?.Trim(), "deepseek-harness", StringComparison.OrdinalIgnoreCase)) return "Chat request failed.";
         if (exception.Message.StartsWith("DeepSeek Harness requires Dsh:ApiKey", StringComparison.Ordinal)) return "DeepSeek Harness 缺少 Dsh:ApiKey（或后端环境变量 DEEPSEEK_API_KEY）。";
         if (exception is FileNotFoundException) return "DeepSeek Harness 找不到配置文件；请检查 Dsh:ConfigPath。";

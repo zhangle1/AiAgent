@@ -175,7 +175,7 @@ public sealed class ChatAppService : IDynamicApiController
             await WriteTraceAsync(response, trace?.Cancel("request_completed"), CancellationToken.None);
             await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             if (providerRequestStarted) await WriteTraceAsync(response, trace?.FailProvider("request_failed"), CancellationToken.None);
             await WriteTraceAsync(response, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
@@ -183,7 +183,7 @@ public sealed class ChatAppService : IDynamicApiController
             await WriteSseAsync(response, new AgentStreamEvent
             {
                 Type = "error",
-                Content = "Chat request failed."
+                Content = ToClientError(exception, request)
             }, cancellationToken);
         }
     }
@@ -300,5 +300,14 @@ public sealed class ChatAppService : IDynamicApiController
     private static Task WriteTraceAsync(HttpResponse response, AgentStreamEvent? streamEvent, CancellationToken cancellationToken)
     {
         return streamEvent is null ? Task.CompletedTask : WriteSseAsync(response, streamEvent, cancellationToken);
+    }
+
+    private static string ToClientError(Exception exception, ChatCompleteRequest request)
+    {
+        var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
+        return isCodex && (exception.Message.StartsWith("Codex stopped after", StringComparison.Ordinal)
+            || exception.Message.StartsWith("Codex exceeded", StringComparison.Ordinal))
+            ? exception.Message
+            : "Chat request failed.";
     }
 }

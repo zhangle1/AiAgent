@@ -13,7 +13,7 @@
 
 - 模型服务配置：LLM、Embedding、Search、TTS、STT、图像与视频模型。
 - Git 账号与代码库：令牌加密保存、连接测试、克隆、代码库登记、拉取与提交推送。
-- 任务面板：按代码项目创建和查看本地任务；可在新建时按项目、人员和分页条件选择一条 Gitee Issue 关联，并一键把任务上下文带入对应项目的新会话。
+- 任务面板：按代码项目创建、查看和删除本地任务；可关联 Gitee Issue 或导入企业工作项 CSV，并通过待办、进行中、待验收、已完成四列拖拽流转任务状态，一键把任务上下文带入对应项目的新会话。
 - 知识库：文档导入、解析、索引、检索与聊天问答。
 - Agent 对话：WebSocket 优先、SSE 降级，实时显示工具调用、Token 与结果。
 - 流量统计：成功完成的自有 Agent 与第三方代理轮次会写入用户隔离的 Token 账本，可按代理、模型和日期查看趋势。
@@ -102,7 +102,7 @@ npm run dev
 
 选择 Codex 本地代理时，点击聊天输入框左下角的图片按钮，或在输入区按 `Ctrl+V`，即可附加截图。默认最多 4 张、单张最大 10 MB，支持 PNG、JPEG、WebP、GIF；未发送图片暂存于后端 `data/chat_attachments`，发送后的图片会迁移到按用户和会话隔离的历史目录，并随聊天记录回显。CodeBuddy 当前未验证图片输入协议，因此不能使用该功能。
 
-后端运行账户需要能够执行 Codex CLI，且已经完成 Codex 登录。默认执行 `codex app-server --stdio`；若 `codex` 不在后端账户的 `PATH` 中，设置 `AIAGENT_CODEX_COMMAND` 为可执行文件的绝对路径，或在后端配置中设置 `Codex:Command`。每个已登录用户的浏览器页签会保留一个已初始化的 CLI，页签每 25 秒发送一次心跳；停止心跳超过 90 秒才回收。用户最多同时保留和运行 3 个 Codex 会话，可通过 `Codex:RuntimeLeaseSeconds` 与 `Codex:MaxSessionsPerUser` 配置。首次使用页签仍会有一次 CLI 冷启动。聊天窗口选择“Codex 本地”后可选择执行权限：默认“完全控制”会传入 `--dangerously-bypass-approvals-and-sandbox`，另可切换为“工作区写入”或“只读分析”。完全控制会以后端服务账户的身份不受沙箱和逐步审批限制地执行，请只选择允许 Codex 修改的受信任项目目录。
+后端运行账户需要能够执行 Codex CLI，且已经完成 Codex 登录。默认执行 `codex app-server --stdio`；若 `codex` 不在后端账户的 `PATH` 中，设置 `AIAGENT_CODEX_COMMAND` 为可执行文件的绝对路径，或在后端配置中设置 `Codex:Command`。每个已登录用户的浏览器页签会保留一个已初始化的 CLI，页签每 25 秒发送一次心跳；停止心跳超过 90 秒才回收。用户最多同时保留和运行 3 个 Codex 会话，可通过 `Codex:RuntimeLeaseSeconds` 与 `Codex:MaxSessionsPerUser` 配置。`Codex:TurnIdleTimeoutSeconds`（默认 300 秒）限制连续无 CLI/app-server 事件的等待，`Codex:TurnTimeoutSeconds`（默认 1800 秒）限制单次任务总时长；任一超时都会终止对应 CLI，下一次任务会创建新的 worker。首次使用页签仍会有一次 CLI 冷启动。聊天窗口选择“Codex 本地”后可选择执行权限：默认“完全控制”会传入 `--dangerously-bypass-approvals-and-sandbox`，另可切换为“工作区写入”或“只读分析”。完全控制会以后端服务账户的身份不受沙箱和逐步审批限制地执行，请只选择允许 Codex 修改的受信任项目目录。
 
 第三方 profile 的图片 OCR 默认关闭。管理员在“第三方代理”设置中启用后，按 `backed/PythonWorkers/ocr/install.ps1` 为 `PythonWorkers:Ocr:PythonPath` 指向的环境安装 CPU PaddleOCR，并确认聊天附件根目录位于 `PythonWorkers:AllowedRoots` 中。OCR 结果会以图片 SHA-256、引擎与语言为键缓存在 `ImageOcr:CachePath`；识别失败或超时不会中断聊天。
 
