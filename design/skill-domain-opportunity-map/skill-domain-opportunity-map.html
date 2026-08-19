@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AiAgent Skill 与领域机会地图</title>
+  <style>
+    :root { --bg:#08111f; --panel:#101c2f; --soft:#17263d; --line:#29405f; --text:#eef6ff; --muted:#91a6c1; --blue:#55b8ff; --cyan:#56e0d1; --amber:#ffc761; --rose:#ff7895; --green:#65dda2; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--text); background:radial-gradient(circle at 80% -10%,#193867 0,transparent 36%),radial-gradient(circle at 10% 20%,#153d43 0,transparent 30%),var(--bg); font:14px/1.65 Inter,"Microsoft YaHei",system-ui,sans-serif; }
+    a { color:inherit; }
+    .shell { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh; }
+    aside { position:sticky; top:0; height:100vh; padding:28px 20px; border-right:1px solid var(--line); background:rgba(8,17,31,.88); backdrop-filter:blur(18px); }
+    .brand { display:flex; gap:10px; align-items:center; font-size:15px; font-weight:800; letter-spacing:.04em; }
+    .brand i { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; font-style:normal; color:#07131f; background:linear-gradient(135deg,var(--cyan),var(--blue)); }
+    .version { margin:16px 0 22px; color:var(--muted); font-size:12px; }
+    nav a { display:block; padding:8px 10px; margin:3px 0; border-radius:9px; color:var(--muted); text-decoration:none; }
+    nav a:hover,nav a.active { color:var(--text); background:var(--soft); }
+    .side-note { position:absolute; left:20px; right:20px; bottom:24px; padding:12px; border:1px solid var(--line); border-radius:12px; color:var(--muted); font-size:11px; }
+    main { width:min(1320px,100%); padding:46px clamp(22px,5vw,72px) 100px; }
+    section { scroll-margin-top:28px; margin-bottom:72px; }
+    .eyebrow { color:var(--cyan); text-transform:uppercase; letter-spacing:.16em; font-size:11px; font-weight:800; }
+    h1 { max-width:880px; margin:12px 0 18px; font-size:clamp(38px,6vw,72px); line-height:1.03; letter-spacing:-.045em; }
+    h1 span { color:transparent; background:linear-gradient(90deg,var(--cyan),var(--blue)); background-clip:text; }
+    h2 { margin:0 0 20px; font-size:29px; letter-spacing:-.02em; }
+    h3 { margin:0 0 8px; font-size:16px; }
+    .lead { max-width:850px; color:#b5c7dc; font-size:17px; }
+    .hero-actions { display:flex; gap:10px; flex-wrap:wrap; margin:28px 0 38px; }
+    .button { padding:10px 15px; border:1px solid var(--line); border-radius:11px; color:var(--text); background:var(--panel); text-decoration:none; font-weight:700; }
+    .button.primary { color:#06121d; border:0; background:linear-gradient(135deg,var(--cyan),var(--blue)); }
+    .north-star { display:grid; grid-template-columns:1.15fr .85fr; gap:14px; }
+    .card { border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg,rgba(20,36,58,.94),rgba(11,23,40,.9)); box-shadow:0 16px 46px rgba(0,0,0,.15); }
+    .padded { padding:22px; }
+    .big-number { font-size:52px; line-height:1; color:var(--cyan); font-weight:900; }
+    .muted { color:var(--muted); }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border:1px solid var(--line); border-radius:999px; color:#bcd0e8; background:#0d192b; font-size:11px; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .baseline .card { min-height:170px; }
+    .icon { width:34px; height:34px; display:grid; place-items:center; margin-bottom:16px; border-radius:10px; background:#1b3553; color:var(--blue); font-weight:900; }
+    .gap { margin-top:12px; color:var(--amber); font-size:12px; }
+    .layers { position:relative; display:grid; gap:10px; max-width:920px; }
+    .layer { display:grid; grid-template-columns:150px 1fr; gap:20px; align-items:center; padding:16px 18px; border:1px solid var(--line); border-radius:13px; background:var(--panel); }
+    .layer b { color:var(--cyan); }
+    .layer span { color:var(--muted); }
+    .flow { display:grid; grid-template-columns:repeat(5,1fr); gap:9px; }
+    .flow .step { position:relative; padding:15px 12px; border:1px solid var(--line); border-radius:12px; background:var(--panel); text-align:center; }
+    .flow .step:not(:last-child)::after { content:'→'; position:absolute; right:-10px; top:13px; color:var(--cyan); z-index:2; }
+    .filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+    .filter { cursor:pointer; padding:7px 11px; color:var(--muted); border:1px solid var(--line); border-radius:999px; background:transparent; }
+    .filter.on { color:#07131e; border-color:transparent; background:var(--cyan); font-weight:800; }
+    .skill { position:relative; overflow:hidden; min-height:204px; padding:18px; }
+    .skill::before { content:''; position:absolute; inset:0 auto 0 0; width:3px; background:var(--blue); }
+    .skill[data-phase="P0"]::before { background:var(--green); }
+    .skill[data-phase="P1"]::before { background:var(--amber); }
+    .skill[data-phase="P2"]::before { background:var(--rose); }
+    .skill-top { display:flex; justify-content:space-between; gap:8px; }
+    .skill p { color:var(--muted); }
+    .reuse { font-size:11px; color:#bdd3ec; }
+    .domain-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .domain { padding:22px; }
+    .domain .num { float:right; color:#28496b; font-size:38px; font-weight:900; }
+    .domain ul { padding-left:18px; color:var(--muted); }
+    .risk { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+    .risk > div { min-height:130px; padding:15px; border:1px solid var(--line); border-top:3px solid var(--green); border-radius:12px; background:var(--panel); }
+    .risk > div:nth-child(2) { border-top-color:var(--blue); }.risk > div:nth-child(3) { border-top-color:var(--amber); }.risk > div:nth-child(4) { border-top-color:var(--rose); }
+    .roadmap { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+    .phase { padding:17px; border:1px solid var(--line); border-radius:13px; background:var(--panel); }
+    .phase b { color:var(--cyan); }
+    .phase ul { padding-left:17px; color:var(--muted); }
+    table { width:100%; border-collapse:collapse; overflow:hidden; border-radius:13px; background:var(--panel); }
+    th,td { padding:12px 14px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--cyan); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+    td { color:#b7c9dc; }
+    footer { color:var(--muted); border-top:1px solid var(--line); padding-top:24px; }
+    @media(max-width:980px){.shell{display:block}aside{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--line)}nav,.side-note{display:none}main{padding-top:28px}.north-star,.domain-grid{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.roadmap,.risk{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:620px){.grid,.roadmap,.risk{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.flow .step::after{display:none}.layer{grid-template-columns:1fr}h1{font-size:42px}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand"><i>AI</i> Opportunity Map</div>
+    <div class="version">AiAgent · 2026-08-19</div>
+    <nav>
+      <a href="#overview" class="active">方向判断</a><a href="#baseline">当前基线</a><a href="#inspiration">开源启发</a><a href="#model">Skill 模型</a><a href="#skills">候选 Skills</a><a href="#domains">领域机会</a><a href="#risk">治理边界</a><a href="#roadmap">路线图</a>
+    </nav>
+    <div class="side-note">设计探索稿<br>不包含生产接口或数据库变更</div>
+  </aside>
+  <main>
+    <section id="overview">
+      <div class="eyebrow">From AI workspace to project operating system</div>
+      <h1>让已有能力形成<br><span>可组合的工作闭环</span></h1>
+      <p class="lead">AiAgent 已拥有聊天、代码、知识、记忆、任务、Git、推送和工作画布。下一步不应继续堆页面，而应补上 Skill Registry、Run Ledger 与 Approval Inbox，让每次工作可发现、可恢复、可审核、可评测。</p>
+      <div class="hero-actions"><a class="button primary" href="#skills">浏览候选 Skill</a><a class="button" href="skill-domain-opportunity-map.md">查看完整 Markdown</a></div>
+      <div class="north-star">
+        <div class="card padded"><span class="pill">North Star</span><h2 style="margin-top:18px">项目工作操作系统</h2><p class="muted">任务提出目标，Skill 规范做法，Run 留下事件，Artifact 承载产物，Approval 控制副作用，Memory 沉淀已确认知识，画布把一切组织成可理解的工作现场。</p></div>
+        <div class="card padded"><div class="big-number">3</div><h3>优先基础设施</h3><p class="muted">Skill Registry<br>Run Ledger<br>Approval Inbox</p></div>
+      </div>
+    </section>
+
+    <section id="baseline" class="baseline">
+      <div class="eyebrow">Repository reality</div><h2>当前能力基线</h2>
+      <div class="grid">
+        <article class="card padded"><div class="icon">01</div><h3>Chat + Agent Loop</h3><p class="muted">WS/SSE、Codex 接管、附件、RAG、结构化工具调用。</p><div class="gap">缺口：Run 仍依附一次请求</div></article>
+        <article class="card padded"><div class="icon">02</div><h3>Work Canvas</h3><p class="muted">多会话节点、布局、关系、完整聊天工作区与实时态。</p><div class="gap">缺口：资源类型与执行语义不足</div></article>
+        <article class="card padded"><div class="icon">03</div><h3>Code Runtime + Git</h3><p class="muted">受控项目目录、运行、终端、预览、文件与 Git 管理。</p><div class="gap">缺口：隔离变更集与验收门禁</div></article>
+        <article class="card padded"><div class="icon">04</div><h3>Knowledge + Memory</h3><p class="muted">解析、索引、引用；候选记忆经人工审核才生效。</p><div class="gap">缺口：质量评测与规则闭环</div></article>
+        <article class="card padded"><div class="icon">05</div><h3>Task + Push</h3><p class="muted">任务看板、外部工作项导入、钉钉 Outbox 与审计。</p><div class="gap">缺口：审批与 Run/提交贯通</div></article>
+        <article class="card padded"><div class="icon">06</div><h3>Prompt + Usage</h3><p class="muted">模板市场、变量、收藏、Token 与模型维度统计。</p><div class="gap">缺口：Skill 效果与返工归因</div></article>
+      </div>
+    </section>
+
+    <section id="inspiration">
+      <div class="eyebrow">GitHub patterns</div><h2>值得吸收的开源模式</h2>
+      <table><thead><tr><th>项目</th><th>模式</th><th>AiAgent 映射</th></tr></thead><tbody>
+        <tr><td><a href="https://github.com/All-Hands-AI/OpenHands">OpenHands</a></td><td>Action / Observation 事件流与 Runtime 分层</td><td>追加式 RunEvent，统一聊天、工具、终端和审批</td></tr>
+        <tr><td><a href="https://github.com/langchain-ai/agent-inbox">Agent Inbox</a></td><td>中断任务集中处理并恢复</td><td>批准、编辑、拒绝、补充证据、转交</td></tr>
+        <tr><td><a href="https://github.com/langgenius/dify">Dify</a></td><td>工具目录、知识流水线、typed workflow</td><td>Skill 编排与知识加工节点</td></tr>
+        <tr><td><a href="https://github.com/n8n-io/n8n">n8n</a></td><td>高风险工具逐项 Human-in-the-loop</td><td>审批绑定 action，不绑定整个 Agent</td></tr>
+        <tr><td><a href="https://github.com/anthropics/skills">Anthropic Skills</a></td><td>SKILL.md + 渐进式 references/scripts/assets</td><td>兼容目录约定，服务端补版本、签名、授权、评测</td></tr>
+        <tr><td><a href="https://github.com/microsoft/autogen">AutoGen</a></td><td>Agent-as-tool 与事件驱动组合</td><td>专业 Agent 可成为受控 Skill，而非自由群聊</td></tr>
+      </tbody></table>
+    </section>
+
+    <section id="model">
+      <div class="eyebrow">Capability model</div><h2>Skill 不等于 Prompt</h2>
+      <div class="layers">
+        <div class="layer"><b>Workflow</b><span>依赖、分支、并行、重试和人工等待；消费 Skill 的 typed input/output。</span></div>
+        <div class="layer"><b>Skill</b><span>标准作业包：触发描述、步骤、输入输出、权限、风险、引用、脚本和测试。</span></div>
+        <div class="layer"><b>Tool</b><span>最小结构化动作；由服务端执行并实施权限、路径和风险校验。</span></div>
+        <div class="layer"><b>Prompt</b><span>一次任务的文字脚手架；可以被 Skill 引用，但不能获得执行权限。</span></div>
+      </div>
+      <h3 style="margin-top:28px">发布与运行链</h3>
+      <div class="flow"><div class="step">静态校验</div><div class="step">案例评测</div><div class="step">人工发布</div><div class="step">项目授权</div><div class="step">运行观测</div></div>
+    </section>
+
+    <section id="skills">
+      <div class="eyebrow">Skill portfolio</div><h2>候选 Skill 组合</h2>
+      <div class="filters"><button class="filter on" data-filter="all">全部</button><button class="filter" data-filter="P0">P0 基础闭环</button><button class="filter" data-filter="P1">P1 能力增强</button><button class="filter" data-filter="P2">P2 差异化</button></div>
+      <div class="grid" id="skillGrid">
+        <article class="card skill" data-phase="P0"><div class="skill-top"><h3>项目体检</h3><span class="pill">P0 · 只读</span></div><p>生成架构、依赖、运行入口、风险与文档缺口，成为新项目第一站。</p><div class="reuse">复用：代码索引 · 符号搜索 · 项目 Markdown</div></article>
+        <article class="card skill" data-phase="P0"><div class="skill-top"><h3>任务开工包</h3><span class="pill">P0</span></div><p>把任务变成范围、验收标准、计划、会话和画布分组。</p><div class="reuse">复用：Task · Chat · WorkCanvas</div></article>
+        <article class="card skill" data-phase="P0"><div class="skill-top"><h3>变更影响分析</h3><span class="pill">P0 · 只读</span></div><p>从 diff/符号追踪调用面、配置面、数据面和测试面。</p><div class="reuse">复用：Git · Code Search · Knowledge</div></article>
+        <article class="card skill" data-phase="P0"><div class="skill-top"><h3>测试失败分诊</h3><span class="pill">P0</span></div><p>聚类失败，定位首因，产生最小复现与修复候选。</p><div class="reuse">复用：Runtime · Terminal · File Viewer</div></article>
+        <article class="card skill" data-phase="P0"><div class="skill-top"><h3>交付验收包</h3><span class="pill">P0 · 只读</span></div><p>贯通需求、修改、测试、提交、证据和剩余风险。</p><div class="reuse">复用：Task · Run · Git · Markdown</div></article>
+        <article class="card skill" data-phase="P1"><div class="skill-top"><h3>ADR 生成与回链</h3><span class="pill">P1</span></div><p>从已确认讨论生成 ADR，并保留会话、代码和证据回链。</p><div class="reuse">复用：Chat · Memory · Project Docs</div></article>
+        <article class="card skill" data-phase="P1"><div class="skill-top"><h3>证据冲突侦测</h3><span class="pill">P1</span></div><p>发现代码、文档、知识库和记忆对同一事实的冲突。</p><div class="reuse">差异化：画布冲突边 + 权威来源选择</div></article>
+        <article class="card skill" data-phase="P1"><div class="skill-top"><h3>变更集沙盒</h3><span class="pill">P1 · 写入</span></div><p>创建隔离工作树，运行、预览、验证后再丢弃或合并。</p><div class="reuse">复用：Code Runtime · Git · Approval</div></article>
+        <article class="card skill" data-phase="P1"><div class="skill-top"><h3>发布守门人</h3><span class="pill">P1 · 审批</span></div><p>把 AGENTS.md、安全规则、测试和文档要求变成发布门禁。</p><div class="reuse">复用：Git · Tests · Project Rules</div></article>
+        <article class="card skill" data-phase="P2"><div class="skill-top"><h3>代码库考古</h3><span class="pill">P2</span></div><p>沿提交、文件、任务和会话还原“为什么这样写”。</p><div class="reuse">差异化：项目决策时间线</div></article>
+        <article class="card skill" data-phase="P2"><div class="skill-top"><h3>返工雷达</h3><span class="pill">P2</span></div><p>发现同一文件、任务和结论被重复修改的热点。</p><div class="reuse">差异化：以返工驱动 Skill 改进</div></article>
+        <article class="card skill" data-phase="P2"><div class="skill-top"><h3>Skill 蒸馏器</h3><span class="pill">P2 · 候选</span></div><p>从高质量已验收 Run 提议 Skill 草稿与测试，人工审核后发布。</p><div class="reuse">复用：Run · Memory Candidate · Evaluation</div></article>
+      </div>
+    </section>
+
+    <section id="domains">
+      <div class="eyebrow">Domain opportunities</div><h2>八个领域建设点</h2>
+      <div class="domain-grid">
+        <article class="card domain"><span class="num">01</span><h3>Run Ledger</h3><ul><li>追加式事件与单调 sequence</li><li>断线补拉、恢复、取消、预算</li><li>聊天/画布/任务共享事实源</li></ul></article>
+        <article class="card domain"><span class="num">02</span><h3>Approval Inbox</h3><ul><li>批准、编辑、拒绝、转交</li><li>动作目标、副作用、证据、回滚</li><li>Web 与钉钉双投影</li></ul></article>
+        <article class="card domain"><span class="num">03</span><h3>Skill Registry</h3><ul><li>版本、签名、授权、兼容性</li><li>触发/权限/结果/成本评测</li><li>灰度、弃用与回滚</li></ul></article>
+        <article class="card domain"><span class="num">04</span><h3>Artifact + Change Set</h3><ul><li>有类型的文件、diff、报告、截图</li><li>基线哈希、验证、处置状态</li><li>隔离工作树支持并行会话</li></ul></article>
+        <article class="card domain"><span class="num">05</span><h3>Project Knowledge Graph</h3><ul><li>任务—会话—Run—提交—知识回链</li><li>先用关联表与查询投影</li><li>支持证据透镜与代码库考古</li></ul></article>
+        <article class="card domain"><span class="num">06</span><h3>Evaluation & Replay</h3><ul><li>脱敏 Run 生成回归案例</li><li>副作用工具 mock/dry-run</li><li>版本对比与失败归因</li></ul></article>
+        <article class="card domain"><span class="num">07</span><h3>Context Compiler</h3><ul><li>统一编译规则、记忆、任务、RAG、diff</li><li>来源、预算、版本可解释</li><li>冲突和过期检测</li></ul></article>
+        <article class="card domain"><span class="num">08</span><h3>Project Pulse</h3><ul><li>首轮通过率、返工和审批等待</li><li>Skill 成功率与知识命中率</li><li>每个已验收交付的真实成本</li></ul></article>
+      </div>
+    </section>
+
+    <section id="risk">
+      <div class="eyebrow">Governance by action</div><h2>按动作分级，而非全开或全关</h2>
+      <div class="risk"><div><h3>R0 · 自动</h3><p class="muted">搜索、读取、RAG、diff 等无副作用动作。</p></div><div><h3>R1 · 可配置</h3><p class="muted">工作区补丁、新建草稿；先展示计划，项目可允许自动。</p></div><div><h3>R2 · 必须审批</h3><p class="muted">Git push、外发消息、修改共享知识。</p></div><div><h3>R3 · 双确认/禁用</h3><p class="muted">删除、发布、生产命令、权限变更。</p></div></div>
+    </section>
+
+    <section id="roadmap">
+      <div class="eyebrow">Delivery path</div><h2>从旁路观测开始</h2>
+      <div class="roadmap">
+        <article class="phase"><b>Phase 0 · 契约</b><ul><li>Skill manifest</li><li>Run/Event schema</li><li>Tool 风险元数据</li><li>20 个脱敏案例</li></ul></article>
+        <article class="phase"><b>Phase 1 · 闭环</b><ul><li>4 个 P0 Skill</li><li>Run 时间线</li><li>Approval Inbox</li><li>画布资源节点</li></ul></article>
+        <article class="phase"><b>Phase 2 · 组合</b><ul><li>版本评测与灰度</li><li>Change Set</li><li>typed workflow</li><li>效果归因</li></ul></article>
+        <article class="phase"><b>Phase 3 · 飞轮</b><ul><li>Context Compiler</li><li>知识关系图</li><li>冲突侦测</li><li>Skill 候选蒸馏</li></ul></article>
+      </div>
+    </section>
+    <footer>完整论证、领域模型、接口草案、指标与否决项见 <a href="skill-domain-opportunity-map.md">Markdown 设计文档</a>。</footer>
+  </main>
+</div>
+<script>
+  const buttons = [...document.querySelectorAll('.filter')];
+  const skills = [...document.querySelectorAll('.skill')];
+  buttons.forEach(button => button.addEventListener('click', () => {
+    buttons.forEach(item => item.classList.remove('on')); button.classList.add('on');
+    const filter = button.dataset.filter;
+    skills.forEach(skill => skill.style.display = filter === 'all' || skill.dataset.phase === filter ? '' : 'none');
+  }));
+  const links = [...document.querySelectorAll('nav a')];
+  const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + entry.target.id));
+  }), { rootMargin:'-25% 0px -65% 0px' });
+  document.querySelectorAll('main section[id]').forEach(section => observer.observe(section));
+</script>
+</body>
+</html>
