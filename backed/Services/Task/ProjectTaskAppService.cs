@@ -55,6 +55,32 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         return new OkObjectResult(new { task = Dto(task, _db.Queryable<AiCodeProject>().Where(x => x.Id == request.ProjectId).Select(x => x.DisplayName).First()) });
     }
 
+    [HttpPatch("{taskId}/status")]
+    public async Task<IActionResult> UpdateStatus(long taskId, [FromBody] UpdateProjectTaskStatusRequest request, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        var status = NormalizeBoardStatus(request.Status);
+        if (status is null) return new BadRequestObjectResult(new { message = "任务状态仅支持 todo、in_progress、in_review 或 done。" });
+        var task = _db.Queryable<AiProjectTask>().First(x => x.Id == taskId && x.UserId == user.Id && !x.IsDeleted);
+        if (task is null) return new NotFoundObjectResult(new { message = "任务不存在或已删除。" });
+        if (!task.CodeProjectId.HasValue || !_projectAccess.CanAccess(user, task.CodeProjectId.Value)) return new ForbidResult();
+        task.Status = status;
+        task.UpdatedAt = DateTime.UtcNow;
+        _db.Updateable(task).UpdateColumns(x => new { x.Status, x.UpdatedAt }).ExecuteCommand();
+        return new OkObjectResult(new { task = Dto(task, _db.Queryable<AiCodeProject>().Where(x => x.Id == task.CodeProjectId).Select(x => x.DisplayName).First()) });
+    }
+
+    [HttpDelete("{taskId}")]
+    public async Task<IActionResult> Delete(long taskId, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        var task = _db.Queryable<AiProjectTask>().First(x => x.Id == taskId && x.UserId == user.Id && !x.IsDeleted);
+        if (task is null) return new NotFoundObjectResult(new { message = "任务不存在或已删除。" });
+        if (!task.CodeProjectId.HasValue || !_projectAccess.CanAccess(user, task.CodeProjectId.Value)) return new ForbidResult();
+        var affected = _db.Updateable<AiProjectTask>().SetColumns(x => new AiProjectTask { IsDeleted = true, UpdatedAt = DateTime.UtcNow }).Where(x => x.Id == taskId && x.UserId == user.Id && !x.IsDeleted).ExecuteCommand();
+        return affected > 0 ? new OkObjectResult(new { deleted = true }) : new NotFoundObjectResult(new { message = "任务不存在或已删除。" });
+    }
+
     [HttpPost("import")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Import([FromForm(Name = "project_id")] long projectId, [FromForm(Name = "field_mappings")] string? fieldMappings, IFormFile? file, CancellationToken cancellationToken)
@@ -139,6 +165,11 @@ public sealed class ProjectTaskAppService : IDynamicApiController
     }
     private static int NormalizePage(int page) => Math.Max(1, page);
     private static int NormalizePageSize(int pageSize) => Math.Clamp(pageSize, 1, 50);
+    private static string? NormalizeBoardStatus(string? value)
+    {
+        var status = value?.Trim().ToLowerInvariant();
+        return status is "todo" or "in_progress" or "in_review" or "done" ? status : null;
+    }
     private static bool IsGiteeUrl(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && string.Equals(uri.Host, "gitee.com", StringComparison.OrdinalIgnoreCase);
     private static ProjectTaskDto Dto(AiProjectTask x, string? name) => new() { Id=x.Id, ProjectId=x.CodeProjectId, ProjectName=name, Source=x.Source, ExternalId=x.ExternalId, WorkItemId=x.WorkItemId, WorkItemType=x.WorkItemType, Title=x.Title, Description=x.Description, Status=x.Status, Creator=x.Creator, Assignee=x.Assignee, Collaborators=x.Collaborators, Priority=x.Priority, Labels=x.Labels, ExternalUrl=x.ExternalUrl, ExternalCreatedAt=x.ExternalCreatedAt, ExternalUpdatedAt=x.ExternalUpdatedAt, UpdatedAt=x.UpdatedAt };
     private static string? Text(JsonElement e, string name) => e.TryGetProperty(name, out var p) ? p.ValueKind == JsonValueKind.String ? p.GetString() : p.ValueKind == JsonValueKind.Number ? p.GetRawText() : null : null;

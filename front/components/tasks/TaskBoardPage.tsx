@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckSquare, ExternalLink, FileUp, Link2, Loader2, Plus, RefreshCw, Search, Send, X } from "lucide-react";
+import { CheckSquare, ExternalLink, FileUp, Link2, Loader2, Plus, RefreshCw, Search, Send, Trash2, X } from "lucide-react";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
-import { createProjectTask, importProjectTasks, listGiteeIssues, listGiteeMembers, listGiteeProjects, listProjectTasks, type GiteeIssue, type GiteeMember, type GiteeProject, type ProjectTask, type TaskImportResult } from "@/lib/project-task-api";
+import { createProjectTask, deleteProjectTask, importProjectTasks, listGiteeIssues, listGiteeMembers, listGiteeProjects, listProjectTasks, updateProjectTaskStatus, type GiteeIssue, type GiteeMember, type GiteeProject, type ProjectTask, type TaskImportResult } from "@/lib/project-task-api";
 
 export function TaskBoardPage() {
   const router = useRouter();
@@ -39,6 +39,8 @@ export function TaskBoardPage() {
   const [importMappings, setImportMappings] = useState<Record<string, string>>({});
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importResult, setImportResult] = useState<TaskImportResult | null>(null);
+  const [movingTaskId, setMovingTaskId] = useState<number | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<number | null>(null);
 
   const selectedProject = projects.find((project) => project.id === projectId) ?? null;
   const visible = useMemo(() => projectId === "all" ? tasks : tasks.filter((task) => task.project_id === projectId), [projectId, tasks]);
@@ -160,19 +162,65 @@ export function TaskBoardPage() {
     }
   };
 
-  return <main className="min-h-screen bg-slate-50 px-4 py-6 lg:px-8"><div className="mx-auto max-w-6xl">
-    <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold tracking-[.16em] text-blue-600">TASK WORKBENCH</p><h1 className="mt-1 text-2xl font-semibold text-slate-950">任务面板</h1><p className="mt-2 text-sm text-slate-500">使用系统内的本地项目管理任务；可导入企业工作项 CSV，并按工作项 ID 更新。</p></div><div className="flex gap-2"><button onClick={openImport} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-100"><FileUp size={16}/>导入工作项</button><button onClick={openCreate} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700"><Plus size={16}/>新建任务</button></div></header>
+  const moveTask = async (task: ProjectTask, status: BoardStatus) => {
+    if (toBoardStatus(task.status) === status || movingTaskId === task.id) return;
+    const previous = tasks;
+    setMovingTaskId(task.id);
+    setTasks((items) => items.map((item) => item.id === task.id ? { ...item, status } : item));
+    try {
+      const updated = await updateProjectTaskStatus(task.id, status);
+      setTasks((items) => items.map((item) => item.id === task.id ? updated : item));
+    } catch (value) {
+      setTasks(previous);
+      setError(value instanceof Error ? value.message : "更新任务状态失败。");
+    } finally { setMovingTaskId(null); }
+  };
+
+  const removeTask = async (task: ProjectTask) => {
+    if (deletingTaskId === task.id || !window.confirm(`确认删除任务“${task.title}”？此操作会从我的任务中移除。`)) return;
+    setDeletingTaskId(task.id);
+    try {
+      await deleteProjectTask(task.id);
+      setTasks((items) => items.filter((item) => item.id !== task.id));
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "删除任务失败。");
+    } finally { setDeletingTaskId(null); }
+  };
+
+  return <main className="min-h-screen bg-slate-50 px-4 py-6 lg:px-8"><div className="mx-auto max-w-[1440px]">
+    <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold tracking-[.16em] text-blue-600">TASK WORKBENCH</p><h1 className="mt-1 text-2xl font-semibold text-slate-950">我的任务</h1><p className="mt-2 text-sm text-slate-500">关联 Gitee Issue 或导入企业工作项 CSV；拖拽卡片即可在不同状态列表之间流转。</p></div><div className="flex gap-2"><button onClick={openImport} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-100"><FileUp size={16}/>导入工作项</button><button onClick={openCreate} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700"><Plus size={16}/>新建任务</button></div></header>
     <div className="mt-6 flex flex-wrap gap-2">{[{ id: "all" as const, name: "全部项目" }, ...projects.map((project) => ({ id: project.id, name: project.display_name }))].map((project) => <button key={project.id} onClick={() => setProjectId(project.id)} className={`rounded-full px-3 py-1.5 text-sm ${projectId === project.id ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}>{project.name}</button>)}</div>
     {error && <div className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><div><p className="text-sm font-medium text-amber-900">部分数据暂时不可用</p><p className="mt-1 whitespace-pre-line text-xs leading-5 text-amber-800">{error}</p></div><button onClick={() => void reload()} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 text-xs font-medium text-amber-800 hover:bg-amber-100"><RefreshCw size={13}/>重试</button></div>}
-    {loading ? <div className="flex h-64 items-center justify-center text-slate-400"><Loader2 className="animate-spin"/></div> : <section className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{visible.map((task) => <TaskCard key={task.id} task={task} onOpen={() => openTask(task)}/>) }{visible.length === 0 && <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-400">暂无本地任务。可从上方选择系统内项目后新建，或导入企业工作项 CSV。</div>}</section>}
+    {loading ? <div className="flex h-64 items-center justify-center text-slate-400"><Loader2 className="animate-spin"/></div> : <section className="mt-5 grid gap-4 xl:grid-cols-4">{boardColumns.map((column) => <TaskColumn key={column.status} column={column} tasks={visible.filter((task) => toBoardStatus(task.status) === column.status)} movingTaskId={movingTaskId} deletingTaskId={deletingTaskId} onMove={(taskId, status) => { const task = tasks.find((item) => item.id === taskId); if (task) void moveTask(task, status); }} onRemove={removeTask} onOpen={openTask}/>)}</section>}
     {creating && <TaskCreateDialog projects={projects} selectedProject={selectedProject} title={title} description={description} linkedIssue={linkedIssue} onProjectChange={(value) => setProjectId(value)} onTitleChange={setTitle} onDescriptionChange={setDescription} onOpenPicker={openPicker} onClearIssue={() => setLinkedIssue(null)} onClose={() => setCreating(false)} onCreate={() => void create()}/>}
     {importOpen && <TaskImportDialog projects={projects} selectedProject={selectedProject} file={importFile} headers={importHeaders} preview={importPreview} mappings={importMappings} submitting={importSubmitting} result={importResult} onProjectChange={(value) => setProjectId(value)} onFileChange={(file) => void chooseImportFile(file)} onMappingChange={(target, source) => setImportMappings((current) => ({ ...current, [target]: source }))} onClose={() => setImportOpen(false)} onSubmit={() => void submitImport()}/>}
     {pickerOpen && <GiteeIssuePicker projects={giteeProjects} projectQuery={giteeProjectQuery} projectPage={giteeProjectPage} projectsMore={giteeProjectsMore} remoteProject={remoteProject} issues={issues} issuePage={issuePage} issuesMore={issuesMore} issueState={issueState} issueQuery={issueQuery} assignee={assignee} members={giteeMembers} loading={giteeLoading} onProjectQueryChange={setGiteeProjectQuery} onSearchProjects={() => void loadGiteeProjects(1)} onPreviousProjects={() => void loadGiteeProjects(giteeProjectPage - 1)} onNextProjects={() => void loadGiteeProjects(giteeProjectPage + 1)} onChooseProject={chooseRemoteProject} onAssigneeChange={setAssignee} onStateChange={setIssueState} onIssueQueryChange={setIssueQuery} onSearchIssues={() => void loadGiteeIssues(1)} onPreviousIssues={() => void loadGiteeIssues(issuePage - 1)} onNextIssues={() => void loadGiteeIssues(issuePage + 1)} onChooseIssue={chooseIssue} onClose={() => setPickerOpen(false)}/>}
   </div></main>;
 }
 
-function TaskCard({ task, onOpen }: { task: ProjectTask; onOpen: () => void }) {
-  return <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow"><div className="flex items-start gap-3"><span className="mt-0.5 grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600"><CheckSquare size={17}/></span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600">{task.source === "gitee_enterprise_csv" ? "导入工作项" : "本地任务"}</span><span className="text-[11px] text-slate-400">{task.project_name ?? "未归属项目"}</span></div><h2 className="mt-2 line-clamp-2 font-semibold text-slate-900">{task.title}</h2><p className="mt-2 line-clamp-3 text-sm leading-5 text-slate-500">{task.description || "未提供任务说明"}</p><div className="mt-3 flex flex-wrap gap-1.5 text-xs">{task.work_item_id && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">ID {task.work_item_id}</span>}{task.work_item_type && <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">{task.work_item_type}</span>}{task.priority && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">{task.priority}</span>}{task.assignee && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">负责人 {task.assignee}</span>}</div>{task.external_id && task.source !== "gitee_enterprise_csv" && <p className="mt-3 flex items-center gap-1 text-xs text-orange-600"><Link2 size={13}/>已关联 Gitee Issue</p>}<div className="mt-4 flex items-center justify-between gap-2"><span className="text-xs text-slate-400">{task.status || "todo"}</span><div className="flex gap-1">{task.external_url && <a href={task.external_url} target="_blank" rel="noreferrer" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="打开 Gitee"><ExternalLink size={15}/></a>}<button onClick={onOpen} className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-700"><Send size={13}/>处理</button></div></div></div></div></article>;
+type BoardStatus = "todo" | "in_progress" | "in_review" | "done";
+const boardColumns: { status: BoardStatus; title: string; hint: string; tone: string }[] = [
+  { status: "todo", title: "待办", hint: "TODO", tone: "border-slate-200" },
+  { status: "in_progress", title: "进行中", hint: "IN PROGRESS", tone: "border-blue-200" },
+  { status: "in_review", title: "待验收", hint: "IN REVIEW", tone: "border-violet-200" },
+  { status: "done", title: "已完成", hint: "DONE", tone: "border-emerald-200" },
+];
+
+function toBoardStatus(value?: string | null): BoardStatus {
+  const status = value?.trim().toLowerCase();
+  if (["done", "closed", "completed", "已完成", "完成", "关闭"].includes(status ?? "")) return "done";
+  if (["in_review", "review", "待测试", "待验收", "待提单人自测"].includes(status ?? "")) return "in_review";
+  if (["in_progress", "progress", "doing", "处理中", "进行中"].includes(status ?? "")) return "in_progress";
+  return "todo";
+}
+
+function TaskColumn({ column, tasks, movingTaskId, deletingTaskId, onMove, onRemove, onOpen }: { column: typeof boardColumns[number]; tasks: ProjectTask[]; movingTaskId: number | null; deletingTaskId: number | null; onMove: (taskId: number, status: BoardStatus) => void; onRemove: (task: ProjectTask) => void; onOpen: (task: ProjectTask) => void }) {
+  const [dragOver, setDragOver] = useState(false);
+  return <section onDragOver={(event) => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); setDragOver(false); const taskId = Number(event.dataTransfer.getData("text/project-task-id")); if (Number.isSafeInteger(taskId) && taskId > 0) onMove(taskId, column.status); }} className={`min-h-[460px] rounded-2xl border bg-slate-100/70 p-3 transition ${column.tone} ${dragOver ? "ring-2 ring-blue-400 ring-offset-2" : ""}`}><header className="flex items-start justify-between gap-2 px-1 pb-3"><div><p className="text-sm font-semibold text-slate-800">{column.title}</p><p className="mt-0.5 text-[10px] font-semibold tracking-[.12em] text-slate-400">{column.hint}</p></div><span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500 shadow-sm">{tasks.length}</span></header><div className="space-y-3">{tasks.map((task) => <TaskCard key={task.id} task={task} moving={movingTaskId === task.id} deleting={deletingTaskId === task.id} onOpen={() => onOpen(task)} onRemove={() => onRemove(task)} />)}{tasks.length === 0 && <div className="grid h-28 place-items-center rounded-xl border border-dashed border-slate-300 bg-white/60 text-xs text-slate-400">拖到这里</div>}</div></section>;
+}
+
+function TaskCard({ task, moving, deleting, onOpen, onRemove }: { task: ProjectTask; moving: boolean; deleting: boolean; onOpen: () => void; onRemove: () => void }) {
+  return <article draggable={!moving && !deleting} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/project-task-id", String(task.id)); }} className={`cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow active:cursor-grabbing ${moving || deleting ? "opacity-50" : ""}`}><div className="flex items-start gap-3"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600"><CheckSquare size={17}/></span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600">{task.source === "gitee_enterprise_csv" ? "导入工作项" : "本地任务"}</span><span className="truncate text-[11px] text-slate-400">{task.project_name ?? "未归属项目"}</span></div><h2 className="mt-2 line-clamp-2 font-semibold text-slate-900">{task.title}</h2><p className="mt-2 line-clamp-3 text-sm leading-5 text-slate-500">{task.description || "未提供任务说明"}</p><div className="mt-3 flex flex-wrap gap-1.5 text-xs">{task.work_item_id && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">ID {task.work_item_id}</span>}{task.work_item_type && <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">{task.work_item_type}</span>}{task.priority && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">{task.priority}</span>}{task.assignee && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">负责人 {task.assignee}</span>}</div>{task.external_id && task.source !== "gitee_enterprise_csv" && <p className="mt-3 flex items-center gap-1 text-xs text-orange-600"><Link2 size={13}/>已关联 Gitee Issue</p>}<div className="mt-4 flex items-center justify-between gap-2"><div className="flex gap-1">{task.external_url && <a href={task.external_url} target="_blank" rel="noreferrer" draggable={false} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="打开 Gitee"><ExternalLink size={15}/></a>}<button onClick={onRemove} disabled={deleting} draggable={false} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50" aria-label="删除任务"><Trash2 size={15}/></button></div><button onClick={onOpen} draggable={false} className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-700"><Send size={13}/>处理</button></div></div></div></article>;
 }
 
 function TaskCreateDialog({ projects, selectedProject, title, description, linkedIssue, onProjectChange, onTitleChange, onDescriptionChange, onOpenPicker, onClearIssue, onClose, onCreate }: { projects: CodeProject[]; selectedProject: CodeProject | null; title: string; description: string; linkedIssue: GiteeIssue | null; onProjectChange: (value: number) => void; onTitleChange: (value: string) => void; onDescriptionChange: (value: string) => void; onOpenPicker: () => void; onClearIssue: () => void; onClose: () => void; onCreate: () => void }) {
@@ -181,17 +229,17 @@ function TaskCreateDialog({ projects, selectedProject, title, description, linke
 
 const importFields = [
   { key: "work_item_id", label: "工作项 ID", required: true, aliases: ["工作项 ID", "工作项 ID 编号", "工作项id", "id"] },
-  { key: "work_item_type", label: "工作项类型", aliases: ["工作项类型", "类型"] },
-  { key: "title", label: "标题", aliases: ["标题", "名称"] },
-  { key: "description", label: "描述", aliases: ["描述", "详情"] },
-  { key: "status", label: "状态", aliases: ["状态"] },
-  { key: "creator", label: "创建人", aliases: ["创建人"] },
-  { key: "assignee", label: "负责人", aliases: ["负责人", "处理人"] },
-  { key: "collaborators", label: "协作者", aliases: ["协作者"] },
-  { key: "priority", label: "优先级", aliases: ["优先级"] },
-  { key: "labels", label: "标签", aliases: ["标签"] },
-  { key: "created_at", label: "创建时间", aliases: ["创建时间"] },
-  { key: "updated_at", label: "更新时间", aliases: ["更新时间", "更新日期"] },
+  { key: "work_item_type", label: "工作项类型", required: false, aliases: ["工作项类型", "类型"] },
+  { key: "title", label: "标题", required: false, aliases: ["标题", "名称"] },
+  { key: "description", label: "描述", required: false, aliases: ["描述", "详情"] },
+  { key: "status", label: "状态", required: false, aliases: ["状态"] },
+  { key: "creator", label: "创建人", required: false, aliases: ["创建人"] },
+  { key: "assignee", label: "负责人", required: false, aliases: ["负责人", "处理人"] },
+  { key: "collaborators", label: "协作者", required: false, aliases: ["协作者"] },
+  { key: "priority", label: "优先级", required: false, aliases: ["优先级"] },
+  { key: "labels", label: "标签", required: false, aliases: ["标签"] },
+  { key: "created_at", label: "创建时间", required: false, aliases: ["创建时间"] },
+  { key: "updated_at", label: "更新时间", required: false, aliases: ["更新时间", "更新日期"] },
 ] as const;
 
 function TaskImportDialog({ projects, selectedProject, file, headers, preview, mappings, submitting, result, onProjectChange, onFileChange, onMappingChange, onClose, onSubmit }: { projects: CodeProject[]; selectedProject: CodeProject | null; file: File | null; headers: string[]; preview: string[][]; mappings: Record<string, string>; submitting: boolean; result: TaskImportResult | null; onProjectChange: (value: number) => void; onFileChange: (file: File | null) => void; onMappingChange: (target: string, source: string) => void; onClose: () => void; onSubmit: () => void }) {
