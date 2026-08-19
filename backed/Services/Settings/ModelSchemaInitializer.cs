@@ -99,6 +99,24 @@ IF COL_LENGTH(N'dbo.ai_code_repository', N'GitAccountId') IS NULL
 IF COL_LENGTH(N'dbo.ai_project_markdown_document', N'DirectoryPath') IS NULL
     ALTER TABLE dbo.ai_project_markdown_document ADD DirectoryPath NVARCHAR(512) NULL;
 
+IF OBJECT_ID(N'dbo.ai_project_task', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.ai_project_task', N'WorkItemId') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD WorkItemId NVARCHAR(64) NULL;
+    IF COL_LENGTH(N'dbo.ai_project_task', N'WorkItemType') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD WorkItemType NVARCHAR(64) NULL;
+    IF COL_LENGTH(N'dbo.ai_project_task', N'Creator') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD Creator NVARCHAR(64) NULL;
+    IF COL_LENGTH(N'dbo.ai_project_task', N'Collaborators') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD Collaborators NVARCHAR(1024) NULL;
+    IF COL_LENGTH(N'dbo.ai_project_task', N'Priority') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD Priority NVARCHAR(32) NULL;
+    IF COL_LENGTH(N'dbo.ai_project_task', N'Labels') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD Labels NVARCHAR(512) NULL;
+    IF COL_LENGTH(N'dbo.ai_project_task', N'ExternalCreatedAt') IS NULL
+        ALTER TABLE dbo.ai_project_task ADD ExternalCreatedAt DATETIME2 NULL;
+END
+
 IF COL_LENGTH(N'dbo.ai_user', N'Role') IS NULL
     ALTER TABLE dbo.ai_user ADD Role NVARCHAR(16) NOT NULL CONSTRAINT DF_ai_user_Role DEFAULT N'user';
 
@@ -432,6 +450,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_Provi
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_git_account_User_Provider_Username' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))
     CREATE UNIQUE INDEX UX_ai_git_account_User_Provider_Username ON dbo.ai_git_account(UserId, Provider, Username) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_project_task_User_Project_WorkItem' AND object_id = OBJECT_ID(N'dbo.ai_project_task'))
+    CREATE UNIQUE INDEX UX_ai_project_task_User_Project_WorkItem ON dbo.ai_project_task(UserId, CodeProjectId, WorkItemId) WHERE IsDeleted = 0 AND WorkItemId IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_project_task_User_Project_Updated' AND object_id = OBJECT_ID(N'dbo.ai_project_task'))
+    CREATE INDEX IX_ai_project_task_User_Project_Updated ON dbo.ai_project_task(UserId, CodeProjectId, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_git_account_User_Active' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))
