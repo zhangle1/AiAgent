@@ -1,15 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, AlertCircle, Archive, CheckCircle2, ExternalLink, Filter, FolderGit2, LayoutDashboard, LoaderCircle, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Activity, Archive, ExternalLink, Filter, FolderGit2, LayoutDashboard, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, Search, Trash2, X } from "lucide-react";
+import { KnowledgeChatHome } from "@/components/chat/KnowledgeChatHome";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { listSessions, type SessionSummary } from "@/lib/session-api";
 import { addWorkCanvasNode, archiveWorkCanvas, createWorkCanvas, getWorkCanvas, listWorkCanvases, removeWorkCanvasNode, renameWorkCanvas, saveWorkCanvasLayout } from "@/lib/work-canvas-api";
 import type { WorkCanvasNode, WorkCanvasSnapshot, WorkCanvasSummary } from "@/lib/work-canvas-types";
 
-type DragState = { id: string; startX: number; startY: number; nodeX: number; nodeY: number };
+type DragState = {
+  id: string;
+  startX: number;
+  startY: number;
+  nodeX: number;
+  nodeY: number;
+};
 
 export function WorkCanvasPage() {
   const searchParams = useSearchParams();
@@ -28,45 +34,561 @@ export function WorkCanvasPage() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [leftWidth, setLeftWidth] = useState(256);
+  const [rightWidth, setRightWidth] = useState(720);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightPinned, setRightPinned] = useState(true);
   const dragRef = useRef<DragState | null>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    try {
+      setLeftWidth(Number(localStorage.getItem("work-canvas:left-width")) || 256);
+      setRightWidth(Number(localStorage.getItem("work-canvas:right-width")) || 720);
+      setLeftOpen(localStorage.getItem("work-canvas:left-open") !== "false");
+      setRightPinned(localStorage.getItem("work-canvas:right-pinned") !== "false");
+    } catch {
+      /* storage can be unavailable in private contexts */
+    }
+    return () => resizeCleanupRef.current?.();
+  }, []);
+
+  const persistPanelState = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* ignore */
+    }
+  };
+  const beginResize = (side: "left" | "right", event: React.PointerEvent) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = side === "left" ? leftWidth : rightWidth;
+    const move = (next: PointerEvent) => {
+      const raw = side === "left" ? startWidth + next.clientX - startX : startWidth + startX - next.clientX;
+      const width = Math.min(side === "left" ? 480 : Math.max(520, window.innerWidth - 360), Math.max(side === "left" ? 190 : 420, raw));
+      if (side === "left") setLeftWidth(width);
+      else setRightWidth(width);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      const element = document.documentElement;
+      element.style.cursor = "";
+      element.style.userSelect = "";
+      const current = side === "left" ? document.querySelector<HTMLElement>("[data-canvas-left]")?.offsetWidth : document.querySelector<HTMLElement>("[data-canvas-right]")?.offsetWidth;
+      if (current) persistPanelState(`work-canvas:${side}-width`, String(current));
+      resizeCleanupRef.current = null;
+    };
+    document.documentElement.style.cursor = "col-resize";
+    document.documentElement.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    resizeCleanupRef.current = finish;
+  };
 
   const refreshList = async () => {
     const next = await listWorkCanvases();
     setCanvases(next);
     return next;
   };
-  useEffect(() => { void Promise.all([refreshList(), listSessions()]).then(async ([items, available]) => { setSessions(available); const requested = searchParams.get("canvas"); const id = items.find((x) => x.id === requested)?.id ?? items[0]?.id; if (id) setCanvas(await getWorkCanvas(id)); }).catch((value) => setError(value instanceof Error ? value.message : "加载失败")).finally(() => setLoading(false)); }, []);
-  useEffect(() => { if (!canvas) return; const url = new URL(window.location.href); url.searchParams.set("canvas", canvas.id); if (selectedId) url.searchParams.set("node", selectedId); else url.searchParams.delete("node"); window.history.replaceState(null, "", url); }, [canvas?.id, selectedId]);
+  useEffect(() => {
+    void Promise.all([refreshList(), listSessions()])
+      .then(async ([items, available]) => {
+        setSessions(available);
+        const requested = searchParams.get("canvas");
+        const id = items.find((x) => x.id === requested)?.id ?? items[0]?.id;
+        if (id) setCanvas(await getWorkCanvas(id));
+      })
+      .catch((value) => setError(value instanceof Error ? value.message : "加载失败"))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    if (!canvas) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("canvas", canvas.id);
+    if (selectedId) url.searchParams.set("node", selectedId);
+    else url.searchParams.delete("node");
+    window.history.replaceState(null, "", url);
+  }, [canvas?.id, selectedId]);
 
-  const streamBySession = useMemo(() => Object.values(streams).reduce<Record<string, ChatStreamRecord>>((map, stream) => { map[stream.sessionId] = stream; return map; }, {}), [streams]);
+  const streamBySession = useMemo(
+    () =>
+      Object.values(streams).reduce<Record<string, ChatStreamRecord>>((map, stream) => {
+        map[stream.sessionId] = stream;
+        return map;
+      }, {}),
+    [streams],
+  );
   const projects = useMemo(() => Array.from(new Map((canvas?.nodes ?? []).filter((x) => x.session.project_id).map((x) => [String(x.session.project_id), x.session.project_name || "未命名项目"]))).sort((a, b) => a[1].localeCompare(b[1])), [canvas]);
   const visibleNodes = useMemo(() => (canvas?.nodes ?? []).filter((node) => (project === "all" || String(node.session.project_id) === project) && [node.session.title, node.session.project_name, node.session.last_message].some((value) => value?.toLowerCase().includes(query.trim().toLowerCase()))), [canvas, project, query]);
   const selected = canvas?.nodes.find((x) => x.id === selectedId) ?? null;
   const availableSessions = sessions.filter((session) => !canvas?.nodes.some((node) => node.session_id === session.id)).filter((session) => [session.title, session.project_name, session.last_message].some((value) => value?.toLowerCase().includes(pickerQuery.trim().toLowerCase())));
   const runningCount = Object.values(streams).filter((x) => x.status === "streaming").length;
 
-  const openCanvas = async (id: string) => { setLoading(true); setError(""); try { setCanvas(await getWorkCanvas(id)); setSelectedId(null); } catch (value) { setError(value instanceof Error ? value.message : "加载失败"); } finally { setLoading(false); } };
-  const openCreateDialog = () => { setCreateName(`工作画布 ${canvases.length + 1}`); setCreateError(""); setCreateOpen(true); };
-  const createCanvas = async () => { const name = createName.trim(); if (!name) { setCreateError("请填写画布名称。"); return; } setCreating(true); setCreateError(""); setError(""); try { const created = await createWorkCanvas(name); setCanvas(created); await refreshList(); setCreateOpen(false); setCreateName(""); } catch (value) { setCreateError(value instanceof Error ? value.message : "创建失败，请稍后重试。"); } finally { setCreating(false); } };
-  const renameCanvas = async () => { if (!canvas) return; const name = window.prompt("重命名工作画布", canvas.name)?.trim(); if (!name || name === canvas.name) return; setError(""); try { await renameWorkCanvas(canvas.id, name); setCanvas(await getWorkCanvas(canvas.id)); await refreshList(); } catch (value) { setError(value instanceof Error ? value.message : "重命名失败"); } };
-  const archiveCanvas = async () => { if (!canvas || !window.confirm(`确定归档“${canvas.name}”吗？画布中的会话不会被删除。`)) return; setError(""); try { await archiveWorkCanvas(canvas.id); const next = await refreshList(); setSelectedId(null); setCanvas(next[0] ? await getWorkCanvas(next[0].id) : null); } catch (value) { setError(value instanceof Error ? value.message : "归档失败"); } };
-  const addSession = async (session: SessionSummary) => { if (!canvas) return; const index = canvas.nodes.length; setError(""); try { await addWorkCanvasNode(canvas.id, session.id, 80 + (index % 3) * 340, 80 + Math.floor(index / 3) * 230); setCanvas(await getWorkCanvas(canvas.id)); await refreshList(); setPickerOpen(false); setPickerQuery(""); } catch (value) { setError(value instanceof Error ? value.message : "添加会话失败"); } };
-  const removeNode = async (node: WorkCanvasNode) => { if (!canvas) return; setError(""); try { await removeWorkCanvasNode(canvas.id, node.id); setCanvas(await getWorkCanvas(canvas.id)); await refreshList(); setSelectedId(null); } catch (value) { setError(value instanceof Error ? value.message : "移除会话失败"); } };
-  const beginDrag = (event: React.PointerEvent, node: WorkCanvasNode) => { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); dragRef.current = { id: node.id, startX: event.clientX, startY: event.clientY, nodeX: node.position_x, nodeY: node.position_y }; };
-  const moveDrag = (event: React.PointerEvent) => { const drag = dragRef.current; if (!drag || !canvas) return; const x = Math.max(0, drag.nodeX + event.clientX - drag.startX); const y = Math.max(0, drag.nodeY + event.clientY - drag.startY); setCanvas({ ...canvas, nodes: canvas.nodes.map((node) => node.id === drag.id ? { ...node, position_x: x, position_y: y } : node) }); };
-  const endDrag = async () => { const drag = dragRef.current; dragRef.current = null; if (!drag || !canvas) return; const node = canvas.nodes.find((x) => x.id === drag.id); if (!node) return; try { const result = await saveWorkCanvasLayout(canvas.id, canvas.version, [{ id: node.id, position_x: node.position_x, position_y: node.position_y }]); setCanvas((current) => current ? { ...current, version: result.version } : current); } catch { setCanvas(await getWorkCanvas(canvas.id)); } };
+  const openCanvas = async (id: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      setCanvas(await getWorkCanvas(id));
+      setSelectedId(null);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const openCreateDialog = () => {
+    setCreateName(`工作画布 ${canvases.length + 1}`);
+    setCreateError("");
+    setCreateOpen(true);
+  };
+  const createCanvas = async () => {
+    const name = createName.trim();
+    if (!name) {
+      setCreateError("请填写画布名称。");
+      return;
+    }
+    setCreating(true);
+    setCreateError("");
+    setError("");
+    try {
+      const created = await createWorkCanvas(name);
+      setCanvas(created);
+      await refreshList();
+      setCreateOpen(false);
+      setCreateName("");
+    } catch (value) {
+      setCreateError(value instanceof Error ? value.message : "创建失败，请稍后重试。");
+    } finally {
+      setCreating(false);
+    }
+  };
+  const renameCanvas = async () => {
+    if (!canvas) return;
+    const name = window.prompt("重命名工作画布", canvas.name)?.trim();
+    if (!name || name === canvas.name) return;
+    setError("");
+    try {
+      await renameWorkCanvas(canvas.id, name);
+      setCanvas(await getWorkCanvas(canvas.id));
+      await refreshList();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "重命名失败");
+    }
+  };
+  const archiveCanvas = async () => {
+    if (!canvas || !window.confirm(`确定归档“${canvas.name}”吗？画布中的会话不会被删除。`)) return;
+    setError("");
+    try {
+      await archiveWorkCanvas(canvas.id);
+      const next = await refreshList();
+      setSelectedId(null);
+      setCanvas(next[0] ? await getWorkCanvas(next[0].id) : null);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "归档失败");
+    }
+  };
+  const addSession = async (session: SessionSummary) => {
+    if (!canvas) return;
+    const index = canvas.nodes.length;
+    setError("");
+    try {
+      await addWorkCanvasNode(canvas.id, session.id, 80 + (index % 3) * 340, 80 + Math.floor(index / 3) * 230);
+      setCanvas(await getWorkCanvas(canvas.id));
+      await refreshList();
+      setPickerOpen(false);
+      setPickerQuery("");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "添加会话失败");
+    }
+  };
+  const removeNode = async (node: WorkCanvasNode) => {
+    if (!canvas) return;
+    setError("");
+    try {
+      await removeWorkCanvasNode(canvas.id, node.id);
+      setCanvas(await getWorkCanvas(canvas.id));
+      await refreshList();
+      setSelectedId(null);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "移除会话失败");
+    }
+  };
+  const beginDrag = (event: React.PointerEvent, node: WorkCanvasNode) => {
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    dragRef.current = {
+      id: node.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      nodeX: node.position_x,
+      nodeY: node.position_y,
+    };
+  };
+  const moveDrag = (event: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || !canvas) return;
+    const x = Math.max(0, drag.nodeX + event.clientX - drag.startX);
+    const y = Math.max(0, drag.nodeY + event.clientY - drag.startY);
+    setCanvas({
+      ...canvas,
+      nodes: canvas.nodes.map((node) => (node.id === drag.id ? { ...node, position_x: x, position_y: y } : node)),
+    });
+  };
+  const endDrag = async () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || !canvas) return;
+    const node = canvas.nodes.find((x) => x.id === drag.id);
+    if (!node) return;
+    try {
+      const result = await saveWorkCanvasLayout(canvas.id, canvas.version, [
+        {
+          id: node.id,
+          position_x: node.position_x,
+          position_y: node.position_y,
+        },
+      ]);
+      setCanvas((current) => (current ? { ...current, version: result.version } : current));
+    } catch {
+      setCanvas(await getWorkCanvas(canvas.id));
+    }
+  };
 
-  return <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-100"><main className="flex min-w-0 flex-1 flex-col">
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4"><LayoutDashboard size={18} className="text-blue-600"/><select value={canvas?.id ?? ""} onChange={(e) => void openCanvas(e.target.value)} className="max-w-56 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold"><option value="" disabled>选择工作画布</option>{canvases.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.node_count}</option>)}</select><button className="secondary-button" onClick={openCreateDialog}><Plus size={14}/>新建画布</button><button className="icon-button" title="重命名画布" disabled={!canvas} onClick={() => void renameCanvas()}><Pencil size={15}/></button><button className="icon-button text-slate-500" title="归档画布" disabled={!canvas} onClick={() => void archiveCanvas()}><Archive size={15}/></button><div className="ml-auto flex items-center gap-2 text-xs text-slate-500"><Activity size={14}/><span>运行槽位 <b className="text-slate-900">{runningCount} / 10</b></span></div><button className="primary-button" disabled={!canvas} onClick={() => { setPickerQuery(""); setPickerOpen(true); }}><Plus size={14}/>添加会话</button></header>
-    <div className="flex min-h-0 flex-1"><aside className="w-64 shrink-0 border-r border-slate-200 bg-white p-3"><div className="relative"><Search size={14} className="absolute left-3 top-3 text-slate-400"/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索会话、项目、内容" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs"/></div><div className="relative mt-2"><Filter size={14} className="absolute left-3 top-3 text-slate-400"/><select value={project} onChange={(e) => setProject(e.target.value)} className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-2 text-xs"><option value="all">全部项目</option>{projects.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div><p className="mt-5 px-1 text-[10px] font-semibold tracking-widest text-slate-400">会话节点 · {visibleNodes.length}</p><div className="workspace-scroll mt-2 max-h-[calc(100dvh-190px)] space-y-1 overflow-y-auto">{visibleNodes.map((node) => <button key={node.id} onClick={() => setSelectedId(node.id)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${selectedId === node.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-50"}`}><StatusDot stream={streamBySession[node.session_id]}/><span className="min-w-0 flex-1 truncate">{node.session.title}</span></button>)}</div></aside>
-      <section className="workspace-scroll relative min-w-0 flex-1 overflow-auto bg-slate-50" style={{ backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)", backgroundSize: "24px 24px" }}>{loading && <div className="absolute inset-0 z-20 grid place-items-center bg-white/70"><LoaderCircle className="animate-spin text-blue-600"/></div>}{error && <div className="m-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{!loading && !canvas && <Empty onCreate={openCreateDialog}/>} {canvas && <div className="relative h-[1400px] w-[2400px]">{visibleNodes.map((node) => <article key={node.id} onPointerDown={(e) => beginDrag(e, node)} onPointerMove={moveDrag} onPointerUp={() => void endDrag()} onDoubleClick={() => window.location.assign(`/chat?session=${encodeURIComponent(node.session_id)}`)} onClick={() => setSelectedId(node.id)} style={{ transform: `translate(${node.position_x}px, ${node.position_y}px)` }} className={`absolute left-0 top-0 w-72 cursor-grab select-none rounded-2xl border bg-white p-4 shadow-sm transition-shadow active:cursor-grabbing ${selectedId === node.id ? "border-blue-400 shadow-lg shadow-blue-100" : "border-slate-200 hover:shadow-md"}`}><div className="flex items-center gap-2"><StatusDot stream={streamBySession[node.session_id]}/><span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{statusLabel(streamBySession[node.session_id])}</span><span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] ${node.session.priority === "high" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500"}`}>{node.session.priority === "high" ? "高优先级" : "普通"}</span></div><h2 className="mt-3 line-clamp-2 text-sm font-semibold text-slate-900">{node.session.title}</h2><p className="mt-2 flex items-center gap-1 truncate text-xs text-slate-500"><FolderGit2 size={12}/>{node.session.project_name || "未归属项目"}</p><p className="mt-3 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">{node.session.last_message || "暂无会话内容"}</p><div className="mt-3 border-t border-slate-100 pt-3 text-[10px] text-slate-400">{node.session.message_count} 条消息 · {new Date(node.session.updated_at).toLocaleString()}</div></article>)}</div>}</section>
-      {selected && <aside className="w-80 shrink-0 border-l border-slate-200 bg-white"><div className="flex items-center border-b border-slate-100 p-4"><h2 className="font-semibold">会话检查器</h2><button onClick={() => setSelectedId(null)} className="ml-auto icon-button"><X size={16}/></button></div><div className="workspace-scroll h-[calc(100dvh-112px)] overflow-y-auto p-4"><StatusSummary stream={streamBySession[selected.session_id]}/><h3 className="mt-4 text-base font-semibold leading-6">{selected.session.title}</h3><dl className="mt-4 grid grid-cols-[72px_1fr] gap-y-3 text-xs"><dt className="text-slate-400">项目</dt><dd>{selected.session.project_name || "未归属"}</dd><dt className="text-slate-400">消息</dt><dd>{selected.session.message_count} 条</dd><dt className="text-slate-400">更新时间</dt><dd>{new Date(selected.session.updated_at).toLocaleString()}</dd></dl><p className="mt-5 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">{selected.session.last_message || "暂无内容摘要"}</p><div className="mt-5 space-y-2"><Link href={`/chat?session=${encodeURIComponent(selected.session_id)}`} className="primary-button w-full justify-center"><ExternalLink size={14}/>打开完整会话</Link><button onClick={() => void removeNode(selected)} className="secondary-button w-full justify-center text-rose-600"><Trash2 size={14}/>从画布移除</button></div></div></aside>}
-    </div></main>{pickerOpen && <SessionPicker sessions={availableSessions} query={pickerQuery} onQuery={setPickerQuery} onClose={() => { setPickerOpen(false); setPickerQuery(""); }} onAdd={addSession}/>} {createOpen && <CreateCanvasDialog name={createName} error={createError} busy={creating} onChange={(value) => { setCreateName(value); setCreateError(""); }} onClose={() => { if (!creating) setCreateOpen(false); }} onSubmit={() => void createCanvas()}/>}</div>;
+  return (
+    <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-100">
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
+          <LayoutDashboard size={18} className="text-blue-600" />
+          <select value={canvas?.id ?? ""} onChange={(e) => void openCanvas(e.target.value)} className="max-w-56 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold">
+            <option value="" disabled>
+              选择工作画布
+            </option>
+            {canvases.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} · {item.node_count}
+              </option>
+            ))}
+          </select>
+          <button className="secondary-button" onClick={openCreateDialog}>
+            <Plus size={14} />
+            新建画布
+          </button>
+          <button className="icon-button" title="重命名画布" disabled={!canvas} onClick={() => void renameCanvas()}>
+            <Pencil size={15} />
+          </button>
+          <button className="icon-button text-slate-500" title="归档画布" disabled={!canvas} onClick={() => void archiveCanvas()}>
+            <Archive size={15} />
+          </button>
+          <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
+            <Activity size={14} />
+            <span>
+              运行槽位 <b className="text-slate-900">{runningCount} / 10</b>
+            </span>
+          </div>
+          <button
+            className="primary-button"
+            disabled={!canvas}
+            onClick={() => {
+              setPickerQuery("");
+              setPickerOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            添加会话
+          </button>
+        </header>
+        <div className="flex min-h-0 flex-1">
+          {leftOpen ? (
+            <>
+              <aside data-canvas-left className="relative shrink-0 border-r border-slate-200 bg-white p-3" style={{ width: leftWidth }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLeftOpen(false);
+                    persistPanelState("work-canvas:left-open", "false");
+                  }}
+                  className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-md bg-white text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  title="收起会话栏"
+                >
+                  <PanelLeftClose size={15} />
+                </button>
+                <div className="relative pr-8">
+                  <Search size={14} className="absolute left-3 top-3 text-slate-400" />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索会话、项目、内容" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs" />
+                </div>
+                <div className="relative mt-2">
+                  <Filter size={14} className="absolute left-3 top-3 text-slate-400" />
+                  <select value={project} onChange={(e) => setProject(e.target.value)} className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-2 text-xs">
+                    <option value="all">全部项目</option>
+                    {projects.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="mt-5 px-1 text-[10px] font-semibold tracking-widest text-slate-400">会话节点 · {visibleNodes.length}</p>
+                <div className="workspace-scroll mt-2 max-h-[calc(100dvh-190px)] space-y-1 overflow-y-auto">
+                  {visibleNodes.map((node) => (
+                    <button key={node.id} onClick={() => setSelectedId(node.id)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${selectedId === node.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-50"}`}>
+                      <StatusDot stream={streamBySession[node.session_id]} />
+                      <span className="min-w-0 flex-1 truncate">{node.session.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </aside>
+              <div role="separator" aria-label="调整会话栏宽度" onPointerDown={(event) => beginResize("left", event)} className="z-30 -mx-0.5 w-1 cursor-col-resize bg-transparent transition hover:bg-blue-400" />
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setLeftOpen(true);
+                persistPanelState("work-canvas:left-open", "true");
+              }}
+              className="m-2 grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:text-blue-600"
+              title="展开会话栏"
+            >
+              <PanelLeftOpen size={17} />
+            </button>
+          )}
+          <section
+            className="workspace-scroll relative min-w-0 flex-1 overflow-auto bg-slate-50"
+            style={{
+              backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }}
+          >
+            {loading && (
+              <div className="absolute inset-0 z-20 grid place-items-center bg-white/70">
+                <LoaderCircle className="animate-spin text-blue-600" />
+              </div>
+            )}
+            {error && <div className="m-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+            {!loading && !canvas && <Empty onCreate={openCreateDialog} />}{" "}
+            {canvas && (
+              <div className="relative h-[1400px] w-[2400px]">
+                {visibleNodes.map((node) => (
+                  <article
+                    key={node.id}
+                    onPointerDown={(e) => beginDrag(e, node)}
+                    onPointerMove={moveDrag}
+                    onPointerUp={() => void endDrag()}
+                    onDoubleClick={() => window.location.assign(`/chat?session=${encodeURIComponent(node.session_id)}`)}
+                    onClick={() => setSelectedId(node.id)}
+                    style={{
+                      transform: `translate(${node.position_x}px, ${node.position_y}px)`,
+                    }}
+                    className={`absolute left-0 top-0 w-72 cursor-grab select-none rounded-2xl border bg-white p-4 shadow-sm transition-shadow active:cursor-grabbing ${selectedId === node.id ? "border-blue-400 shadow-lg shadow-blue-100" : "border-slate-200 hover:shadow-md"}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <StatusDot stream={streamBySession[node.session_id]} />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{statusLabel(streamBySession[node.session_id])}</span>
+                      <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] ${node.session.priority === "high" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500"}`}>{node.session.priority === "high" ? "高优先级" : "普通"}</span>
+                    </div>
+                    <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-slate-900">{node.session.title}</h2>
+                    <p className="mt-2 flex items-center gap-1 truncate text-xs text-slate-500">
+                      <FolderGit2 size={12} />
+                      {node.session.project_name || "未归属项目"}
+                    </p>
+                    <p className="mt-3 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">{node.session.last_message || "暂无会话内容"}</p>
+                    <div className="mt-3 border-t border-slate-100 pt-3 text-[10px] text-slate-400">
+                      {node.session.message_count} 条消息 · {new Date(node.session.updated_at).toLocaleString()}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+          {selected && (
+            <>
+              <div role="separator" aria-label="调整会话工作区宽度" onPointerDown={(event) => beginResize("right", event)} className="z-30 -mx-0.5 w-1 cursor-col-resize bg-transparent transition hover:bg-blue-400" />
+              <aside
+                data-canvas-right
+                className={`min-w-0 shrink-0 border-l border-slate-200 bg-white shadow-[-8px_0_24px_rgba(15,23,42,0.06)] ${rightPinned ? "relative" : "absolute inset-y-14 right-0 z-40"}`}
+                style={{
+                  width: Math.min(rightWidth, typeof window === "undefined" ? rightWidth : window.innerWidth - 80),
+                }}
+              >
+                <div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3">
+                  <MessageSquare size={15} className="text-blue-600" />
+                  <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{selected.session.title}</h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !rightPinned;
+                      setRightPinned(next);
+                      persistPanelState("work-canvas:right-pinned", String(next));
+                    }}
+                    className={`icon-button ${rightPinned ? "text-blue-600" : "text-slate-400"}`}
+                    title={rightPinned ? "已锁定到画布，点击改为浮动抽屉" : "锁定到画布"}
+                  >
+                    {rightPinned ? <Lock size={15} /> : <Pin size={15} />}
+                  </button>
+                  <a href={`/chat?session=${encodeURIComponent(selected.session_id)}`} className="icon-button" title="在聊天页打开">
+                    <ExternalLink size={15} />
+                  </a>
+                  <button onClick={() => setSelectedId(null)} className="icon-button" title="关闭会话工作区">
+                    <X size={16} />
+                  </button>
+                  <button onClick={() => void removeNode(selected)} className="icon-button text-rose-500" title="从画布移除">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                <div className="h-[calc(100%-2.75rem)] min-h-0 overflow-hidden">
+                  <KnowledgeChatHome embedded embeddedSessionId={selected.session_id} />
+                </div>
+              </aside>
+            </>
+          )}
+        </div>
+      </main>
+      {pickerOpen && (
+        <SessionPicker
+          sessions={availableSessions}
+          query={pickerQuery}
+          onQuery={setPickerQuery}
+          onClose={() => {
+            setPickerOpen(false);
+            setPickerQuery("");
+          }}
+          onAdd={addSession}
+        />
+      )}{" "}
+      {createOpen && (
+        <CreateCanvasDialog
+          name={createName}
+          error={createError}
+          busy={creating}
+          onChange={(value) => {
+            setCreateName(value);
+            setCreateError("");
+          }}
+          onClose={() => {
+            if (!creating) setCreateOpen(false);
+          }}
+          onSubmit={() => void createCanvas()}
+        />
+      )}
+    </div>
+  );
 }
 
-function StatusDot({ stream }: { stream?: { status: string; unread: boolean } }) { const color = stream?.status === "streaming" ? "bg-blue-500 animate-pulse" : stream?.status === "error" ? "bg-rose-500" : stream?.unread ? "bg-amber-400" : "bg-emerald-500"; return <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`}/>; }
-function statusLabel(stream?: { status: string; unread: boolean }) { return stream?.status === "streaming" ? "运行中" : stream?.status === "error" ? "执行异常" : stream?.unread ? "有新结果" : "已同步"; }
-function StatusSummary({ stream }: { stream?: { status: string; unread: boolean } }) { const Icon = stream?.status === "streaming" ? Activity : stream?.status === "error" ? AlertCircle : CheckCircle2; return <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs font-medium"><Icon size={16}/>{statusLabel(stream)}</div>; }
-function Empty({ onCreate }: { onCreate: () => void }) { return <div className="grid h-full place-items-center"><div className="text-center"><LayoutDashboard size={42} className="mx-auto text-slate-300"/><h2 className="mt-4 font-semibold">创建第一个多会话工作画布</h2><p className="mt-2 text-sm text-slate-500">把相关会话集中到同一个空间，持续观察运行状态。</p><button className="primary-button mt-5" onClick={onCreate}><Plus size={14}/>新建画布</button></div></div>; }
-function CreateCanvasDialog({ name, error, busy, onChange, onClose, onSubmit }: { name: string; error: string; busy: boolean; onChange: (value: string) => void; onClose: () => void; onSubmit: () => void }) { useEffect(() => { const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); }; window.addEventListener("keydown", handleKeyDown); return () => window.removeEventListener("keydown", handleKeyDown); }, [busy, onClose]); return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={onClose}><section className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]" role="dialog" aria-modal="true" aria-labelledby="create-canvas-title" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><LayoutDashboard size={20}/></span><div className="min-w-0 flex-1"><h2 id="create-canvas-title" className="text-base font-semibold text-slate-900">新建工作画布</h2><p className="mt-1 text-xs leading-5 text-slate-500">为相关会话创建一个可拖拽、可持续追踪的协作空间。</p></div><button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" onClick={onClose} disabled={busy} aria-label="关闭"><X size={17}/></button></div><form onSubmit={(event) => { event.preventDefault(); onSubmit(); }} className="p-5"><label htmlFor="work-canvas-name" className="block text-sm font-medium text-slate-800">画布名称</label><input id="work-canvas-name" autoFocus value={name} maxLength={160} onChange={(event) => onChange(event.target.value)} placeholder="例如：产品发布协作" className={`mt-2 h-11 w-full rounded-xl border bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-4 ${error ? "border-rose-300 focus:border-rose-400 focus:ring-rose-50" : "border-slate-200 focus:border-blue-500 focus:ring-blue-50"}`} aria-describedby="work-canvas-name-hint work-canvas-name-error"/><div className="mt-2 flex items-center justify-between gap-3"><p id="work-canvas-name-hint" className="text-xs text-slate-500">名称最多 160 个字符，后续可随时重命名。</p><span className="shrink-0 text-xs tabular-nums text-slate-400">{name.length}/160</span></div>{error && <p id="work-canvas-name-error" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">{error}</p>}<div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" className="h-10 rounded-lg px-4 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-40" onClick={onClose} disabled={busy}>取消</button><button type="submit" disabled={busy || !name.trim()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? <LoaderCircle size={16} className="animate-spin"/> : <Plus size={16}/>} {busy ? "正在创建…" : "创建画布"}</button></div></form></section></div>; }
-function SessionPicker({ sessions, query, onQuery, onClose, onAdd }: { sessions: SessionSummary[]; query: string; onQuery: (value: string) => void; onClose: () => void; onAdd: (session: SessionSummary) => void }) { return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"><div className="flex items-center border-b p-4"><h2 className="font-semibold">添加已有会话</h2><button className="ml-auto icon-button" onClick={onClose}><X size={16}/></button></div><div className="p-4"><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input autoFocus value={query} onChange={(e) => onQuery(e.target.value)} placeholder="筛选会话或项目" className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm"/></div><div className="workspace-scroll mt-3 max-h-96 space-y-1 overflow-y-auto">{sessions.map((session) => <button key={session.id} onClick={() => void onAdd(session)} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-blue-50"><MessageSquare size={16} className="text-blue-500"/><span className="min-w-0 flex-1"><b className="block truncate text-sm">{session.title}</b><span className="mt-1 block truncate text-xs text-slate-400">{session.project_name || "未归属项目"} · {session.message_count} 条消息</span></span><Plus size={15}/></button>)}{sessions.length === 0 && <p className="py-10 text-center text-sm text-slate-400">没有可添加的会话</p>}</div></div></div></div>; }
+function StatusDot({ stream }: { stream?: { status: string; unread: boolean } }) {
+  const color = stream?.status === "streaming" ? "bg-blue-500 animate-pulse" : stream?.status === "error" ? "bg-rose-500" : stream?.unread ? "bg-amber-400" : "bg-emerald-500";
+  return <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} />;
+}
+function statusLabel(stream?: { status: string; unread: boolean }) {
+  return stream?.status === "streaming" ? "运行中" : stream?.status === "error" ? "执行异常" : stream?.unread ? "有新结果" : "已同步";
+}
+function Empty({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="grid h-full place-items-center">
+      <div className="text-center">
+        <LayoutDashboard size={42} className="mx-auto text-slate-300" />
+        <h2 className="mt-4 font-semibold">创建第一个多会话工作画布</h2>
+        <p className="mt-2 text-sm text-slate-500">把相关会话集中到同一个空间，持续观察运行状态。</p>
+        <button className="primary-button mt-5" onClick={onCreate}>
+          <Plus size={14} />
+          新建画布
+        </button>
+      </div>
+    </div>
+  );
+}
+function CreateCanvasDialog({ name, error, busy, onChange, onClose, onSubmit }: { name: string; error: string; busy: boolean; onChange: (value: string) => void; onClose: () => void; onSubmit: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [busy, onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={onClose}>
+      <section className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]" role="dialog" aria-modal="true" aria-labelledby="create-canvas-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+            <LayoutDashboard size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 id="create-canvas-title" className="text-base font-semibold text-slate-900">
+              新建工作画布
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">为相关会话创建一个可拖拽、可持续追踪的协作空间。</p>
+          </div>
+          <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" onClick={onClose} disabled={busy} aria-label="关闭">
+            <X size={17} />
+          </button>
+        </div>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+          className="p-5"
+        >
+          <label htmlFor="work-canvas-name" className="block text-sm font-medium text-slate-800">
+            画布名称
+          </label>
+          <input id="work-canvas-name" autoFocus value={name} maxLength={160} onChange={(event) => onChange(event.target.value)} placeholder="例如：产品发布协作" className={`mt-2 h-11 w-full rounded-xl border bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-4 ${error ? "border-rose-300 focus:border-rose-400 focus:ring-rose-50" : "border-slate-200 focus:border-blue-500 focus:ring-blue-50"}`} aria-describedby="work-canvas-name-hint work-canvas-name-error" />
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p id="work-canvas-name-hint" className="text-xs text-slate-500">
+              名称最多 160 个字符，后续可随时重命名。
+            </p>
+            <span className="shrink-0 text-xs tabular-nums text-slate-400">{name.length}/160</span>
+          </div>
+          {error && (
+            <p id="work-canvas-name-error" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" className="h-10 rounded-lg px-4 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-40" onClick={onClose} disabled={busy}>
+              取消
+            </button>
+            <button type="submit" disabled={busy || !name.trim()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-300">
+              {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Plus size={16} />} {busy ? "正在创建…" : "创建画布"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+function SessionPicker({ sessions, query, onQuery, onClose, onAdd }: { sessions: SessionSummary[]; query: string; onQuery: (value: string) => void; onClose: () => void; onAdd: (session: SessionSummary) => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center border-b p-4">
+          <h2 className="font-semibold">添加已有会话</h2>
+          <button className="ml-auto icon-button" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-4">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-3 text-slate-400" />
+            <input autoFocus value={query} onChange={(e) => onQuery(e.target.value)} placeholder="筛选会话或项目" className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm" />
+          </div>
+          <div className="workspace-scroll mt-3 max-h-96 space-y-1 overflow-y-auto">
+            {sessions.map((session) => (
+              <button key={session.id} onClick={() => void onAdd(session)} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-blue-50">
+                <MessageSquare size={16} className="text-blue-500" />
+                <span className="min-w-0 flex-1">
+                  <b className="block truncate text-sm">{session.title}</b>
+                  <span className="mt-1 block truncate text-xs text-slate-400">
+                    {session.project_name || "未归属项目"} · {session.message_count} 条消息
+                  </span>
+                </span>
+                <Plus size={15} />
+              </button>
+            ))}
+            {sessions.length === 0 && <p className="py-10 text-center text-sm text-slate-400">没有可添加的会话</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

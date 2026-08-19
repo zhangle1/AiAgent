@@ -25,7 +25,12 @@ type InspectorTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "te
 
 type ChatImagePreview = ChatImageAttachment & { previewUrl: string };
 
-type SlashProjectCommand = { start: number; end: number; query: string; kind: "projects" | "documents" };
+type SlashProjectCommand = {
+  start: number;
+  end: number;
+  query: string;
+  kind: "projects" | "documents";
+};
 
 type ChatMessage = {
   id: string;
@@ -59,29 +64,78 @@ function chatDebugStorageKey(sessionId: string | null) {
 }
 
 function createClientId(): string {
-  return globalThis.crypto?.randomUUID?.()
-    ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function toHistoryMessages(session: SessionDetail): ChatMessage[] {
   return session.messages.map((message) => ({
-    id: String(message.id), role: message.role, content: message.content, thinking: message.thinking ?? undefined,
-    citations: message.citations ?? undefined, model: message.metadata?.model ?? null,
-    attachments: message.metadata?.attachments?.map((attachment) => ({ ...attachment, previewUrl: persistedChatImageUrl(session.id, attachment.id) })),
+    id: String(message.id),
+    role: message.role,
+    content: message.content,
+    thinking: message.thinking ?? undefined,
+    citations: message.citations ?? undefined,
+    model: message.metadata?.model ?? null,
+    attachments: message.metadata?.attachments?.map((attachment) => ({
+      ...attachment,
+      previewUrl: persistedChatImageUrl(session.id, attachment.id),
+    })),
     documentAttachments: message.metadata?.document_attachments,
     status: "done",
   }));
 }
 
 function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key: TranslationKey) => string): ChatMessage {
-  if (event.type === "debug_trace" && event.debug_trace) return { ...message, debugTrace: [...(message.debugTrace ?? []), event.debug_trace] };
+  if (event.type === "debug_trace" && event.debug_trace)
+    return {
+      ...message,
+      debugTrace: [...(message.debugTrace ?? []), event.debug_trace],
+    };
   const stats = event.metadata ? extractRunStats(event.metadata) : {};
-  if (event.type === "label") return { ...message, label: event.label ?? null, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
-  if (event.type === "thinking") return { ...message, thinking: `${message.thinking ?? ""}${event.content ?? ""}`, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
-  if (event.type === "content") return { ...message, content: `${message.content}${event.content ?? ""}`, model: event.model ?? message.model, ...stats };
-  if (event.type === "loop" || event.type === "tool" || event.type === "tool_result" || event.type === "tool_request") return { ...message, trace: appendTrace(message.trace, formatTraceEvent(event, t)), ...stats };
-  if (event.type === "sources" || event.type === "done") return { ...message, content: message.content || event.content || "", citations: event.citations ?? message.citations, model: event.model ?? message.model, modificationStatus: stringifyMeta(event.metadata?.modification_status) || message.modificationStatus, label: event.label ?? message.label, status: event.type === "done" ? "done" : message.status, elapsedSeconds: stats.elapsedSeconds ?? Math.max(1, Math.round((Date.now() - (message.startedAt ?? Date.now())) / 1000)), ...stats };
-  if (event.type === "error") return { ...message, content: message.content || event.content || t("chat.searchFailed"), status: "error" };
+  if (event.type === "label")
+    return {
+      ...message,
+      label: event.label ?? null,
+      trace: appendTrace(message.trace, formatTraceEvent(event, t)),
+      ...stats,
+    };
+  if (event.type === "thinking")
+    return {
+      ...message,
+      thinking: `${message.thinking ?? ""}${event.content ?? ""}`,
+      trace: appendTrace(message.trace, formatTraceEvent(event, t)),
+      ...stats,
+    };
+  if (event.type === "content")
+    return {
+      ...message,
+      content: `${message.content}${event.content ?? ""}`,
+      model: event.model ?? message.model,
+      ...stats,
+    };
+  if (event.type === "loop" || event.type === "tool" || event.type === "tool_result" || event.type === "tool_request")
+    return {
+      ...message,
+      trace: appendTrace(message.trace, formatTraceEvent(event, t)),
+      ...stats,
+    };
+  if (event.type === "sources" || event.type === "done")
+    return {
+      ...message,
+      content: message.content || event.content || "",
+      citations: event.citations ?? message.citations,
+      model: event.model ?? message.model,
+      modificationStatus: stringifyMeta(event.metadata?.modification_status) || message.modificationStatus,
+      label: event.label ?? message.label,
+      status: event.type === "done" ? "done" : message.status,
+      elapsedSeconds: stats.elapsedSeconds ?? Math.max(1, Math.round((Date.now() - (message.startedAt ?? Date.now())) / 1000)),
+      ...stats,
+    };
+  if (event.type === "error")
+    return {
+      ...message,
+      content: message.content || event.content || t("chat.searchFailed"),
+      status: "error",
+    };
   return message;
 }
 
@@ -89,9 +143,24 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
   const next = [...items];
   for (const stream of streams) {
     const id = `stream:${stream.id}`;
-    const initial: ChatMessage = { id, role: "assistant", content: "", thinking: "", trace: [], label: null, status: "streaming", startedAt: stream.startedAt, agent: stream.agent };
+    const initial: ChatMessage = {
+      id,
+      role: "assistant",
+      content: "",
+      thinking: "",
+      trace: [],
+      label: null,
+      status: "streaming",
+      startedAt: stream.startedAt,
+      agent: stream.agent,
+    };
     const message = stream.events.reduce((current, event) => applyStreamEvent(current, event, t), initial);
-    const candidate = { ...message, status: stream.status === "streaming" ? message.status : stream.status, content: stream.status === "done" ? message.content.trim() || t("chat.emptyAnswer") : message.content, elapsedSeconds: message.elapsedSeconds ?? (stream.status === "streaming" ? undefined : Math.max(1, Math.round((Date.now() - stream.startedAt) / 1000))) };
+    const candidate = {
+      ...message,
+      status: stream.status === "streaming" ? message.status : stream.status,
+      content: stream.status === "done" ? message.content.trim() || t("chat.emptyAnswer") : message.content,
+      elapsedSeconds: message.elapsedSeconds ?? (stream.status === "streaming" ? undefined : Math.max(1, Math.round((Date.now() - stream.startedAt) / 1000))),
+    };
     const index = next.findIndex((item) => item.id === id);
     if (index >= 0) next[index] = { ...next[index], ...candidate };
     else {
@@ -102,11 +171,11 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
   return next;
 }
 
-export function KnowledgeChatHome() {
+export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { embeddedSessionId?: string | null; embedded?: boolean } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedSessionId = searchParams.get("session");
+  const requestedSessionId = embedded ? (embeddedSessionId ?? null) : searchParams.get("session");
   const requestedTemplateHandoff = searchParams.get("template_handoff");
   const requestedProjectId = Number(searchParams.get("project")) || null;
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -168,10 +237,7 @@ export function KnowledgeChatHome() {
     setDebugTraceEnabled(sessionStorage.getItem(chatDebugStorageKey(activeSessionId)) === "1");
   }, [activeSessionId]);
 
-  const readyKnowledgeBases = useMemo(
-    () => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"),
-    [knowledgeBases],
-  );
+  const readyKnowledgeBases = useMemo(() => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"), [knowledgeBases]);
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
   const currentKnowledgeBase = readyKnowledgeBases.find((kb) => kb.name === selectedKbNames[0]);
   const selectedProject = codeProjects.find((project) => project.id === selectedProjectId) ?? null;
@@ -179,19 +245,11 @@ export function KnowledgeChatHome() {
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
   const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
-  const imageInput = selectedAgentId === "codex" ? currentCodexModel?.image_input ?? "none" : "none";
-  const canAttachImages = imageInput === "native"
-    ? imageOcrPolicy?.native_image_input_enabled === true
-    : imageInput === "ocr" && imageOcrPolicy?.enabled === true;
-  const imageAttachmentHint = imageInput === "native"
-    ? "原生 Codex 原图识图"
-    : imageInput === "ocr"
-      ? "第三方 Profile 使用本地 PaddleOCR 识别图片文字"
-      : "当前模型未启用图片识别";
-  const codexReasoningEfforts = currentCodexModel?.supports_reasoning_effort ? codexModelPolicy?.allowed_reasoning_efforts ?? [] : [];
-  const mobileModelLabel = selectedAgentId === "codex"
-    ? `${currentCodexModel?.name ?? "Auto"}${currentCodexModel?.supports_reasoning_effort && selectedCodexReasoningEffort ? ` · ${codexReasoningEffortLabel(selectedCodexReasoningEffort)}` : ""}`
-    : currentModel?.name || currentModel?.model || "Auto";
+  const imageInput = selectedAgentId === "codex" ? (currentCodexModel?.image_input ?? "none") : "none";
+  const canAttachImages = imageInput === "native" ? imageOcrPolicy?.native_image_input_enabled === true : imageInput === "ocr" && imageOcrPolicy?.enabled === true;
+  const imageAttachmentHint = imageInput === "native" ? "原生 Codex 原图识图" : imageInput === "ocr" ? "第三方 Profile 使用本地 PaddleOCR 识别图片文字" : "当前模型未启用图片识别";
+  const codexReasoningEfforts = currentCodexModel?.supports_reasoning_effort ? (codexModelPolicy?.allowed_reasoning_efforts ?? []) : [];
+  const mobileModelLabel = selectedAgentId === "codex" ? `${currentCodexModel?.name ?? "Auto"}${currentCodexModel?.supports_reasoning_effort && selectedCodexReasoningEffort ? ` · ${codexReasoningEffortLabel(selectedCodexReasoningEffort)}` : ""}` : currentModel?.name || currentModel?.model || "Auto";
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
@@ -207,13 +265,19 @@ export function KnowledgeChatHome() {
   }, []);
 
   useEffect(() => {
-    void getAgentProviderEnvironments().then(setAgentProviders).catch(() => setAgentProviders([]));
-    void getCodexModelPolicy().then((policy) => {
-      setCodexModelPolicy(policy);
-      setSelectedCodexModelId((current) => current || policy.default_model_id);
-      setSelectedCodexReasoningEffort((current) => current || policy.default_reasoning_effort);
-    }).catch(() => setCodexModelPolicy(null));
-    void getImageOcrPolicy().then(setImageOcrPolicy).catch(() => setImageOcrPolicy(null));
+    void getAgentProviderEnvironments()
+      .then(setAgentProviders)
+      .catch(() => setAgentProviders([]));
+    void getCodexModelPolicy()
+      .then((policy) => {
+        setCodexModelPolicy(policy);
+        setSelectedCodexModelId((current) => current || policy.default_model_id);
+        setSelectedCodexReasoningEffort((current) => current || policy.default_reasoning_effort);
+      })
+      .catch(() => setCodexModelPolicy(null));
+    void getImageOcrPolicy()
+      .then(setImageOcrPolicy)
+      .catch(() => setImageOcrPolicy(null));
   }, []);
 
   useEffect(() => {
@@ -236,7 +300,11 @@ export function KnowledgeChatHome() {
     const raw = sessionStorage.getItem("aiagent:pending-template-turn");
     if (!raw) return;
     try {
-      const pending = JSON.parse(raw) as { handoff_id?: string; content?: string; project_id?: number | null };
+      const pending = JSON.parse(raw) as {
+        handoff_id?: string;
+        content?: string;
+        project_id?: number | null;
+      };
       if (pending.handoff_id !== requestedTemplateHandoff) return;
       if (typeof pending.content === "string" && pending.content.trim()) setInput(pending.content);
       if (typeof pending.project_id === "number") setSelectedProjectId(pending.project_id);
@@ -246,7 +314,9 @@ export function KnowledgeChatHome() {
     }
   }, [requestedSessionId, requestedTemplateHandoff]);
 
-  useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,14 +329,20 @@ export function KnowledgeChatHome() {
       pendingSessionIdRef.current = null;
       return;
     }
-    void getSession(requestedSessionId).then((session) => {
-      if (cancelled) return;
-      setActiveSessionId(session.id);
-      setSelectedProjectId(session.project_id ?? null);
-      setMessages(toHistoryMessages(session));
-      clearFinishedStreams(session.id);
-    }).catch((ex) => { if (!cancelled) setError(ex instanceof Error ? ex.message : t("chat.errorLoadKnowledge")); });
-    return () => { cancelled = true; };
+    void getSession(requestedSessionId)
+      .then((session) => {
+        if (cancelled) return;
+        setActiveSessionId(session.id);
+        setSelectedProjectId(session.project_id ?? null);
+        setMessages(toHistoryMessages(session));
+        clearFinishedStreams(session.id);
+      })
+      .catch((ex) => {
+        if (!cancelled) setError(ex instanceof Error ? ex.message : t("chat.errorLoadKnowledge"));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [clearFinishedStreams, requestedSessionId, t]);
 
   useEffect(() => {
@@ -274,14 +350,16 @@ export function KnowledgeChatHome() {
       const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
       if (!sessionId || sessionId !== activeSessionIdRef.current) return;
       window.setTimeout(() => {
-        void getSession(sessionId).then((session) => {
-          if (activeSessionIdRef.current !== session.id) return;
-          setSelectedProjectId(session.project_id ?? null);
-          setMessages(toHistoryMessages(session));
-          clearFinishedStreams(session.id);
-        }).catch(() => {
-          // The live stream remains visible; the next session entry retries history loading.
-        });
+        void getSession(sessionId)
+          .then((session) => {
+            if (activeSessionIdRef.current !== session.id) return;
+            setSelectedProjectId(session.project_id ?? null);
+            setMessages(toHistoryMessages(session));
+            clearFinishedStreams(session.id);
+          })
+          .catch(() => {
+            // The live stream remains visible; the next session entry retries history loading.
+          });
       }, 300);
     };
     window.addEventListener("aiagent:chat-stream-complete", refreshCompletedSession);
@@ -320,27 +398,33 @@ export function KnowledgeChatHome() {
           return;
         }
         setMarkdownDocumentLoading(true);
-        void getProjectMarkdownDocuments(selectedProjectId, slashProjectCommand.query).then((items) => {
-          if (cancelled) return;
-          setMarkdownDocumentOptions([...items].sort((left, right) => markdownDocumentUpdatedAt(right) - markdownDocumentUpdatedAt(left)));
-          setActiveProjectReferenceIndex(0);
-        }).catch(() => {
-          if (!cancelled) setMarkdownDocumentOptions([]);
-        }).finally(() => {
-          if (!cancelled) setMarkdownDocumentLoading(false);
-        });
+        void getProjectMarkdownDocuments(selectedProjectId, slashProjectCommand.query)
+          .then((items) => {
+            if (cancelled) return;
+            setMarkdownDocumentOptions([...items].sort((left, right) => markdownDocumentUpdatedAt(right) - markdownDocumentUpdatedAt(left)));
+            setActiveProjectReferenceIndex(0);
+          })
+          .catch(() => {
+            if (!cancelled) setMarkdownDocumentOptions([]);
+          })
+          .finally(() => {
+            if (!cancelled) setMarkdownDocumentLoading(false);
+          });
         return;
       }
       setProjectReferenceLoading(true);
-      void getChatProjectReferences(slashProjectCommand.query, selectedProjectId).then((items) => {
-        if (cancelled) return;
-        setProjectReferenceOptions(items);
-        setActiveProjectReferenceIndex(0);
-      }).catch(() => {
-        if (!cancelled) setProjectReferenceOptions([]);
-      }).finally(() => {
-        if (!cancelled) setProjectReferenceLoading(false);
-      });
+      void getChatProjectReferences(slashProjectCommand.query, selectedProjectId)
+        .then((items) => {
+          if (cancelled) return;
+          setProjectReferenceOptions(items);
+          setActiveProjectReferenceIndex(0);
+        })
+        .catch(() => {
+          if (!cancelled) setProjectReferenceOptions([]);
+        })
+        .finally(() => {
+          if (!cancelled) setProjectReferenceLoading(false);
+        });
     }, 120);
     return () => {
       cancelled = true;
@@ -478,7 +562,12 @@ export function KnowledgeChatHome() {
     const next = `${input.slice(0, slashProjectCommand.start)}${command}${input.slice(slashProjectCommand.end)}`;
     const cursor = slashProjectCommand.start + command.length;
     setInput(next);
-    setSlashProjectCommand({ start: slashProjectCommand.start, end: cursor, query: "", kind: "documents" });
+    setSlashProjectCommand({
+      start: slashProjectCommand.start,
+      end: cursor,
+      query: "",
+      kind: "documents",
+    });
     setActiveProjectReferenceIndex(0);
     focusComposerAt(cursor);
   }
@@ -529,7 +618,16 @@ export function KnowledgeChatHome() {
     focusComposerAt(prompt.length);
   }
 
-  async function sendMessage(query: string, options?: { retryAssistantId?: string; attachments?: ChatImagePreview[]; documentAttachments?: ChatFileAttachment[]; markdownDocuments?: CodeProjectMarkdownDocument[]; projectReferences?: CodeProjectReference[] }) {
+  async function sendMessage(
+    query: string,
+    options?: {
+      retryAssistantId?: string;
+      attachments?: ChatImagePreview[];
+      documentAttachments?: ChatFileAttachment[];
+      markdownDocuments?: CodeProjectMarkdownDocument[];
+      projectReferences?: CodeProjectReference[];
+    },
+  ) {
     const attachmentsForTurn = options?.attachments ?? imageAttachments;
     const documentAttachmentsForTurn = options?.documentAttachments ?? documentAttachments;
     const markdownDocumentsForTurn = options?.markdownDocuments ?? pendingMarkdownDocuments;
@@ -562,7 +660,7 @@ export function KnowledgeChatHome() {
       if (debugTraceEnabled) sessionStorage.setItem(chatDebugStorageKey(sessionId), "1");
       pendingSessionIdRef.current = sessionId;
       setActiveSessionId(sessionId);
-      router.replace(`/chat?session=${encodeURIComponent(sessionId)}`);
+      if (!embedded) router.replace(`/chat?session=${encodeURIComponent(sessionId)}`);
     }
 
     if (!options?.retryAssistantId) {
@@ -591,11 +689,22 @@ export function KnowledgeChatHome() {
     const assistantId = options?.retryAssistantId ?? createClientId();
     const startedAt = Date.now();
     if (options?.retryAssistantId) {
-      setMessages((items) => items.map((message) => (
-        message.id === assistantId
-          ? { ...message, content: "", thinking: "", trace: [], citations: undefined, label: null, status: "streaming", startedAt }
-          : message
-      )));
+      setMessages((items) =>
+        items.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content: "",
+                thinking: "",
+                trace: [],
+                citations: undefined,
+                label: null,
+                status: "streaming",
+                startedAt,
+              }
+            : message,
+        ),
+      );
     } else {
       setMessages((items) => [
         ...items,
@@ -621,7 +730,9 @@ export function KnowledgeChatHome() {
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: selectedProjectId ?? undefined,
-        project_references: projectReferenceIds.map((project_id) => ({ project_id })),
+        project_references: projectReferenceIds.map((project_id) => ({
+          project_id,
+        })),
         markdown_document_references: markdownReferences,
         model_id: selectedAgentId === "codex" ? undefined : selectedModelId || undefined,
         codex_model_id: selectedAgentId === "codex" ? selectedCodexModelId || undefined : undefined,
@@ -637,18 +748,22 @@ export function KnowledgeChatHome() {
       });
       setMessages((items) => {
         const streamMessageId = `stream:${streamId}`;
-        return items.some((message) => message.id === streamMessageId)
-          ? items.filter((message) => message.id !== assistantId)
-          : items.map((message) => message.id === assistantId ? { ...message, id: streamMessageId } : message);
+        return items.some((message) => message.id === streamMessageId) ? items.filter((message) => message.id !== assistantId) : items.map((message) => (message.id === assistantId ? { ...message, id: streamMessageId } : message));
       });
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : t("chat.errorSearch"));
-      setMessages((items) => items.map((message) => (
-        message.id === assistantId
-          ? { ...message, content: message.content || t("chat.searchFailed"), status: "error" }
-          : message
-      )));
+      setMessages((items) =>
+        items.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content: message.content || t("chat.searchFailed"),
+                status: "error",
+              }
+            : message,
+        ),
+      );
     }
   }
 
@@ -766,10 +881,7 @@ export function KnowledgeChatHome() {
     try {
       const items = await getProjectMarkdownDocuments(selectedProjectId);
       const normalizedReference = normalizeMarkdownDocumentReference(reference);
-      const document = items.find((item) => item.path.toLowerCase() === normalizedReference)
-        ?? items.find((item) => `${item.repository_name}/${item.path}`.toLowerCase() === normalizedReference)
-        ?? items.find((item) => item.path.toLowerCase().endsWith(`/${normalizedReference}`))
-        ?? items.find((item) => item.name.toLowerCase() === normalizedReference.split("/").pop());
+      const document = items.find((item) => item.path.toLowerCase() === normalizedReference) ?? items.find((item) => `${item.repository_name}/${item.path}`.toLowerCase() === normalizedReference) ?? items.find((item) => item.path.toLowerCase().endsWith(`/${normalizedReference}`)) ?? items.find((item) => item.name.toLowerCase() === normalizedReference.split("/").pop());
       if (!document) {
         setError(`当前项目中找不到 ${reference}。`);
         return;
@@ -785,23 +897,45 @@ export function KnowledgeChatHome() {
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,#eff6ff_0,transparent_38%),#f8fafc]">
       <header className="relative z-[80] flex h-14 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/75 px-3 backdrop-blur-xl lg:h-16 lg:px-5">
         <div className="flex min-w-0 items-center gap-2 lg:gap-3">
-          <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:mobile-drawer-toggle"))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="打开工作台抽屉"><Menu size={20}/></button>
-          <div className="hidden h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600 lg:grid"><Sparkles size={16}/></div>
-          <div className="min-w-0"><h1 className="truncate text-sm font-semibold text-slate-950">{activeSessionId ? "当前会话" : t("chat.newChat")}</h1><p className="hidden text-[11px] text-slate-400 lg:block">AI 工作台</p></div>
-          {currentKnowledgeBase && (
-            <span className="hidden rounded-full bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 sm:inline-flex">
-              {currentKnowledgeBase.display_name || currentKnowledgeBase.name}
+          <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:mobile-drawer-toggle"))} className="grid h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="打开工作台抽屉">
+            <Menu size={20} />
+          </button>
+          <div className="hidden h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600 lg:grid">
+            <Sparkles size={16} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold text-slate-950">{activeSessionId ? "当前会话" : t("chat.newChat")}</h1>
+            <p className="hidden text-[11px] text-slate-400 lg:block">AI 工作台</p>
+          </div>
+          {currentKnowledgeBase && <span className="hidden rounded-full bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 sm:inline-flex">{currentKnowledgeBase.display_name || currentKnowledgeBase.name}</span>}
+          {selectedProject && (
+            <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex">
+              <Braces size={12} />
+              {selectedProject.display_name}
             </span>
           )}
-          {selectedProject && <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex"><Braces size={12}/>{selectedProject.display_name}</span>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 lg:gap-2">
-          <button type="button" onClick={() => setDebugTraceEnabled((enabled) => { const next = !enabled; sessionStorage.setItem(chatDebugStorageKey(activeSessionId), next ? "1" : "0"); return next; })} className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition ${debugTraceEnabled ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"}`} title="仅当前浏览器会话显示耗时诊断，不记录消息内容">
-            <Terminal size={13} />Debug
+          <button
+            type="button"
+            onClick={() =>
+              setDebugTraceEnabled((enabled) => {
+                const next = !enabled;
+                sessionStorage.setItem(chatDebugStorageKey(activeSessionId), next ? "1" : "0");
+                return next;
+              })
+            }
+            className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition ${debugTraceEnabled ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"}`}
+            title="仅当前浏览器会话显示耗时诊断，不记录消息内容"
+          >
+            <Terminal size={13} />
+            Debug
           </button>
           <ClientScanDialog />
-          <ChatRuntimeToolbar project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")}/>
-          <span className="hidden lg:contents"><SidePanelTabLauncher onOpen={openInspector}/></span>
+          <ChatRuntimeToolbar project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")} />
+          <span className="hidden lg:contents">
+            <SidePanelTabLauncher onOpen={openInspector} />
+          </span>
           <button type="button" onClick={() => void loadBootstrap()} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600 lg:inline-flex" aria-label={t("knowledge.refresh")}>
             <RefreshCw size={14} />
           </button>
@@ -809,232 +943,308 @@ export function KnowledgeChatHome() {
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-7">
-        <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
-          {displayMessages.length === 0 ? (
-            <EmptyState title={t("chat.heroTitle")} />
-          ) : (
-            <div className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
-              {displayMessages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  onPreviewImage={setPreviewingImage}
-                    onRetry={message.role === "assistant" ? () => {
-                      const userMessage = findPreviousUserMessage(displayMessages, index);
-                      if (userMessage) void sendMessage(userMessage.content, { retryAssistantId: message.id, attachments: userMessage.attachments, documentAttachments: userMessage.documentAttachments, markdownDocuments: userMessage.markdownDocuments, projectReferences: userMessage.projectReferences });
-                    } : undefined}
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 py-5 sm:px-7">
+          <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
+            {displayMessages.length === 0 ? (
+              <EmptyState title={t("chat.heroTitle")} />
+            ) : (
+              <div className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
+                {displayMessages.map((message, index) => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    onPreviewImage={setPreviewingImage}
+                    onRetry={
+                      message.role === "assistant"
+                        ? () => {
+                            const userMessage = findPreviousUserMessage(displayMessages, index);
+                            if (userMessage)
+                              void sendMessage(userMessage.content, {
+                                retryAssistantId: message.id,
+                                attachments: userMessage.attachments,
+                                documentAttachments: userMessage.documentAttachments,
+                                markdownDocuments: userMessage.markdownDocuments,
+                                projectReferences: userMessage.projectReferences,
+                              });
+                          }
+                        : undefined
+                    }
                     onOpenCodeFile={openCodeFile}
                     onOpenProjectMarkdownDocument={openProjectMarkdownDocument}
                     projectId={selectedProjectId}
                     showDebugTrace={debugTraceEnabled}
                     onOpenDiagnostics={openDiagnostics}
-                />
-              ))}
-              {sending && (
-                <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
-                  <Loader2 size={14} className="animate-spin" />
-                  {t("chat.thinking")}
+                  />
+                ))}
+                {sending && (
+                  <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
+                    <Loader2 size={14} className="animate-spin" />
+                    {t("chat.thinking")}
+                  </div>
+                )}
+                <div ref={bottomRef} />
+              </div>
+            )}
+
+            <form
+              onSubmit={handleSubmit}
+              onPaste={(event) => {
+                const filesFromItems = Array.from(event.clipboardData.items)
+                  .filter((item) => item.kind === "file")
+                  .map((item) => item.getAsFile())
+                  .filter((file): file is File => file !== null);
+                const files = filesFromItems.length > 0 ? filesFromItems : Array.from(event.clipboardData.files);
+                if (files.length > 0) {
+                  event.preventDefault();
+                  addAttachments(files);
+                }
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const files = Array.from(event.dataTransfer.files);
+                if (files.length === 0) return;
+                addAttachments(files);
+              }}
+              className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
+            >
+              {imageAttachments.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+                  {imageAttachments.map((attachment) => (
+                    <div key={attachment.id} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                      <button type="button" onClick={() => setPreviewingImage(attachment)} className="block h-full w-full cursor-zoom-in" aria-label={`放大 ${attachment.file_name}`}>
+                        <img src={attachment.previewUrl} alt={attachment.file_name} className="h-full w-full object-cover" />
+                      </button>
+                      <button type="button" onClick={() => void removeImage(attachment)} className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/75 text-white opacity-0 transition group-hover:opacity-100 focus:opacity-100" aria-label={`移除 ${attachment.file_name}`}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div ref={bottomRef} />
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} onPaste={(event) => {
-            const filesFromItems = Array.from(event.clipboardData.items)
-              .filter((item) => item.kind === "file")
-              .map((item) => item.getAsFile())
-              .filter((file): file is File => file !== null);
-            const files = filesFromItems.length > 0 ? filesFromItems : Array.from(event.clipboardData.files);
-            if (files.length > 0) {
-              event.preventDefault();
-              addAttachments(files);
-            }
-          }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
-            event.preventDefault();
-            const files = Array.from(event.dataTransfer.files);
-            if (files.length === 0) return;
-            addAttachments(files);
-          }} className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}>
-            {imageAttachments.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
-                {imageAttachments.map((attachment) => (
-                  <div key={attachment.id} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                    <button type="button" onClick={() => setPreviewingImage(attachment)} className="block h-full w-full cursor-zoom-in" aria-label={`放大 ${attachment.file_name}`}>
-                      <img src={attachment.previewUrl} alt={attachment.file_name} className="h-full w-full object-cover" />
-                    </button>
-                    <button type="button" onClick={() => void removeImage(attachment)} className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/75 text-white opacity-0 transition group-hover:opacity-100 focus:opacity-100" aria-label={`移除 ${attachment.file_name}`}>
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {documentAttachments.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
-                {documentAttachments.map((attachment) => (
-                  <div key={attachment.id} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
-                    <FileText size={15} className="shrink-0 text-blue-600"/><span className="max-w-44 truncate">{attachment.file_name}</span><button type="button" onDoubleClick={() => void previewDocumentExtraction(attachment)} title={attachment.extraction_status === "ready" ? "双击查看实际提取文本" : "旧 Office 格式需先转换"} className={`shrink-0 select-none text-[10px] ${attachment.extraction_status === "ready" ? "cursor-zoom-in text-emerald-600" : "cursor-default text-amber-600"}`}>{attachment.extraction_status === "ready" ? "文本提取" : "需转换"}</button><button type="button" onClick={() => void removeDocument(attachment)} className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label={`移除 ${attachment.file_name}`}><X size={13}/></button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu
-              items={markdownDocumentOptions}
-              loading={markdownDocumentLoading}
-              hasProject={Boolean(selectedProjectId)}
-              activeIndex={activeProjectReferenceIndex}
-              onActiveIndexChange={setActiveProjectReferenceIndex}
-              onSelect={insertMarkdownDocumentReference}
-            /> : <ProjectReferenceSlashMenu
-              items={projectReferenceOptions}
-              loading={projectReferenceLoading}
-              showDocumentCategory={slashProjectCommand.query.length === 0}
-              activeIndex={activeProjectReferenceIndex}
-              onActiveIndexChange={setActiveProjectReferenceIndex}
-              onOpenDocuments={openMarkdownDocumentSearch}
-              onSelect={insertProjectReference}
-            />)}
-            <div className="flex items-center gap-1 lg:hidden">
-              <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18}/></button>
-              <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0"/></button>
-              <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference}/>
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>{uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20}/>}</button>
-              {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} mobile />}
-              {composerExpanded && (sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor"/></button> : <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17}/></button>)}
-            </div>
-            {composerExpanded && <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
-              <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600"><Braces size={14} className="shrink-0 text-blue-600"/><span className="min-w-0 flex-1 truncate">{selectedProject?.display_name || "选择项目"}</span><ChevronDown size={13} className="shrink-0"/></button>
-              <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600"><Bot size={14} className="shrink-0 text-violet-600"/><select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体"><option value="">云端模型</option><option value="codex">Codex 本地</option><option value="deepseek-harness" disabled={!agentProviders.some((provider) => provider.id === "deepseek-harness" && provider.chat_supported)}>DeepSeek Harness</option></select></label>
-            </div>}
-            <InlineReferenceComposer value={input} cursor={composerCursor} placeholder={t("chat.placeholderShort")} className="hidden min-h-[56px] px-1 pt-1 text-[14px] leading-6 lg:block" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference}/>
-            <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
-              <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.md,.markdown,.txt,.csv"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => {
-                    const files = Array.from(event.currentTarget.files ?? []);
-                    event.currentTarget.value = "";
-                    addAttachments(files);
-                  }}
-                  ref={(element) => { fileInputRef.current = element; }}
-                />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件">
-                  {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
+              {documentAttachments.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+                  {documentAttachments.map((attachment) => (
+                    <div key={attachment.id} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+                      <FileText size={15} className="shrink-0 text-blue-600" />
+                      <span className="max-w-44 truncate">{attachment.file_name}</span>
+                      <button type="button" onDoubleClick={() => void previewDocumentExtraction(attachment)} title={attachment.extraction_status === "ready" ? "双击查看实际提取文本" : "旧 Office 格式需先转换"} className={`shrink-0 select-none text-[10px] ${attachment.extraction_status === "ready" ? "cursor-zoom-in text-emerald-600" : "cursor-default text-amber-600"}`}>
+                        {attachment.extraction_status === "ready" ? "文本提取" : "需转换"}
+                      </button>
+                      <button type="button" onClick={() => void removeDocument(attachment)} className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700" aria-label={`移除 ${attachment.file_name}`}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
+              <div className="flex items-center gap-1 lg:hidden">
+                <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}>
+                  <Mic size={18} />
                 </button>
-                {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}
+                <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型">
+                  <span className="truncate">{mobileModelLabel}</span>
+                  <ChevronDown size={13} className="shrink-0" />
+                </button>
+                <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} />
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
+                  {uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20} />}
+                </button>
+                {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} mobile />}
+                {composerExpanded &&
+                  (sending ? (
+                    <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成">
+                      <Square size={14} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}>
+                      <ArrowUp size={17} />
+                    </button>
+                  ))}
               </div>
-
-              <div className="flex min-w-0 items-center gap-2">
-                <ContextMultiSelect
-                  icon={<Database size={15} />}
-                  label={t("knowledge.knowledgeBases")}
-                  items={readyKnowledgeBases.map((kb) => ({ id: kb.name, label: kb.display_name || kb.name, description: kb.engine_type }))}
-                  selectedIds={selectedKbNames}
-                  open={openContextPicker === "knowledge"}
-                  disabled={loading || readyKnowledgeBases.length === 0}
-                  emptyText={loading ? t("knowledge.loading") : t("chat.noKnowledge")}
-                  onToggleOpen={() => setOpenContextPicker((current) => current === "knowledge" ? null : "knowledge")}
-                  onToggle={(name) => setSelectedKbNames((current) => toggleSelection(current, name))}
-                />
-                <ContextMultiSelect
-                  icon={<Braces size={15} />}
-                  label="项目"
-                  items={codeProjects.map((project) => ({ id: String(project.id), label: project.display_name, description: `${project.root_path} · ${project.repository_count} 个代码库` }))}
-                  selectedIds={selectedProjectId ? [String(selectedProjectId)] : []}
-                  open={openContextPicker === "project"}
-                  emptyText="暂无已配置项目"
-                  onToggleOpen={() => setOpenContextPicker((current) => current === "project" ? null : "project")}
-                  onToggle={(id) => setSelectedProjectId((current) => current === Number(id) ? null : Number(id))}
-                />
-                <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium sm:inline-flex ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "text-slate-400"}`} title={selectedAgentProvider?.message || "选择本地编码代理"}>
-                  <Bot size={15}/>
-                  <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="max-w-[150px] truncate bg-transparent outline-none">
-                    <option value="">不接管</option>
-                    <option value="codex">Codex 本地</option>
-                    <option value="deepseek-harness" disabled={!agentProviders.some((provider) => provider.id === "deepseek-harness" && provider.chat_supported)}>DeepSeek Harness</option>
-                    <option value="codebuddy" disabled>CodeBuddy CLI（待适配）</option>
-                  </select>
-                </label>
-                {selectedAgentId === "codex" && <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title={currentCodexModel?.description || "管理员未配置可用 Codex 模型"}>
-                  <Bot size={15} />
-                  <select value={selectedCodexModelId} onChange={(event) => setSelectedCodexModelId(event.target.value)} disabled={codexModels.length === 0 || codexModelPolicy?.allow_chat_model_override === false} className="max-w-[180px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
-                    {codexModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-                  </select>
-                </label>}
-                {selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort && <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title="Codex reasoning effort">
-                  <span className="text-[11px] text-violet-500">推理</span>
-                  <select value={selectedCodexReasoningEffort} onChange={(event) => setSelectedCodexReasoningEffort(event.target.value)} disabled={codexReasoningEfforts.length === 0 || codexModelPolicy?.allow_chat_reasoning_effort_override === false} className="max-w-[90px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
-                    {codexReasoningEfforts.map((effort) => <option key={effort} value={effort}>{codexReasoningEffortLabel(effort)}</option>)}
-                  </select>
-                </label>}
-                <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 ${selectedAgentId === "codex" ? "" : "sm:inline-flex"}`}>
-                  <PanelRight size={15} />
-                  <select
-                    value={selectedModelId}
-                    onChange={(event) => setSelectedModelId(event.target.value)}
-                    disabled={llmModels.length === 0}
-                    className="max-w-[170px] truncate bg-transparent outline-none"
-                    title={currentModel?.model || currentModel?.name}
-                  >
-                    <option value="">{t("chat.noModel")}</option>
-                    {llmModels.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name || model.model}
+              {composerExpanded && (
+                <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
+                  <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600">
+                    <Braces size={14} className="shrink-0 text-blue-600" />
+                    <span className="min-w-0 flex-1 truncate">{selectedProject?.display_name || "选择项目"}</span>
+                    <ChevronDown size={13} className="shrink-0" />
+                  </button>
+                  <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600">
+                    <Bot size={14} className="shrink-0 text-violet-600" />
+                    <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体">
+                      <option value="">云端模型</option>
+                      <option value="codex">Codex 本地</option>
+                      <option value="deepseek-harness" disabled={!agentProviders.some((provider) => provider.id === "deepseek-harness" && provider.chat_supported)}>
+                        DeepSeek Harness
                       </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={t("chat.voiceInput")}>
-                  <Mic size={16} />
-                </button>
-                {sending ? (
-                  <button
-                    type="button"
-                    onClick={stopGenerating}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm shadow-rose-200 transition hover:bg-rose-700"
-                    aria-label="Stop generating"
-                    title="Stop generating"
-                  >
-                    <Square size={15} fill="currentColor" />
+                    </select>
+                  </label>
+                </div>
+              )}
+              <InlineReferenceComposer value={input} cursor={composerCursor} placeholder={t("chat.placeholderShort")} className="hidden min-h-[56px] px-1 pt-1 text-[14px] leading-6 lg:block" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} />
+              <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
+                <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.md,.markdown,.txt,.csv"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      const files = Array.from(event.currentTarget.files ?? []);
+                      event.currentTarget.value = "";
+                      addAttachments(files);
+                    }}
+                    ref={(element) => {
+                      fileInputRef.current = element;
+                    }}
+                  />
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件">
+                    {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                   </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300"
-                    aria-label={t("chat.send")}
-                  >
-                    <ArrowUp size={17} />
-                  </button>
-                )}
-              </div>
-            </div>
-          </form>
+                  {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}
+                </div>
 
-          {error && (
-            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-              {error}
-            </div>
-          )}
-        </div>
-      </section>
-      <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)}/>
-      {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
-      {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)}/>}
+                <div className="flex min-w-0 items-center gap-2">
+                  <ContextMultiSelect
+                    icon={<Database size={15} />}
+                    label={t("knowledge.knowledgeBases")}
+                    items={readyKnowledgeBases.map((kb) => ({
+                      id: kb.name,
+                      label: kb.display_name || kb.name,
+                      description: kb.engine_type,
+                    }))}
+                    selectedIds={selectedKbNames}
+                    open={openContextPicker === "knowledge"}
+                    disabled={loading || readyKnowledgeBases.length === 0}
+                    emptyText={loading ? t("knowledge.loading") : t("chat.noKnowledge")}
+                    onToggleOpen={() => setOpenContextPicker((current) => (current === "knowledge" ? null : "knowledge"))}
+                    onToggle={(name) => setSelectedKbNames((current) => toggleSelection(current, name))}
+                  />
+                  <ContextMultiSelect
+                    icon={<Braces size={15} />}
+                    label="项目"
+                    items={codeProjects.map((project) => ({
+                      id: String(project.id),
+                      label: project.display_name,
+                      description: `${project.root_path} · ${project.repository_count} 个代码库`,
+                    }))}
+                    selectedIds={selectedProjectId ? [String(selectedProjectId)] : []}
+                    open={openContextPicker === "project"}
+                    emptyText="暂无已配置项目"
+                    onToggleOpen={() => setOpenContextPicker((current) => (current === "project" ? null : "project"))}
+                    onToggle={(id) => setSelectedProjectId((current) => (current === Number(id) ? null : Number(id)))}
+                  />
+                  <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium sm:inline-flex ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "text-slate-400"}`} title={selectedAgentProvider?.message || "选择本地编码代理"}>
+                    <Bot size={15} />
+                    <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="max-w-[150px] truncate bg-transparent outline-none">
+                      <option value="">不接管</option>
+                      <option value="codex">Codex 本地</option>
+                      <option value="deepseek-harness" disabled={!agentProviders.some((provider) => provider.id === "deepseek-harness" && provider.chat_supported)}>
+                        DeepSeek Harness
+                      </option>
+                      <option value="codebuddy" disabled>
+                        CodeBuddy CLI（待适配）
+                      </option>
+                    </select>
+                  </label>
+                  {selectedAgentId === "codex" && (
+                    <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title={currentCodexModel?.description || "管理员未配置可用 Codex 模型"}>
+                      <Bot size={15} />
+                      <select value={selectedCodexModelId} onChange={(event) => setSelectedCodexModelId(event.target.value)} disabled={codexModels.length === 0 || codexModelPolicy?.allow_chat_model_override === false} className="max-w-[180px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
+                        {codexModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {selectedAgentId === "codex" && currentCodexModel?.supports_reasoning_effort && (
+                    <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title="Codex reasoning effort">
+                      <span className="text-[11px] text-violet-500">推理</span>
+                      <select value={selectedCodexReasoningEffort} onChange={(event) => setSelectedCodexReasoningEffort(event.target.value)} disabled={codexReasoningEfforts.length === 0 || codexModelPolicy?.allow_chat_reasoning_effort_override === false} className="max-w-[90px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
+                        {codexReasoningEfforts.map((effort) => (
+                          <option key={effort} value={effort}>
+                            {codexReasoningEffortLabel(effort)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-slate-600 hover:bg-slate-100 ${selectedAgentId === "codex" ? "" : "sm:inline-flex"}`}>
+                    <PanelRight size={15} />
+                    <select value={selectedModelId} onChange={(event) => setSelectedModelId(event.target.value)} disabled={llmModels.length === 0} className="max-w-[170px] truncate bg-transparent outline-none" title={currentModel?.model || currentModel?.name}>
+                      <option value="">{t("chat.noModel")}</option>
+                      {llmModels.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name || model.model}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={t("chat.voiceInput")}>
+                    <Mic size={16} />
+                  </button>
+                  {sending ? (
+                    <button type="button" onClick={stopGenerating} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm shadow-rose-200 transition hover:bg-rose-700" aria-label="Stop generating" title="Stop generating">
+                      <Square size={15} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
+                      <ArrowUp size={17} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
+
+            {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</div>}
+          </div>
+        </section>
+        <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)} />
+        {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
+        {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)} />}
       </div>
       <MobileOptionSheet
         open={mobilePicker !== null}
         title={mobilePicker === "model" ? "选择模型" : "选择项目"}
-        items={mobilePicker === "model"
-          ? (selectedAgentId === "codex"
-            ? codexModels.map((model) => ({ id: model.id, label: model.name, description: model.description || "Codex 本地模型", badge: "推理" }))
-            : [{ id: "", label: "Auto", description: "根据任务自动选择默认模型", badge: "智能" }, ...llmModels.map((model) => ({ id: model.id, label: model.name || model.model, description: model.model, badge: "推理" }))])
-          : [{ id: "", label: "不绑定项目", description: "发起通用对话，不附带代码库上下文" }, ...codeProjects.map((project) => ({ id: String(project.id), label: project.display_name, description: `${project.repository_count} 个代码库 · ${project.root_path}` }))]}
+        items={
+          mobilePicker === "model"
+            ? selectedAgentId === "codex"
+              ? codexModels.map((model) => ({
+                  id: model.id,
+                  label: model.name,
+                  description: model.description || "Codex 本地模型",
+                  badge: "推理",
+                }))
+              : [
+                  {
+                    id: "",
+                    label: "Auto",
+                    description: "根据任务自动选择默认模型",
+                    badge: "智能",
+                  },
+                  ...llmModels.map((model) => ({
+                    id: model.id,
+                    label: model.name || model.model,
+                    description: model.model,
+                    badge: "推理",
+                  })),
+                ]
+            : [
+                {
+                  id: "",
+                  label: "不绑定项目",
+                  description: "发起通用对话，不附带代码库上下文",
+                },
+                ...codeProjects.map((project) => ({
+                  id: String(project.id),
+                  label: project.display_name,
+                  description: `${project.repository_count} 个代码库 · ${project.root_path}`,
+                })),
+              ]
+        }
         selectedId={mobilePicker === "model" ? (selectedAgentId === "codex" ? selectedCodexModelId : selectedModelId) : selectedProjectId ? String(selectedProjectId) : ""}
         onClose={() => setMobilePicker(null)}
         onSelect={(id) => {
@@ -1084,7 +1294,11 @@ function extractMarkdownDocumentReferences(value: string): Array<{ repository_na
   for (const match of value.matchAll(/\[\[文档:[^\]|]+\|([^\]|]+)\|([^\]|]+)\]\]/g)) {
     const repository_name = match[1].trim();
     const path = match[2].trim();
-    if (repository_name && path) references.set(`${repository_name}\u0000${path}`, { repository_name, path });
+    if (repository_name && path)
+      references.set(`${repository_name}\u0000${path}`, {
+        repository_name,
+        path,
+      });
   }
   return [...references.values()];
 }
@@ -1094,7 +1308,8 @@ function markdownDocumentKey(document: Pick<CodeProjectMarkdownDocument, "reposi
 }
 
 function normalizeMarkdownDocumentReference(reference: string): string {
-  return reference.trim()
+  return reference
+    .trim()
     .replace(/\\/g, "/")
     .replace(/(?::|#L)[1-9]\d{0,8}$/i, "")
     .replace(/^\.\//, "")
@@ -1111,7 +1326,12 @@ function markdownDocumentReferenceToken(document: CodeProjectMarkdownDocument): 
 
 function mergeMarkdownDocumentReferences(existing: Array<{ repository_name: string; path: string }>, documents: CodeProjectMarkdownDocument[]): Array<{ repository_name: string; path: string }> {
   const references = new Map(existing.map((item) => [`${item.repository_name}\u0000${item.path}`, item]));
-  documents.forEach((document) => references.set(markdownDocumentKey(document), { repository_name: document.repository_name, path: document.path }));
+  documents.forEach((document) =>
+    references.set(markdownDocumentKey(document), {
+      repository_name: document.repository_name,
+      path: document.path,
+    }),
+  );
   return [...references.values()];
 }
 
@@ -1127,10 +1347,19 @@ function formatMarkdownDocumentUpdatedAt(document: CodeProjectMarkdownDocument):
   if (elapsed >= 0 && elapsed < 60_000) return "刚刚更新";
   if (elapsed >= 0 && elapsed < 3_600_000) return `${Math.max(1, Math.floor(elapsed / 60_000))} 分钟前`;
   if (elapsed >= 0 && elapsed < 86_400_000) return `${Math.max(1, Math.floor(elapsed / 3_600_000))} 小时前`;
-  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp);
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(timestamp);
 }
 
-type InlineReferenceSegment = { token: string; kind: "project" | "document"; label: string };
+type InlineReferenceSegment = {
+  token: string;
+  kind: "project" | "document";
+  label: string;
+};
 
 function inlineReferenceSegments(value: string): Array<string | InlineReferenceSegment> {
   const result: Array<string | InlineReferenceSegment> = [];
@@ -1138,7 +1367,11 @@ function inlineReferenceSegments(value: string): Array<string | InlineReferenceS
   let cursor = 0;
   for (const match of value.matchAll(expression)) {
     if (match.index! > cursor) result.push(value.slice(cursor, match.index));
-    result.push({ token: match[0], kind: match[1] === "项目" ? "project" : "document", label: match[2] });
+    result.push({
+      token: match[0],
+      kind: match[1] === "项目" ? "project" : "document",
+      label: match[2],
+    });
     cursor = match.index! + match[0].length;
   }
   if (cursor < value.length) result.push(value.slice(cursor));
@@ -1148,7 +1381,10 @@ function inlineReferenceSegments(value: string): Array<string | InlineReferenceS
 function inlineReferenceBeforeCursor(value: string, cursor: number): { token: string; start: number } | null {
   let start = 0;
   for (const segment of inlineReferenceSegments(value)) {
-    if (typeof segment === "string") { start += segment.length; continue; }
+    if (typeof segment === "string") {
+      start += segment.length;
+      continue;
+    }
     if (start + segment.token.length === cursor) return { token: segment.token, start };
     start += segment.token.length;
   }
@@ -1159,7 +1395,9 @@ function inlineComposerValue(node: Node, appendBlockBreak = false): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
   if (node instanceof HTMLElement && node.dataset.inlineReference) return node.dataset.inlineReference;
   if (node instanceof HTMLElement && node.tagName === "BR") return "\n";
-  const value = Array.from(node.childNodes).map((child) => inlineComposerValue(child, true)).join("");
+  const value = Array.from(node.childNodes)
+    .map((child) => inlineComposerValue(child, true))
+    .join("");
   return appendBlockBreak && node instanceof HTMLElement && node.tagName === "DIV" && value ? `${value}\n` : value;
 }
 
@@ -1185,7 +1423,10 @@ function setInlineComposerSelection(element: HTMLElement, offset: number) {
   let remaining = Math.max(0, offset);
   for (const child of Array.from(element.childNodes)) {
     const length = inlineComposerNodeLength(child);
-    if (remaining > length) { remaining -= length; continue; }
+    if (remaining > length) {
+      remaining -= length;
+      continue;
+    }
     if (child.nodeType === Node.TEXT_NODE) range.setStart(child, Math.min(remaining, child.textContent?.length ?? 0));
     else if (child instanceof HTMLElement && child.dataset.inlineReference) remaining === 0 ? range.setStartBefore(child) : range.setStartAfter(child);
     else range.setStartBefore(child);
@@ -1232,18 +1473,26 @@ function renderInlineComposerValue(element: HTMLElement, value: string) {
 function CodexExecutionPermissionControl({ mode, onChange, mobile = false }: { mode: CodexSandboxMode; onChange: (mode: CodexSandboxMode) => void; mobile?: boolean }) {
   const [open, setOpen] = useState(false);
   const controlRef = useRef<HTMLDivElement | null>(null);
-  const options: Array<{ mode: CodexSandboxMode; label: string; title: string }> = [
-    { mode: "full-access", label: "完全控制", title: "不使用沙箱，允许直接修改" },
-    { mode: "workspace-write", label: "工作区写入", title: "仅允许在当前项目内写入" },
+  const options: Array<{
+    mode: CodexSandboxMode;
+    label: string;
+    title: string;
+  }> = [
+    {
+      mode: "full-access",
+      label: "完全控制",
+      title: "不使用沙箱，允许直接修改",
+    },
+    {
+      mode: "workspace-write",
+      label: "工作区写入",
+      title: "仅允许在当前项目内写入",
+    },
     { mode: "read-only", label: "只读分析", title: "只读取代码，不修改文件" },
   ];
   const selected = options.find((option) => option.mode === mode) ?? options[0];
   const Icon = mode === "full-access" ? ShieldAlert : mode === "workspace-write" ? ShieldCheck : Eye;
-  const tone = mode === "full-access"
-    ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-    : mode === "workspace-write"
-      ? "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
-      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
+  const tone = mode === "full-access" ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100" : mode === "workspace-write" ? "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100" : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
 
   useEffect(() => {
     if (!open) return;
@@ -1263,18 +1512,20 @@ function CodexExecutionPermissionControl({ mode, onChange, mobile = false }: { m
 
   return (
     <div ref={controlRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`grid place-items-center rounded-lg border transition ${mobile ? "h-9 w-9 rounded-xl" : "h-8 w-8"} ${tone}`}
-        aria-label={`Codex 执行权限：${selected.label}`}
-        aria-expanded={open}
-        title={`Codex 执行权限：${selected.label}`}
-      >
+      <button type="button" onClick={() => setOpen((current) => !current)} className={`grid place-items-center rounded-lg border transition ${mobile ? "h-9 w-9 rounded-xl" : "h-8 w-8"} ${tone}`} aria-label={`Codex 执行权限：${selected.label}`} aria-expanded={open} title={`Codex 执行权限：${selected.label}`}>
         <Icon size={mobile ? 17 : 16} />
       </button>
       {open && (
-        <div className={`absolute bottom-full z-50 mb-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ${mobile ? "right-0" : "left-0"}`} style={{ width: "184px", minWidth: "184px", maxWidth: "calc(100vw - 24px)" }} role="menu" aria-label="选择 Codex 执行权限">
+        <div
+          className={`absolute bottom-full z-50 mb-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ${mobile ? "right-0" : "left-0"}`}
+          style={{
+            width: "184px",
+            minWidth: "184px",
+            maxWidth: "calc(100vw - 24px)",
+          }}
+          role="menu"
+          aria-label="选择 Codex 执行权限"
+        >
           {options.map((option) => {
             const OptionIcon = option.mode === "full-access" ? ShieldAlert : option.mode === "workspace-write" ? ShieldCheck : Eye;
             const active = option.mode === mode;
@@ -1284,7 +1535,10 @@ function CodexExecutionPermissionControl({ mode, onChange, mobile = false }: { m
                 type="button"
                 role="menuitemradio"
                 aria-checked={active}
-                onClick={() => { onChange(option.mode); setOpen(false); }}
+                onClick={() => {
+                  onChange(option.mode);
+                  setOpen(false);
+                }}
                 title={option.title}
                 className={`flex h-9 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-xs transition ${active ? "bg-violet-50 text-violet-800" : "text-slate-700 hover:bg-slate-50"}`}
               >
@@ -1314,72 +1568,189 @@ function InlineReferenceComposer({ value, cursor, placeholder, className, onValu
     const token = target?.dataset.inlineReferenceRemove;
     if (token) onRemove(token);
   };
-  return <div ref={editorRef} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="聊天输入，输入斜杠可引用项目" data-placeholder={placeholder} onCompositionStart={() => { compositionRef.current = true; }} onCompositionEnd={(event) => { compositionRef.current = false; read(event.currentTarget); }} onInput={(event) => { if (!compositionRef.current) read(event.currentTarget); }} onFocus={(event) => onFocus(event.currentTarget, inlineComposerCursor(event.currentTarget))} onSelect={(event) => onCursorChange(inlineComposerCursor(event.currentTarget))} onKeyDown={(event) => onKeyDown(event, inlineComposerCursor(event.currentTarget))} onMouseDown={(event) => { if ((event.target as Element).closest("button[data-inline-reference-remove]")) event.preventDefault(); }} onClick={removeFromEvent} className={`workspace-scroll max-h-36 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-slate-800 outline-none empty:before:pointer-events-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 ${className}`}/>;
+  return (
+    <div
+      ref={editorRef}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      aria-label="聊天输入，输入斜杠可引用项目"
+      data-placeholder={placeholder}
+      onCompositionStart={() => {
+        compositionRef.current = true;
+      }}
+      onCompositionEnd={(event) => {
+        compositionRef.current = false;
+        read(event.currentTarget);
+      }}
+      onInput={(event) => {
+        if (!compositionRef.current) read(event.currentTarget);
+      }}
+      onFocus={(event) => onFocus(event.currentTarget, inlineComposerCursor(event.currentTarget))}
+      onSelect={(event) => onCursorChange(inlineComposerCursor(event.currentTarget))}
+      onKeyDown={(event) => onKeyDown(event, inlineComposerCursor(event.currentTarget))}
+      onMouseDown={(event) => {
+        if ((event.target as Element).closest("button[data-inline-reference-remove]")) event.preventDefault();
+      }}
+      onClick={removeFromEvent}
+      className={`workspace-scroll max-h-36 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-slate-800 outline-none empty:before:pointer-events-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 ${className}`}
+    />
+  );
 }
 
 function InlineReferenceText({ value }: { value: string }) {
-  return <>{inlineReferenceSegments(value).map((segment, index) => typeof segment === "string" ? segment : <span key={`${segment.token}-${index}`} className="mx-0.5 inline-flex items-center rounded-md bg-white/15 px-1.5 py-0.5 text-[11px] text-white"><span className="mr-1">{segment.kind === "project" ? <Braces size={12}/> : <FileText size={12}/>}</span>{segment.label}</span>)}</>;
+  return (
+    <>
+      {inlineReferenceSegments(value).map((segment, index) =>
+        typeof segment === "string" ? (
+          segment
+        ) : (
+          <span key={`${segment.token}-${index}`} className="mx-0.5 inline-flex items-center rounded-md bg-white/15 px-1.5 py-0.5 text-[11px] text-white">
+            <span className="mr-1">{segment.kind === "project" ? <Braces size={12} /> : <FileText size={12} />}</span>
+            {segment.label}
+          </span>
+        ),
+      )}
+    </>
+  );
 }
 
 function humanizeInlineReferenceTokens(value: string): string {
-  return value
-    .replace(/\[\[项目:([^\]|]+)\|[^\]]+\]\]/g, "【项目：$1】")
-    .replace(/\[\[文档:([^\]|]+)\|[^\]]+\]\]/g, "【文档：`$1`】");
+  return value.replace(/\[\[项目:([^\]|]+)\|[^\]]+\]\]/g, "【项目：$1】").replace(/\[\[文档:([^\]|]+)\|[^\]]+\]\]/g, "【文档：`$1`】");
 }
 
-function ProjectReferenceSlashMenu({ items, loading, showDocumentCategory, activeIndex, onActiveIndexChange, onOpenDocuments, onSelect }: {
-  items: CodeProjectReference[];
-  loading: boolean;
-  showDocumentCategory: boolean;
-  activeIndex: number;
-  onActiveIndexChange: (index: number) => void;
-  onOpenDocuments: () => void;
-  onSelect: (project: CodeProjectReference) => void;
-}) {
+function ProjectReferenceSlashMenu({ items, loading, showDocumentCategory, activeIndex, onActiveIndexChange, onOpenDocuments, onSelect }: { items: CodeProjectReference[]; loading: boolean; showDocumentCategory: boolean; activeIndex: number; onActiveIndexChange: (index: number) => void; onOpenDocuments: () => void; onSelect: (project: CodeProjectReference) => void }) {
   return (
     <div id="chat-project-reference-menu" role="listbox" aria-label="引用其他项目" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[380px]">
-      <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500"><FolderSearch size={14} className="text-blue-600"/><span>引用其他项目</span><span className="ml-auto font-normal">↑↓ 选择 · Enter 插入</span></div>
+      <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500">
+        <FolderSearch size={14} className="text-blue-600" />
+        <span>引用其他项目</span>
+        <span className="ml-auto font-normal">↑↓ 选择 · Enter 插入</span>
+      </div>
       <div className="max-h-60 overflow-y-auto">
-        {showDocumentCategory && <button type="button" onPointerDown={(event) => { event.preventDefault(); onOpenDocuments(); }} className="mb-1 flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-2.5 py-2 text-left text-blue-900 transition hover:bg-blue-100"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-600 text-white"><FileText size={15}/></span><span className="min-w-0 flex-1"><span className="block text-xs font-semibold">项目文档</span><span className="mt-0.5 block text-[11px] text-blue-700">搜索当前项目的 Markdown 文档</span></span><span className="text-[11px] font-medium text-blue-600">/spec</span></button>}
-        {loading ? <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500"><Loader2 size={15} className="animate-spin"/>正在查找可访问项目…</div>
-          : items.length === 0 ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有可引用的其他项目。</p>
-            : items.map((project, index) => {
-              const active = index === activeIndex;
-              return <button key={project.id} type="button" role="option" aria-selected={active} onMouseEnter={() => onActiveIndexChange(index)} onPointerDown={(event) => { event.preventDefault(); onSelect(project); }} className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}>
+        {showDocumentCategory && (
+          <button
+            type="button"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onOpenDocuments();
+            }}
+            className="mb-1 flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 px-2.5 py-2 text-left text-blue-900 transition hover:bg-blue-100"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-600 text-white">
+              <FileText size={15} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold">项目文档</span>
+              <span className="mt-0.5 block text-[11px] text-blue-700">搜索当前项目的 Markdown 文档</span>
+            </span>
+            <span className="text-[11px] font-medium text-blue-600">/spec</span>
+          </button>
+        )}
+        {loading ? (
+          <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500">
+            <Loader2 size={15} className="animate-spin" />
+            正在查找可访问项目…
+          </div>
+        ) : items.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有可引用的其他项目。</p>
+        ) : (
+          items.map((project, index) => {
+            const active = index === activeIndex;
+            return (
+              <button
+                key={project.id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onMouseEnter={() => onActiveIndexChange(index)}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  onSelect(project);
+                }}
+                className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}
+              >
                 <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-bold ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>{project.display_name.slice(0, 1).toUpperCase()}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{project.display_name}</span>{project.description && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{project.description}</span>}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold">{project.display_name}</span>
+                  {project.description && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{project.description}</span>}
+                </span>
                 <span className="shrink-0 text-[10px] text-slate-400">#{project.id}</span>
-              </button>;
-            })}
+              </button>
+            );
+          })
+        )}
       </div>
     </div>
   );
 }
 
-function MarkdownDocumentSlashMenu({ items, loading, hasProject, activeIndex, onActiveIndexChange, onSelect }: {
-  items: CodeProjectMarkdownDocument[];
-  loading: boolean;
-  hasProject: boolean;
-  activeIndex: number;
-  onActiveIndexChange: (index: number) => void;
-  onSelect: (document: CodeProjectMarkdownDocument) => void;
-}) {
-  return <div id="chat-project-reference-menu" role="listbox" aria-label="搜索当前项目的 Markdown 文档" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[420px]">
-    <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500"><FileText size={14} className="text-blue-600"/><span>项目文档 · /spec</span><span className="ml-auto font-normal text-blue-600">最近更新优先 · ↑↓ 选择 · Enter 插入</span></div>
-    <div className="max-h-60 overflow-y-auto">
-      {!hasProject ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">请先选择当前项目，再使用 /spec 搜索其 Markdown 文档。</p>
-        : loading ? <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500"><Loader2 size={15} className="animate-spin"/>正在搜索项目文档…</div>
-          : items.length === 0 ? <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有符合条件的 Markdown 文档。</p>
-            : items.map((document, index) => {
-              const active = index === activeIndex;
-              return <button key={`${document.repository_name}:${document.path}`} type="button" role="option" aria-selected={active} onMouseEnter={() => onActiveIndexChange(index)} onPointerDown={(event) => { event.preventDefault(); onSelect(document); }} className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}><FileText size={15}/></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{document.name}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{document.repository_name} / {document.path}</span></span><span className="shrink-0 text-[10px] text-slate-400">{formatMarkdownDocumentUpdatedAt(document)}</span></button>;
-            })}
+function MarkdownDocumentSlashMenu({ items, loading, hasProject, activeIndex, onActiveIndexChange, onSelect }: { items: CodeProjectMarkdownDocument[]; loading: boolean; hasProject: boolean; activeIndex: number; onActiveIndexChange: (index: number) => void; onSelect: (document: CodeProjectMarkdownDocument) => void }) {
+  return (
+    <div id="chat-project-reference-menu" role="listbox" aria-label="搜索当前项目的 Markdown 文档" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[420px]">
+      <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500">
+        <FileText size={14} className="text-blue-600" />
+        <span>项目文档 · /spec</span>
+        <span className="ml-auto font-normal text-blue-600">最近更新优先 · ↑↓ 选择 · Enter 插入</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {!hasProject ? (
+          <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">请先选择当前项目，再使用 /spec 搜索其 Markdown 文档。</p>
+        ) : loading ? (
+          <div className="flex min-h-12 items-center gap-2 px-3 text-xs text-slate-500">
+            <Loader2 size={15} className="animate-spin" />
+            正在搜索项目文档…
+          </div>
+        ) : items.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有符合条件的 Markdown 文档。</p>
+        ) : (
+          items.map((document, index) => {
+            const active = index === activeIndex;
+            return (
+              <button
+                key={`${document.repository_name}:${document.path}`}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onMouseEnter={() => onActiveIndexChange(index)}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  onSelect(document);
+                }}
+                className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-blue-50 text-blue-950" : "hover:bg-slate-50"}`}
+              >
+                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+                  <FileText size={15} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold">{document.name}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-slate-500">
+                    {document.repository_name} / {document.path}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[10px] text-slate-400">{formatMarkdownDocumentUpdatedAt(document)}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
-  </div>;
+  );
 }
 
 function codexReasoningEffortLabel(effort: string) {
-  return ({ minimal: "极轻", low: "轻度", medium: "中", high: "高", xhigh: "极高" } as Record<string, string>)[effort] ?? effort;
+  return (
+    (
+      {
+        minimal: "极轻",
+        low: "轻度",
+        medium: "中",
+        high: "高",
+        xhigh: "极高",
+      } as Record<string, string>
+    )[effort] ?? effort
+  );
 }
 
 type ContextPickerItem = {
@@ -1390,7 +1761,12 @@ type ContextPickerItem = {
 
 function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
   const [open, setOpen] = useState(false);
-  const options: Array<{ tab: InspectorTab; label: string; shortcut: string; icon: typeof FileCode2 }> = [
+  const options: Array<{
+    tab: InspectorTab;
+    label: string;
+    shortcut: string;
+    icon: typeof FileCode2;
+  }> = [
     { tab: "documents", label: "项目文档", shortcut: "", icon: FileText },
     { tab: "file", label: "文件", shortcut: "Ctrl+P", icon: FileCode2 },
     { tab: "tasks", label: "侧边任务", shortcut: "Ctrl+Alt+S", icon: ListTodo },
@@ -1398,57 +1774,78 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
     { tab: "terminal", label: "终端", shortcut: "", icon: Terminal },
   ];
 
-  return <div className="relative">
-    <button type="button" onClick={() => setOpen((current) => !current)} className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-white shadow-sm transition ${open ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="Open side panel tab" aria-expanded={open}><Plus size={16}/></button>
-    {open && <div className="absolute right-0 top-10 z-50 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
-      {options.map((option) => {
-        const Icon = option.icon;
-        return <button key={option.tab} type="button" onClick={() => { onOpen(option.tab); setOpen(false); }} className="flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-100"><Icon size={16} className="text-slate-500"/><span className="flex-1">{option.label}</span>{option.shortcut && <kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{option.shortcut}</kbd>}</button>;
-      })}
-    </div>}
-  </div>;
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((current) => !current)} className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-white shadow-sm transition ${open ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="Open side panel tab" aria-expanded={open}>
+        <Plus size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-10 z-50 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
+          {options.map((option) => {
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.tab}
+                type="button"
+                onClick={() => {
+                  onOpen(option.tab);
+                  setOpen(false);
+                }}
+                className="flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+              >
+                <Icon size={16} className="text-slate-500" />
+                <span className="flex-1">{option.label}</span>
+                {option.shortcut && <kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{option.shortcut}</kbd>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
-type MobileOption = { id: string; label: string; description?: string; badge?: string };
+type MobileOption = {
+  id: string;
+  label: string;
+  description?: string;
+  badge?: string;
+};
 
 function MobileOptionSheet({ open, title, items, selectedId, onClose, onSelect }: { open: boolean; title: string; items: MobileOption[]; selectedId: string; onClose: () => void; onSelect: (id: string) => void }) {
   if (!open || typeof document === "undefined") return null;
-  return createPortal(<div className="fixed inset-0 z-[160] flex items-end bg-slate-950/55 backdrop-blur-[2px] lg:hidden" role="presentation" onMouseDown={onClose}>
-    <section className="max-h-[78dvh] w-full overflow-y-auto rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_55px_rgba(15,23,42,0.28)]" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200" />
-      <div className="mb-3 flex items-center justify-between"><h2 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h2><button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full text-slate-400 hover:bg-slate-100" aria-label={`关闭${title}`}><X size={19}/></button></div>
-      <div className="divide-y divide-slate-100">
-        {items.map((item) => <button key={item.id || "default"} type="button" onClick={() => onSelect(item.id)} className={`flex min-h-[72px] w-full items-center gap-3 py-3 text-left ${selectedId === item.id ? "text-blue-700" : "text-slate-800"}`}>
-          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-bold ${selectedId === item.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>{item.label.slice(0, 1).toUpperCase()}</span>
-          <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><strong className="truncate text-[15px]">{item.label}</strong>{item.badge && <em className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] not-italic font-semibold text-violet-700">{item.badge}</em>}</span>{item.description && <small className="mt-1 block truncate text-[11px] font-normal text-slate-500">{item.description}</small>}</span>
-          {selectedId === item.id && <Check size={22} className="shrink-0 text-emerald-500" />}
-        </button>)}
-      </div>
-    </section>
-  </div>, document.body);
+  return createPortal(
+    <div className="fixed inset-0 z-[160] flex items-end bg-slate-950/55 backdrop-blur-[2px] lg:hidden" role="presentation" onMouseDown={onClose}>
+      <section className="max-h-[78dvh] w-full overflow-y-auto rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_55px_rgba(15,23,42,0.28)]" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200" />
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h2>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full text-slate-400 hover:bg-slate-100" aria-label={`关闭${title}`}>
+            <X size={19} />
+          </button>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <button key={item.id || "default"} type="button" onClick={() => onSelect(item.id)} className={`flex min-h-[72px] w-full items-center gap-3 py-3 text-left ${selectedId === item.id ? "text-blue-700" : "text-slate-800"}`}>
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-bold ${selectedId === item.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>{item.label.slice(0, 1).toUpperCase()}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <strong className="truncate text-[15px]">{item.label}</strong>
+                  {item.badge && <em className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] not-italic font-semibold text-violet-700">{item.badge}</em>}
+                </span>
+                {item.description && <small className="mt-1 block truncate text-[11px] font-normal text-slate-500">{item.description}</small>}
+              </span>
+              {selectedId === item.id && <Check size={22} className="shrink-0 text-emerald-500" />}
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
 }
 
-function ContextMultiSelect({
-  icon,
-  label,
-  items,
-  selectedIds,
-  open,
-  disabled,
-  emptyText,
-  onToggleOpen,
-  onToggle,
-}: {
-  icon: ReactNode;
-  label: string;
-  items: ContextPickerItem[];
-  selectedIds: string[];
-  open: boolean;
-  disabled?: boolean;
-  emptyText: string;
-  onToggleOpen: () => void;
-  onToggle: (id: string) => void;
-}) {
+function ContextMultiSelect({ icon, label, items, selectedIds, open, disabled, emptyText, onToggleOpen, onToggle }: { icon: ReactNode; label: string; items: ContextPickerItem[]; selectedIds: string[]; open: boolean; disabled?: boolean; emptyText: string; onToggleOpen: () => void; onToggle: (id: string) => void }) {
   const uniqueItems = useMemo(() => {
     const seen = new Set<string>();
     return items.filter((item) => {
@@ -1457,23 +1854,11 @@ function ContextMultiSelect({
       return true;
     });
   }, [items]);
-  const selectedLabel = selectedIds.length === 0
-    ? label
-    : selectedIds.length === 1
-      ? uniqueItems.find((item) => item.id === selectedIds[0])?.label ?? label
-      : `${label} · ${selectedIds.length}`;
+  const selectedLabel = selectedIds.length === 0 ? label : selectedIds.length === 1 ? (uniqueItems.find((item) => item.id === selectedIds[0])?.label ?? label) : `${label} · ${selectedIds.length}`;
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onToggleOpen}
-        className="inline-flex h-8 max-w-[164px] items-center gap-1.5 rounded-lg border border-transparent px-2 text-[12px] text-slate-600 transition hover:border-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={selectedIds.length > 0 ? selectedIds.join(", ") : label}
-      >
+      <button type="button" disabled={disabled} onClick={onToggleOpen} className="inline-flex h-8 max-w-[164px] items-center gap-1.5 rounded-lg border border-transparent px-2 text-[12px] text-slate-600 transition hover:border-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400" aria-haspopup="listbox" aria-expanded={open} title={selectedIds.length > 0 ? selectedIds.join(", ") : label}>
         <span className="shrink-0">{icon}</span>
         <span className="truncate">{selectedLabel}</span>
         <ChevronDown size={14} className={`ml-auto shrink-0 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -1504,9 +1889,7 @@ function ContextMultiSelect({
                     }}
                     className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${selected ? "bg-blue-50 text-blue-950" : "hover:bg-zinc-50"}`}
                   >
-                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-zinc-300 bg-white"}`}>
-                      {selected && <Check size={11} strokeWidth={3} />}
-                    </span>
+                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-zinc-300 bg-white"}`}>{selected && <Check size={11} strokeWidth={3} />}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12px] font-medium">{item.label}</span>
                       {item.description && <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{item.description}</span>}
@@ -1550,9 +1933,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
       <div className={`${isUser ? "max-w-[82%] rounded-2xl bg-blue-600 px-4 py-3 text-[13px] leading-6 text-white" : "w-full max-w-[860px] text-zinc-900"}`}>
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
-            <span className={`font-semibold ${message.status === "error" ? "text-red-600" : "text-zinc-900"}`}>
-              {message.status === "streaming" ? (message.agent === "codex" ? "Codex working" : "Working") : message.status === "stopped" ? "Stopped" : message.status === "error" ? "Error" : message.modificationStatus === "completed_changed" ? "Codex 已修改完成" : message.modificationStatus === "completed_no_change" ? "Codex 已完成（未修改文件）" : "Done"}
-            </span>
+            <span className={`font-semibold ${message.status === "error" ? "text-red-600" : "text-zinc-900"}`}>{message.status === "streaming" ? (message.agent === "codex" ? "Codex working" : "Working") : message.status === "stopped" ? "Stopped" : message.status === "error" ? "Error" : message.modificationStatus === "completed_changed" ? "Codex 已修改完成" : message.modificationStatus === "completed_no_change" ? "Codex 已完成（未修改文件）" : "Done"}</span>
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}
             {message.totalTokens ? <span>- {formatCompactNumber(message.totalTokens)} tokens</span> : null}
@@ -1561,7 +1942,9 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
         )}
         {isUser ? (
           <>
-            <div className="whitespace-pre-wrap break-words"><InlineReferenceText value={message.content}/></div>
+            <div className="whitespace-pre-wrap break-words">
+              <InlineReferenceText value={message.content} />
+            </div>
             {message.attachments && message.attachments.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {message.attachments.map((attachment) => (
@@ -1573,14 +1956,18 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
             )}
             {message.documentAttachments && message.documentAttachments.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {message.documentAttachments.map((attachment) => <span key={attachment.id} className="inline-flex max-w-full items-center gap-1 rounded-md bg-white/15 px-2 py-1 text-[11px] text-white"><FileText size={12} className="shrink-0"/><span className="max-w-44 truncate">{attachment.file_name}</span><span className="opacity-75">{attachment.extraction_status === "ready" ? "文本提取" : "需转换"}</span></span>)}
+                {message.documentAttachments.map((attachment) => (
+                  <span key={attachment.id} className="inline-flex max-w-full items-center gap-1 rounded-md bg-white/15 px-2 py-1 text-[11px] text-white">
+                    <FileText size={12} className="shrink-0" />
+                    <span className="max-w-44 truncate">{attachment.file_name}</span>
+                    <span className="opacity-75">{attachment.extraction_status === "ready" ? "文本提取" : "需转换"}</span>
+                  </span>
+                ))}
               </div>
             )}
           </>
         ) : (
-          <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">
-            {message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}
-          </div>
+          <div className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
         )}
         {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
@@ -1589,13 +1976,13 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
             {message.trace && message.trace.length > 0 && (
               <div className="mt-2 space-y-1 border-l border-zinc-200 pl-3">
                 {message.trace.slice(-12).map((item, index) => (
-                  <div key={`${index}-${item}`} className="leading-5">{item}</div>
+                  <div key={`${index}-${item}`} className="leading-5">
+                    {item}
+                  </div>
                 ))}
               </div>
             )}
-            {message.thinking && (
-              <div className="mt-2 whitespace-pre-wrap break-words border-t border-zinc-100 pt-2 leading-5">{message.thinking}</div>
-            )}
+            {message.thinking && <div className="mt-2 whitespace-pre-wrap break-words border-t border-zinc-100 pt-2 leading-5">{message.thinking}</div>}
           </details>
         )}
         {!isUser && message.model && (
@@ -1611,7 +1998,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
               {t("chat.citations")}
             </div>
             {message.citations.slice(0, 5).map((citation, index) => (
-              <CitationItem key={`${index}-${citation.score ?? "score"}`} citation={citation} index={index + 1} onOpenCodeFile={onOpenCodeFile}/>
+              <CitationItem key={`${index}-${citation.score ?? "score"}`} citation={citation} index={index + 1} onOpenCodeFile={onOpenCodeFile} />
             ))}
           </div>
         )}
@@ -1647,8 +2034,13 @@ function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
         {[...latestByStage.values()].map((event) => (
           <div key={`${event.trace_id}-${event.stage}`} className="flex flex-wrap items-center gap-x-2 leading-5">
             <span className={event.status === "failed" ? "text-rose-700" : event.status === "cancelled" ? "text-amber-700" : "text-slate-700"}>{debugStageLabel(event.stage)}</span>
-            <span className="tabular-nums text-slate-500">{event.elapsed_ms}ms{event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}</span>
-            <span className="text-slate-400">{event.provider} / {event.transport}</span>
+            <span className="tabular-nums text-slate-500">
+              {event.elapsed_ms}ms
+              {event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}
+            </span>
+            <span className="text-slate-400">
+              {event.provider} / {event.transport}
+            </span>
             {event.error_code && <span className="text-rose-600">{event.error_code}</span>}
           </div>
         ))}
@@ -1659,14 +2051,25 @@ function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
 
 function debugStageLabel(stage: string) {
   const labels: Record<string, string> = {
-    browser_submit: "浏览器提交", backend_received: "后端接收", auth_session_context: "鉴权与上下文", request_started: "请求开始", provider_request_started: "模型请求", first_stream_event: "首个流事件", provider_completed: "模型完成", persistence: "写入会话", frontend_push: "推送前端", request_completed: "请求结束",
+    browser_submit: "浏览器提交",
+    backend_received: "后端接收",
+    auth_session_context: "鉴权与上下文",
+    request_started: "请求开始",
+    provider_request_started: "模型请求",
+    first_stream_event: "首个流事件",
+    provider_completed: "模型完成",
+    persistence: "写入会话",
+    frontend_push: "推送前端",
+    request_completed: "请求结束",
   };
   return labels[stage] ?? "诊断阶段";
 }
 
 function ChatDiagnosticsDialog({ traces, loading, onClose }: { traces: ChatDebugTraceRecord[]; loading: boolean; onClose: () => void }) {
   useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
@@ -1674,9 +2077,52 @@ function ChatDiagnosticsDialog({ traces, loading, onClose }: { traces: ChatDebug
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={onClose}>
       <section className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="聊天诊断日志" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-700"><Activity size={16}/></span><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold text-slate-900">聊天诊断日志</h2><p className="mt-0.5 text-[11px] text-slate-500">仅保存脱敏耗时靶点，默认保留 7 天。</p></div><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭诊断日志"><X size={17}/></button></header>
+        <header className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-700">
+            <Activity size={16} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-slate-900">聊天诊断日志</h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">仅保存脱敏耗时靶点，默认保留 7 天。</p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭诊断日志">
+            <X size={17} />
+          </button>
+        </header>
         <div className="workspace-scroll min-h-0 flex-1 overflow-y-auto p-4">
-          {loading ? <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/>正在读取诊断日志…</div> : traces.length === 0 ? <p className="py-10 text-center text-sm text-slate-500">当前会话没有可用的诊断日志。请先开启 Debug 后发送消息。</p> : <div className="space-y-4">{traces.map((trace) => <section key={trace.trace_id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-800">{new Date(trace.created_at).toLocaleString("zh-CN")}</span><span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">{trace.provider} / {trace.transport}</span></div><div className="space-y-1 border-l border-slate-200 pl-3">{trace.events.map((event, index) => <div key={`${event.stage}-${index}`} className="flex flex-wrap items-center gap-x-2 text-[11px] leading-5"><span className={event.status === "failed" ? "text-rose-700" : event.status === "cancelled" ? "text-amber-700" : "text-slate-700"}>{debugStageLabel(event.stage)}</span><span className="tabular-nums text-slate-500">{event.elapsed_ms}ms{event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}</span>{event.error_code && <span className="text-rose-600">{event.error_code}</span>}</div>)}</div></section>)}</div>}
+          {loading ? (
+            <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-slate-500">
+              <Loader2 size={16} className="animate-spin" />
+              正在读取诊断日志…
+            </div>
+          ) : traces.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-500">当前会话没有可用的诊断日志。请先开启 Debug 后发送消息。</p>
+          ) : (
+            <div className="space-y-4">
+              {traces.map((trace) => (
+                <section key={trace.trace_id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-800">{new Date(trace.created_at).toLocaleString("zh-CN")}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">
+                      {trace.provider} / {trace.transport}
+                    </span>
+                  </div>
+                  <div className="space-y-1 border-l border-slate-200 pl-3">
+                    {trace.events.map((event, index) => (
+                      <div key={`${event.stage}-${index}`} className="flex flex-wrap items-center gap-x-2 text-[11px] leading-5">
+                        <span className={event.status === "failed" ? "text-rose-700" : event.status === "cancelled" ? "text-amber-700" : "text-slate-700"}>{debugStageLabel(event.stage)}</span>
+                        <span className="tabular-nums text-slate-500">
+                          {event.elapsed_ms}ms
+                          {event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}
+                        </span>
+                        {event.error_code && <span className="text-rose-600">{event.error_code}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -1703,10 +2149,16 @@ function ImageLightbox({ attachment, onClose }: { attachment: ChatImagePreview; 
       <section className="w-[calc(100%-2rem)] max-w-5xl rounded-2xl border border-white/20 bg-slate-900 p-3 shadow-2xl" role="dialog" aria-modal="true" aria-label={`查看图片：${attachment.file_name}`} onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-3 flex items-center gap-2 text-white">
           <p className="min-w-0 flex-1 truncate text-sm font-medium">{attachment.file_name}</p>
-          <button type="button" onClick={() => setZoom((value) => Math.max(1, value - 0.25))} disabled={zoom <= 1} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20 disabled:opacity-40" aria-label="缩小图片"><ZoomOut size={16}/></button>
+          <button type="button" onClick={() => setZoom((value) => Math.max(1, value - 0.25))} disabled={zoom <= 1} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20 disabled:opacity-40" aria-label="缩小图片">
+            <ZoomOut size={16} />
+          </button>
           <span className="w-10 text-center text-xs tabular-nums text-slate-300">{Math.round(zoom * 100)}%</span>
-          <button type="button" onClick={() => setZoom((value) => Math.min(3, value + 0.25))} disabled={zoom >= 3} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20 disabled:opacity-40" aria-label="放大图片"><ZoomIn size={16}/></button>
-          <button type="button" onClick={onClose} className="ml-1 grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20" aria-label="关闭图片预览"><X size={17}/></button>
+          <button type="button" onClick={() => setZoom((value) => Math.min(3, value + 0.25))} disabled={zoom >= 3} className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20 disabled:opacity-40" aria-label="放大图片">
+            <ZoomIn size={16} />
+          </button>
+          <button type="button" onClick={onClose} className="ml-1 grid h-8 w-8 place-items-center rounded-lg bg-white/10 transition hover:bg-white/20" aria-label="关闭图片预览">
+            <X size={17} />
+          </button>
         </div>
         <div className="max-h-[calc(100vh-10rem)] overflow-auto rounded-xl bg-black/30">
           <img src={attachment.previewUrl} alt={attachment.file_name} style={{ width: `${zoom * 100}%`, maxWidth: "none" }} className="block h-auto min-w-full rounded-xl" />
@@ -1722,8 +2174,13 @@ function CitationItem({ citation, index, onOpenCodeFile }: { citation: Knowledge
   return (
     <button type="button" disabled={!reference} onClick={() => reference && onOpenCodeFile(reference)} className={`block w-full rounded-lg border p-2 text-left transition ${reference ? "border-blue-200 bg-blue-50/40 hover:border-blue-400 hover:bg-blue-50" : "cursor-default border-zinc-200 bg-white"}`} title={reference ? "Open in the right file panel" : undefined}>
       <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-zinc-500">
-        <span>#{index} {source}</span>
-        <span className="flex items-center gap-1">{reference && <FileCode2 size={12} className="text-blue-600"/>}{typeof citation.score === "number" && <span>{citation.score.toFixed(3)}</span>}</span>
+        <span>
+          #{index} {source}
+        </span>
+        <span className="flex items-center gap-1">
+          {reference && <FileCode2 size={12} className="text-blue-600" />}
+          {typeof citation.score === "number" && <span>{citation.score.toFixed(3)}</span>}
+        </span>
       </div>
       <p className="line-clamp-3 text-[12px] leading-5 text-zinc-700">{citation.text}</p>
     </button>
@@ -1733,16 +2190,15 @@ function CitationItem({ citation, index, onOpenCodeFile }: { citation: Knowledge
 function resolveCodeFileReference(citation: KnowledgeCitation): ChatCodeFileReference | null {
   const metadata = citation.metadata;
   if (!metadata) return null;
-  const repositoryName = stringifyMeta(metadata.repository_name)
-    || stringifyMeta(metadata.code_repository_name)
-    || stringifyMeta(metadata.repository)
-    || stringifyMeta(metadata.repo_name);
-  const filePath = stringifyMeta(metadata.file_path)
-    || stringifyMeta(metadata.relative_path)
-    || stringifyMeta(metadata.source_path);
+  const repositoryName = stringifyMeta(metadata.repository_name) || stringifyMeta(metadata.code_repository_name) || stringifyMeta(metadata.repository) || stringifyMeta(metadata.repo_name);
+  const filePath = stringifyMeta(metadata.file_path) || stringifyMeta(metadata.relative_path) || stringifyMeta(metadata.source_path);
   if (!repositoryName || !filePath) return null;
   const rawLine = Number(metadata.line ?? metadata.line_number ?? metadata.start_line);
-  return { repositoryName, filePath, line: Number.isFinite(rawLine) && rawLine > 0 ? rawLine : undefined };
+  return {
+    repositoryName,
+    filePath,
+    line: Number.isFinite(rawLine) && rawLine > 0 ? rawLine : undefined,
+  };
 }
 
 function resolveLlmModels(catalog: Catalog | null): CatalogModel[] {
@@ -1798,10 +2254,7 @@ function appendTrace(trace: string[] | undefined, item: string | null) {
   return next.slice(-40);
 }
 
-function formatTraceEvent(
-  event: ChatStreamEvent,
-  translate: (key: TranslationKey, params?: Record<string, string | number>) => string,
-) {
+function formatTraceEvent(event: ChatStreamEvent, translate: (key: TranslationKey, params?: Record<string, string | number>) => string) {
   const metadata = event.metadata ?? {};
   if (event.type === "loop") {
     const iteration = numberMeta(metadata.iteration);
@@ -1825,9 +2278,7 @@ function formatTraceEvent(
   if (event.type === "tool_result") {
     if (event.content) return event.content;
     const citationCount = numberMeta(metadata.citation_count);
-    return citationCount !== undefined
-      ? translate("chat.traceToolResultWithCount", { count: citationCount })
-      : translate("chat.traceToolResult");
+    return citationCount !== undefined ? translate("chat.traceToolResultWithCount", { count: citationCount }) : translate("chat.traceToolResult");
   }
 
   if (event.type === "thinking") {
