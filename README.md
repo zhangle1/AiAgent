@@ -12,11 +12,13 @@
 - Codex 图片上下文：选择 Codex 本地代理后，聊天框可上传 PNG、JPEG、WebP 或 GIF 截图；后端校验文件签名并以受控 `localImage` 输入传给原生 Codex，不会将浏览器提供的路径交给 CLI。第三方 Codex profile 可选择启用本机 PaddleOCR，将带不可信边界的识别文本附加到 prompt，而不假定该 profile 支持图片参数。
 
 - 模型服务配置：LLM、Embedding、Search、TTS、STT、图像与视频模型。
-- Git 账号与代码库：令牌加密保存、连接测试、克隆、代码库登记、拉取与提交推送。
-- 任务面板：按代码项目创建、查看和删除本地任务；可关联 Gitee Issue 或导入企业工作项 CSV，并通过待办、进行中、待验收、已完成四列拖拽流转任务状态，一键把任务上下文带入对应项目的新会话。
+- Git 账号与代码库：支持 Gitee OAuth 授权码登录（令牌仅服务端加密保存）、手工令牌连接测试、克隆、代码库登记、拉取与提交推送。
+- 工作项：企业固定为 `yun_kun`；可在新建或导入时打开企业工作项选择器，查看任务详情和附件后关联到任意 AiAgent 项目，也可导入 OMS CSV；表格支持按项目、负责人、类型、状态和关键词筛选，并可将工作项上下文带入对应项目的新会话。
 - 知识库：文档导入、解析、索引、检索与聊天问答。
 - Agent 对话：WebSocket 优先、SSE 降级，实时显示工具调用、Token 与结果。
 - 流量统计：成功完成的自有 Agent 与第三方代理轮次会写入用户隔离的 Token 账本，可按代理、模型和日期查看趋势。
+
+Gitee OAuth 服务端配置使用 `GiteeOAuth:ClientId`、`GiteeOAuth:ClientSecret`、`GiteeOAuth:RedirectUri` 和 `GiteeOAuth:Scopes`（模板见 `backed/appsettings.example.json`）。生产环境建议使用部署环境变量或密钥管理器注入；`RedirectUri` 应填写浏览器可访问的公开地址（通常是前端域名下的 `/api/v1/gitee-oauth/callback`），并且必须与 Gitee 应用的回调地址完全一致。
 - Codex 接管：聊天中选择项目后可勾选“Codex 接管”，后端把项目目录与问题交给本机 `codex app-server`，并实时返回回答、执行轨迹与文件修改完成状态。
 - 可靠看板改码：Agent 先检查当前工作区与入口，再搜索、读取、基于 SHA-256 补丁写入并静态校验；不会把关联 Git 仓库作为第二个 AI 写入目标。
 - Prompt 模板市场：在聊天入口下按需求、设计、开发、代码理解、测试和交付阶段发现模板；支持项目范围、变量 `${field}`、点赞收藏、MD 导入导出，并可将渲染结果带入新聊天会话。

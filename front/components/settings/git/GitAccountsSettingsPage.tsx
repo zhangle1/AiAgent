@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, FlaskConical, KeyRound, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, FlaskConical, KeyRound, Loader2, LogIn, Plus, Save, Trash2 } from "lucide-react";
 import {
   createGitAccount,
   deleteGitAccount,
+  getGiteeOAuthAuthorizeUrl,
   listGitAccounts,
   testGitAccount,
   updateGitAccount,
@@ -58,6 +59,7 @@ export function GitAccountsSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState<GitAccountTestResult | null>(null);
 
@@ -148,6 +150,31 @@ export function GitAccountsSettingsPage() {
     }
   };
 
+  const startGiteeOAuth = async () => {
+    const popup = window.open("about:blank", "aiagent-gitee-oauth", "popup,width=600,height=760");
+    setOauthLoading(true);
+    setError("");
+    const receive = (event: MessageEvent) => {
+      if (event.source !== popup || event.data?.type !== "aiagent:gitee-oauth") return;
+      window.removeEventListener("message", receive);
+      popup?.close();
+      if (!event.data.ok) setError("Gitee 登录未完成，请检查 OAuth 应用回调地址和权限配置。");
+      void load();
+    };
+    window.addEventListener("message", receive);
+    try {
+      const authorizeUrl = await getGiteeOAuthAuthorizeUrl();
+      if (popup) popup.location.href = authorizeUrl;
+      else window.location.assign(authorizeUrl);
+    } catch (exception) {
+      window.removeEventListener("message", receive);
+      popup?.close();
+      setError(exception instanceof Error ? exception.message : "Unable to start Gitee OAuth login.");
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
   return (
     <section className="min-w-0">
       <SettingsPageHeader title={words.title} description={words.description} action={null} />
@@ -161,6 +188,7 @@ export function GitAccountsSettingsPage() {
           <section className="rounded-xl border border-[var(--border)] bg-white p-5">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-[15px] font-semibold">{words.providerConnection}</h2><p className="mt-1 text-[12px] text-zinc-500">Gitee is the default provider; GitHub can be selected when needed.</p></div><button type="button" onClick={createNew} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-[12px] hover:bg-zinc-50"><Plus size={14} />{words.add}</button></div>
             <label className="block text-[12px] font-medium">Provider<select value={draft.provider} onChange={(event) => setDraft((item) => ({ ...item, provider: event.target.value as GitProvider }))} className="mt-1.5 h-10 w-full rounded-md border border-[var(--border)] bg-white px-3 text-[13px] outline-none focus:border-emerald-500"><option value="gitee">Gitee</option><option value="github">GitHub</option></select></label>
+            {draft.provider === "gitee" && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3"><div className="min-w-0 flex-1"><p className="text-[12px] font-medium text-blue-900">使用 Gitee OAuth 登录</p><p className="mt-1 text-[11px] leading-5 text-blue-700">登录后由服务器换取并加密保存令牌，工作项接口会使用当前用户的 Gitee 账号。</p></div><button type="button" onClick={() => void startGiteeOAuth()} disabled={oauthLoading} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><LogIn size={14} />{oauthLoading ? "跳转中..." : "Gitee 登录"}</button></div>}
           </section>
 
           <section className="rounded-xl border border-[var(--border)] bg-white p-5">

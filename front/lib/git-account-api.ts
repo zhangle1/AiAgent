@@ -27,6 +27,10 @@ export type GitAccountTestResult = {
   tested_at: string;
 };
 
+export type GiteeOAuthAuthorizeResponse = {
+  authorize_url: string;
+};
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     cache: "no-store",
@@ -60,4 +64,8 @@ export async function deleteGitAccount(id: number): Promise<void> {
 
 export async function testGitAccount(id: number): Promise<GitAccountTestResult> {
   return (await request<{ result: GitAccountTestResult }>(`/api/v1/git-accounts/${id}/test`, { method: "POST", body: "{}" })).result;
+}
+
+export async function getGiteeOAuthAuthorizeUrl(): Promise<string> {
+  return (await request<GiteeOAuthAuthorizeResponse>("/api/v1/gitee-oauth/authorize")).authorize_url;
 }

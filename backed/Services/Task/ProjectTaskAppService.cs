@@ -21,6 +21,7 @@ namespace AiAgent.Backend.Services.ProjectTasks;
 public sealed class ProjectTaskAppService : IDynamicApiController
 {
     private readonly ISqlSugarClient _db; private readonly IHttpContextAccessor _context; private readonly IAuthService _auth; private readonly IProjectAccessService _projectAccess; private readonly IDataProtector _protector; private readonly IHttpClientFactory _http;
+    private const string GiteeEnterprise = "yun_kun";
     public ProjectTaskAppService(ISqlSugarClient db, IHttpContextAccessor context, IAuthService auth, IProjectAccessService projectAccess, IDataProtectionProvider protection, IHttpClientFactory http) => (_db, _context, _auth, _projectAccess, _protector, _http) = (db, context, auth, projectAccess, protection.CreateProtector("AiAgent.GitAccounts.AccessToken.v1"), http);
 
     [HttpGet]
@@ -106,6 +107,86 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         }
     }
 
+    [HttpGet("gitee/enterprise/issues")]
+    public async Task<IActionResult> ListEnterpriseIssues([FromQuery] string? state, [FromQuery] string? query, [FromQuery] int page = 1, [FromQuery(Name = "page_size")] int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        var user = await User(cancellationToken);
+        var account = ActiveGiteeAccount(user);
+        if (account is null) return new BadRequestObjectResult(new { message = "请先在 Git 管理中配置并启用具备企业 Issue 读取权限的 Gitee 账户。" });
+        var normalizedState = NormalizeEnterpriseState(state);
+        if (state is not null && normalizedState is null) return new BadRequestObjectResult(new { message = "企业工作项状态仅支持 open、progressing、closed 或 rejected。" });
+        var normalizedPage = NormalizePage(page);
+        var normalizedPageSize = Math.Clamp(pageSize, 1, 100);
+        var url = $"https://gitee.com/api/v5/enterprises/{GiteeEnterprise}/issues?page={normalizedPage}&per_page={normalizedPageSize}&sort=created&direction=desc";
+        if (normalizedState is not null) url += $"&state={normalizedState}";
+        var result = await GetGiteeArray(url, account, cancellationToken);
+        if (result.Error is not null) return result.Error;
+        var term = query?.Trim();
+        var items = result.Items!.Select(ToEnterpriseIssueListItem).Where(item => item is not null).Cast<EnterpriseIssueListItem>();
+        if (!string.IsNullOrWhiteSpace(term)) items = items.Where(item => item.Number.Contains(term, StringComparison.OrdinalIgnoreCase) || item.Title.Contains(term, StringComparison.OrdinalIgnoreCase) || (item.Assignee?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+        return new OkObjectResult(new { enterprise = GiteeEnterprise, page = normalizedPage, page_size = normalizedPageSize, has_more = result.Items.Count == normalizedPageSize, items = items.Select(item => new { number = item.Number, title = item.Title, status = item.Status, work_item_type = item.WorkItemType, assignee = item.Assignee, creator = item.Creator, updated_at = item.UpdatedAt, external_url = item.ExternalUrl }) });
+    }
+
+    [HttpGet("gitee/enterprise/issues/{number}")]
+    public async Task<IActionResult> GetEnterpriseIssue(string number, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        var issueNumber = Trim(number, 64);
+        if (issueNumber is null) return new BadRequestObjectResult(new { message = "工作项编号不能为空。" });
+        var account = ActiveGiteeAccount(user);
+        if (account is null) return new BadRequestObjectResult(new { message = "请先在 Git 管理中配置并启用具备企业 Issue 读取权限的 Gitee 账户。" });
+        var result = await GetGiteeObject($"https://gitee.com/api/v5/enterprises/{GiteeEnterprise}/issues/{Uri.EscapeDataString(issueNumber)}", account, cancellationToken);
+        if (result.Error is not null) return result.Error;
+        var detail = ToEnterpriseIssueDetail(result.Item!.Value);
+        return new OkObjectResult(new { number = detail.Number, title = detail.Title, description = detail.Description, status = detail.Status, work_item_type = detail.WorkItemType, assignee = detail.Assignee, creator = detail.Creator, collaborators = detail.Collaborators, priority = detail.Priority, labels = detail.Labels, created_at = detail.CreatedAt, updated_at = detail.UpdatedAt, external_url = detail.ExternalUrl, attachments = detail.Attachments.Select(attachment => new { name = attachment.Name, url = attachment.Url, is_image = attachment.IsImage }) });
+    }
+
+    [HttpGet("gitee/enterprise/attachment")]
+    public async Task<IActionResult> GetEnterpriseAttachment([FromQuery] string? url, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var source) || source.Scheme != Uri.UriSchemeHttps || !(string.Equals(source.Host, "gitee.com", StringComparison.OrdinalIgnoreCase) || source.Host.EndsWith(".gitee.com", StringComparison.OrdinalIgnoreCase))) return new BadRequestObjectResult(new { message = "附件地址无效，仅允许读取 Gitee HTTPS 附件。" });
+        var account = ActiveGiteeAccount(user);
+        if (account is null) return new BadRequestObjectResult(new { message = "请先在 Git 管理中配置并启用具备企业 Issue 读取权限的 Gitee 账户。" });
+        string token; try { token = _protector.Unprotect(account.AccessTokenProtected); } catch { return new BadRequestObjectResult(new { message = "Gitee 令牌无法读取，请重新保存该账户。" }); }
+        var requestUri = new UriBuilder(source);
+        var separator = string.IsNullOrEmpty(requestUri.Query) ? string.Empty : "&";
+        requestUri.Query = $"{requestUri.Query.TrimStart('?')}{separator}access_token={Uri.EscapeDataString(token)}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri.Uri);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiAgent", "1.0"));
+        using var response = await _http.CreateClient().SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode) return new ObjectResult(new { message = $"Gitee 附件返回 HTTP {(int)response.StatusCode}，请检查附件访问权限。" }) { StatusCode = 502 };
+        if (response.Content.Headers.ContentLength is > 20L * 1024 * 1024) return new ObjectResult(new { message = "附件超过 20 MB，未通过工作项预览代理读取。" }) { StatusCode = 413 };
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        if (bytes.Length > 20L * 1024 * 1024) return new ObjectResult(new { message = "附件超过 20 MB，未通过工作项预览代理读取。" }) { StatusCode = 413 };
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (string.IsNullOrWhiteSpace(mediaType) || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) mediaType = DetectImageContentType(bytes) ?? mediaType;
+        return new FileContentResult(bytes, mediaType ?? "application/octet-stream");
+    }
+
+    [HttpPost("gitee/enterprise/link")]
+    public async Task<IActionResult> LinkEnterpriseIssue([FromBody] EnterpriseIssueLinkRequest request, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        if (request.ProjectId <= 0) return new BadRequestObjectResult(new { message = "请选择要关联的 AiAgent 项目。" });
+        if (!_projectAccess.CanAccess(user, request.ProjectId)) return new ForbidResult();
+        var issueNumber = Trim(request.Number, 64);
+        if (issueNumber is null) return new BadRequestObjectResult(new { message = "工作项编号不能为空。" });
+        var account = ActiveGiteeAccount(user);
+        if (account is null) return new BadRequestObjectResult(new { message = "请先在 Git 管理中配置并启用具备企业 Issue 读取权限的 Gitee 账户。" });
+        var result = await GetGiteeObject($"https://gitee.com/api/v5/enterprises/{GiteeEnterprise}/issues/{Uri.EscapeDataString(issueNumber)}", account, cancellationToken);
+        if (result.Error is not null) return result.Error;
+        var item = ToEnterpriseWorkItem(result.Item!.Value);
+        if (item is null) return new BadRequestObjectResult(new { message = "Gitee 工作项缺少可识别的编号，无法关联。" });
+        var importResult = new CsvImportResult();
+        _db.Ado.BeginTran();
+        try { SaveImportBatch(user, request.ProjectId, [item], importResult, "gitee_enterprise_api"); _db.Ado.CommitTran(); }
+        catch { _db.Ado.RollbackTran(); throw; }
+        var task = _db.Queryable<AiProjectTask>().First(x => x.UserId == user.Id && x.CodeProjectId == request.ProjectId && x.WorkItemId == item.WorkItemId && !x.IsDeleted);
+        var projectName = _db.Queryable<AiCodeProject>().Where(x => x.Id == request.ProjectId && !x.IsDeleted).Select(x => x.DisplayName).First();
+        return new OkObjectResult(new { task = Dto(task, projectName), inserted = importResult.Inserted, updated = importResult.Updated });
+    }
+
     [HttpGet("gitee/projects")]
     public async Task<IActionResult> ListGiteeProjects([FromQuery] string? query, [FromQuery] int page = 1, [FromQuery(Name = "page_size")] int pageSize = 20, CancellationToken cancellationToken = default)
     {
@@ -156,15 +237,37 @@ public sealed class ProjectTaskAppService : IDynamicApiController
     private async Task<(List<JsonElement>? Items, IActionResult? Error)> GetGiteeArray(string url, AiGitAccount account, CancellationToken cancellationToken)
     {
         string token; try { token = _protector.Unprotect(account.AccessTokenProtected); } catch { return (null, new BadRequestObjectResult(new { message = "Gitee 令牌无法读取，请重新保存该账户。" })); }
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("token", token); request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiAgent", "1.0"));
+        var requestUri = new UriBuilder(url);
+        var separator = string.IsNullOrEmpty(requestUri.Query) ? string.Empty : "&";
+        requestUri.Query = $"{requestUri.Query.TrimStart('?')}{separator}access_token={Uri.EscapeDataString(token)}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri.Uri);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiAgent", "1.0"));
         using var response = await _http.CreateClient().SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode) return (null, new ObjectResult(new { message = $"Gitee 返回 HTTP {(int)response.StatusCode}，请检查令牌的项目与 Issue 读取权限。" }) { StatusCode = 502 });
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
         return json.RootElement.ValueKind == JsonValueKind.Array ? (json.RootElement.EnumerateArray().Select(item => item.Clone()).ToList(), null) : (null, new ObjectResult(new { message = "Gitee 返回了无法识别的列表数据。" }) { StatusCode = 502 });
     }
+    private async Task<(JsonElement? Item, IActionResult? Error)> GetGiteeObject(string url, AiGitAccount account, CancellationToken cancellationToken)
+    {
+        string token; try { token = _protector.Unprotect(account.AccessTokenProtected); } catch { return (null, new BadRequestObjectResult(new { message = "Gitee 令牌无法读取，请重新保存该账户。" })); }
+        var requestUri = new UriBuilder(url);
+        var separator = string.IsNullOrEmpty(requestUri.Query) ? string.Empty : "&";
+        requestUri.Query = $"{requestUri.Query.TrimStart('?')}{separator}access_token={Uri.EscapeDataString(token)}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri.Uri);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiAgent", "1.0"));
+        using var response = await _http.CreateClient().SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode) return (null, new ObjectResult(new { message = $"Gitee 返回 HTTP {(int)response.StatusCode}，请检查令牌的项目与 Issue 读取权限。" }) { StatusCode = 502 });
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        return json.RootElement.ValueKind == JsonValueKind.Object ? (json.RootElement.Clone(), null) : (null, new ObjectResult(new { message = "Gitee 返回了无法识别的工作项详情。" }) { StatusCode = 502 });
+    }
     private static int NormalizePage(int page) => Math.Max(1, page);
     private static int NormalizePageSize(int pageSize) => Math.Clamp(pageSize, 1, 50);
+    private static string? NormalizeEnterpriseState(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var state = value.Trim().ToLowerInvariant();
+        return state is "open" or "progressing" or "closed" or "rejected" ? state : null;
+    }
     private static string? NormalizeBoardStatus(string? value)
     {
         var status = value?.Trim().ToLowerInvariant();
@@ -174,6 +277,77 @@ public sealed class ProjectTaskAppService : IDynamicApiController
     private static ProjectTaskDto Dto(AiProjectTask x, string? name) => new() { Id=x.Id, ProjectId=x.CodeProjectId, ProjectName=name, Source=x.Source, ExternalId=x.ExternalId, WorkItemId=x.WorkItemId, WorkItemType=x.WorkItemType, Title=x.Title, Description=x.Description, Status=x.Status, Creator=x.Creator, Assignee=x.Assignee, Collaborators=x.Collaborators, Priority=x.Priority, Labels=x.Labels, ExternalUrl=x.ExternalUrl, ExternalCreatedAt=x.ExternalCreatedAt, ExternalUpdatedAt=x.ExternalUpdatedAt, UpdatedAt=x.UpdatedAt };
     private static string? Text(JsonElement e, string name) => e.TryGetProperty(name, out var p) ? p.ValueKind == JsonValueKind.String ? p.GetString() : p.ValueKind == JsonValueKind.Number ? p.GetRawText() : null : null;
     private static DateTime? Date(JsonElement e, string name) => DateTime.TryParse(Text(e,name), out var value) ? value : null;
+    private static string? NestedText(JsonElement e, string property, params string[] names) => e.TryGetProperty(property, out var nested) && nested.ValueKind == JsonValueKind.Object ? names.Select(name => Text(nested, name)).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) : null;
+    private static string? Person(JsonElement e, string property) => NestedText(e, property, "remark", "name", "login", "username");
+    private static string? ListText(JsonElement e, string property)
+    {
+        if (!e.TryGetProperty(property, out var values) || values.ValueKind != JsonValueKind.Array) return null;
+        var items = values.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : item.ValueKind == JsonValueKind.Object ? Text(item, "name") ?? Text(item, "title") ?? Text(item, "login") : null).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return items.Count == 0 ? null : Trim(string.Join("、", items), 1024);
+    }
+    private static ImportedTaskRow? ToEnterpriseWorkItem(JsonElement item)
+    {
+        var workItemId = Trim(Text(item, "ident") ?? Text(item, "number") ?? Text(item, "id"), 64);
+        if (workItemId is null) return null;
+        return new ImportedTaskRow(workItemId, Trim(Text(item, "title"), 512), Trim(Text(item, "body") ?? Text(item, "description"), 20000), Trim(NestedText(item, "issue_state", "title") ?? Text(item, "state"), 32), Trim(NestedText(item, "issue_type", "title") ?? Text(item, "issue_type"), 64), Trim(Person(item, "creator"), 64), Trim(Person(item, "assignee"), 64), ListText(item, "collaborators"), Trim(NestedText(item, "priority", "title", "name") ?? Text(item, "priority"), 32), ListText(item, "labels"), Date(item, "created_at"), Date(item, "updated_at"), Trim(Text(item, "html_url"), 1024));
+    }
+    private static EnterpriseIssueListItem? ToEnterpriseIssueListItem(JsonElement item)
+    {
+        var number = Trim(Text(item, "number") ?? Text(item, "ident") ?? Text(item, "id"), 64);
+        if (number is null) return null;
+        return new EnterpriseIssueListItem(number, Trim(Text(item, "title"), 512) ?? $"工作项 #{number}", Trim(NestedText(item, "issue_state", "title") ?? Text(item, "state"), 32), Trim(NestedText(item, "issue_type", "title") ?? Text(item, "issue_type"), 64), Trim(Person(item, "assignee"), 64), Trim(Person(item, "creator"), 64), Date(item, "updated_at"), Trim(Text(item, "html_url"), 1024));
+    }
+    private static EnterpriseIssueDetail ToEnterpriseIssueDetail(JsonElement item)
+    {
+        var number = Trim(Text(item, "number") ?? Text(item, "ident") ?? Text(item, "id"), 64) ?? string.Empty;
+        var description = Trim(Text(item, "body") ?? Text(item, "description"), 20000);
+        return new EnterpriseIssueDetail(number, Trim(Text(item, "title"), 512) ?? $"工作项 #{number}", description, Trim(NestedText(item, "issue_state", "title") ?? Text(item, "state"), 32), Trim(NestedText(item, "issue_type", "title") ?? Text(item, "issue_type"), 64), Trim(Person(item, "assignee"), 64), Trim(Person(item, "creator"), 64), ListText(item, "collaborators"), Trim(NestedText(item, "priority", "title", "name") ?? Text(item, "priority"), 32), ListText(item, "labels"), Date(item, "created_at"), Date(item, "updated_at"), Trim(Text(item, "html_url"), 1024), ExtractAttachments(item, description));
+    }
+    private static List<EnterpriseIssueAttachment> ExtractAttachments(JsonElement item, string? description)
+    {
+        var attachments = new List<EnterpriseIssueAttachment>();
+        foreach (var property in new[] { "attachments", "attach_files", "files" })
+        {
+            if (!item.TryGetProperty(property, out var values) || values.ValueKind != JsonValueKind.Array) continue;
+            foreach (var value in values.EnumerateArray())
+            {
+                var url = value.ValueKind == JsonValueKind.String ? value.GetString() : Text(value, "url") ?? Text(value, "download_url") ?? Text(value, "file_url") ?? Text(value, "html_url");
+                var contentType = value.ValueKind == JsonValueKind.Object ? Text(value, "content_type") ?? Text(value, "mime_type") ?? Text(value, "media_type") ?? Text(value, "type") : null;
+                AddAttachment(attachments, Text(value, "name") ?? Text(value, "filename"), url, contentType);
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var start = 0;
+            while (start < description.Length && (start = description.IndexOf("![", start, StringComparison.Ordinal)) >= 0)
+            {
+                var urlStart = description.IndexOf("](", start + 2, StringComparison.Ordinal);
+                if (urlStart < 0) break;
+                var end = description.IndexOf(')', urlStart + 2);
+                if (end < 0) break;
+                AddAttachment(attachments, description[(start + 2)..urlStart], description[(urlStart + 2)..end], imageHint: true);
+                start = end + 1;
+            }
+        }
+        return attachments;
+    }
+    private static void AddAttachment(List<EnterpriseIssueAttachment> attachments, string? name, string? url, string? contentType = null, bool imageHint = false)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || attachments.Any(item => string.Equals(item.Url, uri.AbsoluteUri, StringComparison.OrdinalIgnoreCase))) return;
+        var attachmentName = Trim(name, 256) ?? "附件";
+        var isImage = imageHint || IsImageContentType(contentType) || IsImageName(uri.AbsolutePath) || IsImageName(attachmentName);
+        attachments.Add(new EnterpriseIssueAttachment(attachmentName, uri.AbsoluteUri, isImage));
+    }
+    private static bool IsImageContentType(string? value) => !string.IsNullOrWhiteSpace(value) && (value.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "image", StringComparison.OrdinalIgnoreCase));
+    private static bool IsImageName(string value) => value.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".svg", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase) || value.EndsWith(".avif", StringComparison.OrdinalIgnoreCase);
+    private static string? DetectImageContentType(byte[] bytes)
+    {
+        if (bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A) return "image/png";
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return "image/jpeg";
+        if (bytes.Length >= 6 && bytes[0] == (byte)'G' && bytes[1] == (byte)'I' && bytes[2] == (byte)'F' && bytes[3] == (byte)'8') return "image/gif";
+        if (bytes.Length >= 12 && bytes[0] == (byte)'R' && bytes[1] == (byte)'I' && bytes[2] == (byte)'F' && bytes[3] == (byte)'F' && bytes[8] == (byte)'W' && bytes[9] == (byte)'E' && bytes[10] == (byte)'B' && bytes[11] == (byte)'P') return "image/webp";
+        return null;
+    }
     private static string? Trim(string? value, int max) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(max, value.Trim().Length)];
 
     private object ImportCsv(AuthenticatedUser user, long projectId, IFormFile file, IReadOnlyDictionary<string, string> mappings, CancellationToken cancellationToken)
@@ -205,11 +379,11 @@ public sealed class ProjectTaskAppService : IDynamicApiController
                 batch.Add(item);
                 if (batch.Count >= 500)
                 {
-                    SaveImportBatch(user, projectId, batch, result);
+                    SaveImportBatch(user, projectId, batch, result, "gitee_enterprise_csv");
                     batch.Clear();
                 }
             }
-            if (batch.Count > 0) SaveImportBatch(user, projectId, batch, result);
+            if (batch.Count > 0) SaveImportBatch(user, projectId, batch, result, "gitee_enterprise_csv");
             _db.Ado.CommitTran();
             return new { total_rows = result.TotalRows, inserted = result.Inserted, updated = result.Updated, skipped = result.Skipped, warnings = result.Warnings };
         }
@@ -220,20 +394,22 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         }
     }
 
-    private void SaveImportBatch(AuthenticatedUser user, long projectId, IReadOnlyList<ImportedTaskRow> input, CsvImportResult result)
+    private void SaveImportBatch(AuthenticatedUser user, long projectId, IReadOnlyList<ImportedTaskRow> input, CsvImportResult result, string source)
     {
         var uniqueInput = input.GroupBy(x => x.WorkItemId, StringComparer.OrdinalIgnoreCase).Select(x => x.Last()).ToList();
         var ids = uniqueInput.Select(x => x.WorkItemId).ToList();
-        var externalIds = ids.Select(x => $"gitee-work-item:{x}").ToList();
+        var externalIds = ids.Select(x => ExternalId(source, x)).ToList();
+        var csvExternalIds = ids.Select(x => ExternalId("gitee_enterprise_csv", x)).ToList();
         var legacyExternalIds = ids.Select(x => $"gitee:{x}").ToList();
         var existingRows = _db.Queryable<AiProjectTask>()
-            .Where(x => x.UserId == user.Id && x.CodeProjectId == projectId && !x.IsDeleted && ((x.WorkItemId != null && ids.Contains(x.WorkItemId)) || (x.ExternalId != null && (externalIds.Contains(x.ExternalId) || legacyExternalIds.Contains(x.ExternalId)))))
+            .Where(x => x.UserId == user.Id && x.CodeProjectId == projectId && !x.IsDeleted && ((x.WorkItemId != null && ids.Contains(x.WorkItemId)) || (x.ExternalId != null && (externalIds.Contains(x.ExternalId) || csvExternalIds.Contains(x.ExternalId) || legacyExternalIds.Contains(x.ExternalId)))))
             .ToList();
         var existing = new Dictionary<string, AiProjectTask>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in existingRows)
         {
             if (!string.IsNullOrWhiteSpace(row.WorkItemId)) existing.TryAdd(row.WorkItemId, row);
             if (!string.IsNullOrWhiteSpace(row.ExternalId) && row.ExternalId.StartsWith("gitee-work-item:", StringComparison.OrdinalIgnoreCase)) existing.TryAdd(row.ExternalId[16..], row);
+            if (!string.IsNullOrWhiteSpace(row.ExternalId) && row.ExternalId.StartsWith("gitee-enterprise-work-item:", StringComparison.OrdinalIgnoreCase)) existing.TryAdd(row.ExternalId[27..], row);
             if (!string.IsNullOrWhiteSpace(row.ExternalId) && row.ExternalId.StartsWith("gitee:", StringComparison.OrdinalIgnoreCase)) existing.TryAdd(row.ExternalId[6..], row);
         }
 
@@ -243,12 +419,12 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         {
             if (existing.TryGetValue(item.WorkItemId, out var task))
             {
-                ApplyImportedTask(task, item);
+                ApplyImportedTask(task, item, source);
                 updates.Add(task);
                 result.Updated++;
                 continue;
             }
-            task = NewImportedTask(user.Id, projectId, item);
+            task = NewImportedTask(user.Id, projectId, item, source);
             existing[item.WorkItemId] = task;
             inserts.Add(task);
             result.Inserted++;
@@ -256,17 +432,17 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         if (inserts.Count > 0) _db.Insertable(inserts).ExecuteCommand();
         if (updates.Count > 0)
         {
-            _db.Updateable(updates).UpdateColumns(x => new { x.WorkItemId, x.WorkItemType, x.ExternalId, x.Source, x.Title, x.Description, x.Status, x.Creator, x.Assignee, x.Collaborators, x.Priority, x.Labels, x.ExternalCreatedAt, x.ExternalUpdatedAt, x.UpdatedAt }).ExecuteCommand();
+            _db.Updateable(updates).UpdateColumns(x => new { x.WorkItemId, x.WorkItemType, x.ExternalId, x.Source, x.Title, x.Description, x.Status, x.Creator, x.Assignee, x.Collaborators, x.Priority, x.Labels, x.ExternalUrl, x.ExternalCreatedAt, x.ExternalUpdatedAt, x.UpdatedAt }).ExecuteCommand();
         }
     }
 
-    private static AiProjectTask NewImportedTask(string userId, long projectId, ImportedTaskRow item) => new()
+    private static AiProjectTask NewImportedTask(string userId, long projectId, ImportedTaskRow item, string source) => new()
     {
         UserId = userId,
         CodeProjectId = projectId,
         WorkItemId = item.WorkItemId,
-        ExternalId = $"gitee-work-item:{item.WorkItemId}",
-        Source = "gitee_enterprise_csv",
+        ExternalId = ExternalId(source, item.WorkItemId),
+        Source = source,
         Title = item.Title ?? $"工作项 #{item.WorkItemId}",
         Description = item.Description,
         Status = item.Status,
@@ -276,16 +452,17 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         Collaborators = item.Collaborators,
         Priority = item.Priority,
         Labels = item.Labels,
+        ExternalUrl = item.ExternalUrl,
         ExternalCreatedAt = item.ExternalCreatedAt,
         ExternalUpdatedAt = item.ExternalUpdatedAt,
         UpdatedAt = DateTime.UtcNow
     };
 
-    private static void ApplyImportedTask(AiProjectTask task, ImportedTaskRow item)
+    private static void ApplyImportedTask(AiProjectTask task, ImportedTaskRow item, string source)
     {
         task.WorkItemId = item.WorkItemId;
-        task.ExternalId = $"gitee-work-item:{item.WorkItemId}";
-        task.Source = "gitee_enterprise_csv";
+        task.ExternalId = ExternalId(source, item.WorkItemId);
+        task.Source = source;
         if (item.Title is not null) task.Title = item.Title;
         if (item.Description is not null) task.Description = item.Description;
         if (item.Status is not null) task.Status = item.Status;
@@ -295,6 +472,7 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         if (item.Collaborators is not null) task.Collaborators = item.Collaborators;
         if (item.Priority is not null) task.Priority = item.Priority;
         if (item.Labels is not null) task.Labels = item.Labels;
+        if (item.ExternalUrl is not null) task.ExternalUrl = item.ExternalUrl;
         if (item.ExternalCreatedAt.HasValue) task.ExternalCreatedAt = item.ExternalCreatedAt;
         if (item.ExternalUpdatedAt.HasValue) task.ExternalUpdatedAt = item.ExternalUpdatedAt;
         task.UpdatedAt = DateTime.UtcNow;
@@ -317,7 +495,7 @@ public sealed class ProjectTaskAppService : IDynamicApiController
             result.Warn(rowNumber, $"{target} 日期无法识别，已忽略。");
             return null;
         }
-        return new ImportedTaskRow(workItemId, Value("title", 512), Value("description", 20000), Value("status", 32), Value("work_item_type", 64), Value("creator", 64), Value("assignee", 64), Value("collaborators", 1024), Value("priority", 32), Value("labels", 512), DateValue("created_at"), DateValue("updated_at"));
+        return new ImportedTaskRow(workItemId, Value("title", 512), Value("description", 20000), Value("status", 32), Value("work_item_type", 64), Value("creator", 64), Value("assignee", 64), Value("collaborators", 1024), Value("priority", 32), Value("labels", 512), DateValue("created_at"), DateValue("updated_at"), null);
     }
 
     private static IReadOnlyDictionary<string, string> ParseImportMappings(string? value)
@@ -376,7 +554,11 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         }
     }
 
-    private sealed record ImportedTaskRow(string WorkItemId, string? Title, string? Description, string? Status, string? WorkItemType, string? Creator, string? Assignee, string? Collaborators, string? Priority, string? Labels, DateTime? ExternalCreatedAt, DateTime? ExternalUpdatedAt);
+    private static string ExternalId(string source, string workItemId) => source == "gitee_enterprise_api" ? $"gitee-enterprise-work-item:{workItemId}" : $"gitee-work-item:{workItemId}";
+    private sealed record EnterpriseIssueListItem(string Number, string Title, string? Status, string? WorkItemType, string? Assignee, string? Creator, DateTime? UpdatedAt, string? ExternalUrl);
+    private sealed record EnterpriseIssueAttachment(string Name, string Url, bool IsImage);
+    private sealed record EnterpriseIssueDetail(string Number, string Title, string? Description, string? Status, string? WorkItemType, string? Assignee, string? Creator, string? Collaborators, string? Priority, string? Labels, DateTime? CreatedAt, DateTime? UpdatedAt, string? ExternalUrl, List<EnterpriseIssueAttachment> Attachments);
+    private sealed record ImportedTaskRow(string WorkItemId, string? Title, string? Description, string? Status, string? WorkItemType, string? Creator, string? Assignee, string? Collaborators, string? Priority, string? Labels, DateTime? ExternalCreatedAt, DateTime? ExternalUpdatedAt, string? ExternalUrl);
     private sealed class CsvImportResult
     {
         public int TotalRows { get; set; }

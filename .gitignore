@@ -1,9 +1,15 @@
 # Build and package output
 [Bb]in/
 [Oo]bj/
-front/node_modules/
+**/node_modules/
 front/.next/
 front/out/
+**/.next/
+**/dist/
+**/build/
+**/coverage/
+**/.cache/
+**/.turbo/
 **/.venv/
 **/__pycache__/
 *.pyc
