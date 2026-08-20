@@ -3,7 +3,7 @@
 import { type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
@@ -1136,6 +1136,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
                     }))}
                     selectedIds={selectedProjectId ? [String(selectedProjectId)] : []}
                     open={openContextPicker === "project"}
+                    searchable
                     emptyText="暂无已配置项目"
                     onToggleOpen={() => setOpenContextPicker((current) => (current === "project" ? null : "project"))}
                     onToggle={(id) => setSelectedProjectId((current) => (current === Number(id) ? null : Number(id)))}
@@ -1850,7 +1851,8 @@ function MobileOptionSheet({ open, title, items, selectedId, onClose, onSelect }
   );
 }
 
-function ContextMultiSelect({ icon, label, items, selectedIds, open, disabled, emptyText, onToggleOpen, onToggle }: { icon: ReactNode; label: string; items: ContextPickerItem[]; selectedIds: string[]; open: boolean; disabled?: boolean; emptyText: string; onToggleOpen: () => void; onToggle: (id: string) => void }) {
+function ContextMultiSelect({ icon, label, items, selectedIds, open, disabled, searchable = false, emptyText, onToggleOpen, onToggle }: { icon: ReactNode; label: string; items: ContextPickerItem[]; selectedIds: string[]; open: boolean; disabled?: boolean; searchable?: boolean; emptyText: string; onToggleOpen: () => void; onToggle: (id: string) => void }) {
+  const [searchTerm, setSearchTerm] = useState("");
   const uniqueItems = useMemo(() => {
     const seen = new Set<string>();
     return items.filter((item) => {
@@ -1859,6 +1861,11 @@ function ContextMultiSelect({ icon, label, items, selectedIds, open, disabled, e
       return true;
     });
   }, [items]);
+  const visibleItems = useMemo(() => {
+    const term = searchTerm.trim().toLocaleLowerCase();
+    if (!term) return uniqueItems;
+    return uniqueItems.filter((item) => `${item.label} ${item.description ?? ""}`.toLocaleLowerCase().includes(term));
+  }, [searchTerm, uniqueItems]);
   const selectedLabel = selectedIds.length === 0 ? label : selectedIds.length === 1 ? (uniqueItems.find((item) => item.id === selectedIds[0])?.label ?? label) : `${label} · ${selectedIds.length}`;
 
   return (
@@ -1875,11 +1882,27 @@ function ContextMultiSelect({ icon, label, items, selectedIds, open, disabled, e
             <span>{label}</span>
             <span>{selectedIds.length}</span>
           </div>
+          {searchable && (
+            <label className="relative mx-1 mb-1.5 block">
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-zinc-400" />
+              <input
+                autoFocus
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                onPointerDown={(event) => event.stopPropagation()}
+                placeholder="搜索项目名称或路径"
+                aria-label="搜索项目名称或路径"
+                className="h-8 w-full rounded-lg border border-zinc-200 bg-zinc-50 pl-8 pr-2 text-[12px] font-normal text-zinc-700 outline-none transition placeholder:text-zinc-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+          )}
           <div className="max-h-56 overflow-y-auto">
             {uniqueItems.length === 0 ? (
               <p className="px-2.5 py-4 text-center text-[12px] leading-5 text-zinc-500">{emptyText}</p>
+            ) : visibleItems.length === 0 ? (
+              <p className="px-2.5 py-4 text-center text-[12px] leading-5 text-zinc-500">没有匹配的项目</p>
             ) : (
-              uniqueItems.map((item) => {
+              visibleItems.map((item) => {
                 const selected = selectedIds.includes(item.id);
                 return (
                   <button
