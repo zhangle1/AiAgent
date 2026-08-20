@@ -13,6 +13,7 @@ public interface IChatImageAttachmentService
     Task<ChatImageAttachmentDto> SaveAsync(AuthenticatedUser user, IFormFile file, CancellationToken cancellationToken);
     Task<List<ResolvedChatImageAttachment>> ResolveLocalAttachmentsAsync(AuthenticatedUser user, string? sessionId, IReadOnlyCollection<string> attachmentIds, CancellationToken cancellationToken);
     Task<List<ResolvedChatImageAttachment>> PersistForSessionAsync(AuthenticatedUser user, string sessionId, IReadOnlyCollection<string> attachmentIds, CancellationToken cancellationToken);
+    Task<ChatImageContent?> OpenTemporaryImageAsync(AuthenticatedUser user, string attachmentId, CancellationToken cancellationToken);
     Task<ChatImageContent?> OpenPersistedImageAsync(AuthenticatedUser user, string sessionId, string attachmentId, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(AuthenticatedUser user, string attachmentId, CancellationToken cancellationToken);
 }
@@ -140,6 +141,13 @@ public sealed class ChatImageAttachmentService : IChatImageAttachmentService
             persisted.Add(new ResolvedChatImageAttachment(ToDto(id, updated), targetPath));
         }
         return persisted;
+    }
+
+    public Task<ChatImageContent?> OpenTemporaryImageAsync(AuthenticatedUser user, string attachmentId, CancellationToken cancellationToken)
+    {
+        PruneExpired();
+        if (string.IsNullOrWhiteSpace(attachmentId) || !_attachments.TryGetValue(attachmentId, out var attachment) || attachment.PersistentSessionId != null || !string.Equals(attachment.UserId, user.Id, StringComparison.Ordinal) || !File.Exists(attachment.Path)) return Task.FromResult<ChatImageContent?>(null);
+        return Task.FromResult<ChatImageContent?>(new ChatImageContent(attachment.Path, attachment.ContentType));
     }
 
     public Task<ChatImageContent?> OpenPersistedImageAsync(AuthenticatedUser user, string sessionId, string attachmentId, CancellationToken cancellationToken)

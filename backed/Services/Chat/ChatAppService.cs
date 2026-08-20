@@ -211,6 +211,15 @@ public sealed class ChatAppService : IDynamicApiController
         return new { ok = await _attachments.DeleteAsync(user, attachmentId, cancellationToken) };
     }
 
+    [HttpGet("attachments/{attachmentId}/preview")]
+    public async Task<IActionResult> GetTemporaryImage([FromRoute] string attachmentId, CancellationToken cancellationToken)
+    {
+        var image = await _attachments.OpenTemporaryImageAsync(await RequireUser(cancellationToken), attachmentId, cancellationToken);
+        return image == null
+            ? new NotFoundResult()
+            : new FileStreamResult(new FileStream(image.Path, FileMode.Open, FileAccess.Read, FileShare.Read), image.ContentType) { EnableRangeProcessing = true };
+    }
+
     [HttpDelete("attachments/files/{attachmentId}")]
     public async Task<object> DeleteFile([FromRoute] string attachmentId, CancellationToken cancellationToken)
     {

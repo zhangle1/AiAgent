@@ -162,6 +162,10 @@ export function persistedChatImageUrl(sessionId: string, attachmentId: string): 
   return `/api/v1/chat/attachments/${encodeURIComponent(sessionId)}/${encodeURIComponent(attachmentId)}`;
 }
 
+export function chatImagePreviewUrl(attachmentId: string): string {
+  return `/api/v1/chat/attachments/${encodeURIComponent(attachmentId)}/preview`;
+}
+
 export async function getMyChatUploads(filters: { keyword?: string; kind?: string; sessionId?: string } = {}): Promise<ChatUploadFile[]> {
   const query = new URLSearchParams({ limit: "200" });
   if (filters.keyword) query.set("keyword", filters.keyword);

@@ -1,14 +1,18 @@
 using System.Net.Http.Headers;
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Task;
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Entities.Git;
 using AiAgent.Backend.Entities.Task;
 using AiAgent.Backend.Services.Admin;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Chat;
 using Furion.DynamicApiController;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using SqlSugar;
@@ -20,9 +24,10 @@ namespace AiAgent.Backend.Services.ProjectTasks;
 [Route("api/v1/project-tasks")]
 public sealed class ProjectTaskAppService : IDynamicApiController
 {
-    private readonly ISqlSugarClient _db; private readonly IHttpContextAccessor _context; private readonly IAuthService _auth; private readonly IProjectAccessService _projectAccess; private readonly IDataProtector _protector; private readonly IHttpClientFactory _http;
+    private readonly ISqlSugarClient _db; private readonly IHttpContextAccessor _context; private readonly IAuthService _auth; private readonly IProjectAccessService _projectAccess; private readonly IDataProtector _protector; private readonly IHttpClientFactory _http; private readonly IChatImageAttachmentService _chatImages;
     private const string GiteeEnterprise = "yun_kun";
-    public ProjectTaskAppService(ISqlSugarClient db, IHttpContextAccessor context, IAuthService auth, IProjectAccessService projectAccess, IDataProtectionProvider protection, IHttpClientFactory http) => (_db, _context, _auth, _projectAccess, _protector, _http) = (db, context, auth, projectAccess, protection.CreateProtector("AiAgent.GitAccounts.AccessToken.v1"), http);
+    private static readonly ConcurrentDictionary<string, TaskChatHandoff> ChatHandoffs = new(StringComparer.Ordinal);
+    public ProjectTaskAppService(ISqlSugarClient db, IHttpContextAccessor context, IAuthService auth, IProjectAccessService projectAccess, IDataProtectionProvider protection, IHttpClientFactory http, IChatImageAttachmentService chatImages) => (_db, _context, _auth, _projectAccess, _protector, _http, _chatImages) = (db, context, auth, projectAccess, protection.CreateProtector("AiAgent.GitAccounts.AccessToken.v1"), http, chatImages);
 
     [HttpGet]
     public async Task<object> List([FromQuery] long? projectId, CancellationToken cancellationToken)
@@ -56,6 +61,25 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         return new OkObjectResult(new { task = Dto(task, _db.Queryable<AiCodeProject>().Where(x => x.Id == request.ProjectId).Select(x => x.DisplayName).First()) });
     }
 
+    [HttpPatch("{taskId}")]
+    public async Task<IActionResult> Update(long taskId, [FromBody] UpdateProjectTaskRequest request, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        if (!request.ProjectId.HasValue || request.ProjectId.Value <= 0) return new BadRequestObjectResult(new { message = "请选择关联的 AiAgent 项目。" });
+        if (string.IsNullOrWhiteSpace(request.Title) || request.Title.Trim().Length > 512) return new BadRequestObjectResult(new { message = "任务标题不能为空且最多 512 个字符。" });
+        if (!_projectAccess.CanAccess(user, request.ProjectId.Value)) return new ForbidResult();
+        var task = _db.Queryable<AiProjectTask>().First(x => x.Id == taskId && x.UserId == user.Id && !x.IsDeleted);
+        if (task is null) return new NotFoundObjectResult(new { message = "任务不存在或已删除。" });
+        if (!task.CodeProjectId.HasValue || !_projectAccess.CanAccess(user, task.CodeProjectId.Value)) return new ForbidResult();
+        task.CodeProjectId = request.ProjectId.Value;
+        task.Title = request.Title.Trim();
+        task.Description = Trim(request.Description, 20000);
+        task.UpdatedAt = DateTime.UtcNow;
+        _db.Updateable(task).UpdateColumns(x => new { x.CodeProjectId, x.Title, x.Description, x.UpdatedAt }).ExecuteCommand();
+        var projectName = _db.Queryable<AiCodeProject>().Where(x => x.Id == task.CodeProjectId && !x.IsDeleted).Select(x => x.DisplayName).First();
+        return new OkObjectResult(new { task = Dto(task, projectName) });
+    }
+
     [HttpPatch("{taskId}/status")]
     public async Task<IActionResult> UpdateStatus(long taskId, [FromBody] UpdateProjectTaskStatusRequest request, CancellationToken cancellationToken)
     {
@@ -69,6 +93,39 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         task.UpdatedAt = DateTime.UtcNow;
         _db.Updateable(task).UpdateColumns(x => new { x.Status, x.UpdatedAt }).ExecuteCommand();
         return new OkObjectResult(new { task = Dto(task, _db.Queryable<AiCodeProject>().Where(x => x.Id == task.CodeProjectId).Select(x => x.DisplayName).First()) });
+    }
+
+    [HttpPost("{taskId}/chat-images")]
+    public async Task<IActionResult> PrepareChatImages(long taskId, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        var task = await TaskForUserAsync(user, taskId, cancellationToken);
+        if (task.Result is not null) return task.Result;
+        var images = await PrepareTaskChatImagesAsync(user, task.Task!, cancellationToken);
+        return new OkObjectResult(new { attachments = images.Attachments.Select(AttachmentDto), warnings = images.Warnings });
+    }
+
+    [HttpPost("{taskId}/chat-handoff")]
+    public async Task<IActionResult> CreateChatHandoff(long taskId, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        var task = await TaskForUserAsync(user, taskId, cancellationToken);
+        if (task.Result is not null) return task.Result;
+        var item = task.Task!;
+        var images = await PrepareTaskChatImagesAsync(user, item, cancellationToken);
+        PruneChatHandoffs();
+        var handoffId = Guid.NewGuid().ToString("N");
+        ChatHandoffs[handoffId] = new TaskChatHandoff(user.Id, item.CodeProjectId!.Value, BuildChatPrompt(item), images.Attachments, images.Warnings, DateTime.UtcNow.AddMinutes(15));
+        return new OkObjectResult(new { handoff_id = handoffId });
+    }
+
+    [HttpGet("chat-handoffs/{handoffId}")]
+    public async Task<IActionResult> GetChatHandoff(string handoffId, CancellationToken cancellationToken)
+    {
+        var user = await User(cancellationToken);
+        PruneChatHandoffs();
+        if (!ChatHandoffs.TryGetValue(handoffId, out var handoff) || !string.Equals(handoff.UserId, user.Id, StringComparison.Ordinal) || !_projectAccess.CanAccess(user, handoff.ProjectId)) return new NotFoundObjectResult(new { message = "工作项聊天交接已过期，请返回任务列表重新点击处理。" });
+        return new OkObjectResult(new { handoff_id = handoffId, project_id = handoff.ProjectId, content = handoff.Content, image_attachments = handoff.Attachments.Select(AttachmentDto), image_warning = string.Join(" ", handoff.Warnings) });
     }
 
     [HttpDelete("{taskId}")]
@@ -145,23 +202,17 @@ public sealed class ProjectTaskAppService : IDynamicApiController
     public async Task<IActionResult> GetEnterpriseAttachment([FromQuery] string? url, CancellationToken cancellationToken)
     {
         var user = await User(cancellationToken);
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var source) || source.Scheme != Uri.UriSchemeHttps || !(string.Equals(source.Host, "gitee.com", StringComparison.OrdinalIgnoreCase) || source.Host.EndsWith(".gitee.com", StringComparison.OrdinalIgnoreCase))) return new BadRequestObjectResult(new { message = "附件地址无效，仅允许读取 Gitee HTTPS 附件。" });
+        if (!TryGiteeAttachmentUri(url, out var source)) return new BadRequestObjectResult(new { message = "附件地址无效，仅允许读取 Gitee HTTPS 附件。" });
         var account = ActiveGiteeAccount(user);
         if (account is null) return new BadRequestObjectResult(new { message = "请先在 Git 管理中配置并启用具备企业 Issue 读取权限的 Gitee 账户。" });
         string token; try { token = _protector.Unprotect(account.AccessTokenProtected); } catch { return new BadRequestObjectResult(new { message = "Gitee 令牌无法读取，请重新保存该账户。" }); }
-        var requestUri = new UriBuilder(source);
-        var separator = string.IsNullOrEmpty(requestUri.Query) ? string.Empty : "&";
-        requestUri.Query = $"{requestUri.Query.TrimStart('?')}{separator}access_token={Uri.EscapeDataString(token)}";
-        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri.Uri);
-        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiAgent", "1.0"));
-        using var response = await _http.CreateClient().SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (!response.IsSuccessStatusCode) return new ObjectResult(new { message = $"Gitee 附件返回 HTTP {(int)response.StatusCode}，请检查附件访问权限。" }) { StatusCode = 502 };
-        if (response.Content.Headers.ContentLength is > 20L * 1024 * 1024) return new ObjectResult(new { message = "附件超过 20 MB，未通过工作项预览代理读取。" }) { StatusCode = 413 };
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        if (bytes.Length > 20L * 1024 * 1024) return new ObjectResult(new { message = "附件超过 20 MB，未通过工作项预览代理读取。" }) { StatusCode = 413 };
-        var mediaType = response.Content.Headers.ContentType?.MediaType;
-        if (string.IsNullOrWhiteSpace(mediaType) || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) mediaType = DetectImageContentType(bytes) ?? mediaType;
-        return new FileContentResult(bytes, mediaType ?? "application/octet-stream");
+        EnterpriseAttachmentContent content;
+        try { content = await DownloadGiteeAttachmentAsync(token, source, 20L * 1024 * 1024, cancellationToken); }
+        catch (HttpRequestException ex) { return new ObjectResult(new { message = ex.Message }) { StatusCode = 502 }; }
+        catch (InvalidOperationException ex) { return new ObjectResult(new { message = ex.Message }) { StatusCode = 413 }; }
+        var mediaType = content.ContentType;
+        if (string.IsNullOrWhiteSpace(mediaType) || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) mediaType = DetectImageContentType(content.Bytes) ?? mediaType;
+        return new FileContentResult(content.Bytes, mediaType ?? "application/octet-stream");
     }
 
     [HttpPost("gitee/enterprise/link")]
@@ -233,6 +284,52 @@ public sealed class ProjectTaskAppService : IDynamicApiController
     }
 
     private async Task<AuthenticatedUser> User(CancellationToken token) => await _auth.TryGetCurrentUserAsync(_context.HttpContext!, token) ?? throw new UnauthorizedAccessException();
+    private Task<(AiProjectTask? Task, IActionResult? Result)> TaskForUserAsync(AuthenticatedUser user, long taskId, CancellationToken cancellationToken)
+    {
+        var task = _db.Queryable<AiProjectTask>().First(x => x.Id == taskId && x.UserId == user.Id && !x.IsDeleted);
+        if (task is null) return Task.FromResult<(AiProjectTask?, IActionResult?)>((null, new NotFoundObjectResult(new { message = "任务不存在或已删除。" })));
+        if (!task.CodeProjectId.HasValue || !_projectAccess.CanAccess(user, task.CodeProjectId.Value)) return Task.FromResult<(AiProjectTask?, IActionResult?)>((null, new ForbidResult()));
+        return Task.FromResult<(AiProjectTask?, IActionResult?)>((task, null));
+    }
+    private async Task<TaskChatImagePreparation> PrepareTaskChatImagesAsync(AuthenticatedUser user, AiProjectTask task, CancellationToken cancellationToken)
+    {
+        var sources = new List<EnterpriseIssueAttachment>();
+        ExtractMarkdownImageAttachments(sources, task.Description);
+        var attachments = new List<ChatImageAttachmentDto>();
+        var warnings = new List<string>();
+        if (sources.Count == 0) return new TaskChatImagePreparation(attachments, warnings);
+        var account = ActiveGiteeAccount(user);
+        if (account is null) return new TaskChatImagePreparation(attachments, ["未配置具备 Gitee 附件读取权限的账户，任务图片未携带。"]);
+        string token;
+        try { token = _protector.Unprotect(account.AccessTokenProtected); }
+        catch { return new TaskChatImagePreparation(attachments, ["Gitee 令牌无法读取，任务图片未携带。"]); }
+        foreach (var source in sources.Take(4))
+        {
+            if (!TryGiteeAttachmentUri(source.Url, out var uri)) { warnings.Add($"“{source.Name}”不是可下载的 Gitee 图片地址，已跳过。"); continue; }
+            try
+            {
+                var content = await DownloadGiteeAttachmentAsync(token, uri, 10L * 1024 * 1024, cancellationToken);
+                var imageType = DetectImageContentType(content.Bytes);
+                if (imageType is null) { warnings.Add($"“{source.Name}”不是支持的 PNG、JPEG、WebP 或 GIF 图片，已跳过。"); continue; }
+                await using var stream = new MemoryStream(content.Bytes, writable: false);
+                var file = new FormFile(stream, 0, stream.Length, "file", SafeAttachmentFileName(source.Name, uri)) { Headers = new HeaderDictionary(), ContentType = imageType };
+                attachments.Add(await _chatImages.SaveAsync(user, file, cancellationToken));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+            {
+                warnings.Add($"“{source.Name}”下载失败：{ex.Message}");
+            }
+        }
+        if (sources.Count > 4) warnings.Add("工作项图片超过 4 张，仅携带前 4 张到本次聊天。");
+        return new TaskChatImagePreparation(attachments, warnings);
+    }
+    private static string BuildChatPrompt(AiProjectTask task) => $"请处理以下工作项，并先结合当前项目代码评估实施方案。\n\n任务：{task.Title}{(string.IsNullOrWhiteSpace(task.WorkItemId) ? string.Empty : $"\n工作项 ID：{task.WorkItemId}")}{(string.IsNullOrWhiteSpace(task.Description) ? string.Empty : $"\n\n任务详情：\n{task.Description}")}{(string.IsNullOrWhiteSpace(task.ExternalUrl) ? string.Empty : $"\n原始链接：{task.ExternalUrl}")}";
+    private static object AttachmentDto(ChatImageAttachmentDto attachment) => new { id = attachment.Id, file_name = attachment.FileName, content_type = attachment.ContentType, size_bytes = attachment.SizeBytes };
+    private static void PruneChatHandoffs()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var item in ChatHandoffs) if (item.Value.ExpiresAt <= now) ChatHandoffs.TryRemove(item.Key, out _);
+    }
     private AiGitAccount? ActiveGiteeAccount(AuthenticatedUser user) => _db.Queryable<AiGitAccount>().First(x => x.UserId == user.Id && x.Provider == "gitee" && x.IsActive && !x.IsDeleted && !string.IsNullOrEmpty(x.AccessTokenProtected));
     private async Task<(List<JsonElement>? Items, IActionResult? Error)> GetGiteeArray(string url, AiGitAccount account, CancellationToken cancellationToken)
     {
@@ -316,20 +413,73 @@ public sealed class ProjectTaskAppService : IDynamicApiController
                 AddAttachment(attachments, Text(value, "name") ?? Text(value, "filename"), url, contentType);
             }
         }
-        if (!string.IsNullOrWhiteSpace(description))
-        {
-            var start = 0;
-            while (start < description.Length && (start = description.IndexOf("![", start, StringComparison.Ordinal)) >= 0)
-            {
-                var urlStart = description.IndexOf("](", start + 2, StringComparison.Ordinal);
-                if (urlStart < 0) break;
-                var end = description.IndexOf(')', urlStart + 2);
-                if (end < 0) break;
-                AddAttachment(attachments, description[(start + 2)..urlStart], description[(urlStart + 2)..end], imageHint: true);
-                start = end + 1;
-            }
-        }
+        ExtractMarkdownImageAttachments(attachments, description);
         return attachments;
+    }
+    private static void ExtractMarkdownImageAttachments(List<EnterpriseIssueAttachment> attachments, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return;
+        var start = 0;
+        while (start < description.Length && (start = description.IndexOf("![", start, StringComparison.Ordinal)) >= 0)
+        {
+            var urlStart = description.IndexOf("](", start + 2, StringComparison.Ordinal);
+            if (urlStart < 0) break;
+            var end = description.IndexOf(')', urlStart + 2);
+            if (end < 0) break;
+            AddAttachment(attachments, description[(start + 2)..urlStart], MarkdownDestination(description[(urlStart + 2)..end]), imageHint: true);
+            start = end + 1;
+        }
+    }
+    private static string? MarkdownDestination(string destination)
+    {
+        var value = destination.Trim();
+        if (value.Length == 0) return null;
+        if (value[0] == '<')
+        {
+            var closingIndex = value.IndexOf('>');
+            if (closingIndex > 1) return value[1..closingIndex].Trim();
+        }
+        var titleIndex = value.IndexOfAny(new[] { ' ', '\t', '\r', '\n' });
+        return titleIndex < 0 ? value : value[..titleIndex];
+    }
+    private async Task<EnterpriseAttachmentContent> DownloadGiteeAttachmentAsync(string token, Uri source, long maximumBytes, CancellationToken cancellationToken)
+    {
+        var requestUri = new UriBuilder(source);
+        var separator = string.IsNullOrEmpty(requestUri.Query) ? string.Empty : "&";
+        requestUri.Query = $"{requestUri.Query.TrimStart('?')}{separator}access_token={Uri.EscapeDataString(token)}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri.Uri);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiAgent", "1.0"));
+        using var response = await _http.CreateClient().SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Gitee 附件返回 HTTP {(int)response.StatusCode}，请检查附件访问权限。");
+        if (response.Content.Headers.ContentLength is long length && length > maximumBytes) throw new InvalidOperationException($"附件超过 {maximumBytes / 1024 / 1024} MB，未读取。");
+        var bytes = await ReadAttachmentWithLimitAsync(response.Content, maximumBytes, cancellationToken);
+        return new EnterpriseAttachmentContent(bytes, response.Content.Headers.ContentType?.MediaType);
+    }
+    private static async Task<byte[]> ReadAttachmentWithLimitAsync(HttpContent content, long maximumBytes, CancellationToken cancellationToken)
+    {
+        await using var source = await content.ReadAsStreamAsync(cancellationToken);
+        await using var target = new MemoryStream();
+        var buffer = new byte[81920];
+        long copied = 0;
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+            if (read == 0) return target.ToArray();
+            copied += read;
+            if (copied > maximumBytes) throw new InvalidOperationException($"附件超过 {maximumBytes / 1024 / 1024} MB，未读取。");
+            await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+    }
+    private static bool TryGiteeAttachmentUri(string? value, out Uri source)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps && (string.Equals(parsed.Host, "gitee.com", StringComparison.OrdinalIgnoreCase) || parsed.Host.EndsWith(".gitee.com", StringComparison.OrdinalIgnoreCase))) { source = parsed; return true; }
+        source = null!;
+        return false;
+    }
+    private static string SafeAttachmentFileName(string? name, Uri source)
+    {
+        var candidate = string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(Path.GetExtension(name)) ? Path.GetFileName(source.AbsolutePath) : Path.GetFileName(name);
+        return string.IsNullOrWhiteSpace(candidate) ? "gitee-image" : candidate[..Math.Min(candidate.Length, 160)];
     }
     private static void AddAttachment(List<EnterpriseIssueAttachment> attachments, string? name, string? url, string? contentType = null, bool imageHint = false)
     {
@@ -557,6 +707,9 @@ public sealed class ProjectTaskAppService : IDynamicApiController
     private static string ExternalId(string source, string workItemId) => source == "gitee_enterprise_api" ? $"gitee-enterprise-work-item:{workItemId}" : $"gitee-work-item:{workItemId}";
     private sealed record EnterpriseIssueListItem(string Number, string Title, string? Status, string? WorkItemType, string? Assignee, string? Creator, DateTime? UpdatedAt, string? ExternalUrl);
     private sealed record EnterpriseIssueAttachment(string Name, string Url, bool IsImage);
+    private sealed record EnterpriseAttachmentContent(byte[] Bytes, string? ContentType);
+    private sealed record TaskChatImagePreparation(List<ChatImageAttachmentDto> Attachments, List<string> Warnings);
+    private sealed record TaskChatHandoff(string UserId, long ProjectId, string Content, List<ChatImageAttachmentDto> Attachments, List<string> Warnings, DateTime ExpiresAt);
     private sealed record EnterpriseIssueDetail(string Number, string Title, string? Description, string? Status, string? WorkItemType, string? Assignee, string? Creator, string? Collaborators, string? Priority, string? Labels, DateTime? CreatedAt, DateTime? UpdatedAt, string? ExternalUrl, List<EnterpriseIssueAttachment> Attachments);
     private sealed record ImportedTaskRow(string WorkItemId, string? Title, string? Description, string? Status, string? WorkItemType, string? Creator, string? Assignee, string? Collaborators, string? Priority, string? Labels, DateTime? ExternalCreatedAt, DateTime? ExternalUpdatedAt, string? ExternalUrl);
     private sealed class CsvImportResult

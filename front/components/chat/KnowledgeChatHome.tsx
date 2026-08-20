@@ -4,7 +4,7 @@ import { type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, us
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
-import { deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
+import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
@@ -13,6 +13,7 @@ import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
 import { getChatProjectReferences, getCodeProjects, getProjectMarkdownDocuments } from "@/lib/code-repository-api";
+import { getProjectTaskChatHandoff } from "@/lib/project-task-api";
 import { activeModel, activeProfile, type Catalog, type CatalogModel } from "@/lib/settings-types";
 import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
@@ -297,21 +298,25 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
 
   useEffect(() => {
     if (requestedSessionId || !requestedTemplateHandoff) return;
-    const raw = sessionStorage.getItem("aiagent:pending-template-turn");
-    if (!raw) return;
-    try {
-      const pending = JSON.parse(raw) as {
-        handoff_id?: string;
-        content?: string;
-        project_id?: number | null;
-      };
-      if (pending.handoff_id !== requestedTemplateHandoff) return;
+    let cancelled = false;
+    const apply = (pending: { content?: string; project_id?: number | null; image_attachments?: ChatImageAttachment[]; image_warning?: string }) => {
+      if (cancelled) return;
       if (typeof pending.content === "string" && pending.content.trim()) setInput(pending.content);
       if (typeof pending.project_id === "number") setSelectedProjectId(pending.project_id);
-    } catch {
-      // Invalid browser-local handoff data is ignored rather than being sent to the chat API.
-      sessionStorage.removeItem("aiagent:pending-template-turn");
-    }
+      if (Array.isArray(pending.image_attachments)) setImageAttachments(pending.image_attachments.slice(0, 4).filter((attachment) => typeof attachment?.id === "string").map((attachment) => ({ ...attachment, previewUrl: chatImagePreviewUrl(attachment.id) })));
+      if (pending.image_warning) setError(pending.image_warning);
+    };
+    void getProjectTaskChatHandoff(requestedTemplateHandoff).then(apply).catch(() => {
+      const raw = sessionStorage.getItem("aiagent:pending-template-turn");
+      if (!raw) { if (!cancelled) setError("工作项聊天交接已过期，请返回任务列表重新点击处理。"); return; }
+      try {
+        const pending = JSON.parse(raw) as { handoff_id?: string; content?: string; project_id?: number | null; image_attachments?: ChatImageAttachment[]; image_warning?: string };
+        if (pending.handoff_id === requestedTemplateHandoff) apply(pending);
+      } finally {
+        sessionStorage.removeItem("aiagent:pending-template-turn");
+      }
+    });
+    return () => { cancelled = true; };
   }, [requestedSessionId, requestedTemplateHandoff]);
 
   useEffect(() => {

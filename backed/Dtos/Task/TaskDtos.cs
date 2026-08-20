@@ -37,6 +37,13 @@ public sealed class UpdateProjectTaskStatusRequest
     [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
 }
 
+public sealed class UpdateProjectTaskRequest
+{
+    [JsonPropertyName("project_id")] public long? ProjectId { get; set; }
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("description")] public string? Description { get; set; }
+}
+
 public sealed class EnterpriseIssueLinkRequest
 {
     [JsonPropertyName("project_id")] public long ProjectId { get; set; }
