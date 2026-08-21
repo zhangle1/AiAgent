@@ -47,15 +47,27 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
     {
         _ = _repositories.GetProject(projectId);
         var repositories = _repositories.List().ToDictionary(item => item.Id);
+        List<AiCodeRepositoryRunProfile> profiles;
+        try
+        {
+            profiles = _db.Queryable<AiCodeRepositoryRunProfile>()
+                .Where(item => item.ProjectId == projectId)
+                .OrderBy(item => new { item.Role, item.Id })
+                .ToList();
+        }
+        catch (Exception ex) when (ex is SqlSugarException or System.Data.Common.DbException)
+        {
+            // Runtime profiles are optional for a repository mount. A legacy
+            // deployment may not have the runtime table/columns yet; do not
+            // turn a successful mount into a misleading HTTP 500. Startup
+            // schema initialization will repair it on the next restart.
+            _logger.LogWarning(ex, "Runtime profiles are unavailable for project {ProjectId}; returning an empty runtime configuration.", projectId);
+            profiles = [];
+        }
         return new CodeProjectRuntimeDto
         {
             ProjectId = projectId,
-            Profiles = _db.Queryable<AiCodeRepositoryRunProfile>()
-                .Where(item => item.ProjectId == projectId)
-                .OrderBy(item => new { item.Role, item.Id })
-                .ToList()
-                .Select(item => ToProfileDto(item, repositories.GetValueOrDefault(item.RepositoryId)))
-                .ToList(),
+            Profiles = profiles.Select(item => ToProfileDto(item, repositories.GetValueOrDefault(item.RepositoryId))).ToList(),
             Runs = _runs.Values
                 .Where(item => item.ProjectId == projectId && item.IsActive)
                 .OrderByDescending(item => item.StartedAt)

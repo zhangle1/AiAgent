@@ -1500,7 +1500,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         {
             return JsonSerializer.Deserialize<CodeRepositoryMetadata>(entity.TechStackJson, JsonOptions) ?? new CodeRepositoryMetadata();
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             // Legacy rows may contain an incomplete metadata blob. The source
             // directory is still valid; expose empty metadata so list/reload
