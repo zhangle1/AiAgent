@@ -4,6 +4,8 @@
 
 - `session-flow-prototype.html`：可直接用浏览器打开的交互原型。
 - `session-flow-design.md`：产品模型、交互规则、数据边界与分期建议。
+- `autonomous-collaboration/autonomous-collaboration-design.md`：通过自然语言让 AI 提议建联、生成消息，并在分级授权下进行自主协作的设计。
+- `autonomous-collaboration/autonomous-collaboration-prototype.html`：自主等级、协作提案和审计流的可交互原型。
 
 这不是 Agent 工作流编排器。画布中的每张卡片都是真实、完整、可独立运行的会话；人工连线只建立可投递关系。发送方完成工作后选择需要交付的内容，接收方检查后再决定是否带入会话或触发新一轮执行。
 

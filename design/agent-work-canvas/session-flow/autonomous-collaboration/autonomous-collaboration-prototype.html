@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>无限画布 · 对话驱动的自主协作</title>
+  <style>
+    *{box-sizing:border-box} :root{--bg:#f4f7fb;--ink:#172033;--muted:#68748a;--line:#dbe2ee;--blue:#2764e7;--purple:#7857d8;--green:#16876b;--amber:#b46a09}
+    body{margin:0;font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+    button,input{font:inherit} button{cursor:pointer}.app{height:100vh;display:grid;grid-template-rows:64px 1fr}
+    header{display:flex;align-items:center;gap:14px;padding:0 22px;background:#fff;border-bottom:1px solid var(--line)}
+    .brand{font-weight:750}.tag{font-size:12px;padding:5px 9px;border-radius:99px;background:#eef3ff;color:var(--blue)}
+    .spacer{flex:1}.mode{display:flex;align-items:center;gap:8px;font-size:13px}.mode select{border:1px solid var(--line);border-radius:9px;padding:7px 10px;background:#fff}.stop{border:1px solid #efb7b7;background:#fff5f5;color:#b42318;border-radius:9px;padding:8px 11px}
+    main{display:grid;grid-template-columns:1fr 330px;min-height:0}.canvas{position:relative;overflow:hidden;background-image:radial-gradient(#cad3e2 1px,transparent 1px);background-size:24px 24px}
+    svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.edge{fill:none;stroke:#9aa7ba;stroke-width:2;stroke-dasharray:7 7}.edge.active{stroke:var(--purple);stroke-width:2.5}.edge.suggested{stroke:var(--amber);stroke-dasharray:3 8}
+    .card{position:absolute;width:250px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 10px 30px #25385812}.card h3{margin:0 0 7px;font-size:15px}.card p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}.chips{display:flex;gap:6px;margin-top:11px}.chip{font-size:11px;background:#f0f3f8;padding:4px 7px;border-radius:99px}.status{margin-top:12px;padding-top:10px;border-top:1px solid #edf0f5;font-size:11px;color:var(--green)}
+    .c1{left:8%;top:18%}.c2{left:41%;top:10%}.c3{left:59%;top:52%}.c4{left:16%;top:58%}.edge-label{position:absolute;font-size:11px;background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 8px;color:var(--muted)}.l1{left:30%;top:17%}.l2{left:54%;top:38%;color:var(--purple)}.l3{left:29%;top:59%;color:var(--amber)}
+    aside{border-left:1px solid var(--line);background:#fff;padding:18px;overflow:auto}.aside-title{font-size:14px;font-weight:700;margin-bottom:12px}.event{padding:12px 0;border-bottom:1px solid #edf0f5}.event time{font-size:11px;color:#9aa4b5}.event b{display:block;font-size:13px;margin:4px 0}.event p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
+    .composer{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);width:min(760px,82%);background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 50px #25385824;padding:10px}.input-row{display:flex;gap:8px}.input-row input{flex:1;border:0;outline:0;padding:10px}.primary{border:0;border-radius:10px;background:var(--blue);color:#fff;padding:10px 14px}.hint{font-size:11px;color:var(--muted);padding:3px 10px 0}
+    .proposal{display:none;margin-bottom:9px;padding:14px;border:1px solid #d7cff6;background:#faf8ff;border-radius:12px}.proposal.show{display:block}.proposal-top{display:flex;align-items:center;gap:8px}.proposal-top b{font-size:13px}.risk{font-size:10px;color:var(--green);background:#eaf8f3;border-radius:99px;padding:3px 6px}.proposal ol{margin:10px 0;padding-left:20px;color:#45516a;font-size:12px;line-height:1.7}.actions{display:flex;gap:7px;justify-content:flex-end}.secondary{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;font-size:12px}.approve{border:0;background:var(--purple);color:#fff;border-radius:8px;padding:7px 10px;font-size:12px}.toast{display:none;position:absolute;top:18px;left:50%;transform:translateX(-50%);background:#182033;color:#fff;border-radius:10px;padding:10px 14px;font-size:12px;z-index:5}.toast.show{display:block}
+    @media(max-width:900px){main{grid-template-columns:1fr}aside{display:none}.card{width:210px}.c3{left:55%}.composer{width:92%}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header><div class="brand">项目协作画布</div><span class="tag">4 个独立会话</span><div class="spacer"></div><label class="mode">自主协作 <select id="mode"><option>仅建议（L0）</option><option>自动建联（L1）</option><option>自动投递（L2）</option><option>受控协作（L3）</option></select></label><button class="stop" id="stop">全部停止</button></header>
+  <main>
+    <section class="canvas">
+      <div class="toast" id="toast"></div>
+      <svg viewBox="0 0 1000 700" preserveAspectRatio="none">
+        <path class="edge" d="M290 190 C360 130 410 130 470 155" />
+        <path class="edge active" id="activeEdge" d="M600 210 C690 250 690 350 680 405" />
+        <path class="edge suggested" id="suggestedEdge" d="M530 210 C450 340 390 430 310 465" />
+      </svg>
+      <div class="edge-label l1">人工邮路 · 发送需确认</div><div class="edge-label l2">受控协作 · 自动投递</div><div class="edge-label l3" id="suggestedLabel">AI 建议联系</div>
+      <article class="card c1"><h3>产品方案</h3><p>梳理范围、交互与验收口径</p><div class="chips"><span class="chip">产品设计</span><span class="chip">需求拆解</span></div><div class="status">当前会话 · 可独立工作</div></article>
+      <article class="card c2"><h3>接口实现</h3><p>核对后端接口与数据模型事实</p><div class="chips"><span class="chip">.NET</span><span class="chip">API</span></div><div class="status">已授权：可接收，不自动运行</div></article>
+      <article class="card c3"><h3>前端方案</h3><p>实现画布交互与协作消息展示</p><div class="chips"><span class="chip">Next.js</span><span class="chip">UI</span></div><div class="status">1 份协作消息待检查</div></article>
+      <article class="card c4"><h3>测试与验收</h3><p>验证权限边界、循环保护和审计</p><div class="chips"><span class="chip">测试</span><span class="chip">安全</span></div><div class="status">禁止自动启动</div></article>
+      <div class="composer">
+        <div class="proposal" id="proposal"><div class="proposal-top"><b>协作提案</b><span class="risk">低风险</span></div><ol><li>向“接口实现”询问字段是否已支持（沿已有邮路）</li><li>收到事实结果后，生成给“前端方案”的投递草稿</li><li>前端方案只收件，不自动开始新一轮</li></ol><div class="actions"><button class="secondary" id="edit">编辑</button><button class="secondary" id="reject">暂不执行</button><button class="approve" id="approve">批准本次</button></div></div>
+        <div class="input-row"><input id="command" value="问一下接口实现，确认投递状态字段；有结论后交给前端方案" aria-label="画布协调指令"/><button class="primary" id="plan">生成计划</button></div>
+        <div class="hint">先生成可见计划。建联、投递和启动目标会话分别受策略控制。</div>
+      </div>
+    </section>
+    <aside><div class="aside-title">协作审计</div><div id="events"><div class="event"><time>10:24</time><b>前端方案收到投递</b><p>来自“接口实现”；策略：自动投递、目标不自动运行。</p></div><div class="event"><time>10:22</time><b>策略允许发送</b><p>命中画布 L2 白名单；内容通过脱敏与重复检查。</p></div><div class="event"><time>10:18</time><b>用户建立邮路</b><p>产品方案 → 接口实现；发送仍需确认。</p></div></div></aside>
+  </main>
+</div>
+<script>
+  const proposal=document.querySelector('#proposal'),toast=document.querySelector('#toast'),events=document.querySelector('#events');
+  const showToast=(text)=>{toast.textContent=text;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)};
+  document.querySelector('#plan').onclick=()=>proposal.classList.add('show');
+  document.querySelector('#reject').onclick=()=>{proposal.classList.remove('show');showToast('提案已取消，没有创建关系或消息')};
+  document.querySelector('#edit').onclick=()=>{document.querySelector('#command').focus();showToast('可以修改协调指令后重新生成')};
+  document.querySelector('#approve').onclick=()=>{proposal.classList.remove('show');const e=document.createElement('div');e.className='event';e.innerHTML='<time>刚刚</time><b>用户批准一次性协作</b><p>将询问接口实现；结果只投递给前端方案，不自动启动。</p>';events.prepend(e);showToast('已批准：动作受预算与防循环策略保护')};
+  document.querySelector('#stop').onclick=()=>{document.querySelector('#activeEdge').classList.remove('active');showToast('已停止全部协作链；独立会话不受影响')};
+  document.querySelector('#mode').onchange=(e)=>showToast('画布策略切换为：'+e.target.value);
+</script>
+</body>
+</html>
