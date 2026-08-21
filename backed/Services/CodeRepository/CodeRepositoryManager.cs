@@ -97,6 +97,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
 
     private readonly ISqlSugarClient _db;
     private readonly List<string> _allowedRoots;
+    private readonly List<string> _registeredProjectRoots;
     private readonly ILogger<CodeRepositoryManager> _logger;
 
     /// <summary>
@@ -107,6 +108,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         _db = db;
         _allowedRoots = ResolveAllowedRoots(configuration);
         _logger = logger;
+        _registeredProjectRoots = LoadRegisteredProjectRoots();
     }
 
     /// <summary>
@@ -1338,8 +1340,10 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             buildSystems.Add("Bazel");
         }
 
-        if (Directory.EnumerateFiles(rootPath, "*.sln", SearchOption.TopDirectoryOnly).Any()
-            || Directory.EnumerateFiles(rootPath, "*.csproj", SearchOption.AllDirectories).Take(1).Any())
+        // FindFiles deliberately skips inaccessible subdirectories. A single
+        // protected build/cache folder must not make an otherwise mountable
+        // project fail during metadata detection.
+        if (FindFiles(rootPath, ["*.sln", "*.csproj"]).Count > 0)
         {
             languages.Add("C#");
             buildSystems.Add("dotnet");
@@ -1386,8 +1390,34 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     private bool IsAllowedPath(string path)
     {
         var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        return _allowedRoots.Any(root => fullPath.Equals(root, StringComparison.OrdinalIgnoreCase)
-            || fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        return _allowedRoots.Any(root => IsPathWithin(root, fullPath))
+            || _registeredProjectRoots.Any(root => IsPathWithin(root, fullPath));
+    }
+
+    /// <summary>
+    /// Existing projects are already server-side directory grants. Keep their
+    /// roots usable after CodeRepository:AllowedRoots is tightened or moved;
+    /// otherwise a project can still be listed but none of its repositories can
+    /// be mounted again.
+    /// </summary>
+    private List<string> LoadRegisteredProjectRoots()
+    {
+        try
+        {
+            return _db.Queryable<AiCodeProject>()
+                .Where(project => !project.IsDeleted)
+                .Select(project => project.RootPath)
+                .ToList()
+                .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is SqlSugarException or InvalidOperationException or System.Data.Common.DbException)
+        {
+            _logger.LogWarning(ex, "Unable to load registered code project roots while resolving repository permissions.");
+            return [];
+        }
     }
 
     private static List<string> ResolveAllowedRoots(IConfiguration configuration)
@@ -1463,9 +1493,21 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         };
     }
 
-    private static CodeRepositoryMetadata ReadMetadata(AiCodeRepository entity) => string.IsNullOrWhiteSpace(entity.TechStackJson)
-        ? new CodeRepositoryMetadata()
-        : JsonSerializer.Deserialize<CodeRepositoryMetadata>(entity.TechStackJson, JsonOptions) ?? new CodeRepositoryMetadata();
+    private static CodeRepositoryMetadata ReadMetadata(AiCodeRepository entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity.TechStackJson)) return new CodeRepositoryMetadata();
+        try
+        {
+            return JsonSerializer.Deserialize<CodeRepositoryMetadata>(entity.TechStackJson, JsonOptions) ?? new CodeRepositoryMetadata();
+        }
+        catch (JsonException)
+        {
+            // Legacy rows may contain an incomplete metadata blob. The source
+            // directory is still valid; expose empty metadata so list/reload
+            // does not turn a successful mount into a misleading HTTP 500.
+            return new CodeRepositoryMetadata();
+        }
+    }
 
     private static CodeRepositoryMetadata CreateMetadata(CodeRepositorySaveRequest request, CodeRepositoryInspectionDto inspection, CodeRepositoryMetadata? existing = null)
     {

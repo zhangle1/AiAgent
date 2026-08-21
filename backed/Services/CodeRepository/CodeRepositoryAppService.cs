@@ -399,6 +399,14 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         {
             return new BadRequestObjectResult(new { message = $"挂载代码库失败：{ex.Message}" });
         }
+        catch (UnauthorizedAccessException)
+        {
+            return new BadRequestObjectResult(new { message = "挂载代码库失败：服务账号没有读取所选目录的权限，请授予该目录读取权限后重试。" });
+        }
+        catch (IOException)
+        {
+            return new BadRequestObjectResult(new { message = "挂载代码库失败：所选目录正在被占用或无法读取，请确认目录可访问后重试。" });
+        }
         catch (Exception ex)
         {
             return new ObjectResult(new { message = $"挂载代码库时服务器发生异常：{ex.Message}" }) { StatusCode = StatusCodes.Status500InternalServerError };

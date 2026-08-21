@@ -36,8 +36,13 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    const message = typeof payload === "object" && payload && "message" in payload
-      ? String((payload as { message?: string }).message)
+    const details = typeof payload === "object" && payload
+      ? payload as { message?: unknown; detail?: unknown; title?: unknown; error?: unknown }
+      : null;
+    const serverMessage = details && [details.message, details.detail, details.title, details.error]
+      .find((value) => typeof value === "string" && value.trim());
+    const message = serverMessage
+      ? String(serverMessage)
       : `请求失败（HTTP ${response.status}）。服务端未返回详细错误，请查看后端日志。`;
     throw new Error(message);
   }
