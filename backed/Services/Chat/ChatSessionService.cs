@@ -11,6 +11,8 @@ namespace AiAgent.Backend.Services.Chat;
 
 public interface IChatSessionService
 {
+    Task<ChatSessionSummaryDto> CreateEmptyAsync(AuthenticatedUser user, long projectId, string? title, CancellationToken cancellationToken);
+    Task<ChatSessionSummaryDto> CreateDraftAsync(AuthenticatedUser user, long projectId, string title, string draftContent, IReadOnlyList<ChatImageAttachmentDto> imageAttachments, string? imageWarning, CancellationToken cancellationToken);
     Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken);
     Task RecordAssistantMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, string content, string? thinking, object? citations, string? modelId, string? model, CancellationToken cancellationToken);
     Task<List<ChatSessionSummaryDto>> ListAsync(AuthenticatedUser user, int limit, CancellationToken cancellationToken);
@@ -40,6 +42,50 @@ public sealed class ChatSessionService : IChatSessionService
         _fileAttachments = fileAttachments;
         _projectAccess = projectAccess;
         _memory = memory;
+    }
+
+    public Task<ChatSessionSummaryDto> CreateEmptyAsync(AuthenticatedUser user, long projectId, string? title, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_projectAccess.CanAccess(user, projectId)) throw new InvalidOperationException("The selected code project is unavailable for this account.");
+
+        var normalizedTitle = string.IsNullOrWhiteSpace(title) ? "新会话" : title.Trim()[..Math.Min(title.Trim().Length, 160)];
+        var now = DateTime.UtcNow;
+        var session = new AiChatSession { Id = Guid.NewGuid().ToString("N"), UserId = user.Id, Title = normalizedTitle, CodeProjectId = projectId, SortOrder = NextSortOrder(user.Id), CreatedAt = now, UpdatedAt = now };
+        _db.Insertable(session).ExecuteCommand();
+        var project = _db.Queryable<AiCodeProject>().First(item => item.Id == projectId && !item.IsDeleted);
+        return Task.FromResult(ToSummary(session, [], project));
+    }
+
+    public Task<ChatSessionSummaryDto> CreateDraftAsync(AuthenticatedUser user, long projectId, string title, string draftContent, IReadOnlyList<ChatImageAttachmentDto> imageAttachments, string? imageWarning, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_projectAccess.CanAccess(user, projectId)) throw new InvalidOperationException("The selected code project is unavailable for this account.");
+
+        var normalizedTitle = string.IsNullOrWhiteSpace(title) ? "新会话" : title.Trim()[..Math.Min(title.Trim().Length, 160)];
+        var now = DateTime.UtcNow;
+        var session = new AiChatSession
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            UserId = user.Id,
+            Title = normalizedTitle,
+            CodeProjectId = projectId,
+            SortOrder = NextSortOrder(user.Id),
+            CreatedAt = now,
+            UpdatedAt = now,
+            PreferencesJson = JsonSerializer.Serialize(new
+            {
+                draft = new
+                {
+                    content = draftContent,
+                    image_attachments = imageAttachments,
+                    image_warning = string.IsNullOrWhiteSpace(imageWarning) ? null : imageWarning
+                }
+            })
+        };
+        _db.Insertable(session).ExecuteCommand();
+        var project = _db.Queryable<AiCodeProject>().First(item => item.Id == projectId && !item.IsDeleted);
+        return Task.FromResult(ToSummary(session, [], project));
     }
 
     public async Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)

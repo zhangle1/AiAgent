@@ -39,6 +39,12 @@ public sealed class RenameChatSessionRequest
     [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
 }
 
+public sealed class CreateChatSessionRequest
+{
+    [JsonPropertyName("project_id")] public long ProjectId { get; set; }
+    [JsonPropertyName("title")] public string? Title { get; set; }
+}
+
 public sealed class ReorderChatSessionsRequest
 {
     [JsonPropertyName("session_ids")] public List<string> SessionIds { get; set; } = [];

@@ -23,6 +23,14 @@ public sealed class ChatSessionAppService : IDynamicApiController
         return new { sessions = await _sessions.ListAsync(user, Math.Clamp(limit, 1, 100), cancellationToken) };
     }
 
+    [HttpPost("create")]
+    public async Task<IActionResult> Create([FromBody] CreateChatSessionRequest request, CancellationToken cancellationToken)
+    {
+        if (request.ProjectId <= 0) return new BadRequestObjectResult(new { message = "请先选择 AiAgent 项目。" });
+        if (request.Title?.Trim().Length > 160) return new BadRequestObjectResult(new { message = "会话名称最多 160 个字符。" });
+        return new OkObjectResult(await _sessions.CreateEmptyAsync(await RequireUser(cancellationToken), request.ProjectId, request.Title, cancellationToken));
+    }
+
     [HttpGet("{sessionId}")]
     public async Task<IActionResult> Get(string sessionId, CancellationToken cancellationToken)
     {

@@ -58,6 +58,8 @@ type ChatMessage = {
   debugTrace?: ChatDebugTraceEvent[];
 };
 
+type SessionDraft = { content: string; imageAttachments: ChatImageAttachment[]; imageWarning?: string };
+
 const CHAT_DEBUG_STORAGE_PREFIX = "aiagent:chat-debug:";
 
 function chatDebugStorageKey(sessionId: string | null) {
@@ -83,6 +85,17 @@ function toHistoryMessages(session: SessionDetail): ChatMessage[] {
     documentAttachments: message.metadata?.document_attachments,
     status: "done",
   }));
+}
+
+function sessionDraft(preferences: Record<string, unknown>): SessionDraft | null {
+  const draft = preferences.draft;
+  if (!draft || typeof draft !== "object") return null;
+  const value = draft as { content?: unknown; image_attachments?: unknown; image_warning?: unknown };
+  if (typeof value.content !== "string" || !value.content.trim()) return null;
+  const imageAttachments = Array.isArray(value.image_attachments)
+    ? value.image_attachments.filter((item): item is ChatImageAttachment => Boolean(item && typeof item === "object" && typeof (item as ChatImageAttachment).id === "string" && typeof (item as ChatImageAttachment).file_name === "string" && typeof (item as ChatImageAttachment).content_type === "string" && typeof (item as ChatImageAttachment).size_bytes === "number")).slice(0, 4)
+    : [];
+  return { content: value.content, imageAttachments, imageWarning: typeof value.image_warning === "string" ? value.image_warning : undefined };
 }
 
 function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key: TranslationKey) => string): ChatMessage {
@@ -337,9 +350,14 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
     void getSession(requestedSessionId)
       .then((session) => {
         if (cancelled) return;
+        const draft = session.messages.length === 0 ? sessionDraft(session.preferences) : null;
         setActiveSessionId(session.id);
         setSelectedProjectId(session.project_id ?? null);
         setMessages(toHistoryMessages(session));
+        setInput(draft?.content ?? "");
+        setImageAttachments(draft?.imageAttachments.map((attachment) => ({ ...attachment, previewUrl: chatImagePreviewUrl(attachment.id) })) ?? []);
+        setDocumentAttachments([]);
+        if (draft?.imageWarning) setError(draft.imageWarning);
         clearFinishedStreams(session.id);
       })
       .catch((ex) => {

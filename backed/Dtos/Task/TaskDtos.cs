@@ -37,6 +37,11 @@ public sealed class UpdateProjectTaskStatusRequest
     [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
 }
 
+public sealed class CreateTaskChatSessionsRequest
+{
+    [JsonPropertyName("task_ids")] public List<long> TaskIds { get; set; } = [];
+}
+
 public sealed class UpdateProjectTaskRequest
 {
     [JsonPropertyName("project_id")] public long? ProjectId { get; set; }

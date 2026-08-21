@@ -48,6 +48,8 @@
 | 导入 CSV | `POST /api/v1/project-tasks/import` |
 | 删除 | `DELETE /api/v1/project-tasks/{taskId}` |
 
+工作画布批量创建草稿会话使用 `POST /api/v1/project-tasks/chat-sessions`，请求体为 `task_ids`。服务端会再次验证任务及关联项目权限，创建不含消息的会话，并只保存受控图片附件的不透明 ID；不会返回 Gitee 令牌、附件物理路径或项目配置。
+
 Gitee OAuth 授权入口为 `GET /api/v1/gitee-oauth/authorize`，回调为 `GET /api/v1/gitee-oauth/callback`；入口要求先登录 AiAgent，回调使用一次性 state 校验后把令牌加密保存到当前用户的 Git 账号。
 
 无法显示工作项时，依次检查：当前用户是否在 Git 管理中配置并启用具备 `yun_kun` 企业 Issue 读取权限的 Gitee 账户、是否被状态或关键词筛选隐藏，以及任务服务返回的 Gitee HTTP 状态。若详情中未显示附件，检查 Gitee 是否在该工作项响应中提供 HTTPS 附件地址；CSV 导入仍可作为离线兜底。

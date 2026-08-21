@@ -19,11 +19,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error("请先登录。");
   }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof payload.message === "string" ? payload.message : "会话请求失败。");
+  if (!response.ok) throw new Error(typeof payload.message === "string" ? payload.message : `会话请求失败（HTTP ${response.status}）。`);
   return payload as T;
 }
 
 export async function listSessions(): Promise<SessionSummary[]> { return (await request<{ sessions: SessionSummary[] }>("/api/v1/sessions/list?limit=100")).sessions; }
+export function createSession(payload: { project_id: number; title?: string }) { return request<SessionSummary>("/api/v1/sessions/create", { method: "POST", body: JSON.stringify(payload) }); }
 export function getSession(id: string) { return request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(id)}`); }
 export async function getSessionDiagnostics(id: string) { return (await request<{ traces: ChatDebugTraceRecord[] }>(`/api/v1/sessions/${encodeURIComponent(id)}/diagnostics`)).traces; }
 export function deleteSession(id: string) { return request<{ deleted: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }); }

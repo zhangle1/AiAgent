@@ -24,10 +24,10 @@ namespace AiAgent.Backend.Services.ProjectTasks;
 [Route("api/v1/project-tasks")]
 public sealed class ProjectTaskAppService : IDynamicApiController
 {
-    private readonly ISqlSugarClient _db; private readonly IHttpContextAccessor _context; private readonly IAuthService _auth; private readonly IProjectAccessService _projectAccess; private readonly IDataProtector _protector; private readonly IHttpClientFactory _http; private readonly IChatImageAttachmentService _chatImages;
+    private readonly ISqlSugarClient _db; private readonly IHttpContextAccessor _context; private readonly IAuthService _auth; private readonly IProjectAccessService _projectAccess; private readonly IDataProtector _protector; private readonly IHttpClientFactory _http; private readonly IChatImageAttachmentService _chatImages; private readonly IChatSessionService _sessions;
     private const string GiteeEnterprise = "yun_kun";
     private static readonly ConcurrentDictionary<string, TaskChatHandoff> ChatHandoffs = new(StringComparer.Ordinal);
-    public ProjectTaskAppService(ISqlSugarClient db, IHttpContextAccessor context, IAuthService auth, IProjectAccessService projectAccess, IDataProtectionProvider protection, IHttpClientFactory http, IChatImageAttachmentService chatImages) => (_db, _context, _auth, _projectAccess, _protector, _http, _chatImages) = (db, context, auth, projectAccess, protection.CreateProtector("AiAgent.GitAccounts.AccessToken.v1"), http, chatImages);
+    public ProjectTaskAppService(ISqlSugarClient db, IHttpContextAccessor context, IAuthService auth, IProjectAccessService projectAccess, IDataProtectionProvider protection, IHttpClientFactory http, IChatImageAttachmentService chatImages, IChatSessionService sessions) => (_db, _context, _auth, _projectAccess, _protector, _http, _chatImages, _sessions) = (db, context, auth, projectAccess, protection.CreateProtector("AiAgent.GitAccounts.AccessToken.v1"), http, chatImages, sessions);
 
     [HttpGet]
     public async Task<object> List([FromQuery] long? projectId, CancellationToken cancellationToken)
@@ -117,6 +117,38 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         var handoffId = Guid.NewGuid().ToString("N");
         ChatHandoffs[handoffId] = new TaskChatHandoff(user.Id, item.CodeProjectId!.Value, BuildChatPrompt(item), images.Attachments, images.Warnings, DateTime.UtcNow.AddMinutes(15));
         return new OkObjectResult(new { handoff_id = handoffId });
+    }
+
+    [HttpPost("chat-sessions")]
+    public async Task<IActionResult> CreateChatSessions([FromBody] CreateTaskChatSessionsRequest request, CancellationToken cancellationToken)
+    {
+        var taskIds = request.TaskIds.Distinct().Take(50).ToList();
+        if (taskIds.Count == 0) return new BadRequestObjectResult(new { message = "请至少选择一个任务。" });
+        if (request.TaskIds.Distinct().Count() > taskIds.Count) return new BadRequestObjectResult(new { message = "一次最多从 50 个任务创建会话。" });
+
+        var user = await User(cancellationToken);
+        var tasks = new List<AiProjectTask>(taskIds.Count);
+        foreach (var taskId in taskIds)
+        {
+            var result = await TaskForUserAsync(user, taskId, cancellationToken);
+            if (result.Result is not null) return result.Result;
+            tasks.Add(result.Task!);
+        }
+
+        var projectIds = tasks.Select(item => item.CodeProjectId!.Value).Distinct().ToList();
+        var projectNames = _db.Queryable<AiCodeProject>().Where(item => projectIds.Contains(item.Id) && !item.IsDeleted).ToList().ToDictionary(item => item.Id, item => item.DisplayName);
+        var created = new List<object>(tasks.Count);
+        foreach (var task in tasks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var projectId = task.CodeProjectId!.Value;
+            var projectName = projectNames.GetValueOrDefault(projectId);
+            var images = await PrepareTaskChatImagesAsync(user, task, cancellationToken);
+            var content = BuildChatPrompt(task, projectName);
+            var session = await _sessions.CreateDraftAsync(user, projectId, $"任务：{task.Title}", content, images.Attachments, string.Join(" ", images.Warnings), cancellationToken);
+            created.Add(new { task_id = task.Id, session, image_warning = string.Join(" ", images.Warnings) });
+        }
+        return new OkObjectResult(new { sessions = created });
     }
 
     [HttpGet("chat-handoffs/{handoffId}")]
@@ -323,7 +355,7 @@ public sealed class ProjectTaskAppService : IDynamicApiController
         if (sources.Count > 4) warnings.Add("工作项图片超过 4 张，仅携带前 4 张到本次聊天。");
         return new TaskChatImagePreparation(attachments, warnings);
     }
-    private static string BuildChatPrompt(AiProjectTask task) => $"请处理以下工作项，并先结合当前项目代码评估实施方案。\n\n任务：{task.Title}{(string.IsNullOrWhiteSpace(task.WorkItemId) ? string.Empty : $"\n工作项 ID：{task.WorkItemId}")}{(string.IsNullOrWhiteSpace(task.Description) ? string.Empty : $"\n\n任务详情：\n{task.Description}")}{(string.IsNullOrWhiteSpace(task.ExternalUrl) ? string.Empty : $"\n原始链接：{task.ExternalUrl}")}";
+    private static string BuildChatPrompt(AiProjectTask task, string? projectName = null) => $"请处理以下工作项，并先结合当前项目代码评估实施方案。\n\n项目上下文：{projectName ?? "当前关联项目"}\n任务：{task.Title}{(string.IsNullOrWhiteSpace(task.WorkItemId) ? string.Empty : $"\n工作项 ID：{task.WorkItemId}")}{(string.IsNullOrWhiteSpace(task.Description) ? string.Empty : $"\n\n任务详情：\n{task.Description}")}{(string.IsNullOrWhiteSpace(task.ExternalUrl) ? string.Empty : $"\n原始链接：{task.ExternalUrl}")}";
     private static object AttachmentDto(ChatImageAttachmentDto attachment) => new { id = attachment.Id, file_name = attachment.FileName, content_type = attachment.ContentType, size_bytes = attachment.SizeBytes };
     private static void PruneChatHandoffs()
     {
