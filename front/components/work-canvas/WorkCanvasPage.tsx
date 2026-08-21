@@ -2,15 +2,15 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, LayoutDashboard, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, Search, Trash2, X } from "lucide-react";
+import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, LayoutDashboard, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { KnowledgeChatHome } from "@/components/chat/KnowledgeChatHome";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { createSession, deleteSession, listSessions, renameSession, type SessionSummary } from "@/lib/session-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { createProjectTaskChatSessions, listProjectTasks, type ProjectTask } from "@/lib/project-task-api";
-import { addWorkCanvasNode, archiveWorkCanvas, createWorkCanvas, getWorkCanvas, listWorkCanvases, removeWorkCanvasNode, renameWorkCanvas, saveWorkCanvasLayout } from "@/lib/work-canvas-api";
-import type { WorkCanvasNode, WorkCanvasSnapshot, WorkCanvasSummary } from "@/lib/work-canvas-types";
+import { addWorkCanvasNode, archiveWorkCanvas, createDeliveryLink, createWorkCanvas, decideCanvasDelivery, deleteDeliveryLink, getCanvasInbox, getWorkCanvas, listWorkCanvases, removeWorkCanvasNode, renameWorkCanvas, saveWorkCanvasLayout, sendCanvasDelivery } from "@/lib/work-canvas-api";
+import type { CanvasDelivery, WorkCanvasEdge, WorkCanvasNode, WorkCanvasSnapshot, WorkCanvasSummary } from "@/lib/work-canvas-types";
 
 type DragState = {
   id: string;
@@ -58,6 +58,7 @@ export function WorkCanvasPage() {
   const [taskSearch, setTaskSearch] = useState("");
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [creatingTaskSessions, setCreatingTaskSessions] = useState(false);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const canvasAreaRef = useRef<HTMLElement | null>(null);
@@ -421,6 +422,7 @@ export function WorkCanvasPage() {
           <button className="icon-button text-slate-500" title="归档画布" disabled={!canvas} onClick={() => void archiveCanvas()}>
             <Archive size={15} />
           </button>
+          <button className="secondary-button" disabled={!canvas || canvas.nodes.length < 2} onClick={() => setDeliveryOpen(true)}><Send size={14} />投递中心</button>
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
             <Activity size={14} />
             <span>
@@ -500,6 +502,16 @@ export function WorkCanvasPage() {
             {!loading && !canvas && <Empty onCreate={openCreateDialog} />}{" "}
             {canvas && (
               <div className="relative h-[1400px] w-[2400px]">
+                <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-label="会话投递关系">
+                  <defs><marker id="delivery-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#64748b" /></marker></defs>
+                  {canvas.edges.map((edge) => {
+                    const source = canvas.nodes.find((node) => node.id === edge.source_node_id);
+                    const target = canvas.nodes.find((node) => node.id === edge.target_node_id);
+                    if (!source || !target) return null;
+                    const x1 = source.position_x + 288, y1 = source.position_y + 90, x2 = target.position_x, y2 = target.position_y + 90;
+                    return <g key={edge.id}><line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#64748b" strokeWidth="1.5" strokeDasharray="6 7" markerEnd="url(#delivery-arrow)" /><text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" className="fill-slate-500 text-[11px]">{edge.pending_count ? `${edge.pending_count} 份待检查` : edge.label || "可投递"}</text></g>;
+                  })}
+                </svg>
                 {visibleNodes.map((node) => (
                   <article
                     key={node.id}
@@ -612,8 +624,42 @@ export function WorkCanvasPage() {
       {canvas && <FloatingActions anchorRef={canvasAreaRef} layoutKey={selectedId ?? ""} open={actionMenuOpen} onOpenChange={setActionMenuOpen} onAddExisting={openSessionPicker} onCreateFromTasks={openTaskSessionDialog} />}
       {taskDialogOpen && <TaskSessionDialog tasks={tasks} loading={tasksLoading} error={taskDialogError} projectFilter={taskProjectFilter} search={taskSearch} selectedTaskIds={selectedTaskIds} busy={creatingTaskSessions} onProjectFilter={setTaskProjectFilter} onSearch={setTaskSearch} onSelectionChange={setSelectedTaskIds} onPreview={setTaskPreview} onClose={() => { if (!creatingTaskSessions) { setTaskDialogOpen(false); setTaskPreview(null); } }} onSubmit={() => void createTaskSessions()} />}
       {taskPreview && <TaskDetailDialog task={taskPreview} onClose={() => setTaskPreview(null)} />}
+      {deliveryOpen && canvas && <DeliveryCenter canvas={canvas} onClose={() => setDeliveryOpen(false)} onRefresh={async () => setCanvas(await getWorkCanvas(canvas.id))} />}
     </div>
   );
+}
+
+function DeliveryCenter({ canvas, onClose, onRefresh }: { canvas: WorkCanvasSnapshot; onClose: () => void; onRefresh: () => Promise<void> }) {
+  const deliveryEdges = canvas.edges.filter((edge) => edge.relation_type === "delivery");
+  const [sourceId, setSourceId] = useState(canvas.nodes[0]?.id ?? "");
+  const [targetId, setTargetId] = useState(canvas.nodes[1]?.id ?? "");
+  const [linkId, setLinkId] = useState(deliveryEdges[0]?.id ?? "");
+  const [content, setContent] = useState("");
+  const [note, setNote] = useState("");
+  const [inboxSessionId, setInboxSessionId] = useState(canvas.nodes[0]?.session_id ?? "");
+  const [deliveries, setDeliveries] = useState<CanvasDelivery[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const selectedEdge = deliveryEdges.find((edge) => edge.id === linkId);
+  const deliverySource = canvas.nodes.find((node) => node.id === selectedEdge?.source_node_id);
+  const run = async (action: () => Promise<void>) => { setBusy(true); setMessage(""); try { await action(); } catch (error) { setMessage(error instanceof Error ? error.message : "操作失败"); } finally { setBusy(false); } };
+  const createLink = () => run(async () => { if (!sourceId || !targetId || sourceId === targetId) throw new Error("请选择两个不同的会话"); await createDeliveryLink(canvas.id, sourceId, targetId, "可投递"); await onRefresh(); setMessage("投递关系已建立"); });
+  const send = () => run(async () => { if (!linkId || !content.trim()) throw new Error("请选择投递关系并填写内容"); await sendCanvasDelivery(linkId, content, note, false); setContent(""); setNote(""); await onRefresh(); setMessage("已发送，对方会话不会自动执行"); });
+  const loadInbox = () => run(async () => { setDeliveries(await getCanvasInbox(inboxSessionId)); });
+  const decide = (delivery: CanvasDelivery, decision: "accepted" | "ignored") => run(async () => { await decideCanvasDelivery(delivery.id, decision); setDeliveries((items) => items.filter((item) => item.id !== delivery.id)); await onRefresh(); });
+
+  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4" onMouseDown={onClose}>
+    <section className="max-h-[90dvh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-label="投递中心" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex items-center"><div><h2 className="text-lg font-semibold">投递中心</h2><p className="mt-1 text-xs text-slate-500">连线是邮路；发送、接收和执行分别确认。</p></div><button className="icon-button ml-auto" onClick={onClose}><X size={17} /></button></div>
+      {message && <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">{message}</p>}
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">1. 建立单向投递关系</h3><div className="mt-3 grid gap-2"><select className="rounded-lg border p-2 text-sm" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>{canvas.nodes.map((node) => <option key={node.id} value={node.id}>发件：{node.session.title}</option>)}</select><select className="rounded-lg border p-2 text-sm" value={targetId} onChange={(e) => setTargetId(e.target.value)}>{canvas.nodes.map((node) => <option key={node.id} value={node.id}>收件：{node.session.title}</option>)}</select><button className="secondary-button justify-center" disabled={busy} onClick={createLink}>建立邮路</button></div></div>
+        <div className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">2. 创建投递</h3><select className="mt-3 w-full rounded-lg border p-2 text-sm" value={linkId} onChange={(e) => setLinkId(e.target.value)}><option value="">选择邮路</option>{deliveryEdges.map((edge) => { const a=canvas.nodes.find(n=>n.id===edge.source_node_id), b=canvas.nodes.find(n=>n.id===edge.target_node_id); return <option key={edge.id} value={edge.id}>{a?.session.title} → {b?.session.title}</option>; })}</select><textarea className="mt-2 min-h-24 w-full rounded-lg border p-2 text-sm" maxLength={12000} value={content} onChange={(e) => setContent(e.target.value)} placeholder={deliverySource?.session.last_message || "输入明确选中的结论或消息片段"} /><input className="mt-2 w-full rounded-lg border p-2 text-sm" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="给接收方的说明（可选）" /><button className="secondary-button mt-2 justify-center" disabled={busy} onClick={send}><Send size={14}/>确认发送</button></div>
+      </div>
+      <div className="mt-4 rounded-xl border border-slate-200 p-4"><div className="flex flex-wrap items-center gap-2"><h3 className="mr-auto font-semibold">3. 检查收件箱</h3><select className="rounded-lg border p-2 text-sm" value={inboxSessionId} onChange={(e) => setInboxSessionId(e.target.value)}>{canvas.nodes.map((node) => <option key={node.id} value={node.session_id}>{node.session.title}</option>)}</select><button className="secondary-button" disabled={busy} onClick={loadInbox}>查看待检查</button></div><div className="mt-3 space-y-2">{deliveries.length === 0 ? <p className="text-sm text-slate-400">暂无已加载的待检查投递</p> : deliveries.map((item) => <article key={item.id} className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">来自 {item.source_session_title} · {item.created_at ? new Date(item.created_at).toLocaleString() : ""}</div>{item.sender_note && <p className="mt-2 text-sm font-medium">说明：{item.sender_note}</p>}<p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{item.content}</p><div className="mt-3 flex gap-2"><button className="secondary-button" onClick={() => decide(item, "accepted")}>仅收下</button><button className="secondary-button text-slate-500" onClick={() => decide(item, "ignored")}>忽略</button></div></article>)}</div></div>
+      {deliveryEdges.length > 0 && <div className="mt-4 border-t pt-3 text-xs text-slate-500">现有邮路：{deliveryEdges.map((edge: WorkCanvasEdge) => <button key={edge.id} className="ml-2 text-rose-500 hover:underline" onClick={() => run(async()=>{await deleteDeliveryLink(canvas.id, edge.id); await onRefresh();})}>删除 {edge.label || "邮路"}</button>)}</div>}
+    </section>
+  </div>;
 }
 
 function SessionContextMenu({ node, x, y, onRename, onDelete }: { node: WorkCanvasNode; x: number; y: number; onRename: (node: WorkCanvasNode) => void; onDelete: (node: WorkCanvasNode) => void }) {
