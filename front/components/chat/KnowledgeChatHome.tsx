@@ -2018,8 +2018,17 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
   const [selectionCopy, setSelectionCopy] = useState<{ text: string; top: number; left: number } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!selectionCopy || !selectionRangeRef.current || !contentRef.current) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(selectionRangeRef.current);
+  }, [selectionCopy]);
 
   useEffect(() => {
     if (!selectionCopy) return;
@@ -2036,8 +2045,10 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
       setSelectionCopy(null);
       return;
     }
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
     if (!rect.width && !rect.height) return;
+    selectionRangeRef.current = range.cloneRange();
     setCopied(false);
     setSelectionCopy({ text, top: Math.max(8, rect.top - 42), left: Math.min(window.innerWidth - 104, Math.max(8, rect.left + rect.width / 2 - 44)) });
   }
