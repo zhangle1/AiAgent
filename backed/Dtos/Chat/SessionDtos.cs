@@ -15,6 +15,9 @@ public class ChatSessionSummaryDto
     [JsonPropertyName("sort_order")] public int SortOrder { get; set; }
     [JsonPropertyName("priority")] public string Priority { get; set; } = "normal";
     [JsonPropertyName("is_pinned")] public bool IsPinned { get; set; }
+    [JsonPropertyName("agent")] public string? Agent { get; set; }
+    [JsonPropertyName("model_id")] public string? ModelId { get; set; }
+    [JsonPropertyName("model")] public string? Model { get; set; }
 }
 
 public sealed class ChatSessionDetailDto : ChatSessionSummaryDto
