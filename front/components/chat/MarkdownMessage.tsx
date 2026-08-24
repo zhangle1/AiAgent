@@ -1,7 +1,7 @@
 "use client";
 
 import { Children, isValidElement, useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Maximize2, X } from "lucide-react";
+import { Check, Copy, Maximize2, X } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { resolveProjectCodeFileReference } from "@/lib/code-repository-api";
@@ -30,6 +30,47 @@ function readChildrenText(children: ReactNode): string {
   if (typeof children === "string" || typeof children === "number") return String(children);
   if (Array.isArray(children)) return children.map(readChildrenText).join("");
   return "";
+}
+
+function CodeBlock({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLPreElement>) {
+  const [copied, setCopied] = useState(false);
+  const codeText = readChildrenText(children).replace(/^\n/, "").replace(/\n$/, "");
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(codeText);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = codeText;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="group relative my-4">
+      <pre className="overflow-x-auto rounded-lg bg-zinc-950 p-3 pr-20 text-[12px] leading-6 text-zinc-50 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-inherit" {...props}>
+        {children}
+      </pre>
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => void copyCode()}
+        className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-sm transition hover:bg-zinc-700 hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        aria-label="复制代码"
+        title="复制代码"
+      >
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+        {copied ? "已复制" : "复制"}
+      </button>
+    </div>
+  );
 }
 
 function MermaidDiagram({ chart }: { chart: string }) {
@@ -219,7 +260,7 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
           const chart = mermaidSourceFromPre(children);
           return chart
             ? <MermaidDiagram chart={chart} />
-            : <pre className="my-4 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-[12px] leading-6 text-zinc-50 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-inherit" {...domProps(props)}>{children}</pre>;
+            : <CodeBlock {...domProps(props)}>{children}</CodeBlock>;
         },
         a: ({ href, children, ...props }) => {
           // Agents sometimes turn a source file name into an ordinary http link.
