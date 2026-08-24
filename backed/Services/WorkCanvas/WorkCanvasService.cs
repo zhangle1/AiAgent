@@ -180,6 +180,14 @@ public sealed class WorkCanvasService : IWorkCanvasService
 
     private AiWorkCanvas? Owned(AuthenticatedUser user, string id) => _db.Queryable<AiWorkCanvas>().First(x => x.Id == id && x.UserId == user.Id && (x.IsArchived == false || x.IsArchived == null));
     private void Touch(AiWorkCanvas canvas) { canvas.Version = (canvas.Version ?? 1) + 1; canvas.UpdatedAt = DateTime.UtcNow; _db.Updateable(canvas).UpdateColumns(x => new { x.Version, x.UpdatedAt }).ExecuteCommand(); }
+    private ChatSessionSummaryDto SessionSummary(AiChatSession session)
+    {
+        var messages = _db.Queryable<AiChatMessage>().Where(x => x.SessionId == session.Id).OrderByDescending(x => x.Id).ToList();
+        var project = session.CodeProjectId.HasValue
+            ? _db.Queryable<AiCodeProject>().First(x => x.Id == session.CodeProjectId.Value && !x.IsDeleted)
+            : null;
+        return ChatSessionService.ToSummary(session, messages, project);
+    }
     private WorkCanvasSnapshotDto Snapshot(AiWorkCanvas canvas, List<AiWorkCanvasNode> nodes, List<AiWorkCanvasEdge> edges)
     {
         var sessionIds = nodes.Where(x => x.ChatSessionId != null).Select(x => x.ChatSessionId!).Distinct().ToList();
