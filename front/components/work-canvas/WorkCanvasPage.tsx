@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, LayoutDashboard, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, Search, Send, Trash2, X } from "lucide-react";
+import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, LayoutDashboard, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, Search, Send, Square, Trash2, X } from "lucide-react";
 import { KnowledgeChatHome } from "@/components/chat/KnowledgeChatHome";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { createSession, deleteSession, listSessions, renameSession, type SessionSummary } from "@/lib/session-api";
@@ -22,7 +22,7 @@ type DragState = {
 
 export function WorkCanvasPage() {
   const searchParams = useSearchParams();
-  const { streams } = useChatStreams();
+  const { streams, cancelStream } = useChatStreams();
   const [canvases, setCanvases] = useState<WorkCanvasSummary[]>([]);
   const [canvas, setCanvas] = useState<WorkCanvasSnapshot | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -320,7 +320,9 @@ export function WorkCanvasPage() {
     try {
       const index = canvas.nodes.length;
       await addWorkCanvasNode(canvas.id, created.id, 80 + (index % 3) * 340, 80 + Math.floor(index / 3) * 230);
-      setCanvas(await getWorkCanvas(canvas.id));
+      const nextCanvas = await getWorkCanvas(canvas.id);
+      setCanvas(nextCanvas);
+      setSelectedId(nextCanvas.nodes.find((node) => node.session_id === created.id)?.id ?? null);
       setSessions((current) => [created, ...current]);
       await refreshList();
       setPickerOpen(false);
@@ -512,7 +514,9 @@ export function WorkCanvasPage() {
                     return <g key={edge.id}><line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#64748b" strokeWidth="1.5" strokeDasharray="6 7" markerEnd="url(#delivery-arrow)" /><text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" className="fill-slate-500 text-[11px]">{edge.pending_count ? `${edge.pending_count} 份待检查` : edge.label || "可投递"}</text></g>;
                   })}
                 </svg>
-                {visibleNodes.map((node) => (
+                {visibleNodes.map((node) => {
+                  const stream = streamBySession[node.session_id];
+                  return (
                   <article
                     key={node.id}
                     onPointerDown={(e) => beginDrag(e, node)}
@@ -526,8 +530,9 @@ export function WorkCanvasPage() {
                     className={`absolute left-0 top-0 w-72 cursor-grab select-none rounded-2xl border bg-white p-4 shadow-sm transition-shadow active:cursor-grabbing ${selectedId === node.id ? "border-blue-400 shadow-lg shadow-blue-100" : "border-slate-200 hover:shadow-md"}`}
                   >
                     <div className="flex items-center gap-2">
-                      <StatusDot stream={streamBySession[node.session_id]} />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{statusLabel(streamBySession[node.session_id])}</span>
+                      <StatusDot stream={stream} />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{statusLabel(stream)}</span>
+                      {stream?.status === "streaming" && <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); cancelStream(stream.id); }} className="ml-1 inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-100" title="结束运行"><Square size={9} fill="currentColor" />结束</button>}
                       <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] ${node.session.priority === "high" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500"}`}>{node.session.priority === "high" ? "高优先级" : "普通"}</span>
                     </div>
                     <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-slate-900">{node.session.title}</h2>
@@ -535,12 +540,17 @@ export function WorkCanvasPage() {
                       <FolderGit2 size={12} />
                       {node.session.project_name || "未归属项目"}
                     </p>
+                    <p className="mt-2 flex items-center gap-1 truncate text-[11px] text-violet-600" title={modelLabel(node.session, stream)}>
+                      <Activity size={12} />
+                      {modelLabel(node.session, stream)}
+                    </p>
                     <p className="mt-3 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">{node.session.last_message || "暂无会话内容"}</p>
                     <div className="mt-3 border-t border-slate-100 pt-3 text-[10px] text-slate-400">
                       {node.session.message_count} 条消息 · {new Date(node.session.updated_at).toLocaleString()}
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -554,9 +564,13 @@ export function WorkCanvasPage() {
                   width: Math.min(rightWidth, typeof window === "undefined" ? rightWidth : window.innerWidth - 80),
                 }}
               >
-                <div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3">
+                {(() => {
+                  const selectedStream = streamBySession[selected.session_id];
+                  return <div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3">
                   <MessageSquare size={15} className="text-blue-600" />
                   <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{selected.session.title}</h2>
+                  <span className="hidden max-w-44 truncate text-[11px] text-violet-600 sm:inline" title={modelLabel(selected.session, selectedStream)}>{modelLabel(selected.session, selectedStream)}</span>
+                  {selectedStream?.status === "streaming" && <button type="button" onClick={() => cancelStream(selectedStream.id)} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 text-[11px] font-medium text-rose-600 hover:bg-rose-100" title="结束当前会话运行"><Square size={11} fill="currentColor" />结束运行</button>}
                   <button
                     type="button"
                     onClick={() => {
@@ -578,7 +592,8 @@ export function WorkCanvasPage() {
                   <button onClick={() => void removeNode(selected)} className="icon-button text-rose-500" title="从画布移除">
                     <Trash2 size={15} />
                   </button>
-                </div>
+                </div>;
+                })()}
                 <div className="h-[calc(100%-2.75rem)] min-h-0 overflow-hidden">
                   <KnowledgeChatHome embedded embeddedSessionId={selected.session_id} />
                 </div>
@@ -852,6 +867,13 @@ function StatusDot({ stream }: { stream?: { status: string; unread: boolean } })
 function statusLabel(stream?: { status: string; unread: boolean }) {
   return stream?.status === "streaming" ? "运行中" : stream?.status === "error" ? "执行异常" : stream?.unread ? "有新结果" : "已同步";
 }
+function modelLabel(session: SessionSummary, stream?: ChatStreamRecord) {
+  const liveEvent = [...(stream?.events ?? [])].reverse().find((event) => event.model || event.model_id);
+  const model = liveEvent?.model || liveEvent?.model_id || session.model || session.model_id;
+  const agent = stream?.agent || session.agent;
+  const agentLabel = agent === "codex" ? "Codex" : agent === "deepseek-harness" ? "DeepSeek Harness" : agent === "codebuddy" ? "CodeBuddy" : agent;
+  return [agentLabel, model].filter(Boolean).join(" · ") || "模型待确定";
+}
 function Empty({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="grid h-full place-items-center">
@@ -950,7 +972,10 @@ function SessionPicker({ sessions, projects, projectId, query, onProjectChange, 
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
       <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center border-b p-4">
-          <h2 className="font-semibold">添加已有会话</h2>
+          <div className="min-w-0">
+            <h2 className="font-semibold">添加或新建会话</h2>
+            <p className="mt-0.5 text-xs text-slate-500">已有会话可直接加入，也可以随时创建新的空会话。</p>
+          </div>
           <button className="ml-auto icon-button" onClick={onClose}>
             <X size={16} />
           </button>
@@ -963,6 +988,17 @@ function SessionPicker({ sessions, projects, projectId, query, onProjectChange, 
               {projects.map((project) => <option key={project.id} value={project.id}>{project.display_name || project.name}</option>)}
             </select>
           </label>
+          <div className="mt-3 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800">新建空会话</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">选择项目后创建一个新的会话节点，不会自动发送消息。</p>
+            </div>
+            <button type="button" onClick={() => void createEmptySession()} disabled={creating || projectId === "all"} className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-300">
+              {creating ? <LoaderCircle size={14} className="animate-spin" /> : <Plus size={14} />}
+              {creating ? "正在打开…" : "新建并打开"}
+            </button>
+          </div>
+          {createError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{createError}</p>}
           <div className="relative mt-3">
             <Search size={15} className="absolute left-3 top-3 text-slate-400" />
             <input autoFocus value={query} onChange={(e) => onQuery(e.target.value)} placeholder="筛选会话或内容" className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm" />
@@ -983,11 +1019,7 @@ function SessionPicker({ sessions, projects, projectId, query, onProjectChange, 
             {sessions.length === 0 && (
               <div className="py-10 text-center">
                 <p className="text-sm text-slate-400">没有可添加的会话</p>
-                <p className="mt-1 text-xs text-slate-400">可使用当前项目直接创建一条空会话。</p>
-                {createError && <p role="alert" className="mx-auto mt-3 max-w-sm rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{createError}</p>}
-                <button type="button" onClick={() => void createEmptySession()} disabled={creating || projectId === "all"} className="primary-button mx-auto mt-4 disabled:cursor-not-allowed disabled:opacity-40">
-                  {creating ? <LoaderCircle size={15} className="animate-spin" /> : <Plus size={15} />} {creating ? "正在新建…" : "新建会话"}
-                </button>
+                <p className="mt-1 text-xs text-slate-400">上方的“新建空会话”按钮可直接创建会话节点。</p>
               </div>
             )}
           </div>

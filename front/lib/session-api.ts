@@ -8,7 +8,7 @@ export type ProjectSessionSortMode = "updated" | "priority" | "manual";
 export type ProjectListSortMode = "name" | "recent";
 export type ProjectSessionPreference = { project_id: number; is_pinned: boolean; is_archived: boolean; sort_mode: ProjectSessionSortMode };
 export type ChatSidebarPreference = { project_sort_mode: ProjectListSortMode };
-export type SessionSummary = { id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string; project_id?: number | null; project_name?: string | null; sort_order: number; priority: SessionPriority; is_pinned: boolean };
+export type SessionSummary = { id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string; project_id?: number | null; project_name?: string | null; sort_order: number; priority: SessionPriority; is_pinned: boolean; agent?: string | null; model_id?: string | null; model?: string | null };
 export type SessionDetail = SessionSummary & { messages: SessionMessage[]; preferences: Record<string, unknown> };
 export type ChatDebugTraceRecord = { trace_id: string; provider: string; transport: string; created_at: string; expires_at: string; events: ChatDebugTraceEvent[] };
 

@@ -364,8 +364,41 @@ public sealed class ChatSessionService : IChatSessionService
         preferences["agent"] = request.Agent;
         return JsonSerializer.Serialize(preferences);
     }
-    private static ChatSessionSummaryDto ToSummary(AiChatSession session, List<AiChatMessage> messages, AiCodeProject? project) => new() { Id = session.Id, Title = session.Title, CreatedAt = session.CreatedAt, UpdatedAt = session.UpdatedAt, MessageCount = messages.Count, LastMessage = messages.FirstOrDefault()?.Content ?? string.Empty, ProjectId = session.CodeProjectId, ProjectName = project?.DisplayName, SortOrder = session.SortOrder ?? 0, Priority = session.Priority ?? "normal", IsPinned = session.IsPinned ?? false };
+    internal static ChatSessionSummaryDto ToSummary(AiChatSession session, List<AiChatMessage> messages, AiCodeProject? project)
+    {
+        var preferences = DeserializeObject(session.PreferencesJson);
+        var assistant = messages.FirstOrDefault(item => string.Equals(item.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+        var metadata = assistant is null ? new Dictionary<string, object?>() : DeserializeObject(assistant.MetadataJson);
+        return new ChatSessionSummaryDto
+        {
+            Id = session.Id,
+            Title = session.Title,
+            CreatedAt = session.CreatedAt,
+            UpdatedAt = session.UpdatedAt,
+            MessageCount = messages.Count,
+            LastMessage = messages.FirstOrDefault()?.Content ?? string.Empty,
+            ProjectId = session.CodeProjectId,
+            ProjectName = project?.DisplayName,
+            SortOrder = session.SortOrder ?? 0,
+            Priority = session.Priority ?? "normal",
+            IsPinned = session.IsPinned ?? false,
+            Agent = JsonString(preferences, "agent"),
+            ModelId = JsonString(metadata, "model_id") ?? JsonString(preferences, "model_id") ?? JsonString(preferences, "codex_model_id"),
+            Model = JsonString(metadata, "model"),
+        };
+    }
     private static string MakeTitle(string message) => string.IsNullOrWhiteSpace(message) ? "新会话" : message.Trim().Replace('\r', ' ').Replace('\n', ' ')[..Math.Min(message.Trim().Replace('\r', ' ').Replace('\n', ' ').Length, 40)];
-    private static Dictionary<string, object?> DeserializeObject(string? value) => string.IsNullOrWhiteSpace(value) ? [] : JsonSerializer.Deserialize<Dictionary<string, object?>>(value) ?? [];
+    private static Dictionary<string, object?> DeserializeObject(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return [];
+        try { return JsonSerializer.Deserialize<Dictionary<string, object?>>(value) ?? []; }
+        catch (JsonException) { return []; }
+    }
+    private static string? JsonString(Dictionary<string, object?> value, string key)
+    {
+        if (!value.TryGetValue(key, out var raw)) return null;
+        if (raw is JsonElement element && element.ValueKind == JsonValueKind.String) return element.GetString();
+        return raw as string;
+    }
     private static object? DeserializeValue(string? value) => string.IsNullOrWhiteSpace(value) ? null : JsonSerializer.Deserialize<object>(value);
 }

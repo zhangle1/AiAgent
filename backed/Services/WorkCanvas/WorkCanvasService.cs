@@ -5,6 +5,7 @@ using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Entities.WorkCanvas;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Chat;
 using SqlSugar;
 
 namespace AiAgent.Backend.Services.WorkCanvas;
@@ -182,19 +183,16 @@ public sealed class WorkCanvasService : IWorkCanvasService
     private WorkCanvasSnapshotDto Snapshot(AiWorkCanvas canvas, List<AiWorkCanvasNode> nodes, List<AiWorkCanvasEdge> edges)
     {
         var sessionIds = nodes.Where(x => x.ChatSessionId != null).Select(x => x.ChatSessionId!).Distinct().ToList();
-        var sessions = sessionIds.Count == 0 ? new Dictionary<string, ChatSessionSummaryDto>() : _db.Queryable<AiChatSession>().Where(x => sessionIds.Contains(x.Id) && x.UserId == canvas.UserId && !x.IsDeleted).ToList().ToDictionary(x => x.Id, SessionSummary);
+        var sessionRows = sessionIds.Count == 0 ? new List<AiChatSession>() : _db.Queryable<AiChatSession>().Where(x => sessionIds.Contains(x.Id) && x.UserId == canvas.UserId && !x.IsDeleted).ToList();
+        var messages = sessionIds.Count == 0 ? new List<AiChatMessage>() : _db.Queryable<AiChatMessage>().Where(x => sessionIds.Contains(x.SessionId)).OrderByDescending(x => x.Id).ToList();
+        var projectIds = sessionRows.Where(x => x.CodeProjectId.HasValue).Select(x => x.CodeProjectId!.Value).Distinct().ToList();
+        var projects = projectIds.Count == 0 ? new Dictionary<long, AiCodeProject>() : _db.Queryable<AiCodeProject>().Where(x => projectIds.Contains(x.Id) && !x.IsDeleted).ToList().ToDictionary(x => x.Id);
+        var sessions = sessionRows.ToDictionary(x => x.Id, x => ChatSessionService.ToSummary(x, messages.Where(message => message.SessionId == x.Id).ToList(), projects.GetValueOrDefault(x.CodeProjectId ?? 0)));
         var visibleNodes = nodes.Where(x => x.ChatSessionId != null && sessions.ContainsKey(x.ChatSessionId)).ToList();
         var visibleNodeIds = visibleNodes.Select(x => x.Id).ToHashSet();
         var edgeIds = edges.Select(x => x.Id).ToList();
         var pending = edgeIds.Count == 0 ? new Dictionary<string, int>() : _db.Queryable<AiCanvasDelivery>().Where(x => x.LinkId != null && edgeIds.Contains(x.LinkId) && (x.Status == "sent" || x.Status == "reviewing")).GroupBy(x => x.LinkId).Select(x => new { LinkId = x.LinkId, Count = SqlFunc.AggregateCount(x.Id) }).ToList().Where(x => x.LinkId != null).ToDictionary(x => x.LinkId!, x => x.Count);
         return new WorkCanvasSnapshotDto { Id = canvas.Id, Name = canvas.Name, ScopeProjectId = canvas.ScopeProjectId, NodeCount = visibleNodes.Count, Version = canvas.Version ?? 1, UpdatedAt = canvas.UpdatedAt, Viewport = Deserialize(canvas.ViewportJson), Nodes = visibleNodes.Select(x => Node(x, sessions.GetValueOrDefault(x.ChatSessionId!))).ToList(), Edges = edges.Where(x => visibleNodeIds.Contains(x.SourceNodeId) && visibleNodeIds.Contains(x.TargetNodeId)).Select(x => Edge(x, pending.GetValueOrDefault(x.Id))).ToList() };
-    }
-    private ChatSessionSummaryDto SessionSummary(AiChatSession session)
-    {
-        var last = _db.Queryable<AiChatMessage>().Where(x => x.SessionId == session.Id).OrderByDescending(x => x.Id).First();
-        var count = _db.Queryable<AiChatMessage>().Count(x => x.SessionId == session.Id);
-        var projectName = session.CodeProjectId.HasValue ? _db.Queryable<AiCodeProject>().Where(x => x.Id == session.CodeProjectId.Value && !x.IsDeleted).Select(x => x.DisplayName).First() : null;
-        return new ChatSessionSummaryDto { Id = session.Id, Title = session.Title, CreatedAt = session.CreatedAt, UpdatedAt = session.UpdatedAt, MessageCount = count, LastMessage = last?.Content ?? string.Empty, ProjectId = session.CodeProjectId, ProjectName = projectName, SortOrder = session.SortOrder ?? 0, Priority = session.Priority ?? "normal", IsPinned = session.IsPinned ?? false };
     }
     private static WorkCanvasSummaryDto Summary(AiWorkCanvas x, int count) => new() { Id = x.Id, Name = x.Name, ScopeProjectId = x.ScopeProjectId, NodeCount = count, Version = x.Version ?? 1, UpdatedAt = x.UpdatedAt };
     private static WorkCanvasNodeDto Node(AiWorkCanvasNode x, ChatSessionSummaryDto? session) => new() { Id = x.Id, NodeType = x.NodeType, SessionId = x.ChatSessionId, PositionX = x.PositionX, PositionY = x.PositionY, Session = session };
