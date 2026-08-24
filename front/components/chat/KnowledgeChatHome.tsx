@@ -192,6 +192,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
   const requestedSessionId = embedded ? (embeddedSessionId ?? null) : searchParams.get("session");
   const requestedTemplateHandoff = searchParams.get("template_handoff");
   const requestedProjectId = Number(searchParams.get("project")) || null;
+  const requestedNewSessionKey = embedded ? null : searchParams.get("new");
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [codeProjects, setCodeProjects] = useState<CodeProject[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -307,7 +308,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
-  }, [requestedProjectId, requestedSessionId]);
+  }, [requestedNewSessionKey, requestedProjectId, requestedSessionId]);
 
   useEffect(() => {
     if (requestedSessionId || !requestedTemplateHandoff) return;
@@ -339,8 +340,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
   useEffect(() => {
     let cancelled = false;
     if (!requestedSessionId) {
+      pendingSessionIdRef.current = null;
       setActiveSessionId(null);
       setMessages([]);
+      setInput("");
+      setImageAttachments([]);
+      setDocumentAttachments([]);
+      setPendingMarkdownDocuments([]);
+      setPendingProjectReferences([]);
+      setError(null);
       return;
     }
     if (requestedSessionId === pendingSessionIdRef.current) {
@@ -366,7 +374,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
     return () => {
       cancelled = true;
     };
-  }, [clearFinishedStreams, requestedSessionId, t]);
+  }, [clearFinishedStreams, requestedNewSessionKey, requestedSessionId, t]);
 
   useEffect(() => {
     const refreshCompletedSession = (event: Event) => {
