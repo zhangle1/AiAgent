@@ -1,5 +1,6 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
+using AiAgent.Backend.Services.AgentRuntime;
 
 namespace AiAgent.Backend.Services.Chat;
 
@@ -30,15 +31,27 @@ public sealed class ChatOrchestrator : IChatOrchestrator
     private readonly IAgentLoop _agentLoop;
     private readonly ICodexChatService _codex;
     private readonly IDshChatService _dsh;
+    private readonly IRunCoordinator _runCoordinator;
+    private readonly IRuntimeRequestFactory _runtimeRequestFactory;
+    private readonly bool _nativeRuntimeEnabled;
 
     /// <summary>
     /// 初始化聊天编排器。
     /// </summary>
-    public ChatOrchestrator(IAgentLoop agentLoop, ICodexChatService codex, IDshChatService dsh)
+    public ChatOrchestrator(
+        IAgentLoop agentLoop,
+        ICodexChatService codex,
+        IDshChatService dsh,
+        IRunCoordinator runCoordinator,
+        IRuntimeRequestFactory runtimeRequestFactory,
+        IConfiguration configuration)
     {
         _agentLoop = agentLoop;
         _codex = codex;
         _dsh = dsh;
+        _runCoordinator = runCoordinator;
+        _runtimeRequestFactory = runtimeRequestFactory;
+        _nativeRuntimeEnabled = configuration.GetValue("AgentRuntime:NativeEnabled", false);
     }
 
     /// <summary>
@@ -62,8 +75,10 @@ public sealed class ChatOrchestrator : IChatOrchestrator
             throw new ArgumentException("Message is required.", nameof(request));
         }
 
-        var outcome = await _agentLoop.RunAsync(context, cancellationToken);
-        return ToResponse(outcome);
+        if (!_nativeRuntimeEnabled)
+            return ToResponse(await _agentLoop.RunAsync(context, cancellationToken));
+
+        return ToResponse(await _runCoordinator.RunAsync(_runtimeRequestFactory.Create(context), null, cancellationToken));
     }
 
     /// <summary>
@@ -90,8 +105,13 @@ public sealed class ChatOrchestrator : IChatOrchestrator
             throw new ArgumentException("Message is required.", nameof(request));
         }
 
-        var outcome = await _agentLoop.RunStreamingAsync(context, onEvent, cancellationToken);
-        return ToResponse(outcome);
+        if (!_nativeRuntimeEnabled)
+            return ToResponse(await _agentLoop.RunStreamingAsync(context, onEvent, cancellationToken));
+
+        RuntimeEventHandler? runtimeHandler = onEvent is null
+            ? null
+            : async (runtimeEvent, token) => await onEvent(RuntimeEventProjector.ToAgentStreamEvent(runtimeEvent), token);
+        return ToResponse(await _runCoordinator.RunAsync(_runtimeRequestFactory.Create(context), runtimeHandler, cancellationToken));
     }
 
     private static ChatCompleteResponse ToResponse(AgentLoopOutcome outcome)
@@ -105,6 +125,21 @@ public sealed class ChatOrchestrator : IChatOrchestrator
             Model = outcome.Model,
             KnowledgeBaseName = outcome.KnowledgeBaseName,
             Citations = outcome.Citations,
+            Usage = outcome.Usage
+        };
+    }
+
+    private static ChatCompleteResponse ToResponse(RuntimeTurnResult outcome)
+    {
+        return new ChatCompleteResponse
+        {
+            Query = outcome.Query,
+            Answer = outcome.Answer,
+            Content = outcome.Answer,
+            ModelId = outcome.ModelId,
+            Model = outcome.Model,
+            KnowledgeBaseName = outcome.KnowledgeBaseName,
+            Citations = outcome.Citations.ToList(),
             Usage = outcome.Usage
         };
     }
