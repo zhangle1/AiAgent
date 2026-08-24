@@ -1070,7 +1070,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
                   <span className="truncate">{mobileModelLabel}</span>
                   <ChevronDown size={13} className="shrink-0" />
                 </button>
-                <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} />
+                <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
                 <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
                   {uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20} />}
                 </button>
@@ -1105,7 +1105,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
                   </label>
                 </div>
               )}
-              <InlineReferenceComposer value={input} cursor={composerCursor} placeholder={t("chat.placeholderShort")} className="hidden min-h-[56px] px-1 pt-1 text-[14px] leading-6 lg:block" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} />
+              <InlineReferenceComposer value={input} cursor={composerCursor} placeholder={t("chat.placeholderShort")} className="hidden min-h-[56px] px-1 pt-1 text-[14px] leading-6 lg:block" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
               <div className="hidden items-center justify-between gap-3 border-t border-slate-100 pt-2.5 lg:flex">
                 <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                   <input
@@ -1383,11 +1383,12 @@ type InlineReferenceSegment = {
   token: string;
   kind: "project" | "document";
   label: string;
+  documentReference?: string;
 };
 
 function inlineReferenceSegments(value: string): Array<string | InlineReferenceSegment> {
   const result: Array<string | InlineReferenceSegment> = [];
-  const expression = /\[\[(项目|文档):([^\]|]+)(?:\|[^\]]+)+\]\]/g;
+  const expression = /\[\[(项目|文档):([^\]|]+)\|([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   let cursor = 0;
   for (const match of value.matchAll(expression)) {
     if (match.index! > cursor) result.push(value.slice(cursor, match.index));
@@ -1395,6 +1396,7 @@ function inlineReferenceSegments(value: string): Array<string | InlineReferenceS
       token: match[0],
       kind: match[1] === "项目" ? "project" : "document",
       label: match[2],
+      documentReference: match[1] === "文档" && match[4] ? `${match[3]}/${match[4]}` : undefined,
     });
     cursor = match.index! + match[0].length;
   }
@@ -1477,7 +1479,13 @@ function renderInlineComposerValue(element: HTMLElement, value: string) {
     wrapper.dataset.inlineReference = segment.token;
     wrapper.className = "mx-0.5 inline-flex max-w-[220px] align-middle";
     const chip = document.createElement("span");
-    chip.className = "inline-flex max-w-full items-center rounded-lg border border-blue-200 bg-blue-50 py-1 pl-2 text-[11px] text-blue-800";
+    if (segment.documentReference) {
+      chip.dataset.inlineReferenceOpen = segment.documentReference;
+      chip.setAttribute("role", "button");
+      chip.tabIndex = 0;
+      chip.title = "在右侧项目文档中打开";
+    }
+    chip.className = `inline-flex max-w-full items-center rounded-lg border border-blue-200 bg-blue-50 py-1 pl-2 text-[11px] text-blue-800 ${segment.documentReference ? "cursor-pointer hover:border-blue-300 hover:bg-blue-100" : ""}`;
     const label = document.createElement("span");
     label.className = "truncate font-medium";
     label.textContent = `${segment.kind === "project" ? "项目" : "文档"}：${segment.label}`;
@@ -1577,7 +1585,7 @@ function CodexExecutionPermissionControl({ mode, onChange, mobile = false }: { m
   );
 }
 
-function InlineReferenceComposer({ value, cursor, placeholder, className, onValueChange, onCursorChange, onFocus, onKeyDown, onRemove }: { value: string; cursor: number; placeholder: string; className: string; onValueChange: (value: string, cursor: number) => void; onCursorChange: (cursor: number) => void; onFocus: (element: HTMLDivElement, cursor: number) => void; onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>, cursor: number) => void; onRemove: (token: string) => void }) {
+function InlineReferenceComposer({ value, cursor, placeholder, className, onValueChange, onCursorChange, onFocus, onKeyDown, onRemove, onOpenDocument }: { value: string; cursor: number; placeholder: string; className: string; onValueChange: (value: string, cursor: number) => void; onCursorChange: (cursor: number) => void; onFocus: (element: HTMLDivElement, cursor: number) => void; onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>, cursor: number) => void; onRemove: (token: string) => void; onOpenDocument: (reference: string) => void }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const compositionRef = useRef(false);
   useLayoutEffect(() => {
@@ -1587,10 +1595,15 @@ function InlineReferenceComposer({ value, cursor, placeholder, className, onValu
     if (document.activeElement === editor) setInlineComposerSelection(editor, cursor);
   }, [value, cursor]);
   const read = (element: HTMLDivElement) => onValueChange(inlineComposerValue(element), inlineComposerCursor(element));
-  const removeFromEvent = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleReferenceClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-inline-reference-remove]") : null;
     const token = target?.dataset.inlineReferenceRemove;
-    if (token) onRemove(token);
+    if (token) {
+      onRemove(token);
+      return;
+    }
+    const documentReference = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-inline-reference-open]")?.dataset.inlineReferenceOpen : undefined;
+    if (documentReference) onOpenDocument(documentReference);
   };
   return (
     <div
@@ -1613,11 +1626,19 @@ function InlineReferenceComposer({ value, cursor, placeholder, className, onValu
       }}
       onFocus={(event) => onFocus(event.currentTarget, inlineComposerCursor(event.currentTarget))}
       onSelect={(event) => onCursorChange(inlineComposerCursor(event.currentTarget))}
-      onKeyDown={(event) => onKeyDown(event, inlineComposerCursor(event.currentTarget))}
-      onMouseDown={(event) => {
-        if ((event.target as Element).closest("button[data-inline-reference-remove]")) event.preventDefault();
+      onKeyDown={(event) => {
+        const documentReference = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-inline-reference-open]")?.dataset.inlineReferenceOpen : undefined;
+        if (documentReference && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onOpenDocument(documentReference);
+          return;
+        }
+        onKeyDown(event, inlineComposerCursor(event.currentTarget));
       }}
-      onClick={removeFromEvent}
+      onMouseDown={(event) => {
+        if ((event.target as Element).closest("button[data-inline-reference-remove], [data-inline-reference-open]")) event.preventDefault();
+      }}
+      onClick={handleReferenceClick}
       className={`workspace-scroll max-h-36 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-slate-800 outline-none empty:before:pointer-events-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 ${className}`}
     />
   );
