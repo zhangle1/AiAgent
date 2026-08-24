@@ -1624,6 +1624,12 @@ function InlineReferenceComposer({ value, cursor, placeholder, className, onValu
       onInput={(event) => {
         if (!compositionRef.current) read(event.currentTarget);
       }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData.getData("text/plain");
+        if (!text) return;
+        document.execCommand("insertText", false, text);
+      }}
       onFocus={(event) => onFocus(event.currentTarget, inlineComposerCursor(event.currentTarget))}
       onSelect={(event) => onCursorChange(inlineComposerCursor(event.currentTarget))}
       onKeyDown={(event) => {
