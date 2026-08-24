@@ -108,6 +108,12 @@ public sealed class CodeRepositoryCloneWebSocketHandler : ICodeRepositoryCloneWe
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // Git for Windows emits UTF-8 text. Set both streams explicitly;
+                // otherwise .NET may fall back to the machine code page (for
+                // example CP936), which turns Chinese progress/error text into
+                // mojibake before it is sent over the UTF-8 WebSocket.
+                StandardOutputEncoding = new UTF8Encoding(false),
+                StandardErrorEncoding = new UTF8Encoding(false),
                 CreateNoWindow = true
             };
             startInfo.ArgumentList.Add("clone");
