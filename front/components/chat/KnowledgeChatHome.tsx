@@ -185,7 +185,7 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
   return next;
 }
 
-export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { embeddedSessionId?: string | null; embedded?: boolean } = {}) {
+export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embeddedCodexModelId, onEmbeddedCodexModelChange }: { embeddedSessionId?: string | null; embedded?: boolean; embeddedCodexModelId?: string | null; onEmbeddedCodexModelChange?: (modelId: string) => void } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -293,6 +293,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
       .then(setImageOcrPolicy)
       .catch(() => setImageOcrPolicy(null));
   }, []);
+  useEffect(() => {
+    if (!embedded || !embeddedCodexModelId) return;
+    setSelectedAgentId("codex");
+    setSelectedCodexModelId(embeddedCodexModelId);
+  }, [embedded, embeddedCodexModelId]);
 
   useEffect(() => {
     if (agentProviders.length === 0 || !selectedAgentId) return;
@@ -468,7 +473,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
       const [kbRows, projectRows, settings] = await Promise.all([getKnowledgeBases(), getCodeProjects(), getSettings()]);
       setKnowledgeBases(kbRows);
       setCodeProjects(projectRows);
-      setSelectedAgentId(settings.ui.preferred_agent === "codebuddy" ? "codebuddy" : settings.ui.preferred_agent === "none" ? "" : "codex");
+      setSelectedAgentId(embedded && embeddedCodexModelId ? "codex" : settings.ui.preferred_agent === "codebuddy" ? "codebuddy" : settings.ui.preferred_agent === "none" ? "" : "codex");
       setSelectedProjectId((current) => current ?? requestedProjectId ?? null);
       setCatalog(settings.catalog);
 
@@ -1175,7 +1180,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
                   {selectedAgentId === "codex" && (
                     <label className="hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] text-violet-700 hover:bg-violet-50 sm:inline-flex" title={currentCodexModel?.description || "管理员未配置可用 Codex 模型"}>
                       <Bot size={15} />
-                      <select value={selectedCodexModelId} onChange={(event) => setSelectedCodexModelId(event.target.value)} disabled={codexModels.length === 0 || codexModelPolicy?.allow_chat_model_override === false} className="max-w-[180px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
+                      <select value={selectedCodexModelId} onChange={(event) => { setSelectedCodexModelId(event.target.value); onEmbeddedCodexModelChange?.(event.target.value); }} disabled={codexModels.length === 0 || codexModelPolicy?.allow_chat_model_override === false} className="max-w-[180px] truncate bg-transparent outline-none disabled:cursor-not-allowed">
                         {codexModels.map((model) => (
                           <option key={model.id} value={model.id}>
                             {model.name}
@@ -1273,7 +1278,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false }: { emb
         onClose={() => setMobilePicker(null)}
         onSelect={(id) => {
           if (mobilePicker === "model") {
-            if (selectedAgentId === "codex") setSelectedCodexModelId(id);
+            if (selectedAgentId === "codex") { setSelectedCodexModelId(id); onEmbeddedCodexModelChange?.(id); }
             else setSelectedModelId(id);
           } else setSelectedProjectId(id ? Number(id) : null);
           setMobilePicker(null);

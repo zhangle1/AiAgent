@@ -74,7 +74,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiPushOutboxMessage),
             typeof(AiPushAuditLog),
             typeof(AiDingTalkGroupAgentSession));
-        _db.CodeFirst.InitTables(typeof(AiWorkCanvas), typeof(AiWorkCanvasNode), typeof(AiWorkCanvasEdge), typeof(AiCanvasDelivery));
+        _db.CodeFirst.InitTables(typeof(AiWorkCanvas), typeof(AiWorkCanvasNode), typeof(AiWorkCanvasEdge), typeof(AiCanvasDelivery), typeof(AiWorkCanvasRun), typeof(AiWorkCanvasRunNode));
 
         // InitTables creates the table for a new database. Existing tables need
         // an explicit additive migration because SqlSugar does not reliably add

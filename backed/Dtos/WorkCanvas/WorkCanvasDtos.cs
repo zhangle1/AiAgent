@@ -27,6 +27,10 @@ public sealed class WorkCanvasNodeDto
     [JsonPropertyName("session_id")] public string? SessionId { get; set; }
     [JsonPropertyName("position_x")] public decimal PositionX { get; set; }
     [JsonPropertyName("position_y")] public decimal PositionY { get; set; }
+    [JsonPropertyName("role")] public string? Role { get; set; }
+    [JsonPropertyName("skills")] public List<string> Skills { get; set; } = [];
+    [JsonPropertyName("agent")] public string? Agent { get; set; }
+    [JsonPropertyName("model_id")] public string? ModelId { get; set; }
     [JsonPropertyName("session")] public ChatSessionSummaryDto? Session { get; set; }
 }
 
@@ -45,6 +49,61 @@ public sealed class CreateDeliveryLinkRequest
     [JsonPropertyName("source_node_id")] public string SourceNodeId { get; set; } = string.Empty;
     [JsonPropertyName("target_node_id")] public string TargetNodeId { get; set; } = string.Empty;
     [JsonPropertyName("label")] public string? Label { get; set; }
+}
+
+public sealed class CreateWorkflowLinkRequest
+{
+    [JsonPropertyName("source_node_id")] public string SourceNodeId { get; set; } = string.Empty;
+    [JsonPropertyName("target_node_id")] public string TargetNodeId { get; set; } = string.Empty;
+}
+
+public sealed class UpdateWorkCanvasNodeRequest
+{
+    [JsonPropertyName("role")] public string? Role { get; set; }
+    [JsonPropertyName("skills")] public List<string> Skills { get; set; } = [];
+    [JsonPropertyName("agent")] public string? Agent { get; set; }
+    [JsonPropertyName("model_id")] public string? ModelId { get; set; }
+}
+
+public sealed class WorkflowExecutionDto
+{
+    [JsonPropertyName("run_id")] public string RunId { get; set; } = string.Empty;
+    [JsonPropertyName("node_id")] public string NodeId { get; set; } = string.Empty;
+    [JsonPropertyName("session_id")] public string SessionId { get; set; } = string.Empty;
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
+    [JsonPropertyName("project_id")] public long? ProjectId { get; set; }
+    [JsonPropertyName("agent")] public string? Agent { get; set; }
+    [JsonPropertyName("model_id")] public string? ModelId { get; set; }
+}
+
+public sealed class CompleteWorkflowRunNodeRequest
+{
+    [JsonPropertyName("status")] public string Status { get; set; } = "completed";
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class WorkflowRunDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("root_node_id")] public string? RootNodeId { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("started_at")] public DateTime? StartedAt { get; set; }
+    [JsonPropertyName("finished_at")] public DateTime? FinishedAt { get; set; }
+    [JsonPropertyName("steps")] public List<WorkflowRunNodeDto> Steps { get; set; } = [];
+}
+
+public sealed class WorkflowRunNodeDto
+{
+    [JsonPropertyName("node_id")] public string NodeId { get; set; } = string.Empty;
+    [JsonPropertyName("session_id")] public string? SessionId { get; set; }
+    [JsonPropertyName("session_title")] public string SessionTitle { get; set; } = "已移除节点";
+    [JsonPropertyName("source_node_ids")] public List<string> SourceNodeIds { get; set; } = [];
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("agent")] public string? Agent { get; set; }
+    [JsonPropertyName("model_id")] public string? ModelId { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+    [JsonPropertyName("started_at")] public DateTime? StartedAt { get; set; }
+    [JsonPropertyName("finished_at")] public DateTime? FinishedAt { get; set; }
 }
 
 public sealed class CreateCanvasDeliveryRequest

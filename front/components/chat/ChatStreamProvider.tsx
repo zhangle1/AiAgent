@@ -93,6 +93,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         unread: !stopped,
         events: stopped || current.events.some((event) => event.type === "error") ? current.events : [...current.events, { type: "error", content: message }],
       }));
+      window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped, error: message } }));
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     }).finally(() => controllersRef.current.delete(streamId));
     return streamId;
