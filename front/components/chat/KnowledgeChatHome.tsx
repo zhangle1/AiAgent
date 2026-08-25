@@ -2114,7 +2114,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
             )}
           </>
         ) : (
-          <div ref={contentRef} onMouseUp={showSelectionCopyMenu} className="rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
+          <div ref={contentRef} onMouseUp={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
         )}
         {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
