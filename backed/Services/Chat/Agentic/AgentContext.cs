@@ -7,6 +7,8 @@ namespace AiAgent.Backend.Services.Chat.Agentic;
 /// </summary>
 public sealed class AgentContext
 {
+    public string RuntimeUserId { get; set; } = string.Empty;
+
     /// <summary>
     /// 当前会话 Id，第一版由后端临时生成，后续可接入真实会话表。
     /// </summary>
@@ -98,6 +100,8 @@ public sealed class AgentContext
         var dashboardApplicationId = string.IsNullOrWhiteSpace(request.DashboardApplicationId) ? null : request.DashboardApplicationId.Trim();
         return new AgentContext
         {
+            RuntimeUserId = request.RuntimeUserId ?? string.Empty,
+            SessionId = string.IsNullOrWhiteSpace(request.SessionId) ? Guid.NewGuid().ToString("N") : request.SessionId.Trim(),
             UserMessage = (string.IsNullOrWhiteSpace(request.ServerPromptMessage) ? request.Message : request.ServerPromptMessage).Trim(),
             Mode = string.IsNullOrWhiteSpace(request.Mode) ? "chat" : request.Mode.Trim(),
             KnowledgeBaseNames = knowledgeBaseNames,

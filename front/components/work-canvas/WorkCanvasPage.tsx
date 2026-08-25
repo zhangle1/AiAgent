@@ -2,8 +2,9 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, History, LayoutDashboard, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Play, Plus, Search, Square, Trash2, X } from "lucide-react";
+import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, History, LayoutDashboard, LayoutTemplate, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Play, Plus, Search, Square, Trash2, X } from "lucide-react";
 import { KnowledgeChatHome } from "@/components/chat/KnowledgeChatHome";
+import { PromptTemplateCanvasPicker } from "@/components/prompt-templates/PromptTemplateCanvasPicker";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import type { ChatCompleteRequest } from "@/lib/chat-api";
 import { createSession, deleteSession, listSessions, renameSession, type SessionSummary } from "@/lib/session-api";
@@ -15,6 +16,7 @@ import { getSettings } from "@/lib/api";
 import { activeProfile } from "@/lib/settings-types";
 import { addWorkCanvasNode, archiveWorkCanvas, completeWorkflowRunNode, createWorkflowLink, createWorkCanvas, deleteWorkCanvasLink, getWorkCanvas, listWorkCanvases, listWorkflowRuns, prepareWorkflowExecution, registerCompletedWorkflowNode, removeWorkCanvasNode, renameWorkCanvas, saveWorkCanvasLayout, updateWorkCanvasNode } from "@/lib/work-canvas-api";
 import type { NodeExecutionAgent, WorkCanvasNode, WorkCanvasSnapshot, WorkCanvasSummary, WorkflowExecution, WorkflowRun } from "@/lib/work-canvas-types";
+import type { PromptTemplate } from "@/lib/prompt-template-types";
 
 type DragState = {
   id: string;
@@ -81,6 +83,7 @@ export function WorkCanvasPage() {
   const [sessionRenameError, setSessionRenameError] = useState("");
   const [sessionRenaming, setSessionRenaming] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -367,6 +370,17 @@ export function WorkCanvasPage() {
     setPickerQuery("");
     setPickerProjectId("all");
     setPickerOpen(true);
+  };
+  const openTemplatePicker = () => {
+    setActionMenuOpen(false);
+    setTemplatePickerOpen(true);
+  };
+  const useTemplateFromCanvas = (result: { template: PromptTemplate; project_id?: number | null; rendered_content: string }) => {
+    const handoffId = `${result.template.id}-${Date.now()}`;
+    sessionStorage.setItem("aiagent:pending-template-turn", JSON.stringify({ handoff_id: handoffId, template_id: result.template.id, template_name: result.template.name, project_id: result.project_id ?? null, content: result.rendered_content }));
+    const query = new URLSearchParams({ template_handoff: handoffId });
+    if (result.project_id) query.set("project", String(result.project_id));
+    window.location.assign(`/chat?${query.toString()}`);
   };
   const createEmptySession = async (projectId: number) => {
     if (!canvas) throw new Error("请先选择工作画布。");
@@ -844,7 +858,8 @@ export function WorkCanvasPage() {
       {sessionContextMenu && <SessionContextMenu node={sessionContextMenu.node} x={sessionContextMenu.x} y={sessionContextMenu.y} onRename={openSessionRename} onDelete={(node) => void deleteNodeSession(node)} />}
       {renamingNode && <RenameSessionDialog name={sessionName} error={sessionRenameError} busy={sessionRenaming} onChange={(value) => { setSessionName(value); setSessionRenameError(""); }} onClose={() => { if (!sessionRenaming) setRenamingNode(null); }} onSubmit={() => void saveSessionRename()} />}
       {workflowNode && canvas && <NodeWorkflowDialog node={workflowNode} modelOptions={workflowModelOptions} onClose={() => setWorkflowNode(null)} onSave={async (payload) => { await updateWorkCanvasNode(canvas.id, workflowNode.id, payload); setCanvas(await getWorkCanvas(canvas.id)); setWorkflowNode(null); }} />}
-      {canvas && <FloatingActions anchorRef={canvasAreaRef} layoutKey={selectedId ?? ""} open={actionMenuOpen} onOpenChange={setActionMenuOpen} onAddExisting={openSessionPicker} onCreateFromTasks={openTaskSessionDialog} />}
+      {canvas && <FloatingActions anchorRef={canvasAreaRef} layoutKey={selectedId ?? ""} open={actionMenuOpen} onOpenChange={setActionMenuOpen} onAddExisting={openSessionPicker} onChooseTemplate={openTemplatePicker} onCreateFromTasks={openTaskSessionDialog} />}
+      {templatePickerOpen && <PromptTemplateCanvasPicker onClose={() => setTemplatePickerOpen(false)} onUsed={useTemplateFromCanvas} />}
       {taskDialogOpen && <TaskSessionDialog tasks={tasks} loading={tasksLoading} error={taskDialogError} projectFilter={taskProjectFilter} search={taskSearch} selectedTaskIds={selectedTaskIds} busy={creatingTaskSessions} onProjectFilter={setTaskProjectFilter} onSearch={setTaskSearch} onSelectionChange={setSelectedTaskIds} onPreview={setTaskPreview} onClose={() => { if (!creatingTaskSessions) { setTaskDialogOpen(false); setTaskPreview(null); } }} onSubmit={() => void createTaskSessions()} />}
       {taskPreview && <TaskDetailDialog task={taskPreview} onClose={() => setTaskPreview(null)} />}
     </div>
@@ -992,7 +1007,7 @@ function RenameSessionDialog({ name, error, busy, onChange, onClose, onSubmit }:
   );
 }
 
-function FloatingActions({ anchorRef, layoutKey, open, onOpenChange, onAddExisting, onCreateFromTasks }: { anchorRef: { current: HTMLElement | null }; layoutKey: string; open: boolean; onOpenChange: (value: boolean) => void; onAddExisting: () => void; onCreateFromTasks: () => void }) {
+function FloatingActions({ anchorRef, layoutKey, open, onOpenChange, onAddExisting, onChooseTemplate, onCreateFromTasks }: { anchorRef: { current: HTMLElement | null }; layoutKey: string; open: boolean; onOpenChange: (value: boolean) => void; onAddExisting: () => void; onChooseTemplate: () => void; onCreateFromTasks: () => void }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState({ right: 20, bottom: 20 });
   useEffect(() => {
@@ -1035,6 +1050,10 @@ function FloatingActions({ anchorRef, layoutKey, open, onOpenChange, onAddExisti
           <button type="button" role="menuitem" onClick={onAddExisting} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600"><MessageSquare size={18} /></span>
             <span><b className="block font-semibold">添加已有会话</b><span className="mt-0.5 block text-xs text-slate-500">按 AiAgent 项目筛选后，快速加入画布</span></span>
+          </button>
+          <button type="button" role="menuitem" onClick={onChooseTemplate} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600"><LayoutTemplate size={18} /></span>
+            <span><b className="block font-semibold">从模板创建会话</b><span className="mt-0.5 block text-xs text-slate-500">选择模板并填写变量后，预填到新的聊天草稿</span></span>
           </button>
           <button type="button" role="menuitem" onClick={onCreateFromTasks} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600"><ListTodo size={18} /></span>

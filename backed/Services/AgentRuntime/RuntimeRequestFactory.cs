@@ -15,6 +15,7 @@ public sealed class RuntimeRequestFactory : IRuntimeRequestFactory
 
         return new RuntimeTurnRequest(
             Guid.NewGuid().ToString("N"),
+            context.RuntimeUserId,
             context.SessionId,
             runtimeKind,
             context.ModelId,

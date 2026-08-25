@@ -19,7 +19,7 @@ import type { TranslationKey } from "@/i18n/dictionaries";
 import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject, CodeProjectMarkdownDocument, CodeProjectReference } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
-import { getSession, getSessionDiagnostics, type ChatDebugTraceRecord, type SessionDetail } from "@/lib/session-api";
+import { cancelAgentRun, getAgentRun, getSession, getSessionDiagnostics, listAgentRuns, type AgentRunDetail, type AgentRunSummary, type ChatDebugTraceRecord, type SessionDetail } from "@/lib/session-api";
 import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 
 type InspectorTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal";
@@ -192,6 +192,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const requestedSessionId = embedded ? (embeddedSessionId ?? null) : searchParams.get("session");
   const requestedTemplateHandoff = searchParams.get("template_handoff");
   const requestedProjectId = Number(searchParams.get("project")) || null;
+  const requestedNewSessionKey = embedded ? null : searchParams.get("new");
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [codeProjects, setCodeProjects] = useState<CodeProject[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -201,6 +202,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [debugTraceEnabled, setDebugTraceEnabled] = useState(false);
   const [diagnosticDialogOpen, setDiagnosticDialogOpen] = useState(false);
   const [storedDiagnostics, setStoredDiagnostics] = useState<ChatDebugTraceRecord[]>([]);
+  const [agentRuns, setAgentRuns] = useState<AgentRunSummary[]>([]);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
@@ -312,7 +314,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
-  }, [requestedProjectId, requestedSessionId]);
+  }, [requestedNewSessionKey, requestedProjectId, requestedSessionId]);
 
   useEffect(() => {
     if (requestedSessionId || !requestedTemplateHandoff) return;
@@ -344,8 +346,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   useEffect(() => {
     let cancelled = false;
     if (!requestedSessionId) {
+      pendingSessionIdRef.current = null;
       setActiveSessionId(null);
       setMessages([]);
+      setInput("");
+      setImageAttachments([]);
+      setDocumentAttachments([]);
+      setPendingMarkdownDocuments([]);
+      setPendingProjectReferences([]);
+      setError(null);
       return;
     }
     if (requestedSessionId === pendingSessionIdRef.current) {
@@ -371,7 +380,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     return () => {
       cancelled = true;
     };
-  }, [clearFinishedStreams, requestedSessionId, t]);
+  }, [clearFinishedStreams, requestedNewSessionKey, requestedSessionId, t]);
 
   useEffect(() => {
     const refreshCompletedSession = (event: Event) => {
@@ -490,9 +499,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     if (!activeSessionId) return;
     setDiagnosticDialogOpen(true);
     setStoredDiagnostics([]);
+    setAgentRuns([]);
     setDiagnosticsLoading(true);
-    void getSessionDiagnostics(activeSessionId)
-      .then(setStoredDiagnostics)
+    void Promise.all([getSessionDiagnostics(activeSessionId), listAgentRuns(activeSessionId)])
+      .then(([traces, runs]) => { setStoredDiagnostics(traces); setAgentRuns(runs); })
       .catch((ex) => setError(ex instanceof Error ? ex.message : "诊断日志读取失败。"))
       .finally(() => setDiagnosticsLoading(false));
   }
@@ -1232,7 +1242,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
           </div>
         </section>
         <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)} />
-        {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
+        {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} runs={agentRuns} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
         {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)} />}
       </div>
       <MobileOptionSheet
@@ -2203,7 +2213,20 @@ function debugStageLabel(stage: string) {
   return labels[stage] ?? "诊断阶段";
 }
 
-function ChatDiagnosticsDialog({ traces, loading, onClose }: { traces: ChatDebugTraceRecord[]; loading: boolean; onClose: () => void }) {
+function ChatDiagnosticsDialog({ traces, runs, loading, onClose }: { traces: ChatDebugTraceRecord[]; runs: AgentRunSummary[]; loading: boolean; onClose: () => void }) {
+  const [selectedRun, setSelectedRun] = useState<AgentRunDetail | null>(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState("");
+
+  function openRun(runId: string) {
+    setRunLoading(true); setRunError("");
+    void getAgentRun(runId).then(setSelectedRun).catch((error) => setRunError(error instanceof Error ? error.message : "运行详情读取失败。" )).finally(() => setRunLoading(false));
+  }
+
+  function cancelRun(runId: string) {
+    setRunError("");
+    void cancelAgentRun(runId).then(() => openRun(runId)).catch((error) => setRunError(error instanceof Error ? error.message : "取消运行失败。"));
+  }
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -2233,10 +2256,21 @@ function ChatDiagnosticsDialog({ traces, loading, onClose }: { traces: ChatDebug
               <Loader2 size={16} className="animate-spin" />
               正在读取诊断日志…
             </div>
-          ) : traces.length === 0 ? (
+          ) : traces.length === 0 && runs.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-500">当前会话没有可用的诊断日志。请先开启 Debug 后发送消息。</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {runs.length > 0 && <section>
+                <div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-semibold text-slate-800">Agent 运行记录</h3><span className="text-[10px] text-slate-400">持久化事件账本</span></div>
+                <div className="space-y-2">
+                  {runs.map((run) => <button key={run.run_id} type="button" onClick={() => openRun(run.run_id)} className="block w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-blue-300 hover:shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-800">{new Date(run.created_at).toLocaleString("zh-CN")}</span><RunStatusBadge status={run.status} /></div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500"><span>{run.runtime_kind} / {run.model_id || "auto"}</span><span>{run.total_tokens.toLocaleString()} Token</span><span>{run.tool_calls} 次工具</span><span>{run.file_changes} 个文件变更</span><span>{Math.max(0, new Date(run.updated_at).getTime() - new Date(run.created_at).getTime())}ms</span></div>
+                    {run.error_code && <p className="mt-1 text-[11px] text-rose-600">{run.error_code}</p>}
+                  </button>)}
+                </div>
+              </section>}
+              {traces.length > 0 && <div className="border-t border-slate-100 pt-4"><h3 className="mb-2 text-xs font-semibold text-slate-800">网络与请求耗时</h3>
               {traces.map((trace) => (
                 <section key={trace.trace_id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -2259,12 +2293,26 @@ function ChatDiagnosticsDialog({ traces, loading, onClose }: { traces: ChatDebug
                   </div>
                 </section>
               ))}
+              </div>}
             </div>
           )}
         </div>
       </section>
+      {(runLoading || selectedRun || runError) && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/25 p-5" onMouseDown={() => { setSelectedRun(null); setRunError(""); }}>
+        <section className="workspace-scroll max-h-[68vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+          {runLoading ? <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" />加载运行事件…</div> : runError ? <p className="text-sm text-rose-600">{runError}</p> : selectedRun && <>
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-semibold text-slate-900">运行时间线</h3><p className="mt-1 font-mono text-[10px] text-slate-400">{selectedRun.run.run_id}</p></div><div className="flex items-center gap-2">{["queued", "starting", "running", "waitingapproval", "waitinginput"].includes(selectedRun.run.status) && <button type="button" onClick={() => cancelRun(selectedRun.run.run_id)} className="rounded-lg bg-rose-50 px-2 py-1 text-[11px] text-rose-700">取消运行</button>}<button type="button" onClick={() => setSelectedRun(null)} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100"><X size={16} /></button></div></div>
+            <div className="space-y-2 border-l border-slate-200 pl-3">{selectedRun.events.map((event) => <div key={event.sequence} className="relative text-[11px]"><span className="absolute -left-[17px] top-1.5 h-2 w-2 rounded-full bg-blue-400"/><div className="flex flex-wrap gap-2"><span className="font-medium text-slate-700">{event.event_type}</span><span className="tabular-nums text-slate-400">#{event.sequence} · {new Date(event.created_at).toLocaleTimeString("zh-CN")}</span>{event.status && <RunStatusBadge status={event.status}/>}</div>{event.content_preview && <p className="mt-1 whitespace-pre-wrap text-slate-500">{event.content_preview}</p>}{Object.keys(event.metadata).length > 0 && <p className="mt-1 break-all font-mono text-[10px] text-slate-400">{JSON.stringify(event.metadata)}</p>}</div>)}</div>
+          </>}
+        </section>
+      </div>}
     </div>
   );
+}
+
+function RunStatusBadge({ status }: { status: string }) {
+  const terminal = status === "completed" ? "bg-emerald-50 text-emerald-700" : status === "failed" ? "bg-rose-50 text-rose-700" : status === "cancelled" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700";
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${terminal}`}>{status}</span>;
 }
 
 function ImageLightbox({ attachment, onClose }: { attachment: ChatImagePreview; onClose: () => void }) {

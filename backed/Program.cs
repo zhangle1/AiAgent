@@ -130,6 +130,7 @@ builder.Services.AddSingleton<ILabeledStepRunner, LabeledStepRunner>();
 builder.Services.AddSingleton<IAgentLoop, AgentLoop>();
 builder.Services.AddSingleton<IRuntimeEngine, NativeAgentRuntime>();
 builder.Services.AddSingleton<IRuntimeRequestFactory, RuntimeRequestFactory>();
+builder.Services.AddSingleton<IAgentRunStore, AgentRunStore>();
 builder.Services.AddSingleton<IRunCoordinator, RunCoordinator>();
 builder.Services.AddSingleton<IAgentProviderEnvironmentService, AgentProviderEnvironmentService>();
 builder.Services.AddSingleton<ICodexModelPolicyService, CodexModelPolicyService>();

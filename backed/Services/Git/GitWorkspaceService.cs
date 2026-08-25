@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 
 namespace AiAgent.Backend.Services.Git;
 
@@ -22,11 +23,22 @@ public interface IGitWorkspaceService
     Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<List<GitWorkspaceLocalChange>> LocalChangesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitDeliveryValidation> ValidateDeliveryAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
 }
+
+public sealed class GitDeliveryValidation
+{
+    [JsonPropertyName("snapshot_sha256")] public string SnapshotSha256 { get; set; } = string.Empty;
+    public string? Branch { get; set; }
+    public List<string> Files { get; set; } = [];
+    public List<GitDeliveryCheck> Checks { get; set; } = [];
+    [JsonPropertyName("is_valid")] public bool IsValid => Checks.Count > 0 && Checks.All(x => x.Passed);
+}
+public sealed record GitDeliveryCheck(string Name, bool Passed, string Message);
 
 public sealed class GitWorkspaceStatus
 {
@@ -115,6 +127,9 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
 
     public Task<List<GitWorkspaceLocalChange>> LocalChangesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, () => GetLocalChangesAsync(rootPath, cancellationToken), cancellationToken, credential);
+
+    public Task<GitDeliveryValidation> ValidateDeliveryAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
+        => RunExclusiveAsync(workspaceKey, () => GetDeliveryValidationAsync(rootPath, cancellationToken), cancellationToken, credential);
 
     public Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, async () =>
@@ -403,6 +418,42 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
             }
         }
         return changes.OrderBy(change => change.Path, StringComparer.OrdinalIgnoreCase).Take(600).ToList();
+    }
+
+    private async Task<GitDeliveryValidation> GetDeliveryValidationAsync(string rootPath, CancellationToken cancellationToken)
+    {
+        await RequireRepositoryAsync(rootPath, cancellationToken);
+        var status = await GetStatusAsync(rootPath, cancellationToken);
+        var changes = await GetLocalChangesAsync(rootPath, cancellationToken);
+        var diffCheck = await RunGitAsync(rootPath, ["diff", "--check", "HEAD"], cancellationToken);
+        var head = await RunGitAsync(rootPath, ["rev-parse", "HEAD"], cancellationToken);
+        var fingerprint = new StringBuilder().AppendLine(head.Output.Trim()).AppendLine(status.Branch).AppendLine(status.Output);
+        foreach (var change in changes.OrderBy(x => x.Path, StringComparer.Ordinal))
+        {
+            fingerprint.Append(change.Status).Append('\t').AppendLine(change.Path);
+            var fullPath = Path.GetFullPath(Path.Combine(rootPath, change.Path.Replace('/', Path.DirectorySeparatorChar)));
+            if (File.Exists(fullPath))
+            {
+                await using var stream = File.OpenRead(fullPath);
+                fingerprint.AppendLine(Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)));
+            }
+        }
+        var checks = new List<GitDeliveryCheck>
+        {
+            new("repository", status.IsRepository, status.IsRepository ? "Git repository detected." : "Not a Git repository."),
+            new("changes", changes.Count > 0 || status.Ahead > 0, changes.Count > 0 || status.Ahead > 0 ? $"{changes.Count} changed files; {status.Ahead} commits ahead." : "No deliverable changes."),
+            new("upstream", !string.IsNullOrWhiteSpace(status.RemoteBranch), string.IsNullOrWhiteSpace(status.RemoteBranch) ? "No upstream branch." : $"Tracking {status.RemoteBranch}."),
+            new("remote", string.IsNullOrWhiteSpace(status.RemoteRefreshError), status.RemoteRefreshError ?? "Remote refs refreshed."),
+            new("behind", status.Behind == 0, status.Behind == 0 ? "Not behind upstream." : $"Upstream is ahead by {status.Behind} commits."),
+            new("diff_check", diffCheck.ExitCode == 0, diffCheck.ExitCode == 0 ? "git diff --check passed." : (string.IsNullOrWhiteSpace(diffCheck.Output) ? "git diff --check failed." : diffCheck.Output))
+        };
+        return new GitDeliveryValidation
+        {
+            SnapshotSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint.ToString()))).ToLowerInvariant(),
+            Branch = status.Branch,
+            Files = changes.Select(x => x.Path).ToList(),
+            Checks = checks
+        };
     }
 
     private static void AddLocalChange(List<GitWorkspaceLocalChange> changes, string rootPath, string status, string path)

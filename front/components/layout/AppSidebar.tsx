@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, Check, CheckSquare, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutDashboard, LayoutTemplate, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
+import { Archive, Check, CheckSquare, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -22,7 +22,7 @@ const mainItems: NavItem[] = [
   { href: "/chat", label: "聊天", icon: MessageSquare },
   { href: "/work-canvas", label: "工作画布", icon: LayoutDashboard },
   { href: "/tasks", label: "任务面板", icon: CheckSquare },
-  { href: "/prompt-templates", label: "模板市场", icon: LayoutTemplate },
+  { href: "/deliveries", label: "代码交付", icon: GitBranch },
 ];
 
 const toolItems: NavItem[] = [
@@ -31,6 +31,12 @@ const toolItems: NavItem[] = [
   { href: "/knowledge", label: "知识中心", icon: Library },
   { href: "/settings", label: "设置", icon: Settings },
 ];
+
+function newChatPath(projectId?: number) {
+  const params = new URLSearchParams({ new: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` });
+  if (projectId) params.set("project", String(projectId));
+  return `/chat?${params.toString()}`;
+}
 
 export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname() ?? "/";
@@ -240,10 +246,10 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     </nav>
 
     {!compact ? <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
-      <div className="flex items-center justify-between px-2"><p className="text-[10px] font-semibold tracking-[.15em] text-slate-400">会话记录</p><Link href="/chat" className="grid h-6 w-6 place-items-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" aria-label="新建会话"><Plus size={15}/></Link></div>
+      <div className="flex items-center justify-between px-2"><p className="text-[10px] font-semibold tracking-[.15em] text-slate-400">会话记录</p><button type="button" onClick={() => router.push(newChatPath())} className="grid h-6 w-6 place-items-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" aria-label="新建会话"><Plus size={15}/></button></div>
       <div className="workspace-scroll mt-2 min-h-0 space-y-3 overflow-y-auto pr-1">
         {pinnedGroups.length > 0 && <PinnedProjectList groups={pinnedGroups} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} onUnpin={(group) => group.project && void toggleProjectPin(group.project, group.preference)}/>}
-        <div><div className="flex items-center justify-between px-2 pb-1"><p className="text-[10px] font-semibold tracking-[.12em] text-slate-400">项目</p><button type="button" onClick={(event) => openProjectListMenu(event.currentTarget)} className={`grid h-6 w-6 place-items-center rounded-md transition ${projectListMenu ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"}`} aria-label="项目栏菜单" aria-expanded={Boolean(projectListMenu)} title="项目排序与归档"><Ellipsis size={14}/></button></div>{groups.map((group) => <SessionGroupList key={group.key} group={group} isCollapsed={Boolean(collapsedGroups[group.key])} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} projectMenuOpen={projectMenu?.groupKey === group.key} sessionMenuId={sessionMenu?.session.id ?? null} onToggleCollapsed={() => setCollapsedGroups((items) => ({ ...items, [group.key]: !items[group.key] }))} onNewSession={(project) => router.push(`/chat?project=${project.id}`)} onOpenProjectMenu={(anchor) => openProjectMenu(group, anchor)} onOpenSessionMenu={openSessionMenu}/>)}</div>
+        <div><div className="flex items-center justify-between px-2 pb-1"><p className="text-[10px] font-semibold tracking-[.12em] text-slate-400">项目</p><button type="button" onClick={(event) => openProjectListMenu(event.currentTarget)} className={`grid h-6 w-6 place-items-center rounded-md transition ${projectListMenu ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"}`} aria-label="项目栏菜单" aria-expanded={Boolean(projectListMenu)} title="项目排序与归档"><Ellipsis size={14}/></button></div>{groups.map((group) => <SessionGroupList key={group.key} group={group} isCollapsed={Boolean(collapsedGroups[group.key])} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} projectMenuOpen={projectMenu?.groupKey === group.key} sessionMenuId={sessionMenu?.session.id ?? null} onToggleCollapsed={() => setCollapsedGroups((items) => ({ ...items, [group.key]: !items[group.key] }))} onNewSession={(project) => router.push(newChatPath(project.id))} onOpenProjectMenu={(anchor) => openProjectMenu(group, anchor)} onOpenSessionMenu={openSessionMenu}/>)}</div>
         {groups.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-slate-400">暂无历史会话</p>}
       </div>
     </section> : <div className="flex-1 border-t border-slate-200/80"/>}
@@ -254,7 +260,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     </div>
     {toolsOpen && <ToolDialog compact={compact} pathname={pathname} onClose={() => setToolsOpen(false)}/>}
     {searchOpen && (
-      <WorkspaceSearchDialog projects={projects} sessions={sessions} onClose={() => setSearchOpen(false)} onSelectProject={(project) => { setSearchOpen(false); setMobileOpen(false); router.push(`/chat?project=${project.id}`); }} onSelectSession={(session) => { setSearchOpen(false); setMobileOpen(false); router.push(`/chat?session=${encodeURIComponent(session.id)}`); }}/>
+      <WorkspaceSearchDialog projects={projects} sessions={sessions} onClose={() => setSearchOpen(false)} onSelectProject={(project) => { setSearchOpen(false); setMobileOpen(false); router.push(newChatPath(project.id)); }} onSelectSession={(session) => { setSearchOpen(false); setMobileOpen(false); router.push(`/chat?session=${encodeURIComponent(session.id)}`); }}/>
     )}
     {projectMenu && (() => {
       const group = groups.find((item) => item.key === projectMenu.groupKey);

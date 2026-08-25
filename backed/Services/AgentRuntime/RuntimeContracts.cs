@@ -64,6 +64,7 @@ public sealed record RuntimeCapabilitySnapshot(
 
 public sealed record RuntimeTurnRequest(
     string RunId,
+    string UserId,
     string ThreadId,
     RuntimeKind RuntimeKind,
     string? ModelId,

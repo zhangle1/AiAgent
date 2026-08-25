@@ -55,12 +55,16 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiCodeRepository),
             typeof(AiCodeRepositoryRunProfile),
             typeof(AiCodeRepositoryFile),
+            typeof(AiCodeChangeSet),
+            typeof(AiCodeChangeSetRepository),
             typeof(AiUser),
             typeof(AiUserCodeProject),
             typeof(AiUserSession),
             typeof(AiChatSession),
             typeof(AiChatMessage),
             typeof(AiChatDebugTrace),
+            typeof(AiAgentRun),
+            typeof(AiAgentRunEvent),
             typeof(AiPromptTemplate),
             typeof(AiPromptTemplateUserState),
             typeof(AiMemoryItem),
@@ -416,6 +420,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_message_Sessi
     CREATE INDEX IX_ai_chat_message_Session_Id ON dbo.ai_chat_message(SessionId, Id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_debug_trace_User_Session_Expiry' AND object_id = OBJECT_ID(N'dbo.ai_chat_debug_trace'))
     CREATE INDEX IX_ai_chat_debug_trace_User_Session_Expiry ON dbo.ai_chat_debug_trace(UserId, SessionId, ExpiresAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_agent_run_User_Session_Created' AND object_id = OBJECT_ID(N'dbo.ai_agent_run'))
+    CREATE INDEX IX_ai_agent_run_User_Session_Created ON dbo.ai_agent_run(UserId, SessionId, CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_agent_run_event_Run_Sequence' AND object_id = OBJECT_ID(N'dbo.ai_agent_run_event'))
+    CREATE UNIQUE INDEX UX_ai_agent_run_event_Run_Sequence ON dbo.ai_agent_run_event(RunId, Sequence);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_Scope_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_item'))
