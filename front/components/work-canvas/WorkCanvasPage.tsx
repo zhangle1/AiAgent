@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, History, LayoutDashboard, LayoutTemplate, ListTodo, LoaderCircle, Lock, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Play, Plus, Search, Square, Trash2, X } from "lucide-react";
+import { Activity, Archive, ChevronUp, ExternalLink, Filter, FolderGit2, History, LayoutDashboard, LayoutTemplate, ListTodo, LoaderCircle, Lock, Map as MapIcon, MessageSquare, MousePointer2, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Play, Plus, Route, Search, Square, Trash2, WandSparkles, X } from "lucide-react";
 import { KnowledgeChatHome } from "@/components/chat/KnowledgeChatHome";
 import { PromptTemplateCanvasPicker } from "@/components/prompt-templates/PromptTemplateCanvasPicker";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
@@ -29,10 +29,17 @@ type DragState = {
 type ConnectionPreview = { sourceId: string; x1: number; y1: number; x2: number; y2: number };
 type NodeModelOption = { id: string; name: string; agent: NodeExecutionAgent };
 type WorkflowStreamBinding = { canvasId: string; runId: string; nodeId: string };
+type CanvasInteractionMode = "drag" | "connect";
+type CanvasViewport = { left: number; top: number; width: number; height: number };
+
+const CANVAS_WIDTH = 2400;
+const CANVAS_HEIGHT = 1400;
+const NODE_WIDTH = 288;
+const NODE_HEIGHT = 266;
 
 function linkPoints(source: WorkCanvasNode, target: WorkCanvasNode) {
-  const width = 288;
-  const height = 266;
+  const width = NODE_WIDTH;
+  const height = NODE_HEIGHT;
   const sourceCenter = { x: source.position_x + width / 2, y: source.position_y + height / 2 };
   const targetCenter = { x: target.position_x + width / 2, y: target.position_y + height / 2 };
   const dx = targetCenter.x - sourceCenter.x;
@@ -101,6 +108,10 @@ export function WorkCanvasPage() {
   const [llmModelOptions, setLlmModelOptions] = useState<NodeModelOption[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [interactionMode, setInteractionMode] = useState<CanvasInteractionMode>("drag");
+  const [formatting, setFormatting] = useState(false);
+  const [miniMapVisible, setMiniMapVisible] = useState(true);
+  const [canvasViewport, setCanvasViewport] = useState<CanvasViewport>({ left: 0, top: 0, width: 0, height: 0 });
   const dragRef = useRef<DragState | null>(null);
   const connectionRef = useRef<ConnectionPreview | null>(null);
   const workflowStreamsRef = useRef<Record<string, WorkflowStreamBinding>>({});
@@ -218,6 +229,35 @@ export function WorkCanvasPage() {
   const workflowModelOptions = workflowNode ? nodeModelOptions(workflowNode, codexModelOptions, llmModelOptions) : [];
   const availableSessions = sessions.filter((session) => !canvas?.nodes.some((node) => node.session_id === session.id)).filter((session) => (pickerProjectId === "all" || String(session.project_id) === pickerProjectId) && [session.title, session.project_name, session.last_message].some((value) => value?.toLowerCase().includes(pickerQuery.trim().toLowerCase())));
   const runningCount = Object.values(streams).filter((x) => x.status === "streaming").length;
+  const nodeTreeGroups = useMemo(() => {
+    const nodesById = new Map(visibleNodes.map((node) => [node.id, node]));
+    const inbound = new Map(visibleNodes.map((node) => [node.id, [] as string[]]));
+    const outbound = new Map(visibleNodes.map((node) => [node.id, [] as string[]]));
+    (canvas?.edges ?? []).forEach((edge) => {
+      if (!nodesById.has(edge.source_node_id) || !nodesById.has(edge.target_node_id)) return;
+      outbound.get(edge.source_node_id)?.push(edge.target_node_id);
+      inbound.get(edge.target_node_id)?.push(edge.source_node_id);
+    });
+    const depthCache = new Map<string, number>();
+    const getDepth = (id: string, path = new Set<string>()): number => {
+      if (depthCache.has(id)) return depthCache.get(id)!;
+      if (path.has(id)) return 0;
+      const parents = inbound.get(id) ?? [];
+      const depth = parents.length === 0 ? 0 : Math.min(4, Math.max(...parents.map((parent) => getDepth(parent, new Set([...path, id]))) + 1));
+      depthCache.set(id, depth);
+      return depth;
+    };
+    const groups = new Map<string, { id: string; name: string; nodes: Array<{ node: WorkCanvasNode; depth: number; inbound: number; outbound: number }> }>();
+    visibleNodes.forEach((node) => {
+      const id = node.session.project_id ? String(node.session.project_id) : "unassigned";
+      const group = groups.get(id) ?? { id, name: node.session.project_name || "未归属项目", nodes: [] };
+      group.nodes.push({ node, depth: getDepth(node.id), inbound: (inbound.get(node.id) ?? []).length, outbound: (outbound.get(node.id) ?? []).length });
+      groups.set(id, group);
+    });
+    return Array.from(groups.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((group) => ({ ...group, nodes: group.nodes.sort((a, b) => a.depth - b.depth || a.node.position_y - b.node.position_y || a.node.session.title.localeCompare(b.node.session.title)) }));
+  }, [canvas?.edges, visibleNodes]);
 
   const openCanvas = async (id: string) => {
     setLoading(true);
@@ -428,6 +468,7 @@ export function WorkCanvasPage() {
     }
   };
   const beginDrag = (event: React.PointerEvent, node: WorkCanvasNode) => {
+    if (interactionMode !== "drag") return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     dragRef.current = {
       id: node.id,
@@ -540,6 +581,63 @@ export function WorkCanvasPage() {
     if (!area) return { x: 0, y: 0 };
     const rect = area.getBoundingClientRect();
     return { x: clientX - rect.left + area.scrollLeft, y: clientY - rect.top + area.scrollTop };
+  };
+  const updateCanvasViewport = useCallback((element: HTMLElement) => {
+    setCanvasViewport({ left: element.scrollLeft, top: element.scrollTop, width: element.clientWidth, height: element.clientHeight });
+  }, []);
+  useEffect(() => {
+    if (canvasAreaRef.current) updateCanvasViewport(canvasAreaRef.current);
+  }, [canvas?.id, leftOpen, leftWidth, rightWidth, selectedId, updateCanvasViewport]);
+  const navigateMiniMap = (x: number, y: number) => {
+    const area = canvasAreaRef.current;
+    if (!area) return;
+    area.scrollLeft = Math.max(0, Math.min(CANVAS_WIDTH - area.clientWidth, x - area.clientWidth / 2));
+    area.scrollTop = Math.max(0, Math.min(CANVAS_HEIGHT - area.clientHeight, y - area.clientHeight / 2));
+    updateCanvasViewport(area);
+  };
+  const formatCanvasNodes = async () => {
+    if (!canvas || formatting) return;
+    setFormatting(true);
+    setError("");
+    try {
+      const nodesById = new Map(canvas.nodes.map((node) => [node.id, node]));
+      const parents = new Map(canvas.nodes.map((node) => [node.id, [] as string[]]));
+      canvas.edges.forEach((edge) => {
+        if (nodesById.has(edge.source_node_id) && nodesById.has(edge.target_node_id)) parents.get(edge.target_node_id)?.push(edge.source_node_id);
+      });
+      const levelCache = new Map<string, number>();
+      const levelOf = (id: string, path = new Set<string>()): number => {
+        if (levelCache.has(id)) return levelCache.get(id)!;
+        if (path.has(id)) return 0;
+        const sourceIds = parents.get(id) ?? [];
+        const level = sourceIds.length === 0 ? 0 : Math.max(...sourceIds.map((sourceId) => levelOf(sourceId, new Set([...path, id]))) + 1);
+        levelCache.set(id, level);
+        return level;
+      };
+      const layers = new Map<number, WorkCanvasNode[]>();
+      canvas.nodes.forEach((node) => {
+        const level = Math.min(5, levelOf(node.id));
+        const layer = layers.get(level) ?? [];
+        layer.push(node);
+        layers.set(level, layer);
+      });
+      const layout = Array.from(layers.entries()).flatMap(([level, nodes]) =>
+        nodes.sort((a, b) => (a.session.project_name || "").localeCompare(b.session.project_name || "") || a.session.title.localeCompare(b.session.title)).map((node, index) => ({
+          id: node.id,
+          position_x: 88 + level * 360,
+          position_y: 108 + index * 318,
+        })),
+      );
+      const result = await saveWorkCanvasLayout(canvas.id, canvas.version, layout);
+      const positionById = new Map(layout.map((item) => [item.id, item]));
+      setCanvas((current) => current ? { ...current, version: result.version, nodes: current.nodes.map((node) => ({ ...node, ...(positionById.get(node.id) ?? {}) })) } : current);
+      navigateMiniMap(0, 0);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "整理节点失败");
+      setCanvas(await getWorkCanvas(canvas.id));
+    } finally {
+      setFormatting(false);
+    }
   };
   const startConnection = (event: React.PointerEvent<HTMLButtonElement>, node: WorkCanvasNode) => {
     event.preventDefault();
@@ -664,14 +762,28 @@ export function WorkCanvasPage() {
                     ))}
                   </select>
                 </div>
-                <p className="mt-5 px-1 text-[10px] font-semibold tracking-widest text-slate-400">会话节点 · {visibleNodes.length}</p>
-                <div className="workspace-scroll mt-2 max-h-[calc(100dvh-190px)] space-y-1 overflow-y-auto">
-                  {visibleNodes.map((node) => (
-                    <button key={node.id} onClick={() => setSelectedId(node.id)} onContextMenu={(event) => { event.preventDefault(); setSelectedId(node.id); setSessionContextMenu({ node, x: event.clientX, y: event.clientY }); }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${selectedId === node.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-50"}`}>
-                      <StatusDot stream={streamBySession[node.session_id]} />
-                      <span className="min-w-0 flex-1 truncate">{node.session.title}</span>
-                    </button>
+                <p className="mt-5 px-1 text-[10px] font-semibold tracking-widest text-slate-400">项目层级 · 会话关系</p>
+                <div className="workspace-scroll mt-2 max-h-[calc(100dvh-190px)] space-y-3 overflow-y-auto pr-1">
+                  {nodeTreeGroups.map((group) => (
+                    <section key={group.id} className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50/70">
+                      <div className="flex items-center gap-2 border-b border-slate-100 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
+                        <FolderGit2 size={13} className="text-blue-600" />
+                        <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                        <span className="text-[10px] font-medium text-slate-400">{group.nodes.length}</span>
+                      </div>
+                      <div className="p-1">
+                        {group.nodes.map(({ node, depth, inbound, outbound }) => (
+                          <button key={node.id} onClick={() => setSelectedId(node.id)} onContextMenu={(event) => { event.preventDefault(); setSelectedId(node.id); setSessionContextMenu({ node, x: event.clientX, y: event.clientY }); }} className={`flex w-full items-center gap-1.5 rounded-lg py-2 pr-2 text-left text-xs transition ${selectedId === node.id ? "bg-blue-50 text-blue-700" : "hover:bg-white hover:text-slate-900"}`} style={{ paddingLeft: `${8 + Math.min(depth, 4) * 13}px` }} title={`上游 ${inbound} · 下游 ${outbound}`}>
+                            <span className="w-3 shrink-0 text-center text-slate-300">{depth > 0 ? "↳" : "•"}</span>
+                            <StatusDot stream={streamBySession[node.session_id]} />
+                            <span className="min-w-0 flex-1 truncate">{node.session.title}</span>
+                            {(inbound > 0 || outbound > 0) && <span className="shrink-0 text-[10px] text-slate-400">{inbound > 0 ? `←${inbound}` : ""}{inbound > 0 && outbound > 0 ? " " : ""}{outbound > 0 ? `→${outbound}` : ""}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
                   ))}
+                  {nodeTreeGroups.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-400">没有匹配的会话节点</p>}
                 </div>
               </aside>
               <div role="separator" aria-label="调整会话栏宽度" onPointerDown={(event) => beginResize("left", event)} className="z-30 -mx-0.5 w-1 cursor-col-resize bg-transparent transition hover:bg-blue-400" />
@@ -692,6 +804,7 @@ export function WorkCanvasPage() {
           <section
             ref={canvasAreaRef}
             className="workspace-scroll relative min-w-0 flex-1 overflow-auto bg-slate-50"
+            onScroll={(event) => updateCanvasViewport(event.currentTarget)}
             style={{
               backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)",
               backgroundSize: "24px 24px",
@@ -706,6 +819,13 @@ export function WorkCanvasPage() {
             {!loading && !canvas && <Empty onCreate={openCreateDialog} />}{" "}
             {canvas && (
               <div className="relative h-[1400px] w-[2400px]">
+                <div className="sticky left-4 top-3 z-30 flex w-[min(640px,calc(100%-2rem))] items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white/95 p-1.5 shadow-[0_10px_28px_rgba(15,23,42,0.10)] backdrop-blur">
+                  <button type="button" onClick={() => setInteractionMode("drag")} aria-pressed={interactionMode === "drag"} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${interactionMode === "drag" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}><MousePointer2 size={14} />拖拽模式</button>
+                  <button type="button" onClick={() => setInteractionMode("connect")} aria-pressed={interactionMode === "connect"} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${interactionMode === "connect" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}><Route size={14} />连线模式</button>
+                  <span className="mx-0.5 h-5 border-l border-slate-200" />
+                  <button type="button" onClick={() => void formatCanvasNodes()} disabled={formatting} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-50"><WandSparkles size={14} className="text-violet-600" />{formatting ? "整理中…" : "整理排版"}</button>
+                  <button type="button" onClick={() => setMiniMapVisible((value) => !value)} aria-pressed={miniMapVisible} className={`ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${miniMapVisible ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-100"}`}><MapIcon size={14} />小地图</button>
+                </div>
                 <svg className="absolute inset-0 h-full w-full" aria-label="会话工作流关系">
                   <defs><marker id="delivery-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#64748b" /></marker></defs>
                   {canvas.edges.map((edge) => {
@@ -736,7 +856,7 @@ export function WorkCanvasPage() {
                     style={{
                       transform: `translate(${node.position_x}px, ${node.position_y}px)`,
                     }}
-                    className={`absolute left-0 top-0 w-72 cursor-grab select-none rounded-2xl border bg-white p-4 shadow-sm transition-shadow active:cursor-grabbing ${selectedId === node.id ? "border-blue-400 shadow-lg shadow-blue-100" : "border-slate-200 hover:shadow-md"}`}
+                    className={`absolute left-0 top-0 w-72 select-none rounded-2xl border bg-white p-4 shadow-sm transition-shadow ${interactionMode === "drag" ? "cursor-grab active:cursor-grabbing" : "cursor-default"} ${selectedId === node.id ? "border-blue-400 shadow-lg shadow-blue-100" : "border-slate-200 hover:shadow-md"}`}
                   >
                     <div className="flex items-center gap-2">
                       <StatusDot stream={stream} />
@@ -744,10 +864,7 @@ export function WorkCanvasPage() {
                       {stream?.status === "streaming" && <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); cancelStream(stream.id); }} className="ml-1 inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-100" title="结束运行"><Square size={9} fill="currentColor" />结束</button>}
                       <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] ${node.session.priority === "high" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500"}`}>{node.session.priority === "high" ? "高优先级" : "普通"}</span>
                     </div>
-                    <button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从左侧拖出连线" aria-label="从左侧拖出连线" />
-                    <button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从右侧拖出连线" aria-label="从右侧拖出连线" />
-                    <button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute left-1/2 -top-2 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从上侧拖出连线" aria-label="从上侧拖出连线" />
-                    <button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute bottom-[-0.5rem] left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从下侧拖出连线" aria-label="从下侧拖出连线" />
+                    {interactionMode === "connect" && <><button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从左侧拖出连线" aria-label="从左侧拖出连线" /><button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从右侧拖出连线" aria-label="从右侧拖出连线" /><button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute left-1/2 -top-2 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从上侧拖出连线" aria-label="从上侧拖出连线" /><button type="button" onPointerDown={(event) => startConnection(event, node)} onPointerMove={moveConnection} onPointerUp={endConnection} className="absolute bottom-[-0.5rem] left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-blue-500 bg-white shadow-sm transition hover:scale-125" title="从下侧拖出连线" aria-label="从下侧拖出连线" /></>}
                     <div className="mt-3 flex items-start gap-2"><h2 className="min-w-0 flex-1 line-clamp-2 text-sm font-semibold text-slate-900">{node.session.title}</h2><div className="flex shrink-0 gap-1"><button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setWorkflowNode(node); }} className="icon-button h-6 w-6" title="配置节点模型、职责与 Skill"><Pencil size={13} /></button><button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void executeWorkflow(node).catch((value) => setError(value instanceof Error ? value.message : "无法启动节点")); }} className="icon-button h-6 w-6 text-blue-600" title="执行此节点"><Play size={13} fill="currentColor" /></button></div></div>
                     <p className="mt-2 flex items-center gap-1 truncate text-xs text-slate-500">
                       <FolderGit2 size={12} />
@@ -769,6 +886,7 @@ export function WorkCanvasPage() {
                 })}
               </div>
             )}
+            {canvas && miniMapVisible && <CanvasMiniMap anchorRef={canvasAreaRef} nodes={canvas.nodes} edges={canvas.edges} viewport={canvasViewport} onNavigate={navigateMiniMap} />}
           </section>
           {selected && (
             <>
@@ -862,6 +980,49 @@ export function WorkCanvasPage() {
       {templatePickerOpen && <PromptTemplateCanvasPicker onClose={() => setTemplatePickerOpen(false)} onUsed={useTemplateFromCanvas} />}
       {taskDialogOpen && <TaskSessionDialog tasks={tasks} loading={tasksLoading} error={taskDialogError} projectFilter={taskProjectFilter} search={taskSearch} selectedTaskIds={selectedTaskIds} busy={creatingTaskSessions} onProjectFilter={setTaskProjectFilter} onSearch={setTaskSearch} onSelectionChange={setSelectedTaskIds} onPreview={setTaskPreview} onClose={() => { if (!creatingTaskSessions) { setTaskDialogOpen(false); setTaskPreview(null); } }} onSubmit={() => void createTaskSessions()} />}
       {taskPreview && <TaskDetailDialog task={taskPreview} onClose={() => setTaskPreview(null)} />}
+    </div>
+  );
+}
+
+function CanvasMiniMap({ anchorRef, nodes, edges, viewport, onNavigate }: { anchorRef: { current: HTMLElement | null }; nodes: WorkCanvasNode[]; edges: WorkCanvasSnapshot["edges"]; viewport: CanvasViewport; onNavigate: (x: number, y: number) => void }) {
+  const [position, setPosition] = useState({ left: 16, top: 16 });
+  useEffect(() => {
+    const updatePosition = () => {
+      const bounds = anchorRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      setPosition({ left: Math.max(12, bounds.right - 220), top: Math.max(12, bounds.bottom - 168) });
+    };
+    updatePosition();
+    const observer = typeof ResizeObserver === "undefined" || !anchorRef.current ? null : new ResizeObserver(updatePosition);
+    if (observer && anchorRef.current) observer.observe(anchorRef.current);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [anchorRef, viewport.height, viewport.width]);
+  const moveViewport = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    onNavigate(((event.clientX - bounds.left) / bounds.width) * CANVAS_WIDTH, ((event.clientY - bounds.top) / bounds.height) * CANVAS_HEIGHT);
+  };
+  return (
+    <div className="fixed z-40 w-52 overflow-hidden rounded-xl border border-slate-300/90 bg-white/95 p-2 shadow-[0_12px_28px_rgba(15,23,42,0.16)] backdrop-blur" style={position}>
+      <div className="mb-1.5 flex items-center gap-1.5 px-0.5 text-[10px] font-semibold tracking-wide text-slate-500"><MapIcon size={12} />画布小地图</div>
+      <button type="button" onClick={moveViewport} className="block w-full overflow-hidden rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label="点击跳转画布位置">
+        <svg viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} className="block aspect-[12/7] h-auto w-full">
+          <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#f8fafc" />
+          {edges.map((edge) => {
+            const source = nodes.find((node) => node.id === edge.source_node_id);
+            const target = nodes.find((node) => node.id === edge.target_node_id);
+            if (!source || !target) return null;
+            const { x1, y1, x2, y2 } = linkPoints(source, target);
+            return <line key={edge.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={edge.relation_type === "produces" ? "#60a5fa" : "#94a3b8"} strokeWidth="10" strokeDasharray="20 20" />;
+          })}
+          {nodes.map((node) => <rect key={node.id} x={node.position_x} y={node.position_y} width={NODE_WIDTH} height={NODE_HEIGHT} rx="34" fill={node.role ? "#dbeafe" : "#e2e8f0"} stroke="#60a5fa" strokeWidth="8" />)}
+          <rect x={viewport.left} y={viewport.top} width={Math.min(viewport.width, CANVAS_WIDTH)} height={Math.min(viewport.height, CANVAS_HEIGHT)} fill="rgba(37,99,235,0.08)" stroke="#2563eb" strokeWidth="10" />
+        </svg>
+      </button>
+      <p className="mt-1.5 px-0.5 text-[10px] text-slate-400">点击任意位置快速定位</p>
     </div>
   );
 }
