@@ -17,19 +17,30 @@ public interface IRunCoordinator
 {
     Task<RuntimeTurnResult> RunAsync(RuntimeTurnRequest request, RuntimeEventHandler? onEvent, CancellationToken cancellationToken);
     bool TryGetRun(string runId, out TurnRunSnapshot? snapshot);
+    bool Cancel(string runId, string userId);
 }
 
 public sealed class RunCoordinator : IRunCoordinator
 {
     private readonly IReadOnlyDictionary<RuntimeKind, IRuntimeEngine> _engines;
     private readonly ConcurrentDictionary<string, TurnRunSnapshot> _runs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string UserId, CancellationTokenSource Source)> _cancellations = new(StringComparer.Ordinal);
+    private readonly IAgentRunStore _store;
 
-    public RunCoordinator(IEnumerable<IRuntimeEngine> engines)
+    public RunCoordinator(IEnumerable<IRuntimeEngine> engines, IAgentRunStore store)
     {
         _engines = engines.ToDictionary(x => x.Kind);
+        _store = store;
     }
 
     public bool TryGetRun(string runId, out TurnRunSnapshot? snapshot) => _runs.TryGetValue(runId, out snapshot);
+
+    public bool Cancel(string runId, string userId)
+    {
+        if (!_cancellations.TryGetValue(runId, out var active) || active.UserId != userId) return false;
+        active.Source.Cancel();
+        return true;
+    }
 
     public async Task<RuntimeTurnResult> RunAsync(
         RuntimeTurnRequest request,
@@ -40,13 +51,19 @@ public sealed class RunCoordinator : IRunCoordinator
             throw new InvalidOperationException($"Runtime engine '{request.RuntimeKind}' is not registered.");
         if (!_runs.TryAdd(request.RunId, CreateSnapshot(request, engine)))
             throw new InvalidOperationException($"Run '{request.RunId}' already exists.");
+        _store.Create(request, engine);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (!_cancellations.TryAdd(request.RunId, (request.UserId, linkedCancellation)))
+            throw new InvalidOperationException($"Run '{request.RunId}' cancellation lease already exists.");
 
         long sequence = 0;
         async Task EmitStatus(TurnRunStatus status, string? error = null)
         {
             Transition(request.RunId, status, error);
-            if (onEvent is not null)
-                await onEvent(RuntimeEventProjector.New(request.RunId, Interlocked.Increment(ref sequence), RuntimeEventKind.RunStatusChanged, status: status), CancellationToken.None);
+            _store.UpdateStatus(request.RunId, status, error);
+            var statusEvent = RuntimeEventProjector.New(request.RunId, Interlocked.Increment(ref sequence), RuntimeEventKind.RunStatusChanged, status: status);
+            _store.Append(statusEvent);
+            if (onEvent is not null) await onEvent(statusEvent, CancellationToken.None);
         }
 
         try
@@ -55,14 +72,15 @@ public sealed class RunCoordinator : IRunCoordinator
             await EmitStatus(TurnRunStatus.Running);
             var result = await engine.ExecuteAsync(request, async (runtimeEvent, token) =>
             {
-                if (onEvent is null) return;
                 var normalized = runtimeEvent with { Sequence = Interlocked.Increment(ref sequence) };
-                await onEvent(normalized, token);
-            }, cancellationToken);
+                _store.Append(normalized);
+                if (onEvent is not null) await onEvent(normalized, token);
+            }, linkedCancellation.Token);
+            _store.Complete(request.RunId, result);
             await EmitStatus(TurnRunStatus.Completed);
             return result;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (linkedCancellation.IsCancellationRequested)
         {
             if (CanTransition(request.RunId, TurnRunStatus.Cancelled))
                 await RecordTerminalStatus(TurnRunStatus.Cancelled);
@@ -74,14 +92,21 @@ public sealed class RunCoordinator : IRunCoordinator
                 await RecordTerminalStatus(TurnRunStatus.Failed, exception.Message);
             throw;
         }
+        finally
+        {
+            _cancellations.TryRemove(request.RunId, out _);
+        }
 
         async Task RecordTerminalStatus(TurnRunStatus status, string? error = null)
         {
             Transition(request.RunId, status, error);
+            _store.UpdateStatus(request.RunId, status, error);
+            var statusEvent = RuntimeEventProjector.New(request.RunId, Interlocked.Increment(ref sequence), RuntimeEventKind.RunStatusChanged, status: status);
+            _store.Append(statusEvent);
             if (onEvent is null) return;
             try
             {
-                await onEvent(RuntimeEventProjector.New(request.RunId, Interlocked.Increment(ref sequence), RuntimeEventKind.RunStatusChanged, status: status), CancellationToken.None);
+                await onEvent(statusEvent, CancellationToken.None);
             }
             catch
             {

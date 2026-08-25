@@ -48,6 +48,7 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
     {
         return new AgentContext
         {
+            RuntimeUserId = request.UserId,
             SessionId = request.ThreadId,
             UserMessage = request.Input.Content,
             Mode = request.Input.Mode,

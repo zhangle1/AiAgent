@@ -24,9 +24,25 @@ considers the native feature flag. Those external agents therefore retain their
 existing services and protocols. With the flag disabled, ordinary chat also
 continues to call `IAgentLoop` directly.
 
+## Phase 1 persistence slice
+
+Implemented alongside Phase 0:
+
+- owner- and session-scoped `ai_agent_run` snapshots;
+- append-only `ai_agent_run_event` records with monotonic per-run sequence numbers;
+- session run list, run detail, and owner-checked cancellation APIs;
+- model, duration, token, tool-call, file-change, failure-code, runtime-version,
+  and protocol-version projection in the chat diagnostics UI;
+- redacted persistence: prompts, reasoning, attachment content, tool observations,
+  credentials, and real file paths are not written to the run ledger.
+
+Cancellation is intentionally process-local: an active run can be cancelled only
+by its owner on the service instance executing it. Completed history is read-only.
+The native runtime feature flag remains disabled by default until parity tests
+cover stream output, attachments, tool behavior, timeout, and cancellation.
+
 ## Next slice
 
-Persist `TurnRunSnapshot` and append-only runtime events, add run read/cancel
-APIs, then move model/tool iteration from `AgentLoop` into native runtime
-components. Do not enable the feature flag by default until parity tests cover
-stream output, attachments, tool behavior, timeout, and cancellation.
+Move model/tool iteration from `AgentLoop` into native runtime components and add
+cross-instance cancellation through a durable lease or queue before enabling the
+feature flag by default.

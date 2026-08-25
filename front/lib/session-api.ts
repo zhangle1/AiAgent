@@ -11,6 +11,9 @@ export type ChatSidebarPreference = { project_sort_mode: ProjectListSortMode };
 export type SessionSummary = { id: string; title: string; created_at: string; updated_at: string; message_count: number; last_message: string; project_id?: number | null; project_name?: string | null; sort_order: number; priority: SessionPriority; is_pinned: boolean; agent?: string | null; model_id?: string | null; model?: string | null };
 export type SessionDetail = SessionSummary & { messages: SessionMessage[]; preferences: Record<string, unknown> };
 export type ChatDebugTraceRecord = { trace_id: string; provider: string; transport: string; created_at: string; expires_at: string; events: ChatDebugTraceEvent[] };
+export type AgentRunSummary = { run_id: string; session_id: string; runtime_kind: string; runtime_version: string; protocol_version: string; status: string; model_id?: string | null; prompt_tokens: number; completion_tokens: number; total_tokens: number; tool_calls: number; file_changes: number; error_code?: string | null; created_at: string; updated_at: string; completed_at?: string | null };
+export type AgentRunEvent = { sequence: number; event_type: string; item_id?: string | null; created_at: string; status?: string | null; content_preview?: string | null; metadata: Record<string, unknown> };
+export type AgentRunDetail = { run: AgentRunSummary; events: AgentRunEvent[] };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -27,6 +30,9 @@ export async function listSessions(): Promise<SessionSummary[]> { return (await 
 export function createSession(payload: { project_id: number; title?: string }) { return request<SessionSummary>("/api/v1/sessions/create", { method: "POST", body: JSON.stringify(payload) }); }
 export function getSession(id: string) { return request<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(id)}`); }
 export async function getSessionDiagnostics(id: string) { return (await request<{ traces: ChatDebugTraceRecord[] }>(`/api/v1/sessions/${encodeURIComponent(id)}/diagnostics`)).traces; }
+export async function listAgentRuns(id: string) { return (await request<{ runs: AgentRunSummary[] }>(`/api/v1/agent-runs/session/${encodeURIComponent(id)}?limit=30`)).runs; }
+export function getAgentRun(id: string) { return request<AgentRunDetail>(`/api/v1/agent-runs/${encodeURIComponent(id)}`); }
+export function cancelAgentRun(id: string) { return request<{ accepted: boolean }>(`/api/v1/agent-runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }); }
 export function deleteSession(id: string) { return request<{ deleted: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }); }
 export function archiveSession(id: string) { return request<{ archived: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}/archive`, { method: "POST" }); }
 export function renameSession(id: string, title: string) { return request<{ ok: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ title }) }); }
