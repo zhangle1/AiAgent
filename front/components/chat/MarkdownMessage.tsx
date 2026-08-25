@@ -17,8 +17,8 @@ type CodeReferenceCandidate = {
   reference: string;
 };
 
-const sourceFilePattern = /(?:^|[\\/])?[^\\/\s]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?$/i;
-const fileReferenceInText = /(?:[a-z]:)?(?:[^\s`[\](),]+[\\/])*[^\s`[\](),]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?/gi;
+const sourceFilePattern = /(?:^|[\\/])?[^\\/\s]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?$/i;
+const fileReferenceInText = /(?:[a-z]:)?(?:[^\s`[\](),]+[\\/])*[^\s`[\](),]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?/gi;
 
 function domProps(props: Record<string, any>) {
   const { node, ...rest } = props;
