@@ -22,7 +22,6 @@ const mainItems: NavItem[] = [
   { href: "/chat", label: "聊天", icon: MessageSquare },
   { href: "/work-canvas", label: "工作画布", icon: LayoutDashboard },
   { href: "/tasks", label: "任务面板", icon: CheckSquare },
-  { href: "/deliveries", label: "代码交付", icon: GitBranch },
 ];
 
 const toolItems: NavItem[] = [
