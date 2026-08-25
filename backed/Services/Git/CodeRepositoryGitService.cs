@@ -18,6 +18,7 @@ public interface ICodeRepositoryGitService
     Task<GitOperationResult> DiscardChangesAndPullAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitOperationResult> PullAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitOperationResult> CommitAndPushAsync(string repositoryName, string? message, CancellationToken cancellationToken);
+    Task<GitDeliveryValidation> ValidateDeliveryAsync(string repositoryName, CancellationToken cancellationToken);
     Task<ProjectGitStatus> ProjectStatusAsync(long projectId, CancellationToken cancellationToken);
     Task<ProjectGitBatchOperationResult> ProjectDiscardChangesAndPullAsync(long projectId, IReadOnlyCollection<string>? repositoryNames, CancellationToken cancellationToken);
     Task<ProjectGitBatchOperationResult> ProjectCommitAndPushAsync(long projectId, IReadOnlyCollection<string>? repositoryNames, string? message, CancellationToken cancellationToken);
@@ -142,6 +143,12 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         if (result.Ok && repository.ProjectId.HasValue)
             await QueuePushNotificationAsync(repository, result, commitMessage, cancellationToken);
         return result;
+    }
+
+    public async Task<GitDeliveryValidation> ValidateDeliveryAsync(string repositoryName, CancellationToken cancellationToken)
+    {
+        var repository = Find(repositoryName);
+        return await _git.ValidateDeliveryAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
     }
 
     public async Task<ProjectGitStatus> ProjectStatusAsync(long projectId, CancellationToken cancellationToken)
