@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, Check, CheckSquare, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
+import { Archive, Check, CheckSquare, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, Feather, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Palette, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -20,6 +20,7 @@ type SessionMenuState = { session: SessionSummary; top: number; left: number };
 
 const mainItems: NavItem[] = [
   { href: "/chat", label: "聊天", icon: MessageSquare },
+  { href: "/prototype-studio", label: "原型设计", icon: Palette },
   { href: "/work-canvas", label: "工作画布", icon: LayoutDashboard },
   { href: "/tasks", label: "任务面板", icon: CheckSquare },
 ];

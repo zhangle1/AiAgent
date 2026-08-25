@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Children, isValidElement, useEffect, useId, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Check, Copy, Maximize2, X } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -197,7 +197,9 @@ function OpenCodeReference({ candidate, projectId, onOpenCodeFile, children, cla
   children: ReactNode;
   className: string;
 }) {
-  const open = async () => {
+  const open = async (event?: MouseEvent<HTMLElement>) => {
+    // Do not turn a drag selection into an accidental request to open the file.
+    if (event && !window.getSelection()?.isCollapsed) return;
     try {
       const resolved = await resolveProjectCodeFileReference(projectId, candidate.reference);
       onOpenCodeFile({
@@ -211,9 +213,14 @@ function OpenCodeReference({ candidate, projectId, onOpenCodeFile, children, cla
   };
 
   return (
-    <button type="button" onClick={() => void open()} className={className} title="Open in the right file panel">
+    <span role="button" tabIndex={0} onClick={(event) => void open(event)} onKeyDown={(event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        void open();
+      }
+    }} className={`${className} select-text`} title="Open in the right file panel">
       {children}
-    </button>
+    </span>
   );
 }
 
