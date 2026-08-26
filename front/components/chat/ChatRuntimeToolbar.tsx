@@ -28,13 +28,16 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   const [batchResult, setBatchResult] = useState<ProjectGitBatchOperationResult | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const refreshSequenceRef = useRef(0);
 
   useEffect(() => {
     if (!project) {
+      refreshSequenceRef.current += 1;
       setProjectGitStatus(null);
       setGitStatuses({});
       return;
     }
+    refreshSequenceRef.current += 1;
     setProjectGitStatus(null);
     setGitStatuses({});
     void refresh();
@@ -56,7 +59,9 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     const refreshGitAfterChat = (event: Event) => {
       const projectId = (event as CustomEvent<{ projectId?: number }>).detail?.projectId;
       if (!project || projectId !== project.id) return;
-      window.setTimeout(() => void refresh(), 300);
+      // Let the server-side agent release its last file handle before the
+      // forced fetch/status check after a completed conversation.
+      window.setTimeout(() => void refresh(), 500);
     };
     window.addEventListener("aiagent:chat-stream-complete", refreshGitAfterChat);
     return () => window.removeEventListener("aiagent:chat-stream-complete", refreshGitAfterChat);
@@ -66,18 +71,22 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
   async function refresh() {
     if (!project) return;
+    const projectId = project.id;
+    const sequence = ++refreshSequenceRef.current;
     setRefreshing(true);
     try {
-      const [runtimeState, gitState] = await Promise.all([getCodeProjectRuntime(project.id), getProjectGitStatus(project.id)]);
+      const [runtimeState, gitState] = await Promise.all([getCodeProjectRuntime(projectId), getProjectGitStatus(projectId)]);
+      if (sequence !== refreshSequenceRef.current || project?.id !== projectId) return;
       setRuntime(runtimeState);
       setProjectGitStatus(gitState);
       setGitStatuses(Object.fromEntries(gitState.repositories.flatMap((repository) => repository.status ? [[repository.repository_id, repository.status] as const] : [])));
       setError(null);
     } catch (ex) {
+      if (sequence !== refreshSequenceRef.current || project?.id !== projectId) return;
       setProjectGitStatus({ project_id: project.id, state: "attention", message: "Git 状态检查失败，请手动刷新重试。", repositories: [] });
       setError(ex instanceof Error ? ex.message : "无法读取运行状态。");
     } finally {
-      setRefreshing(false);
+      if (sequence === refreshSequenceRef.current) setRefreshing(false);
     }
   }
 
