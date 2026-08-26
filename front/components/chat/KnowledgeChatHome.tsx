@@ -2125,40 +2125,53 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const selectionCopyRef = useRef<HTMLDivElement | null>(null);
-  const [selectionCopy, setSelectionCopy] = useState<{ text: string; top: number; left: number } | null>(null);
+  const selectionMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ text: string; top: number; left: number } | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!selectionCopy) return;
+    if (!selectionMenu) return;
     const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && selectionCopyRef.current?.contains(event.target)) return;
-      setSelectionCopy(null);
+      if (event.target instanceof Node && selectionMenuRef.current?.contains(event.target)) return;
+      setSelectionMenu(null);
     };
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", dismiss);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
-  }, [selectionCopy]);
+  }, [selectionMenu]);
 
-  function showSelectionCopyMenu() {
+  function showSelectionCopyMenu(event: React.MouseEvent<HTMLDivElement>) {
+    // 会话消息区域使用自己的右键菜单，避免浏览器原生菜单打断拖选。
+    event.preventDefault();
     const selection = window.getSelection();
     const text = selection?.toString().trim() ?? "";
     if (!text || !selection?.rangeCount || !contentRef.current?.contains(selection.anchorNode)) {
-      setSelectionCopy(null);
+      selectionRangeRef.current = null;
+      setSelectionMenu(null);
       return;
     }
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
     if (!rect.width && !rect.height) return;
+    selectionRangeRef.current = range.cloneRange();
     setCopied(false);
-    setSelectionCopy({ text, top: Math.max(8, rect.top - 42), left: Math.min(window.innerWidth - 104, Math.max(8, rect.left + rect.width / 2 - 44)) });
+    setSelectionMenu({ text, top: Math.min(window.innerHeight - 48, Math.max(8, event.clientY)), left: Math.min(window.innerWidth - 176, Math.max(8, event.clientX)) });
   }
 
   async function copySelection() {
-    if (!selectionCopy) return;
-    await navigator.clipboard?.writeText(selectionCopy.text);
+    if (!selectionMenu) return;
+    await navigator.clipboard?.writeText(selectionMenu.text);
+    // 复制按钮不获取焦点，复制完成后仍显示原来的蓝色选区。
+    requestAnimationFrame(() => {
+      const range = selectionRangeRef.current;
+      const selection = window.getSelection();
+      if (!range || !selection || !contentRef.current?.contains(range.commonAncestorContainer)) return;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
     setCopied(true);
-    window.setTimeout(() => setSelectionCopy(null), 900);
+    window.setTimeout(() => setSelectionMenu(null), 900);
   }
 
   return (
@@ -2200,7 +2213,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
             )}
           </>
         ) : (
-          <div ref={contentRef} onMouseUp={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
+          <div ref={contentRef} onContextMenu={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
         )}
         {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
@@ -2253,7 +2266,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
           </div>
         )}
       </div>
-      {selectionCopy && <div ref={selectionCopyRef} style={{ top: selectionCopy.top, left: selectionCopy.left }} className="fixed z-[90] rounded-lg bg-slate-900 p-1 shadow-lg"><button type="button" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => void copySelection()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-white hover:bg-slate-700">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "已复制" : "复制"}</button></div>}
+      {selectionMenu && <div ref={selectionMenuRef} style={{ top: selectionMenu.top, left: selectionMenu.left }} className="fixed z-[90] rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-lg"><button type="button" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => void copySelection()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-white hover:bg-slate-700">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "已复制" : "复制所选内容"}</button></div>}
     </article>
   );
 }, (previous, next) => previous.message === next.message && previous.projectId === next.projectId && previous.showDebugTrace === next.showDebugTrace);
