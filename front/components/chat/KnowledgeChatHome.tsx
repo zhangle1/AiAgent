@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -244,7 +244,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [requestedMarkdownDocument, setRequestedMarkdownDocument] = useState<CodeProjectMarkdownDocument | null>(null);
   const [markdownDocumentsRefreshToken, setMarkdownDocumentsRefreshToken] = useState(0);
   const [fileReference, setFileReference] = useState<ChatCodeFileReference | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeComposerRef = useRef<HTMLDivElement | null>(null);
@@ -419,8 +420,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     return () => window.removeEventListener("aiagent:chat-stream-complete", refreshCompletedSession);
   }, [clearFinishedStreams]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  useLayoutEffect(() => {
+    if (!shouldStickToBottomRef.current) return;
+    const container = messagesScrollRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   }, [displayMessages, sending]);
 
   useEffect(() => {
@@ -706,6 +709,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     },
   ) {
     const attachmentsForTurn = options?.attachments ?? imageAttachments;
+    shouldStickToBottomRef.current = true;
     const documentAttachmentsForTurn = options?.documentAttachments ?? documentAttachments;
     const markdownDocumentsForTurn = options?.markdownDocuments ?? pendingMarkdownDocuments;
     const markdownReferences = mergeMarkdownDocumentReferences(extractMarkdownDocumentReferences(query), markdownDocumentsForTurn);
@@ -1031,7 +1035,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             {displayMessages.length === 0 ? (
               <EmptyState title={t("chat.heroTitle")} />
             ) : (
-              <div className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
+              <div ref={messagesScrollRef} onScroll={(event) => {
+                const container = event.currentTarget;
+                shouldStickToBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 96;
+              }} className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
                 {displayMessages.map((message, index) => (
                   <MessageBubble
                     key={message.id}
@@ -1065,7 +1072,6 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     {t("chat.thinking")}
                   </div>
                 )}
-                <div ref={bottomRef} />
               </div>
             )}
 
@@ -2114,7 +2120,7 @@ function copyPlainText(value: string) {
   return navigator.clipboard?.writeText(plainText);
 }
 
-function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
+const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
@@ -2250,7 +2256,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
       {selectionCopy && <div ref={selectionCopyRef} style={{ top: selectionCopy.top, left: selectionCopy.left }} className="fixed z-[90] rounded-lg bg-slate-900 p-1 shadow-lg"><button type="button" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => void copySelection()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-white hover:bg-slate-700">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "已复制" : "复制"}</button></div>}
     </article>
   );
-}
+}, (previous, next) => previous.message === next.message && previous.projectId === next.projectId && previous.showDebugTrace === next.showDebugTrace);
 
 function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
   const latestByStage = new Map<string, ChatDebugTraceEvent>();

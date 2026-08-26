@@ -33,6 +33,8 @@ function createStreamId() {
 export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const [streams, setStreams] = useState<Record<string, ChatStreamRecord>>({});
   const streamsRef = useRef(streams);
+  const pendingUpdatesRef = useRef(new Map<string, Array<(stream: ChatStreamRecord) => ChatStreamRecord>>());
+  const flushTimerRef = useRef<number | null>(null);
   const controllersRef = useRef(new Map<string, AbortController>());
   const codexProjectIdRef = useRef<number | null>(null);
   const codexModelIdRef = useRef<string | undefined>(undefined);
@@ -40,13 +42,30 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const codexSandboxModeRef = useRef<CodexSandboxMode>("full-access");
   useEffect(() => { streamsRef.current = streams; }, [streams]);
 
-  const update = useCallback((streamId: string, transform: (stream: ChatStreamRecord) => ChatStreamRecord) => {
-    const current = streamsRef.current[streamId];
-    if (!current) return;
-    const next = { ...streamsRef.current, [streamId]: transform(current) };
+  // WebSocket frames often arrive faster than the browser can comfortably render
+  // Markdown. Commit a short batch together so typing remains stable.
+  const flushUpdates = useCallback(() => {
+    flushTimerRef.current = null;
+    if (pendingUpdatesRef.current.size === 0) return;
+    const pending = pendingUpdatesRef.current;
+    pendingUpdatesRef.current = new Map();
+    let next = streamsRef.current;
+    for (const [streamId, transforms] of pending) {
+      const current = next[streamId];
+      if (!current) continue;
+      next = { ...next, [streamId]: transforms.reduce((stream, transform) => transform(stream), current) };
+    }
     streamsRef.current = next;
     setStreams(next);
   }, []);
+
+  const update = useCallback((streamId: string, transform: (stream: ChatStreamRecord) => ChatStreamRecord) => {
+    if (!streamsRef.current[streamId]) return;
+    const pending = pendingUpdatesRef.current.get(streamId) ?? [];
+    pending.push(transform);
+    pendingUpdatesRef.current.set(streamId, pending);
+    if (flushTimerRef.current === null) flushTimerRef.current = window.setTimeout(flushUpdates, 60);
+  }, [flushUpdates]);
 
   const startStream = useCallback((request: ChatCompleteRequest) => {
     const sessionId = request.session_id?.trim();
@@ -80,6 +99,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       }));
     }, controller.signal).then(() => {
       if (controller.signal.aborted) return;
+      flushUpdates();
       update(streamId, (current) => ({ ...current, status: current.status === "error" ? "error" : "done", unread: true }));
       const completed = streamsRef.current[streamId];
       const contentEvents = completed?.events ?? [];
@@ -89,6 +109,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent("aiagent:chat-stream-complete", { detail: { sessionId, streamId, projectId: request.code_project_id, content } }));
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     }).catch((error) => {
+      flushUpdates();
       const stopped = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
       const message = error instanceof Error ? error.message : "Chat stream failed.";
       update(streamId, (current) => ({
@@ -102,7 +123,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     }).finally(() => controllersRef.current.delete(streamId));
     return streamId;
-  }, [update]);
+  }, [flushUpdates, update]);
 
   const cancelStream = useCallback((streamId: string) => controllersRef.current.get(streamId)?.abort(), []);
   const markSessionViewed = useCallback((sessionId: string) => {
@@ -148,7 +169,10 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => () => controllersRef.current.forEach((controller) => controller.abort()), []);
+  useEffect(() => () => {
+    controllersRef.current.forEach((controller) => controller.abort());
+    if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
+  }, []);
   const value = useMemo(() => ({ streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
