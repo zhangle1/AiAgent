@@ -30,7 +30,13 @@ type SlashProjectCommand = {
   start: number;
   end: number;
   query: string;
-  kind: "projects" | "documents";
+  kind: "projects" | "documents" | "prototypes";
+};
+
+export type EmbeddedPrototypeFile = {
+  id: number;
+  name: string;
+  html: string;
 };
 
 type ChatMessage = {
@@ -185,7 +191,7 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
   return next;
 }
 
-export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embeddedCodexModelId, onEmbeddedCodexModelChange }: { embeddedSessionId?: string | null; embedded?: boolean; embeddedCodexModelId?: string | null; onEmbeddedCodexModelChange?: (modelId: string) => void } = {}) {
+export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embeddedProjectId, embeddedProjectLocked = false, embeddedMessagePrefix, embeddedPrototypeFiles = [], onEmbeddedPrototypeReferenceSelect, embeddedCodexModelId, onEmbeddedCodexModelChange }: { embeddedSessionId?: string | null; embedded?: boolean; embeddedProjectId?: number | null; embeddedProjectLocked?: boolean; embeddedMessagePrefix?: string; embeddedPrototypeFiles?: EmbeddedPrototypeFile[]; onEmbeddedPrototypeReferenceSelect?: (id: number) => void; embeddedCodexModelId?: string | null; onEmbeddedCodexModelChange?: (modelId: string) => void } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -197,7 +203,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [codeProjects, setCodeProjects] = useState<CodeProject[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [selectedKbNames, setSelectedKbNames] = useState<string[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(requestedProjectId);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(embeddedProjectId ?? requestedProjectId);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
   const [debugTraceEnabled, setDebugTraceEnabled] = useState(false);
   const [diagnosticDialogOpen, setDiagnosticDialogOpen] = useState(false);
@@ -250,13 +256,19 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const { streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
 
   useEffect(() => {
+    if (embedded && embeddedProjectId !== undefined) setSelectedProjectId(embeddedProjectId ?? null);
+  }, [embedded, embeddedProjectId]);
+
+  useEffect(() => {
     setDebugTraceEnabled(sessionStorage.getItem(chatDebugStorageKey(activeSessionId)) === "1");
   }, [activeSessionId]);
 
   const readyKnowledgeBases = useMemo(() => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"), [knowledgeBases]);
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
   const currentKnowledgeBase = readyKnowledgeBases.find((kb) => kb.name === selectedKbNames[0]);
-  const selectedProject = codeProjects.find((project) => project.id === selectedProjectId) ?? null;
+  // 嵌入式场景由宿主页面统一选择项目，发送时不能依赖异步状态同步。
+  const effectiveProjectId = embedded && embeddedProjectLocked ? embeddedProjectId ?? null : selectedProjectId;
+  const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
   const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
@@ -270,6 +282,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
   const sending = sessionStreams.some((stream) => stream.status === "streaming");
+  const prototypeReferenceOptions = useMemo(
+    () => embeddedPrototypeFiles.filter((file) => file.name.toLocaleLowerCase().includes((slashProjectCommand?.query ?? "").toLocaleLowerCase())),
+    [embeddedPrototypeFiles, slashProjectCommand?.query],
+  );
 
   useEffect(() => {
     if (!sending && wasSendingRef.current) setMarkdownDocumentsRefreshToken((current) => current + 1);
@@ -309,8 +325,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }, [agentProviders, selectedAgentId]);
 
   useEffect(() => {
-    if (selectedAgentId === "codex" && selectedProjectId) activateCodexRuntime(selectedProjectId, selectedCodexModelId || undefined, currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined, selectedCodexSandboxMode);
-  }, [activateCodexRuntime, currentCodexModel?.supports_reasoning_effort, selectedAgentId, selectedCodexModelId, selectedCodexReasoningEffort, selectedCodexSandboxMode, selectedProjectId]);
+    if (selectedAgentId === "codex" && effectiveProjectId) activateCodexRuntime(effectiveProjectId, selectedCodexModelId || undefined, currentCodexModel?.supports_reasoning_effort ? selectedCodexReasoningEffort || undefined : undefined, selectedCodexSandboxMode);
+  }, [activateCodexRuntime, currentCodexModel?.supports_reasoning_effort, effectiveProjectId, selectedAgentId, selectedCodexModelId, selectedCodexReasoningEffort, selectedCodexSandboxMode]);
 
   useEffect(() => {
     if (!requestedSessionId) setSelectedProjectId(requestedProjectId);
@@ -428,6 +444,14 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
+      if (slashProjectCommand.kind === "prototypes") {
+        setProjectReferenceOptions([]);
+        setProjectReferenceLoading(false);
+        setMarkdownDocumentOptions([]);
+        setMarkdownDocumentLoading(false);
+        setActiveProjectReferenceIndex(0);
+        return;
+      }
       if (slashProjectCommand.kind === "documents") {
         if (!selectedProjectId) {
           setMarkdownDocumentOptions([]);
@@ -508,7 +532,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function syncSlashProjectCommand(value: string, cursor: number) {
-    const command = findSlashProjectCommand(value, cursor);
+    const command = findSlashProjectCommand(value, cursor, embedded && embeddedPrototypeFiles.length > 0);
     setSlashProjectCommand(command);
     if (command) setActiveProjectReferenceIndex(0);
   }
@@ -554,7 +578,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       setSlashProjectCommand(null);
       return;
     }
-    const slashItems = slashProjectCommand.kind === "documents" ? markdownDocumentOptions : projectReferenceOptions;
+    const slashItems = slashProjectCommand.kind === "documents" ? markdownDocumentOptions : slashProjectCommand.kind === "prototypes" ? prototypeReferenceOptions : projectReferenceOptions;
     if (slashItems.length > 0 && event.key === "ArrowDown") {
       event.preventDefault();
       setActiveProjectReferenceIndex((index) => (index + 1) % slashItems.length);
@@ -570,6 +594,9 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       if (slashProjectCommand.kind === "documents") {
         const selected = markdownDocumentOptions[activeProjectReferenceIndex] ?? markdownDocumentOptions[0];
         if (selected) insertMarkdownDocumentReference(selected);
+      } else if (slashProjectCommand.kind === "prototypes") {
+        const selected = prototypeReferenceOptions[activeProjectReferenceIndex] ?? prototypeReferenceOptions[0];
+        if (selected) insertPrototypeReference(selected);
       } else {
         const selected = projectReferenceOptions[activeProjectReferenceIndex] ?? projectReferenceOptions[0];
         if (selected) insertProjectReference(selected);
@@ -583,7 +610,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function insertProjectReference(project: CodeProjectReference) {
-    const command = findSlashProjectCommand(input, composerCursor) ?? slashProjectCommand;
+    const command = findSlashProjectCommand(input, composerCursor, embedded && embeddedPrototypeFiles.length > 0) ?? slashProjectCommand;
     if (!command || command.kind !== "projects") return;
     const token = projectReferenceToken(project);
     const next = `${input.slice(0, command.start)}${token}${input.slice(command.end)}`;
@@ -611,13 +638,25 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function insertMarkdownDocumentReference(document: CodeProjectMarkdownDocument) {
-    const command = findSlashProjectCommand(input, composerCursor) ?? slashProjectCommand;
+    const command = findSlashProjectCommand(input, composerCursor, embedded && embeddedPrototypeFiles.length > 0) ?? slashProjectCommand;
     if (!command || command.kind !== "documents") return;
     const token = markdownDocumentReferenceToken(document);
     const next = `${input.slice(0, command.start)}${token}${input.slice(command.end)}`;
     const cursor = command.start + token.length;
     setInput(next);
     setPendingMarkdownDocuments((current) => addMarkdownDocumentReference(current, document));
+    setSlashProjectCommand(null);
+    focusComposerAt(cursor);
+  }
+
+  function insertPrototypeReference(file: EmbeddedPrototypeFile) {
+    const command = findSlashProjectCommand(input, composerCursor, embedded && embeddedPrototypeFiles.length > 0) ?? slashProjectCommand;
+    if (!command || command.kind !== "prototypes") return;
+    const token = prototypeReferenceToken(file);
+    const next = `${input.slice(0, command.start)}${token}${input.slice(command.end)}`;
+    const cursor = command.start + token.length;
+    setInput(next);
+    onEmbeddedPrototypeReferenceSelect?.(file.id);
     setSlashProjectCommand(null);
     focusComposerAt(cursor);
   }
@@ -677,7 +716,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       setError(`${selectedAgentProvider.name} 已检测到，但当前版本尚未适配聊天接管协议。`);
       return;
     }
-    if (selectedAgentId && !selectedProjectId) {
+    if (selectedAgentId && !effectiveProjectId) {
       setError("本地代理接管需要先选择项目，以便传递项目目录。");
       return;
     }
@@ -693,6 +732,12 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
     const messageText = query || (markdownReferences.length > 0 ? "请基于已选项目文档回答。" : projectReferenceIds.length > 0 ? "请结合已引用项目回答。" : documentAttachmentsForTurn.length > 0 ? "请分析我附上的文件。" : "请分析我附上的图片。");
 
+    const prototypeReferences = extractPrototypeReferenceIds(query);
+    const prototypeContext = embeddedPrototypeFiles
+      .filter((file) => prototypeReferences.includes(file.id))
+      .map((file) => `\n\n用户通过 / 选择了原型文件“${file.name}.html”。请仅修改这一个文件，并返回完整替换版本：\n${file.html}`)
+      .join("");
+    const outboundMessage = embeddedMessagePrefix ? `${embeddedMessagePrefix}${prototypeContext}\n\n用户需求：${messageText}` : `${messageText}${prototypeContext}`;
     const sessionId = activeSessionId ?? createClientId();
     if (!activeSessionId) {
       if (debugTraceEnabled) sessionStorage.setItem(chatDebugStorageKey(sessionId), "1");
@@ -763,11 +808,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     try {
       const streamId = startStream({
         session_id: sessionId,
-        message: messageText,
+        message: outboundMessage,
         knowledge_base_name: selectedKbNames[0],
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
-        code_project_id: selectedProjectId ?? undefined,
+        code_project_id: effectiveProjectId ?? undefined,
         project_references: projectReferenceIds.map((project_id) => ({
           project_id,
         })),
@@ -1076,7 +1121,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                   ))}
                 </div>
               )}
-              {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
+              {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
               <div className="flex items-center gap-1 lg:hidden">
                 <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}>
                   <Mic size={18} />
@@ -1103,11 +1148,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               </div>
               {composerExpanded && (
                 <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
-                  <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600">
+                  {!embeddedProjectLocked && <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600">
                     <Braces size={14} className="shrink-0 text-blue-600" />
                     <span className="min-w-0 flex-1 truncate">{selectedProject?.display_name || "选择项目"}</span>
                     <ChevronDown size={13} className="shrink-0" />
-                  </button>
+                  </button>}
                   <label className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-[12px] text-slate-600">
                     <Bot size={14} className="shrink-0 text-violet-600" />
                     <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="min-w-0 flex-1 truncate bg-transparent outline-none" aria-label="选择智能体">
@@ -1159,7 +1204,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     onToggleOpen={() => setOpenContextPicker((current) => (current === "knowledge" ? null : "knowledge"))}
                     onToggle={(name) => setSelectedKbNames((current) => toggleSelection(current, name))}
                   />
-                  <ContextMultiSelect
+                  {!embeddedProjectLocked && <ContextMultiSelect
                     icon={<Braces size={15} />}
                     label="项目"
                     items={codeProjects.map((project) => ({
@@ -1173,7 +1218,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     emptyText="暂无已配置项目"
                     onToggleOpen={() => setOpenContextPicker((current) => (current === "project" ? null : "project"))}
                     onToggle={(id) => setSelectedProjectId((current) => (current === Number(id) ? null : Number(id)))}
-                  />
+                  />}
                   <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium sm:inline-flex ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "text-slate-400"}`} title={selectedAgentProvider?.message || "选择本地编码代理"}>
                     <Bot size={15} />
                     <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value as "codex" | "deepseek-harness" | "codebuddy" | "")} className="max-w-[150px] truncate bg-transparent outline-none">
@@ -1298,13 +1343,27 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   );
 }
 
-function findSlashProjectCommand(value: string, cursor: number): SlashProjectCommand | null {
+function findSlashProjectCommand(value: string, cursor: number, preferPrototypes = false): SlashProjectCommand | null {
   const beforeCursor = value.slice(0, cursor);
   const match = /(^|\s)\/([^\s]*)(?:\s([^\n]*))?$/.exec(beforeCursor);
   if (!match) return null;
   const start = beforeCursor.length - match[0].length + match[1].length;
   const command = match[2].toLowerCase();
-  return command === "spec" ? { start, end: cursor, query: match[3]?.trim() ?? "", kind: "documents" } : { start, end: cursor, query: match[2], kind: "projects" };
+  if (command === "spec") return { start, end: cursor, query: match[3]?.trim() ?? "", kind: "documents" };
+  return { start, end: cursor, query: match[2], kind: preferPrototypes ? "prototypes" : "projects" };
+}
+
+function extractPrototypeReferenceIds(value: string): number[] {
+  const ids = new Set<number>();
+  for (const match of value.matchAll(/\[\[原型:[^\]|]+\|(\d+)\]\]/g)) {
+    const id = Number(match[1]);
+    if (Number.isSafeInteger(id) && id > 0) ids.add(id);
+  }
+  return [...ids];
+}
+
+function prototypeReferenceToken(file: Pick<EmbeddedPrototypeFile, "id" | "name">): string {
+  return `[[原型:${file.name}|${file.id}]]`;
 }
 
 function extractProjectReferenceIds(value: string): number[] {
@@ -1396,20 +1455,20 @@ function formatMarkdownDocumentUpdatedAt(document: CodeProjectMarkdownDocument):
 
 type InlineReferenceSegment = {
   token: string;
-  kind: "project" | "document";
+  kind: "project" | "document" | "prototype";
   label: string;
   documentReference?: string;
 };
 
 function inlineReferenceSegments(value: string): Array<string | InlineReferenceSegment> {
   const result: Array<string | InlineReferenceSegment> = [];
-  const expression = /\[\[(项目|文档):([^\]|]+)\|([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const expression = /\[\[(项目|文档|原型):([^\]|]+)\|([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   let cursor = 0;
   for (const match of value.matchAll(expression)) {
     if (match.index! > cursor) result.push(value.slice(cursor, match.index));
     result.push({
       token: match[0],
-      kind: match[1] === "项目" ? "project" : "document",
+      kind: match[1] === "项目" ? "project" : match[1] === "文档" ? "document" : "prototype",
       label: match[2],
       documentReference: match[1] === "文档" && match[4] ? `${match[3]}/${match[4]}` : undefined,
     });
@@ -1503,7 +1562,7 @@ function renderInlineComposerValue(element: HTMLElement, value: string) {
     chip.className = `inline-flex max-w-full items-center rounded-lg border border-blue-200 bg-blue-50 py-1 pl-2 text-[11px] text-blue-800 ${segment.documentReference ? "cursor-pointer hover:border-blue-300 hover:bg-blue-100" : ""}`;
     const label = document.createElement("span");
     label.className = "truncate font-medium";
-    label.textContent = `${segment.kind === "project" ? "项目" : "文档"}：${segment.label}`;
+    label.textContent = `${segment.kind === "project" ? "项目" : segment.kind === "document" ? "文档" : "原型"}：${segment.label}`;
     const remove = document.createElement("button");
     remove.type = "button";
     remove.dataset.inlineReferenceRemove = segment.token;
@@ -1673,7 +1732,7 @@ function InlineReferenceText({ value }: { value: string }) {
           segment
         ) : (
           <span key={`${segment.token}-${index}`} className="mx-0.5 inline-flex items-center rounded-md bg-white/15 px-1.5 py-0.5 text-[11px] text-white">
-            <span className="mr-1">{segment.kind === "project" ? <Braces size={12} /> : <FileText size={12} />}</span>
+            <span className="mr-1">{segment.kind === "project" ? <Braces size={12} /> : segment.kind === "document" ? <FileText size={12} /> : <FileCode2 size={12} />}</span>
             {segment.label}
           </span>
         ),
@@ -1683,7 +1742,34 @@ function InlineReferenceText({ value }: { value: string }) {
 }
 
 function humanizeInlineReferenceTokens(value: string): string {
-  return value.replace(/\[\[项目:([^\]|]+)\|[^\]]+\]\]/g, "【项目：$1】").replace(/\[\[文档:([^\]|]+)\|[^\]]+\]\]/g, "【文档：`$1`】");
+  return value.replace(/\[\[项目:([^\]|]+)\|[^\]]+\]\]/g, "【项目：$1】").replace(/\[\[文档:([^\]|]+)\|[^\]]+\]\]/g, "【文档：`$1`】").replace(/\[\[原型:([^\]|]+)\|[^\]]+\]\]/g, "【原型：`$1.html`】");
+}
+
+function PrototypeReferenceSlashMenu({ items, activeIndex, onActiveIndexChange, onSelect }: { items: EmbeddedPrototypeFile[]; activeIndex: number; onActiveIndexChange: (index: number) => void; onSelect: (file: EmbeddedPrototypeFile) => void }) {
+  return (
+    <div role="listbox" aria-label="引用原型文件" className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-2xl border border-violet-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)] lg:left-4 lg:right-auto lg:w-[380px]">
+      <div className="flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold text-slate-500">
+        <FileCode2 size={14} className="text-violet-600" />
+        <span>引用原型文件</span>
+        <span className="ml-auto font-normal">↑↓ 选择 · Enter 插入</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {items.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs leading-5 text-slate-500">没有匹配的 HTML 文件。</p>
+        ) : (
+          items.map((file, index) => {
+            const active = index === activeIndex;
+            return (
+              <button key={file.id} type="button" role="option" aria-selected={active} onMouseEnter={() => onActiveIndexChange(index)} onPointerDown={(event) => { event.preventDefault(); onSelect(file); }} className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${active ? "bg-violet-50 text-violet-950" : "hover:bg-slate-50"}`}>
+                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-violet-600 text-white" : "bg-violet-100 text-violet-600"}`}><FileCode2 size={15} /></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{file.name}.html</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">将完整内容交给 AI 修改</span></span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ProjectReferenceSlashMenu({ items, loading, showDocumentCategory, activeIndex, onActiveIndexChange, onOpenDocuments, onSelect }: { items: CodeProjectReference[]; loading: boolean; showDocumentCategory: boolean; activeIndex: number; onActiveIndexChange: (index: number) => void; onOpenDocuments: () => void; onSelect: (project: CodeProjectReference) => void }) {
@@ -2033,21 +2119,16 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
   const isUser = message.role === "user";
   const canCopy = Boolean(message.content.trim());
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const selectionRangeRef = useRef<Range | null>(null);
+  const selectionCopyRef = useRef<HTMLDivElement | null>(null);
   const [selectionCopy, setSelectionCopy] = useState<{ text: string; top: number; left: number } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useLayoutEffect(() => {
-    if (!selectionCopy || !selectionRangeRef.current || !contentRef.current) return;
-    const selection = window.getSelection();
-    if (!selection) return;
-    selection.removeAllRanges();
-    selection.addRange(selectionRangeRef.current);
-  }, [selectionCopy]);
-
   useEffect(() => {
     if (!selectionCopy) return;
-    const dismiss = () => setSelectionCopy(null);
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && selectionCopyRef.current?.contains(event.target)) return;
+      setSelectionCopy(null);
+    };
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", dismiss);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
@@ -2063,7 +2144,6 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
     if (!rect.width && !rect.height) return;
-    selectionRangeRef.current = range.cloneRange();
     setCopied(false);
     setSelectionCopy({ text, top: Math.max(8, rect.top - 42), left: Math.min(window.innerWidth - 104, Math.max(8, rect.left + rect.width / 2 - 44)) });
   }
@@ -2167,7 +2247,7 @@ function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdown
           </div>
         )}
       </div>
-      {selectionCopy && <div style={{ top: selectionCopy.top, left: selectionCopy.left }} className="fixed z-[90] rounded-lg bg-slate-900 p-1 shadow-lg"><button type="button" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => void copySelection()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-white hover:bg-slate-700">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "已复制" : "复制"}</button></div>}
+      {selectionCopy && <div ref={selectionCopyRef} style={{ top: selectionCopy.top, left: selectionCopy.left }} className="fixed z-[90] rounded-lg bg-slate-900 p-1 shadow-lg"><button type="button" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }} onClick={() => void copySelection()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-white hover:bg-slate-700">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "已复制" : "复制"}</button></div>}
     </article>
   );
 }

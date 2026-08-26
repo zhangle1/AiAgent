@@ -81,7 +81,12 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     }, controller.signal).then(() => {
       if (controller.signal.aborted) return;
       update(streamId, (current) => ({ ...current, status: current.status === "error" ? "error" : "done", unread: true }));
-      window.dispatchEvent(new CustomEvent("aiagent:chat-stream-complete", { detail: { sessionId, streamId, projectId: request.code_project_id } }));
+      const completed = streamsRef.current[streamId];
+      const contentEvents = completed?.events ?? [];
+      // "done" 携带服务端聚合后的完整回答；流式 content 仅用于界面实时展示，不能作为原型文件的主来源。
+      const content = [...contentEvents].reverse().find((event) => (event.type === "done" || event.type === "completed") && event.content?.trim())?.content
+        ?? contentEvents.filter((event) => event.type === "content").map((event) => event.content ?? "").join("");
+      window.dispatchEvent(new CustomEvent("aiagent:chat-stream-complete", { detail: { sessionId, streamId, projectId: request.code_project_id, content } }));
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     }).catch((error) => {
       const stopped = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
