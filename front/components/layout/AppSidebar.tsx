@@ -56,6 +56,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
   const projectMenuAnchorRef = useRef<HTMLElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const projectListMenuAnchorRef = useRef<HTMLElement | null>(null);
@@ -121,16 +122,17 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const groups = useMemo<SessionGroup[]>(() => {
+    const query = projectSearch.trim().toLocaleLowerCase();
     const preferences = new Map(projectPreferences.map((item) => [item.project_id, item]));
     const projectGroups = projects.map((project) => {
       const preference = preferences.get(project.id);
       const projectSessions = sortSessions(sessions.filter((session) => session.project_id === project.id), preference?.sort_mode ?? "updated");
       return { key: `project-${project.id}`, label: project.display_name, project, preference, sessions: projectSessions, lastActivityAt: latestSessionTime(projectSessions) };
-    }).filter((group) => group.sessions.length > 0 && !group.preference?.is_archived);
+    }).filter((group) => group.sessions.length > 0 && !group.preference?.is_archived && group.label.toLocaleLowerCase().includes(projectSearch.trim().toLocaleLowerCase()));
     projectGroups.sort((left, right) => compareProjectGroups(left, right, sidebarPreference.project_sort_mode));
     const unassigned = sessions.filter((session) => !session.project_id);
-    return unassigned.length ? [...projectGroups, { key: "unassigned", label: "未归属项目", sessions: sortSessions(unassigned, "updated") }] : projectGroups;
-  }, [projectPreferences, projects, sessions, sidebarPreference.project_sort_mode]);
+    return unassigned.length && (!query || "未归属项目".includes(query)) ? [...projectGroups, { key: "unassigned", label: "未归属项目", sessions: sortSessions(unassigned, "updated") }] : projectGroups;
+  }, [projectPreferences, projects, sessions, sidebarPreference.project_sort_mode, projectSearch]);
   const pinnedGroups = useMemo(() => groups.filter((group) => group.project && group.preference?.is_pinned), [groups]);
   const archivedProjects = useMemo(() => {
     const preferences = new Map(projectPreferences.map((item) => [item.project_id, item]));
@@ -248,9 +250,13 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     {!compact ? <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
       <div className="flex items-center justify-between px-2"><p className="text-[10px] font-semibold tracking-[.15em] text-slate-400">会话记录</p><button type="button" onClick={() => router.push(newChatPath())} className="grid h-6 w-6 place-items-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" aria-label="新建会话"><Plus size={15}/></button></div>
       <div className="workspace-scroll mt-2 min-h-0 space-y-3 overflow-y-auto pr-1">
+        <label className="relative mx-1 block">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="搜索项目" aria-label="搜索项目" className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
+        </label>
         {pinnedGroups.length > 0 && <PinnedProjectList groups={pinnedGroups} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} onUnpin={(group) => group.project && void toggleProjectPin(group.project, group.preference)}/>}
         <div><div className="flex items-center justify-between px-2 pb-1"><p className="text-[10px] font-semibold tracking-[.12em] text-slate-400">项目</p><button type="button" onClick={(event) => openProjectListMenu(event.currentTarget)} className={`grid h-6 w-6 place-items-center rounded-md transition ${projectListMenu ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"}`} aria-label="项目栏菜单" aria-expanded={Boolean(projectListMenu)} title="项目排序与归档"><Ellipsis size={14}/></button></div>{groups.map((group) => <SessionGroupList key={group.key} group={group} isCollapsed={Boolean(collapsedGroups[group.key])} activeSessionId={searchParams.get("session")} sessionActivity={sessionActivity} projectMenuOpen={projectMenu?.groupKey === group.key} sessionMenuId={sessionMenu?.session.id ?? null} onToggleCollapsed={() => setCollapsedGroups((items) => ({ ...items, [group.key]: !items[group.key] }))} onNewSession={(project) => router.push(newChatPath(project.id))} onOpenProjectMenu={(anchor) => openProjectMenu(group, anchor)} onOpenSessionMenu={openSessionMenu}/>)}</div>
-        {groups.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-slate-400">暂无历史会话</p>}
+         {groups.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-slate-400">{projectSearch.trim() ? "没有符合条件的项目" : "暂无历史会话"}</p>}
       </div>
     </section> : <div className="flex-1 border-t border-slate-200/80"/>}
 
