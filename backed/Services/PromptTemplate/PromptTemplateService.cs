@@ -13,6 +13,7 @@ public interface IPromptTemplateService
 {
     Task<List<PromptTemplateDto>> ListAsync(AuthenticatedUser user, string? stage, string? keyword, CancellationToken cancellationToken);
     Task<PromptTemplateDto?> GetAsync(AuthenticatedUser user, long id, CancellationToken cancellationToken);
+    Task<PublicPromptTemplateDto?> GetPublicPrototypeAsync(long id, CancellationToken cancellationToken);
     Task<(PromptTemplateDto? Template, string? Error)> CreateAsync(AuthenticatedUser user, PromptTemplateSaveRequest request, CancellationToken cancellationToken);
     Task<(PromptTemplateDto? Template, string? Error)> UpdateAsync(AuthenticatedUser user, long id, PromptTemplateSaveRequest request, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(AuthenticatedUser user, long id, CancellationToken cancellationToken);
@@ -58,6 +59,22 @@ public sealed class PromptTemplateService : IPromptTemplateService
         EnsureSeeded();
         var row = _db.Queryable<AiPromptTemplate>().First(item => item.Id == id && !item.IsDeleted);
         return Task.FromResult(row is not null && CanRead(user, row) ? MapRows(user, [row]).FirstOrDefault() : null);
+    }
+
+    public Task<PublicPromptTemplateDto?> GetPublicPrototypeAsync(long id, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var row = _db.Queryable<AiPromptTemplate>().First(item => item.Id == id && !item.IsDeleted);
+        if (row is null || row.Visibility != "team" || !DeserializeTags(row.TagsJson).Contains("prototype-html", StringComparer.OrdinalIgnoreCase))
+            return Task.FromResult<PublicPromptTemplateDto?>(null);
+
+        return Task.FromResult<PublicPromptTemplateDto?>(new PublicPromptTemplateDto
+        {
+            Id = row.Id,
+            Name = row.Name,
+            Body = row.Body,
+            UpdatedAt = row.UpdatedAt,
+        });
     }
 
     public Task<(PromptTemplateDto? Template, string? Error)> CreateAsync(AuthenticatedUser user, PromptTemplateSaveRequest request, CancellationToken cancellationToken)

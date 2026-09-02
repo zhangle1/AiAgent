@@ -12,18 +12,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isPublicPrototypePage = pathname === "/prototype-share";
   const isDashboardWorkspace = /^\/dashboard-applications\/[^/]+$/.test(pathname);
-  const [ready, setReady] = useState(isAuthPage);
+  const [ready, setReady] = useState(isAuthPage || isPublicPrototypePage);
   const [sidebarCompact, setSidebarCompact] = useState(false);
 
   useEffect(() => {
-    if (isAuthPage) { setReady(true); return; }
+    if (isAuthPage || isPublicPrototypePage) { setReady(true); return; }
     setReady(false);
     void getAuthStatus().then((status) => {
       if (!status.authenticated) router.replace(buildLoginRedirect(pathname));
       else setReady(true);
     }).catch(() => router.replace(buildLoginRedirect(pathname)));
-  }, [isAuthPage, pathname, router]);
+  }, [isAuthPage, isPublicPrototypePage, pathname, router]);
 
   useEffect(() => {
     const toggleSidebar = () => setSidebarCompact((current) => !current);
@@ -31,7 +32,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("aiagent:sidebar-toggle", toggleSidebar);
   }, []);
 
-  if (isAuthPage) return <>{children}</>;
+  if (isAuthPage || isPublicPrototypePage) return <>{children}</>;
   if (!ready) return <main className="flex min-h-screen items-center justify-center text-sm text-zinc-500">正在验证登录状态…</main>;
   if (isDashboardWorkspace) return <>{children}</>;
   const contentHeight = pathname === "/chat" ? "chat-viewport" : "min-h-screen";

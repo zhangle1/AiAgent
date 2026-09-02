@@ -122,6 +122,21 @@ public sealed class PromptTemplateDto
     public DateTime UpdatedAt { get; set; }
 }
 
+public sealed class PublicPromptTemplateDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("body")]
+    public string Body { get; set; } = string.Empty;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; }
+}
+
 public sealed class PromptTemplateUseResult
 {
     [JsonPropertyName("template")]
