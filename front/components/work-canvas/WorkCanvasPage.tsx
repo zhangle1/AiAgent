@@ -243,7 +243,7 @@ export function WorkCanvasPage() {
       if (depthCache.has(id)) return depthCache.get(id)!;
       if (path.has(id)) return 0;
       const parents = inbound.get(id) ?? [];
-      const depth = parents.length === 0 ? 0 : Math.min(4, Math.max(...parents.map((parent) => getDepth(parent, new Set([...path, id]))) + 1));
+      const depth = parents.length === 0 ? 0 : Math.min(4, Math.max(...parents.map((parent) => getDepth(parent, new Set([...path, id])))) + 1);
       depthCache.set(id, depth);
       return depth;
     };
@@ -610,7 +610,7 @@ export function WorkCanvasPage() {
         if (levelCache.has(id)) return levelCache.get(id)!;
         if (path.has(id)) return 0;
         const sourceIds = parents.get(id) ?? [];
-        const level = sourceIds.length === 0 ? 0 : Math.max(...sourceIds.map((sourceId) => levelOf(sourceId, new Set([...path, id]))) + 1);
+        const level = sourceIds.length === 0 ? 0 : Math.max(...sourceIds.map((sourceId) => levelOf(sourceId, new Set([...path, id])))) + 1;
         levelCache.set(id, level);
         return level;
       };

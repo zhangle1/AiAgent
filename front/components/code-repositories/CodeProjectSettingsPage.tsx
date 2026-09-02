@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowUpDown, Braces, Check, ChevronDown, ChevronUp, FileCog, FilePenLine, FolderGit2, FolderOpen, FolderPlus, GitBranch, Loader2, PackageOpen, Plus, RefreshCw, Search, ShieldCheck, Terminal, Trash2, X } from "lucide-react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
 import { browseCodeRepositoryDirectories, browseCodeRepositoryFiles, cloneCodeRepositoryViaWebSocket, createCodeProject, createCodeRepository, createCodeRepositoryDirectory, deleteCodeProject, deleteCodeRepository, getCodeProjects, getCodeRepositories, getCodeRepositoryHealth, inspectCodeRepository, packageCodeRepositoryViaWebSocket, readConfiguredCodeFile, updateCodeProject, updateCodeRepository, writeConfiguredCodeFile } from "@/lib/code-repository-api";
@@ -25,6 +26,8 @@ const emptyRuntime: RuntimeDraft = { role: "backend", entryPath: "", runScript: 
 const input = "mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
 export function CodeProjectSettingsPage() {
+  const searchParams = useSearchParams();
+  const requestedProjectId = Number(searchParams.get("projectId") || 0);
   const [projects, setProjects] = useState<CodeProject[]>([]);
   const [repositories, setRepositories] = useState<CodeRepository[]>([]);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(emptyProject);
@@ -49,6 +52,8 @@ export function CodeProjectSettingsPage() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [fileDraft, setFileDraft] = useState<FileDraft | null>(null);
   const [runtimeDraft, setRuntimeDraft] = useState<RuntimeDraft>(emptyRuntime);
+  const projectRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const initializedProjectId = useRef<number | null>(null);
 
   const selectedProject = useMemo(() => projects.find((item) => item.id === selectedProjectId) ?? null, [projects, selectedProjectId]);
   const selectedConfigs = repositoryDraft.configurationFiles;
@@ -56,6 +61,15 @@ export function CodeProjectSettingsPage() {
   const selectedRepositoryCanPackage = selectedRepository ? supportsManagedRuntime(selectedRepository) : false;
 
   useEffect(() => { void reload(); }, []);
+
+  useEffect(() => {
+    if (!requestedProjectId || initializedProjectId.current === requestedProjectId) return;
+    const project = projects.find((item) => item.id === requestedProjectId);
+    if (!project) return;
+    initializedProjectId.current = requestedProjectId;
+    chooseProject(project);
+    requestAnimationFrame(() => projectRefs.current[requestedProjectId]?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }, [projects, requestedProjectId]);
 
   async function reload() {
     setLoading(true);
@@ -267,7 +281,7 @@ export function CodeProjectSettingsPage() {
     <div className="grid gap-5 xl:grid-cols-[310px_minmax(0,1fr)]">
       <aside className="workspace-scroll max-h-[calc(100vh-190px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between px-1"><span className="text-xs font-semibold text-slate-700">项目资源</span><button onClick={() => void reload()} className="icon-button" aria-label="刷新"><RefreshCw size={14} className={loading ? "animate-spin" : ""}/></button></div>
-        {loading ? <div className="flex items-center gap-2 px-2 py-6 text-xs text-slate-400"><Loader2 size={14} className="animate-spin"/>正在读取项目…</div> : <div className="space-y-1">{projects.map((project) => <ProjectTree key={project.id} project={project} selectedProjectId={selectedProjectId} selectedRepository={selectedRepository} onProject={chooseProject} onRepository={chooseRepository} onCreateRepository={startRepository} onDeleteProject={removeProject} onDeleteRepository={removeRepository} />)}</div>}
+        {loading ? <div className="flex items-center gap-2 px-2 py-6 text-xs text-slate-400"><Loader2 size={14} className="animate-spin"/>正在读取项目…</div> : <div className="space-y-1">{projects.map((project) => <div key={project.id} ref={(element) => { projectRefs.current[project.id] = element; }}><ProjectTree project={project} selectedProjectId={selectedProjectId} selectedRepository={selectedRepository} onProject={chooseProject} onRepository={chooseRepository} onCreateRepository={startRepository} onDeleteProject={removeProject} onDeleteRepository={removeRepository} /></div>)}</div>}
         {!loading && projects.length === 0 && <p className="px-2 py-5 text-xs leading-5 text-slate-400">先登记一个项目文件夹，再在该文件夹内克隆或挂载代码库。</p>}
       </aside>
       <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

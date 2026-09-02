@@ -81,7 +81,7 @@ export function PrototypeStudio() {
       const payload = {
         name: current?.name ?? nameFromHtml(html),
         description: current?.description ?? "通过 AI 协作生成的 HTML 界面原型",
-        stage: "design",
+        stage: "design" as const,
         tags: [PROTOTYPE_TAG],
         body: encodePrototypeHtml(html),
         variables: [],

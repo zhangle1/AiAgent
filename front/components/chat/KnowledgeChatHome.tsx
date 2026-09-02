@@ -2132,7 +2132,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
 
   useEffect(() => {
     if (!selectionMenu) return;
-    const dismiss = (event: PointerEvent) => {
+    const dismiss = (event: Event) => {
       if (event.target instanceof Node && selectionMenuRef.current?.contains(event.target)) return;
       setSelectionMenu(null);
     };
