@@ -243,7 +243,7 @@ export function WorkCanvasPage() {
       if (depthCache.has(id)) return depthCache.get(id)!;
       if (path.has(id)) return 0;
       const parents = inbound.get(id) ?? [];
-      const depth = parents.length === 0 ? 0 : Math.min(4, Math.max(...parents.map((parent) => getDepth(parent, new Set([...path, id]))) + 1));
+      const depth = parents.length === 0 ? 0 : Math.min(4, Math.max(...parents.map((parent) => getDepth(parent, new Set([...path, id])))) + 1);
       depthCache.set(id, depth);
       return depth;
     };
@@ -610,7 +610,7 @@ export function WorkCanvasPage() {
         if (levelCache.has(id)) return levelCache.get(id)!;
         if (path.has(id)) return 0;
         const sourceIds = parents.get(id) ?? [];
-        const level = sourceIds.length === 0 ? 0 : Math.max(...sourceIds.map((sourceId) => levelOf(sourceId, new Set([...path, id]))) + 1);
+        const level = sourceIds.length === 0 ? 0 : Math.max(...sourceIds.map((sourceId) => levelOf(sourceId, new Set([...path, id])) + 1));
         levelCache.set(id, level);
         return level;
       };
@@ -851,8 +851,7 @@ export function WorkCanvasPage() {
                     onPointerDown={(e) => beginDrag(e, node)}
                     onPointerMove={moveDrag}
                     onPointerUp={() => void endDrag()}
-                    onDoubleClick={() => window.location.assign(`/chat?session=${encodeURIComponent(node.session_id)}`)}
-                    onClick={() => setSelectedId(node.id)}
+                    onDoubleClick={() => setSelectedId(node.id)}
                     style={{
                       transform: `translate(${node.position_x}px, ${node.position_y}px)`,
                     }}
@@ -917,9 +916,6 @@ export function WorkCanvasPage() {
                   >
                     {rightPinned ? <Lock size={15} /> : <Pin size={15} />}
                   </button>
-                  <a href={`/chat?session=${encodeURIComponent(selected.session_id)}`} className="icon-button" title="在聊天页打开">
-                    <ExternalLink size={15} />
-                  </a>
                   <button onClick={() => setSelectedId(null)} className="icon-button" title="关闭会话工作区">
                     <X size={16} />
                   </button>

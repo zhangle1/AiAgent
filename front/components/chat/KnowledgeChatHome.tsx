@@ -245,6 +245,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [markdownDocumentsRefreshToken, setMarkdownDocumentsRefreshToken] = useState(0);
   const [fileReference, setFileReference] = useState<ChatCodeFileReference | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollPositionsRef = useRef(new Map<string, number>());
   const shouldStickToBottomRef = useRef(true);
   const contextPickerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -362,6 +363,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
   useEffect(() => {
     let cancelled = false;
+    const previousSessionId = activeSessionIdRef.current;
+    const currentContainer = messagesScrollRef.current;
+    if (previousSessionId && previousSessionId !== requestedSessionId && currentContainer) {
+      scrollPositionsRef.current.set(previousSessionId, currentContainer.scrollTop);
+    }
     if (!requestedSessionId) {
       pendingSessionIdRef.current = null;
       setActiveSessionId(null);
@@ -382,6 +388,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       .then((session) => {
         if (cancelled) return;
         const draft = session.messages.length === 0 ? sessionDraft(session.preferences) : null;
+        shouldStickToBottomRef.current = !scrollPositionsRef.current.has(session.id);
         setActiveSessionId(session.id);
         setSelectedProjectId(session.project_id ?? null);
         setMessages(toHistoryMessages(session));
@@ -421,10 +428,16 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }, [clearFinishedStreams]);
 
   useLayoutEffect(() => {
-    if (!shouldStickToBottomRef.current) return;
     const container = messagesScrollRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
-  }, [displayMessages, sending]);
+    if (!container || !activeSessionId) return;
+    const savedScrollTop = scrollPositionsRef.current.get(activeSessionId);
+    if (savedScrollTop !== undefined) {
+      container.scrollTop = Math.min(savedScrollTop, Math.max(0, container.scrollHeight - container.clientHeight));
+      shouldStickToBottomRef.current = false;
+      return;
+    }
+    if (shouldStickToBottomRef.current) container.scrollTop = container.scrollHeight;
+  }, [activeSessionId, displayMessages, sending]);
 
   useEffect(() => {
     if (!openContextPicker) return;
@@ -1037,6 +1050,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             ) : (
               <div ref={messagesScrollRef} onScroll={(event) => {
                 const container = event.currentTarget;
+                if (activeSessionIdRef.current) scrollPositionsRef.current.set(activeSessionIdRef.current, container.scrollTop);
                 shouldStickToBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 96;
               }} className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
                 {displayMessages.map((message, index) => (
@@ -2132,7 +2146,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
 
   useEffect(() => {
     if (!selectionMenu) return;
-    const dismiss = (event: PointerEvent) => {
+    const dismiss = (event: Event) => {
       if (event.target instanceof Node && selectionMenuRef.current?.contains(event.target)) return;
       setSelectionMenu(null);
     };
