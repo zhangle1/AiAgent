@@ -6,7 +6,7 @@ import { KnowledgeChatHome, type EmbeddedPrototypeFile } from "@/components/chat
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { createPromptTemplate, deletePromptTemplate, listPromptTemplates, updatePromptTemplate } from "@/lib/prompt-template-api";
-import type { PromptTemplate } from "@/lib/prompt-template-types";
+import type { PromptTemplate, PromptTemplateSaveRequest } from "@/lib/prompt-template-types";
 import { decodePrototypeHtml, encodePrototypeHtml, extractPrototypeHtml, securePrototypePreview } from "@/lib/prototype-preview";
 import { ChevronLeft, ChevronRight, Code2, Download, ExternalLink, FileCode2, FolderOpen, GripVertical, Loader2, Maximize2, Minimize2, Monitor, Pencil, Plus, RefreshCw, Search, Share2, Smartphone, Tablet, Trash2, X } from "lucide-react";
 
@@ -78,7 +78,7 @@ export function PrototypeStudio() {
       if (!html) return;
       setSaving(true);
       const current = active;
-      const payload = {
+      const payload: PromptTemplateSaveRequest = {
         name: current?.name ?? nameFromHtml(html),
         description: current?.description ?? "通过 AI 协作生成的 HTML 界面原型",
         stage: "design",
