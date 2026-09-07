@@ -1,6 +1,6 @@
 # 自有 Agent Loop 完全重构规划
 
-> 状态：实施中（Phase B 基础设施已落地；原生模型/工具调用尚未切流）
+> 状态：实施中（Phase B 基础设施与 Phase C 原生模型/工具调用灰度路径已落地；默认仍走旧循环，尚未生产切流）
 > 编制日期：2026-09-07  
 > 目标仓库：AiAgent 后端（`.NET 9`）  
 > 参考项目：`APS 张乐 AI` 中的 Codex Runtime 实现  
@@ -15,6 +15,25 @@
 - `NativeAgentRuntime` 在旧循环的每轮迭代前后写出 `TurnStarted`、`StepStarted`、`StepCompleted` 事件；Run 账本只持久化脱敏元数据，不记录 prompt、附件正文或工具原始输出。
 - 新增 `RuntimeExecutionCheckpoint` 和 `RunStateMachine`，后者已允许 `WaitingApproval` / `WaitingInput` 回到 `Running`，但 durable resume 尚未宣称完成。
 - 旧 `FINISH / TOOL / THINK` 协议仍是生产执行内核；下一阶段才引入 provider-neutral 原生 tool calling，不能把本记录误解为已完成全量重构。
+
+### 2026-09-07：Phase C 原生工具调用灰度入口
+
+- `ILlmChatClient` 新增 OpenAI-compatible `tools` 请求和流式 `tool_calls` 增量读取；assistant tool call 与后续 `role=tool` result 按 `CallId` 配对回传。
+- 新增 `NativeTurnRunner`，原生路径以结构化模型响应决定“继续调用工具”或“完成回答”，不再解析 `FINISH / TOOL / THINK`。
+- 工具输出进入下一次采样前会截断，调用 ID 必须唯一；取消仍沿用 `CancellationToken`，并写出 `TurnCancelled`。
+- V2 对用户输入、项目/文档/记忆引用分别设定上下文上限；历史超过窗口时只移除最早、完整的 assistant-tool/tool-result 配对，并写出 `ContextCompacted`，不会留下无对应调用的 tool message。
+- 发送到 OpenAI-compatible provider 前再做一次非破坏性消息规范化：只保留完整的 assistant `tool_calls` 和按 `CallId` 配对的 `role=tool` 结果，孤立/不完整的工具消息不会污染下一步模型请求。
+- 原生循环的 token 账本按每一次 provider 请求累计上下文和工具 schema，并把 function arguments 计入估算 completion；每个工具轮结束即写出 `UsageUpdated`，不再只显示首轮上下文造成的低估。
+- 最终回答的引用按知识库文档/chunk 或代码仓库文件/行号等稳定来源定位去重；每个工具事件仍保留原始引用，既避免用户侧重复展示，也不丢失审计链路。
+- 除 provider `CallId` 防重外，原生循环还按工具名与排序后的参数构造语义调用键；模型即使换一个 `CallId` 重复相同调用，也只会收到结构化的“已执行”结果，不会再次触发领域工具。
+- 短暂的 HTTP/超时故障会让已声明的只读检索/索引工具使用新超时窗口重试一次；看板、文件、校验与未知工具不重试，避免把有副作用的动作重复执行。
+- V2 的 `NativeToolRouter` 从同一份 `NativeToolPlan` 同时生成模型可见 schema 和执行允许列表；本阶段仍以 adapter 调用旧领域工具，未知或不在可见快照中的工具会返回结构化失败，不会触发旧分发器。
+- V2 复用已有 `ai_chat_message` 会话记录作为 owner 校验后的模型历史：不读取 thought、附件路径和 metadata，排除本轮刚写入的用户消息，并从最新记录开始按窗口收缩。
+- V2 会读取模型目录中的 `context_window`；先预留输出、工具 schema 与协议开销，再动态分配用户输入、引用、历史和工具循环窗口。模型未声明窗口时采用保守的 16K token 默认值。
+- 多 tool call 时，纯 RAG/页范围/代码索引读取可并发；任何看板、文件、校验及未知工具保持串行。并行事件序号使用原子递增，仍能稳定回放。
+- 每个 V2 工具调用有独立、可配置的超时（默认 90 秒）；超时被转换为该 CallId 的失败结果，外层用户取消不会被误判为普通工具失败。
+- 同一 Turn 内的 `CallId` 只允许开始一次；跨 Step 重复的调用 ID 会在执行前被拒绝，避免重试时重复副作用。
+- V2 必须显式同时打开 `AgentRuntime:NativeEnabled` 与 `AgentRuntime:NativeV2Enabled`；示例配置默认关闭，避免未确认 OpenAI-compatible 工具协议的供应商直接切流。
 
 ## 1. 结论
 

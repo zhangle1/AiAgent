@@ -29,6 +29,7 @@ public enum RuntimeEventKind
     TurnStarted,
     StepStarted,
     StepCompleted,
+    ProviderRequestStarted,
     ItemStarted,
     ItemDelta,
     ItemCompleted,
@@ -36,6 +37,7 @@ public enum RuntimeEventKind
     ToolCallCompleted,
     ApprovalRequested,
     UsageUpdated,
+    ContextCompacted,
     TurnCompleted,
     TurnFailed,
     TurnCancelled

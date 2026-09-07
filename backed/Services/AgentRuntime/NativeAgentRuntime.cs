@@ -10,16 +10,29 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
 {
     private readonly IAgentLoop _legacyLoop;
     private readonly IToolDispatcher _toolDispatcher;
+    private readonly INativeTurnRunner _nativeTurnRunner;
+    private readonly bool _nativeV2Enabled;
 
+    /// <summary>Compatibility constructor for isolated tests and legacy hosts that do not register V2 services.</summary>
     public NativeAgentRuntime(IAgentLoop legacyLoop, IToolDispatcher toolDispatcher)
     {
         _legacyLoop = legacyLoop;
         _toolDispatcher = toolDispatcher;
+        _nativeTurnRunner = new DisabledNativeTurnRunner();
+        _nativeV2Enabled = false;
+    }
+
+    public NativeAgentRuntime(IAgentLoop legacyLoop, IToolDispatcher toolDispatcher, INativeTurnRunner nativeTurnRunner, IConfiguration configuration)
+    {
+        _legacyLoop = legacyLoop;
+        _toolDispatcher = toolDispatcher;
+        _nativeTurnRunner = nativeTurnRunner;
+        _nativeV2Enabled = configuration.GetValue("AgentRuntime:NativeV2Enabled", false);
     }
 
     public RuntimeKind Kind => RuntimeKind.Native;
-    public string RuntimeVersion => "native-bridge/2";
-    public string ProtocolVersion => "aiagent-runtime/2";
+    public string RuntimeVersion => _nativeV2Enabled ? "native-v2/1" : "native-bridge/2";
+    public string ProtocolVersion => _nativeV2Enabled ? "aiagent-runtime/2" : "aiagent-runtime/2-bridge";
 
     public async Task<RuntimeTurnResult> ExecuteAsync(
         RuntimeTurnRequest request,
@@ -27,6 +40,8 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
         CancellationToken cancellationToken)
     {
         var context = ToAgentContext(request);
+        if (_nativeV2Enabled)
+            return await _nativeTurnRunner.RunAsync(request, context, onEvent, cancellationToken);
         var turn = RuntimeTurnContext.Create(request);
         var checkpoint = new RuntimeExecutionCheckpoint { RunId = turn.RunId, TurnId = turn.TurnId };
         var toolDefinitions = _toolDispatcher.GetDefinitions(context);
@@ -113,8 +128,10 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
     {
         if (metadata.TryGetValue("tool_call_ids", out var callIds) && callIds is IEnumerable<string> values)
             return values.Count();
-        if (metadata.TryGetValue("tools", out var tools) && tools is IEnumerable<string> names)
-            return names.Count();
+        if (metadata.TryGetValue("tool_names", out var toolNames) && toolNames is IEnumerable<string> namedTools)
+            return namedTools.Count();
+        if (metadata.TryGetValue("tools", out var tools) && tools is IEnumerable<string> legacyToolNames)
+            return legacyToolNames.Count();
         return ReadPositiveInt(metadata, "tool_calls", 1);
     }
 
@@ -148,5 +165,11 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
             }).ToList(),
             Metadata = new Dictionary<string, object?>(request.Metadata)
         };
+    }
+
+    private sealed class DisabledNativeTurnRunner : INativeTurnRunner
+    {
+        public Task<RuntimeTurnResult> RunAsync(RuntimeTurnRequest request, AgentContext context, RuntimeEventHandler? onEvent, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Native V2 is not registered in this host.");
     }
 }

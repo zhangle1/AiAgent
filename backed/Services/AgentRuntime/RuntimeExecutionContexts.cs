@@ -120,6 +120,8 @@ public enum RuntimeExecutionPhase
 /// </summary>
 public sealed class RuntimeExecutionCheckpoint
 {
+    private readonly HashSet<string> _startedToolCallIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _startedToolInvocationKeys = new(StringComparer.Ordinal);
     public string RunId { get; init; } = string.Empty;
     public string TurnId { get; init; } = string.Empty;
     public RuntimeExecutionPhase Phase { get; private set; } = RuntimeExecutionPhase.Running;
@@ -150,6 +152,23 @@ public sealed class RuntimeExecutionCheckpoint
         TotalToolCalls += count;
         Phase = RuntimeExecutionPhase.ExecutingTool;
     }
+
+    /// <summary>Registers the single execution allowed for a provider call id within this turn.</summary>
+    public bool TryBeginToolCall(string callId)
+    {
+        if (string.IsNullOrWhiteSpace(callId) || !_startedToolCallIds.Add(callId)) return false;
+        TotalToolCalls++;
+        Phase = RuntimeExecutionPhase.ExecutingTool;
+        return true;
+    }
+
+    /// <summary>
+    /// Claims a semantic tool invocation once per turn. Provider call ids may
+    /// change across retries, so id de-duplication alone cannot stop a model
+    /// from repeatedly issuing the exact same read or write request.
+    /// </summary>
+    public bool TryBeginToolInvocation(string invocationKey) =>
+        !string.IsNullOrWhiteSpace(invocationKey) && _startedToolInvocationKeys.Add(invocationKey);
 
     public void Complete() => Phase = RuntimeExecutionPhase.Completed;
     public void Fail() => Phase = RuntimeExecutionPhase.Failed;

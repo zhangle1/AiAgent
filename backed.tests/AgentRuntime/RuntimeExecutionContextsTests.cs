@@ -64,6 +64,26 @@ public sealed class RuntimeExecutionContextsTests
         Assert.False(RunStateMachine.CanTransition(TurnRunStatus.Completed, TurnRunStatus.Running));
     }
 
+    [Fact]
+    public void ExecutionCheckpoint_AllowsEachToolCallIdOnlyOnce()
+    {
+        var checkpoint = new RuntimeExecutionCheckpoint { RunId = "run-1", TurnId = "turn-1" };
+
+        Assert.True(checkpoint.TryBeginToolCall("call-1"));
+        Assert.False(checkpoint.TryBeginToolCall("call-1"));
+        Assert.Equal(1, checkpoint.TotalToolCalls);
+    }
+
+    [Fact]
+    public void ExecutionCheckpoint_AllowsEachSemanticToolInvocationOnlyOnce()
+    {
+        var checkpoint = new RuntimeExecutionCheckpoint { RunId = "run-1", TurnId = "turn-1" };
+
+        Assert.True(checkpoint.TryBeginToolInvocation("rag_search|query=\"current stock\""));
+        Assert.False(checkpoint.TryBeginToolInvocation("rag_search|query=\"current stock\""));
+        Assert.True(checkpoint.TryBeginToolInvocation("rag_search|query=\"another question\""));
+    }
+
     private static RuntimeTurnRequest CreateRequest() => new(
         "run-1",
         "user-1",

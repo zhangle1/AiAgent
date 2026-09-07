@@ -25,6 +25,7 @@ public static class RuntimeEventProjector
         {
             RuntimeEventKind.ToolCallStarted => "tool",
             RuntimeEventKind.ToolCallCompleted => "tool_result",
+            RuntimeEventKind.ProviderRequestStarted => "provider_request_started",
             RuntimeEventKind.TurnCompleted => "done",
             RuntimeEventKind.TurnFailed => "error",
             RuntimeEventKind.ItemDelta => "content",
