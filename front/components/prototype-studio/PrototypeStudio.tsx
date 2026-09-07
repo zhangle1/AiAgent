@@ -6,14 +6,14 @@ import { KnowledgeChatHome, type EmbeddedPrototypeFile } from "@/components/chat
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { createPromptTemplate, deletePromptTemplate, listPromptTemplates, updatePromptTemplate } from "@/lib/prompt-template-api";
-import type { PromptTemplate } from "@/lib/prompt-template-types";
+import type { PromptTemplate, PromptTemplateSaveRequest } from "@/lib/prompt-template-types";
+import { decodePrototypeHtml, encodePrototypeHtml, extractPrototypeHtml, securePrototypePreview } from "@/lib/prototype-preview";
 import { ChevronLeft, ChevronRight, Code2, Download, ExternalLink, FileCode2, FolderOpen, GripVertical, Loader2, Maximize2, Minimize2, Monitor, Pencil, Plus, RefreshCw, Search, Share2, Smartphone, Tablet, Trash2, X } from "lucide-react";
 
 type Viewport = "desktop" | "tablet" | "mobile";
 type StreamCompleteDetail = { projectId?: number; content?: string };
 
 const PROTOTYPE_TAG = "prototype-html";
-const PROTOTYPE_BODY_PREFIX = "prototype-html:v1:";
 const PROTOTYPE_ORDER_KEY = "aiagent:prototype-file-order";
 
 export function PrototypeStudio() {
@@ -74,11 +74,11 @@ export function PrototypeStudio() {
     const receivePrototype = (event: Event) => {
       const detail = (event as CustomEvent<StreamCompleteDetail>).detail;
       if (project && detail?.projectId && detail.projectId !== project.id) return;
-      const html = extractHtml(detail?.content ?? "");
+      const html = extractPrototypeHtml(detail?.content ?? "");
       if (!html) return;
       setSaving(true);
       const current = active;
-      const payload = {
+      const payload: PromptTemplateSaveRequest = {
         name: current?.name ?? nameFromHtml(html),
         description: current?.description ?? "通过 AI 协作生成的 HTML 界面原型",
         stage: "design" as const,
@@ -104,8 +104,8 @@ export function PrototypeStudio() {
     const context = active && activeHtml ? `当前正在编辑原型“${active.name}”。以下是当前 HTML，请按用户要求修改后返回完整替换版本：\n${activeHtml}` : "当前没有已选原型，请根据用户需求新建一个界面。";
     return `你是 HTML 原型设计助手。${context}\n如果用户用 / 引用了其他原型文件，则以被引用文件为唯一修改对象，忽略上述默认编辑文件。请只返回一个完整、可独立预览的 HTML 文档，必须用 \`\`\`html 代码块包裹；不要写入代码库、不要调用文件工具、不要输出额外说明。`;
   }, [active, activeHtml]);
-  const preview = useMemo(() => active ? securePreview(activeHtml || incompletePrototypeDocument()) : "", [active, activeHtml]);
-  const shareUrl = typeof window === "undefined" || !active ? "" : `${window.location.origin}/prototype-studio?prototype=${active.id}${project ? `&project=${project.id}` : ""}`;
+  const preview = useMemo(() => active ? securePrototypePreview(activeHtml || incompletePrototypeDocument()) : "", [active, activeHtml]);
+  const shareUrl = typeof window === "undefined" || !active ? "" : `${window.location.origin}/prototype-share?prototype=${active.id}`;
 
   function persistAssetOrder(next: PromptTemplate[]) {
     if (typeof window !== "undefined") window.localStorage.setItem(PROTOTYPE_ORDER_KEY, JSON.stringify(next.map((item) => item.id)));
@@ -204,7 +204,7 @@ export function PrototypeStudio() {
         </>}
       </aside>}
       {!previewFullscreen && leftOpen && <div onPointerDown={(event) => startResize("left", event)} className="hidden w-1 shrink-0 cursor-col-resize bg-slate-100 hover:bg-violet-300 lg:block" aria-label="调整文件夹宽度" />}
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col"><div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3"><div className="flex rounded-lg bg-slate-100 p-0.5"><button type="button" onClick={() => setShowSource(false)} className={`rounded-md px-3 py-1.5 text-[11px] ${!showSource ? "bg-white shadow-sm" : "text-slate-500"}`}>预览</button><button type="button" disabled={!active} onClick={() => setShowSource(true)} className={`rounded-md px-3 py-1.5 text-[11px] ${showSource ? "bg-white shadow-sm" : "text-slate-500"}`}>HTML 源码</button></div><span className="min-w-0 flex-1 truncate text-center font-mono text-[10px] text-slate-400">{active ? `${active.name}.html` : "描述一个功能，生成第一份界面原型"}</span><div className="flex gap-1">{([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([value, Icon]) => <button key={value} type="button" onClick={() => setViewport(value)} className={`grid h-7 w-7 place-items-center rounded ${viewport === value ? "bg-violet-100 text-violet-700" : "text-slate-400"}`}><Icon size={13} /></button>)}<button type="button" onClick={() => void togglePreviewFullscreen()} title={previewFullscreen ? "退出全屏预览" : "全屏预览"} className="grid h-7 w-7 place-items-center rounded text-slate-400 hover:bg-violet-100 hover:text-violet-700">{previewFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button></div></div><div className="workspace-scroll min-h-0 flex-1 overflow-auto p-5">{!active ? <div className="grid h-full place-items-center"><div className="max-w-sm text-center"><FolderOpen className="mx-auto text-violet-400" size={42} /><h2 className="mt-4 text-base font-semibold">描述你想要的界面</h2><p className="mt-2 text-xs leading-5 text-slate-500">例如“做一个客户订单看板”。右侧聊天返回 HTML 后，它会自动保存到左侧文件夹。</p></div></div> : showSource ? <pre className="mx-auto min-h-full max-w-5xl overflow-auto rounded-xl bg-slate-950 p-5 text-xs leading-5 text-slate-100"><code>{activeHtml}</code></pre> : <div className={`mx-auto h-full min-h-[560px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ${viewport === "mobile" ? "w-[390px]" : viewport === "tablet" ? "w-[768px]" : "w-full"}`}><iframe title={active.name} sandbox="" srcDoc={preview} className="h-full w-full border-0" /></div>}</div></section>
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col"><div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3"><div className="flex rounded-lg bg-slate-100 p-0.5"><button type="button" onClick={() => setShowSource(false)} className={`rounded-md px-3 py-1.5 text-[11px] ${!showSource ? "bg-white shadow-sm" : "text-slate-500"}`}>预览</button><button type="button" disabled={!active} onClick={() => setShowSource(true)} className={`rounded-md px-3 py-1.5 text-[11px] ${showSource ? "bg-white shadow-sm" : "text-slate-500"}`}>HTML 源码</button></div><span className="min-w-0 flex-1 truncate text-center font-mono text-[10px] text-slate-400">{active ? `${active.name}.html` : "描述一个功能，生成第一份界面原型"}</span><div className="flex gap-1">{([["desktop", Monitor], ["tablet", Tablet], ["mobile", Smartphone]] as const).map(([value, Icon]) => <button key={value} type="button" onClick={() => setViewport(value)} className={`grid h-7 w-7 place-items-center rounded ${viewport === value ? "bg-violet-100 text-violet-700" : "text-slate-400"}`}><Icon size={13} /></button>)}<button type="button" onClick={() => void togglePreviewFullscreen()} title={previewFullscreen ? "退出全屏预览" : "全屏预览"} className="grid h-7 w-7 place-items-center rounded text-slate-400 hover:bg-violet-100 hover:text-violet-700">{previewFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button></div></div><div className="workspace-scroll min-h-0 flex-1 overflow-auto p-5">{!active ? <div className="grid h-full place-items-center"><div className="max-w-sm text-center"><FolderOpen className="mx-auto text-violet-400" size={42} /><h2 className="mt-4 text-base font-semibold">描述你想要的界面</h2><p className="mt-2 text-xs leading-5 text-slate-500">例如“做一个客户订单看板”。右侧聊天返回 HTML 后，它会自动保存到左侧文件夹。</p></div></div> : showSource ? <pre className="mx-auto min-h-full max-w-5xl overflow-auto rounded-xl bg-slate-950 p-5 text-xs leading-5 text-slate-100"><code>{activeHtml}</code></pre> : <div className={`mx-auto h-full min-h-[560px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ${viewport === "mobile" ? "w-[390px]" : viewport === "tablet" ? "w-[768px]" : "w-full"}`}><iframe title={active.name} sandbox="allow-scripts" srcDoc={preview} className="h-full w-full border-0" /></div>}</div></section>
       {!previewFullscreen && rightOpen && <div onPointerDown={(event) => startResize("right", event)} className="hidden w-1 shrink-0 cursor-col-resize bg-slate-100 hover:bg-violet-300 lg:block" aria-label="调整聊天宽度" />}
       {!previewFullscreen && <aside style={{ width: rightOpen ? rightWidth : 42 }} className="flex min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white transition-[width] duration-150">{!rightOpen ? <button type="button" onClick={() => setRightOpen(true)} title="展开原型协作聊天" className="grid h-12 w-full place-items-center border-b border-slate-100 text-violet-600 hover:bg-violet-50"><ChevronLeft size={17} /></button> : <><div className="flex h-10 items-center gap-2 border-b border-slate-100 px-3"><Code2 size={14} className="text-violet-600" /><b className="min-w-0 flex-1 truncate text-xs">原型协作聊天</b><span className="truncate text-[10px] text-slate-400">{saving ? "正在保存 HTML…" : active ? `编辑：${active.name}` : "将创建新界面"}</span><button type="button" onClick={() => setRightOpen(false)} title="收起原型协作聊天" className="grid h-7 w-7 place-items-center rounded text-slate-400 hover:bg-violet-50 hover:text-violet-600"><ChevronRight size={15} /></button></div><div className="min-h-0 flex-1 overflow-hidden"><KnowledgeChatHome key={projectId || "standalone"} embedded embeddedProjectId={project ? project.id : null} embeddedProjectLocked embeddedMessagePrefix={assistantInstruction} embeddedPrototypeFiles={embeddedPrototypeFiles} onEmbeddedPrototypeReferenceSelect={(id) => { setActiveId(id); setShowSource(false); }} /></div></>}</aside>}
     </div>
@@ -214,14 +214,43 @@ export function PrototypeStudio() {
   </div>;
 }
 
-function ShareDialog({ url, asset, onClose, onShared }: { url: string; asset: PromptTemplate; onClose: () => void; onShared: (asset: PromptTemplate) => void }) { const [copied, setCopied] = useState(false); const share = async () => { const next = await updatePromptTemplate(asset.id, { name: asset.name, description: asset.description, stage: "design", tags: asset.tags, body: asset.body, variables: asset.variables, project_id: asset.project_id, visibility: "team" }); onShared(next); await navigator.clipboard.writeText(url); setCopied(true); }; const download = () => { const anchor = document.createElement("a"); const objectUrl = URL.createObjectURL(new Blob([decodePrototypeHtml(asset.body)], { type: "text/html;charset=utf-8" })); anchor.href = objectUrl; anchor.download = `${asset.name}.html`; anchor.click(); URL.revokeObjectURL(objectUrl); }; return <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" onClick={onClose}><section onClick={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><div className="flex"><h2 className="font-semibold">分享 HTML 原型</h2><button type="button" onClick={onClose} className="ml-auto"><X size={17} /></button></div><p className="mt-2 text-xs leading-5 text-slate-500">分享后团队成员可通过链接打开此原型的当前版本。</p><div className="mt-4 flex rounded-lg bg-slate-100 p-2"><input readOnly value={url} className="min-w-0 flex-1 bg-transparent text-xs" /><button type="button" onClick={() => void share()} className="rounded bg-white px-3 py-1.5 text-xs">{copied ? "已复制" : "复制链接"}</button></div><div className="mt-4 flex justify-end"><button type="button" onClick={download} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs"><ExternalLink size={13} />下载 HTML</button></div></section></div>; }
+function ShareDialog({ url, asset, onClose, onShared }: { url: string; asset: PromptTemplate; onClose: () => void; onShared: (asset: PromptTemplate) => void }) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const copyLink = async () => {
+    setBusy(true);
+    setError("");
+    const copyAttempt = copyText(url);
+    try {
+      const next = asset.visibility === "team" ? asset : await updatePromptTemplate(asset.id, { name: asset.name, description: asset.description, stage: "design", tags: asset.tags, body: asset.body, variables: asset.variables, project_id: asset.project_id, visibility: "team" });
+      onShared(next);
+      if (!await copyAttempt) throw new Error("浏览器未允许自动复制，请选中上方链接后手动复制。");
+      setCopied(true);
+    } catch (value) {
+      setError(messageOf(value, "分享链接复制失败。"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const download = () => {
+    const anchor = document.createElement("a");
+    const objectUrl = URL.createObjectURL(new Blob([decodePrototypeHtml(asset.body)], { type: "text/html;charset=utf-8" }));
+    anchor.href = objectUrl;
+    anchor.download = `${asset.name}.html`;
+    anchor.click();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" onClick={onClose}><section onClick={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><div className="flex"><h2 className="font-semibold">分享 HTML 原型</h2><button type="button" onClick={onClose} className="ml-auto"><X size={17} /></button></div><p className="mt-2 text-xs leading-5 text-slate-500">获得链接的人可直接打开当前原型，无需登录；之后继续编辑会自动更新分享版本。</p><div className="mt-4 flex rounded-lg bg-slate-100 p-2"><input readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="min-w-0 flex-1 bg-transparent text-xs outline-none" /><button type="button" disabled={busy} onClick={() => void copyLink()} className="ml-2 shrink-0 rounded bg-white px-3 py-1.5 text-xs disabled:opacity-50">{busy ? "处理中…" : copied ? "已复制" : "复制链接"}</button></div>{error && <p className="mt-2 text-xs text-rose-600">{error}</p>}<div className="mt-4 flex justify-end"><button type="button" onClick={download} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs"><ExternalLink size={13} />下载 HTML</button></div></section></div>;
+}
 function RenameDialog({ value, onChange, onClose, onSave }: { value: string; onChange: (value: string) => void; onClose: () => void; onSave: () => void }) { return <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" onClick={onClose}><form onSubmit={(event) => { event.preventDefault(); onSave(); }} onClick={(event) => event.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"><h2 className="text-sm font-semibold">重命名 HTML 原型</h2><input autoFocus value={value} onChange={(event) => onChange(event.target.value)} onFocus={(event) => event.currentTarget.select()} className="mt-4 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400" /><p className="mt-2 text-[11px] text-slate-400">扩展名 .html 会自动保留。</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-xs">取消</button><button type="submit" disabled={!value.trim()} className="rounded-lg bg-violet-600 px-3 py-2 text-xs text-white disabled:opacity-40">保存</button></div></form></div>; }
 function Empty({ text, loading = false }: { text: string; loading?: boolean }) { return <div className="grid h-40 place-items-center px-5 text-center text-xs leading-5 text-slate-400">{loading ? <Loader2 size={16} className="animate-spin" /> : text}</div>; }
-function extractHtml(content: string) { let html = content.trim().replace(/^`{3,}[^\r\n]*\r?\n?/, "").replace(/\r?\n?`{3,}\s*$/, "").replace(/^\s*>\s?/gm, "").trim(); const start = html.search(/<!doctype\s+html|<html\b/i); return start >= 0 && /<html\b/i.test(html) ? html.slice(start).trim() : ""; }
-function encodePrototypeHtml(html: string) { const bytes = new TextEncoder().encode(html); let binary = ""; bytes.forEach((byte) => { binary += String.fromCharCode(byte); }); return `${PROTOTYPE_BODY_PREFIX}${btoa(binary)}`; }
-function decodePrototypeHtml(body: string) { if (!body.startsWith(PROTOTYPE_BODY_PREFIX)) return extractHtml(body); try { const binary = atob(body.slice(PROTOTYPE_BODY_PREFIX.length)); const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0)); return new TextDecoder().decode(bytes); } catch { return ""; } }
 function nameFromHtml(html: string) { const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1].replace(/<[^>]+>/g, "").trim(); return (title || "新界面原型").slice(0, 120); }
-function securePreview(content: string) { const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:;">`; const staticContent = content.replace(/<base\b[^>]*>/gi, "").replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "").replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/<a\b([^>]*)>/gi, (_match, attributes: string) => `<a${attributes.replace(/\shref\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, ' href="#"')}>`); return staticContent.replace(/<head(\s[^>]*)?>/i, (match) => `${match}${policy}`); }
 function readPrototypeOrder(): number[] { try { const value = JSON.parse(window.localStorage.getItem(PROTOTYPE_ORDER_KEY) ?? "[]"); return Array.isArray(value) ? value.filter((item): item is number => typeof item === "number") : []; } catch { return []; } }
 function incompletePrototypeDocument() { return "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>原型需要重新生成</title><style>body{margin:0;display:grid;min-height:100vh;place-items:center;background:#f8fafc;color:#0f172a;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.card{max-width:420px;padding:36px;border:1px solid #e2e8f0;border-radius:18px;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.08);text-align:center}h1{margin:0;font-size:20px}p{margin:14px 0 0;color:#64748b;font-size:14px;line-height:1.7}</style></head><body><main class=\"card\"><h1>这份原型需要重新生成</h1><p>右侧描述一次界面需求，生成完成后会自动替换为可预览的 HTML。</p></main></body></html>"; }
 function messageOf(value: unknown, fallback: string) { return value instanceof Error ? value.message : fallback; }
+function copyText(value: string) { if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value).then(() => true).catch(() => copyTextFallback(value)); return Promise.resolve(copyTextFallback(value)); }
+function copyTextFallback(value: string) { const textarea = document.createElement("textarea"); textarea.value = value; textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none"; document.body.appendChild(textarea); textarea.select(); const copied = document.execCommand("copy"); textarea.remove(); return copied; }

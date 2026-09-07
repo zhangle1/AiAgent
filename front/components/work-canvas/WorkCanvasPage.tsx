@@ -851,8 +851,7 @@ export function WorkCanvasPage() {
                     onPointerDown={(e) => beginDrag(e, node)}
                     onPointerMove={moveDrag}
                     onPointerUp={() => void endDrag()}
-                    onDoubleClick={() => window.location.assign(`/chat?session=${encodeURIComponent(node.session_id)}`)}
-                    onClick={() => setSelectedId(node.id)}
+                    onDoubleClick={() => setSelectedId(node.id)}
                     style={{
                       transform: `translate(${node.position_x}px, ${node.position_y}px)`,
                     }}
@@ -917,9 +916,6 @@ export function WorkCanvasPage() {
                   >
                     {rightPinned ? <Lock size={15} /> : <Pin size={15} />}
                   </button>
-                  <a href={`/chat?session=${encodeURIComponent(selected.session_id)}`} className="icon-button" title="在聊天页打开">
-                    <ExternalLink size={15} />
-                  </a>
                   <button onClick={() => setSelectedId(null)} className="icon-button" title="关闭会话工作区">
                     <X size={16} />
                   </button>

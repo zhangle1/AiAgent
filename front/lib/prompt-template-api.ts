@@ -1,6 +1,13 @@
 import type { PromptTemplate, PromptTemplateSaveRequest, PromptTemplateUseResult } from "@/lib/prompt-template-types";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 
+export type PublicPrototypeTemplate = {
+  id: number;
+  name: string;
+  body: string;
+  updated_at: string;
+};
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   if (response.status === 401 && typeof window !== "undefined") {
@@ -47,4 +54,16 @@ export function setPromptTemplateFavorited(id: number, enabled: boolean) {
 
 export function usePromptTemplate(id: number, payload: { project_id?: number | null; variables: Record<string, string> }) {
   return request<PromptTemplateUseResult>(`/api/v1/prompt-templates/${id}/use`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function getPublicPrototypeTemplate(id: number): Promise<PublicPrototypeTemplate> {
+  const response = await fetch(`/api/v1/prompt-templates/${id}/public`, { cache: "no-store" });
+  const raw = await response.text();
+  let payload: { message?: unknown } = {};
+  try { payload = raw ? JSON.parse(raw) as { message?: unknown } : {}; }
+  catch { /* The public endpoint can return a proxy error page. */ }
+  if (!response.ok) {
+    throw new Error(typeof payload.message === "string" ? payload.message : `原型加载失败（HTTP ${response.status}）。`);
+  }
+  return payload as PublicPrototypeTemplate;
 }

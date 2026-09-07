@@ -9,6 +9,7 @@ import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeF
 import type { CodeProject, CodeProjectMarkdownDirectory, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeLog } from "@/lib/code-runtime-types";
 import { getChatFileExtraction, getChatUploadText, getMyChatUploads, myChatUploadContentUrl, type ChatFileAttachment, type ChatFileExtractionPreview, type ChatUploadFile } from "@/lib/chat-api";
+import { MermaidDiagram, mermaidSourceFromPre } from "@/components/chat/MermaidDiagram";
 
 export type ChatCodeFileReference = {
   repositoryName: string;
@@ -509,7 +510,7 @@ function ProjectDocumentsTab({ documents, directories, loadingDocuments, selecte
           thead: ({ className, ...props }) => <thead className={`bg-slate-100 text-slate-800 ${className ?? ""}`} {...props}/>,
           th: ({ className, ...props }) => <th className={`border border-slate-200 px-3 py-2 font-semibold ${className ?? ""}`} {...props}/>,
           td: ({ className, ...props }) => <td className={`border border-slate-200 px-3 py-2 align-top ${className ?? ""}`} {...props}/>,
-          pre: ({ className, ...props }) => <pre className={`my-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-[12px] leading-6 text-slate-100 shadow-sm ${className ?? ""}`} {...props}/>,
+          pre: ({ className, children, ...props }) => { const chart = mermaidSourceFromPre(children); return chart ? <MermaidDiagram chart={chart}/> : <pre className={`my-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-[12px] leading-6 text-slate-100 shadow-sm ${className ?? ""}`} {...props}>{children}</pre>; },
           code: ({ className, ...props }) => <code className={`${className ? "font-mono" : "rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-rose-700"} ${className ?? ""}`} {...props}/>,
           img: ({ className, alt, ...props }) => <img className={`my-4 max-w-full rounded-lg border border-slate-200 shadow-sm ${className ?? ""}`} alt={alt ?? "文档图片"} {...props}/>,
         }}>{content.content}</ReactMarkdown></article>{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>

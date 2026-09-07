@@ -28,6 +28,13 @@ public sealed class PromptTemplateAppService : IDynamicApiController
         return template is null ? new NotFoundObjectResult(new { message = "模板不存在或你没有访问权限。" }) : new OkObjectResult(template);
     }
 
+    [HttpGet("{id:long}/public")]
+    public async Task<IActionResult> GetPublicPrototype(long id, CancellationToken cancellationToken)
+    {
+        var template = await _templates.GetPublicPrototypeAsync(id, cancellationToken);
+        return template is null ? new NotFoundObjectResult(new { message = "分享链接无效、已撤销或原型不存在。" }) : new OkObjectResult(template);
+    }
+
     [HttpPost("")]
     public async Task<IActionResult> Create([FromBody] PromptTemplateSaveRequest request, CancellationToken cancellationToken)
     {
