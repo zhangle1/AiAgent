@@ -49,6 +49,9 @@ public sealed class CodexModelOptionDto
     [JsonPropertyName("supports_reasoning_effort")]
     public bool SupportsReasoningEffort { get; set; } = true;
 
+    [JsonPropertyName("reasoning_efforts")]
+    public List<string> ReasoningEfforts { get; set; } = [];
+
     [JsonPropertyName("is_builtin")]
     public bool IsBuiltin { get; set; }
 

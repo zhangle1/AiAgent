@@ -15,7 +15,8 @@ public sealed record CodexModelDefinition(
     string? ProfileName,
     bool SupportsReasoningEffort,
     bool IsBuiltin,
-    bool SupportsImageOcr = false);
+    bool SupportsImageOcr = false,
+    IReadOnlyList<string>? AllowedReasoningEfforts = null);
 
 public sealed record CodexResolvedModel(CodexModelDefinition Definition, string? ReasoningEffort)
 {
@@ -38,10 +39,13 @@ public interface ICodexModelPolicyService
 public sealed class CodexModelPolicyService : ICodexModelPolicyService
 {
     private const string SettingKey = "codex_model_policy";
+    private const int BuiltinModelsVersion = 2;
     private static readonly Regex ProfileNamePattern = new("^[A-Za-z0-9_-]{1,64}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly IReadOnlyList<string> SupportedReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh"];
+    private static readonly IReadOnlyList<string> SupportedReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh", "max"];
+    private static readonly IReadOnlyList<string> AstraReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<CodexModelDefinition> BuiltinModels =
     [
+        new("gpt-6-astra", "GPT-6 Astra", "适合高难度端到端编码、推理与复杂工作流。", "gpt-6-astra", null, true, true, true, AstraReasoningEfforts),
         new("gpt-5.6-sol", "GPT-5.6 Sol", "适合复杂、开放式的编码与分析任务。", "gpt-5.6-sol", null, true, true),
         new("gpt-5.6-terra", "GPT-5.6 Terra", "适合日常开发任务，兼顾速度与质量。", "gpt-5.6-terra", null, true, true),
         new("gpt-5.6-luna", "GPT-5.6 Luna", "适合清晰、重复或高频的小型任务。", "gpt-5.6-luna", null, true, true)
@@ -71,10 +75,19 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             return new CodexResolvedModel(model, null);
         }
 
-        var effort = string.IsNullOrWhiteSpace(requestedReasoningEffort) ? policy.DefaultReasoningEffort : requestedReasoningEffort.Trim();
+        var defaultEffort = policy.DefaultReasoningEffort;
+        if (model.AllowedReasoningEfforts is { Count: > 0 } && !model.AllowedReasoningEfforts.Contains(defaultEffort, StringComparer.Ordinal))
+        {
+            defaultEffort = model.AllowedReasoningEfforts.FirstOrDefault(candidate => policy.AllowedReasoningEfforts.Contains(candidate, StringComparer.Ordinal))
+                ?? throw new InvalidOperationException("The enabled Codex reasoning efforts do not include a value supported by the selected model.");
+        }
+
+        var effort = string.IsNullOrWhiteSpace(requestedReasoningEffort) ? defaultEffort : requestedReasoningEffort.Trim();
         if (!policy.AllowedReasoningEfforts.Contains(effort, StringComparer.Ordinal))
             throw new InvalidOperationException("The requested Codex reasoning effort is not enabled by the administrator.");
-        if (!policy.AllowChatReasoningEffortOverride && !string.Equals(effort, policy.DefaultReasoningEffort, StringComparison.Ordinal))
+        if (model.AllowedReasoningEfforts is { Count: > 0 } && !model.AllowedReasoningEfforts.Contains(effort, StringComparer.Ordinal))
+            throw new InvalidOperationException($"The selected Codex model does not support the '{effort}' reasoning effort.");
+        if (!policy.AllowChatReasoningEffortOverride && !string.Equals(effort, defaultEffort, StringComparison.Ordinal))
             throw new InvalidOperationException("The administrator has disabled Codex reasoning-effort switching in chat.");
         return new CodexResolvedModel(model, effort);
     }
@@ -109,6 +122,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
 
         var policy = new StoredPolicy
         {
+            BuiltinModelsVersion = BuiltinModelsVersion,
             ProfileModels = profiles,
             AllowedModelIds = allowed,
             DefaultModelId = defaultModel,
@@ -153,6 +167,10 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 .Where(id => models.Any(model => string.Equals(model.Id, id, StringComparison.Ordinal)))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
+            var builtinModelsVersion = raw.BuiltinModelsVersion;
+            if (builtinModelsVersion < BuiltinModelsVersion && !allowed.Contains("gpt-6-astra", StringComparer.Ordinal))
+                allowed.Add("gpt-6-astra");
+            builtinModelsVersion = Math.Max(builtinModelsVersion, BuiltinModelsVersion);
             if (allowed.Count == 0) return fallback;
             var rawEfforts = raw.AllowedReasoningEfforts is { Count: > 0 } ? raw.AllowedReasoningEfforts : SupportedReasoningEfforts;
             var efforts = rawEfforts
@@ -164,6 +182,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             var defaultEffort = efforts.Contains(raw.DefaultReasoningEffort, StringComparer.Ordinal) ? raw.DefaultReasoningEffort : efforts[0];
             return new StoredPolicy
             {
+                BuiltinModelsVersion = builtinModelsVersion,
                 ProfileModels = profiles,
                 AllowedModelIds = allowed,
                 DefaultModelId = defaultModel,
@@ -198,6 +217,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
 
     private static StoredPolicy CreateFallback() => new()
     {
+        BuiltinModelsVersion = BuiltinModelsVersion,
         AllowedModelIds = BuiltinModels.Select(item => item.Id).ToList(),
         DefaultModelId = "gpt-5.6-terra",
         AllowChatModelOverride = true,
@@ -280,6 +300,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             ModelId = item.AppServerModelId,
             ProfileName = item.ProfileName,
             SupportsReasoningEffort = item.SupportsReasoningEffort,
+            ReasoningEfforts = item.SupportsReasoningEffort ? (item.AllowedReasoningEfforts ?? SupportedReasoningEfforts).ToList() : [],
             IsBuiltin = item.IsBuiltin,
             ImageInput = item.IsBuiltin ? "native" : item.SupportsImageOcr ? "ocr" : "none"
         }).ToList(),
@@ -302,6 +323,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
 
     private sealed class StoredPolicy
     {
+        public int BuiltinModelsVersion { get; set; }
         public List<StoredProfileModel> ProfileModels { get; set; } = [];
         public List<string> AllowedModelIds { get; set; } = [];
         public string DefaultModelId { get; set; } = string.Empty;

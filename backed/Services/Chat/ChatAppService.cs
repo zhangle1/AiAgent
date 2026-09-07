@@ -314,6 +314,10 @@ public sealed class ChatAppService : IDynamicApiController
     private static string ToClientError(Exception exception, ChatCompleteRequest request)
     {
         var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
+        if (isCodex && exception.Message.Contains("requires a newer version of Codex", StringComparison.OrdinalIgnoreCase))
+        {
+            return "当前本机 Codex CLI 版本过旧，无法运行 GPT-6 Astra。请升级 Codex CLI 后重试。";
+        }
         return isCodex && (exception.Message.StartsWith("Codex stopped after", StringComparison.Ordinal)
             || exception.Message.StartsWith("Codex exceeded", StringComparison.Ordinal))
             ? exception.Message

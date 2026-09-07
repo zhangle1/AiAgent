@@ -278,7 +278,12 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const imageInput = selectedAgentId === "codex" ? (currentCodexModel?.image_input ?? "none") : "none";
   const canAttachImages = imageInput === "native" ? imageOcrPolicy?.native_image_input_enabled === true : imageInput === "ocr" && imageOcrPolicy?.enabled === true;
   const imageAttachmentHint = imageInput === "native" ? "原生 Codex 原图识图" : imageInput === "ocr" ? "第三方 Profile 使用本地 PaddleOCR 识别图片文字" : "当前模型未启用图片识别";
-  const codexReasoningEfforts = currentCodexModel?.supports_reasoning_effort ? (codexModelPolicy?.allowed_reasoning_efforts ?? []) : [];
+  const codexReasoningEfforts = useMemo(() => {
+    if (!currentCodexModel?.supports_reasoning_effort) return [];
+    const policyEfforts = codexModelPolicy?.allowed_reasoning_efforts ?? [];
+    const modelEfforts = currentCodexModel.reasoning_efforts ?? [];
+    return modelEfforts.length > 0 ? policyEfforts.filter((effort) => modelEfforts.includes(effort)) : policyEfforts;
+  }, [codexModelPolicy?.allowed_reasoning_efforts, currentCodexModel]);
   const mobileModelLabel = selectedAgentId === "codex" ? `${currentCodexModel?.name ?? "Auto"}${currentCodexModel?.supports_reasoning_effort && selectedCodexReasoningEffort ? ` · ${codexReasoningEffortLabel(selectedCodexReasoningEffort)}` : ""}` : currentModel?.name || currentModel?.model || "Auto";
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
@@ -318,6 +323,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     setSelectedAgentId("codex");
     setSelectedCodexModelId(embeddedCodexModelId);
   }, [embedded, embeddedCodexModelId]);
+
+  useEffect(() => {
+    if (selectedAgentId !== "codex" || codexReasoningEfforts.length === 0 || codexReasoningEfforts.includes(selectedCodexReasoningEffort)) return;
+    setSelectedCodexReasoningEffort(codexReasoningEfforts.includes(codexModelPolicy?.default_reasoning_effort ?? "") ? codexModelPolicy!.default_reasoning_effort : codexReasoningEfforts[0]);
+  }, [codexModelPolicy?.default_reasoning_effort, codexReasoningEfforts, selectedAgentId, selectedCodexReasoningEffort]);
 
   useEffect(() => {
     if (agentProviders.length === 0 || !selectedAgentId) return;
@@ -1920,6 +1930,7 @@ function codexReasoningEffortLabel(effort: string) {
         medium: "中",
         high: "高",
         xhigh: "极高",
+        max: "最高",
       } as Record<string, string>
     )[effort] ?? effort
   );

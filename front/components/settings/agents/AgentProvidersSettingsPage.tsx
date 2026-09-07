@@ -101,6 +101,7 @@ const CODEX_REASONING_EFFORTS = [
   { id: "medium", label: "中" },
   { id: "high", label: "高" },
   { id: "xhigh", label: "极高" },
+  { id: "max", label: "最高" },
 ];
 
 function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { policy: CodexModelPolicy; saving: boolean; onChange: (policy: CodexModelPolicy) => void; onSave: () => void }) {
@@ -113,6 +114,7 @@ function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { pol
       model_id: profile.model_id || null,
       profile_name: profile.profile_name,
       supports_reasoning_effort: profile.supports_reasoning_effort,
+      reasoning_efforts: profile.supports_reasoning_effort ? policy.allowed_reasoning_efforts : [],
       is_builtin: false,
       image_input: profile.supports_image_ocr ? "ocr" : "none",
     }));

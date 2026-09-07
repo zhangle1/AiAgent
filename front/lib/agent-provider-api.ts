@@ -16,6 +16,7 @@ export type CodexModelOption = {
   model_id?: string | null;
   profile_name?: string | null;
   supports_reasoning_effort: boolean;
+  reasoning_efforts: string[];
   is_builtin: boolean;
   image_input: "native" | "ocr" | "none";
 };
