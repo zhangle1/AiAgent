@@ -1,6 +1,7 @@
 "use client";
 
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { PsdFiles } from "./PsdFiles";
 import { useSearchParams } from "next/navigation";
 import { KnowledgeChatHome, type EmbeddedPrototypeFile } from "@/components/chat/KnowledgeChatHome";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -102,7 +103,7 @@ export function PrototypeStudio() {
   const activeHtml = useMemo(() => active ? decodePrototypeHtml(active.body) : "", [active]);
   const assistantInstruction = useMemo(() => {
     const context = active && activeHtml ? `当前正在编辑原型“${active.name}”。以下是当前 HTML，请按用户要求修改后返回完整替换版本：\n${activeHtml}` : "当前没有已选原型，请根据用户需求新建一个界面。";
-    return `你是 HTML 原型设计助手。${context}\n如果用户用 / 引用了其他原型文件，则以被引用文件为唯一修改对象，忽略上述默认编辑文件。请只返回一个完整、可独立预览的 HTML 文档，必须用 \`\`\`html 代码块包裹；不要写入代码库、不要调用文件工具、不要输出额外说明。`;
+    return `你是 HTML 原型设计助手。${context}\n请用内联 CSS 和语义化 header、main、section、footer 划分页面区域，为区域添加 data-psd-name 中文名称，便于导出分组 PSD；不要依赖脚本生成布局。\n如果用户用 / 引用了其他原型文件，则以被引用文件为唯一修改对象，忽略上述默认编辑文件。请只返回一个完整、可独立预览的 HTML 文档，必须用 \`\`\`html 代码块包裹；不要写入代码库、不要调用文件工具、不要输出额外说明。`;
   }, [active, activeHtml]);
   const preview = useMemo(() => active ? securePrototypePreview(activeHtml || incompletePrototypeDocument()) : "", [active, activeHtml]);
   const shareUrl = typeof window === "undefined" || !active ? "" : `${window.location.origin}/prototype-share?prototype=${active.id}`;
@@ -190,14 +191,16 @@ export function PrototypeStudio() {
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {!previewFullscreen && <aside style={{ width: leftOpen ? leftWidth : 42 }} className="hidden min-h-0 shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-150 lg:flex">
         {!leftOpen ? <button type="button" onClick={() => setLeftOpen(true)} title="展开原型文件夹" className="grid h-12 w-full place-items-center border-b border-slate-100 text-violet-600 hover:bg-violet-50"><ChevronRight size={17} /></button> : <>
-        <div className="flex h-12 items-center gap-2 border-b border-slate-100 px-3"><FolderOpen size={16} className="text-violet-600" /><div className="min-w-0 flex-1"><b className="block text-xs">我的原型文件夹</b><span className="block text-[10px] text-slate-400">{assets.length} 个 HTML 界面</span></div><button type="button" onClick={() => void loadAssets()} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-slate-100" title="刷新"><RefreshCw size={14} /></button><button type="button" onClick={() => setLeftOpen(false)} title="收起原型文件夹" className="grid h-7 w-7 place-items-center rounded text-slate-400 hover:bg-violet-50 hover:text-violet-600"><ChevronLeft size={15} /></button></div>
+        <div className="flex h-12 items-center gap-2 border-b border-slate-100 px-3"><FolderOpen size={16} className="text-violet-600" /><div className="min-w-0 flex-1"><b className="block text-xs">我的设计产物目录</b><span className="block text-[10px] text-slate-400">{assets.length} 个界面 · HTML / PSD</span></div><button type="button" onClick={() => void loadAssets()} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-slate-100" title="刷新"><RefreshCw size={14} /></button><button type="button" onClick={() => setLeftOpen(false)} title="收起原型文件夹" className="grid h-7 w-7 place-items-center rounded text-slate-400 hover:bg-violet-50 hover:text-violet-600"><ChevronLeft size={15} /></button></div>
         <div className="m-3 flex h-8 items-center gap-2 rounded-lg bg-slate-100 px-2"><Search size={13} className="text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索界面名称" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></div>
         <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-2 pb-3">
           {loading ? <Empty text="正在加载原型…" loading /> : visibleAssets.length ? visibleAssets.map((item) => (
-            <div key={item.id} draggable onDragStart={() => setDraggedId(item.id)} onDragEnd={() => setDraggedId(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedId) moveAsset(draggedId, item.id); setDraggedId(null); }} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ asset: item, x: event.clientX, y: event.clientY }); }} className={`group flex w-full items-center gap-1 rounded-lg px-1 py-0.5 text-xs ${draggedId === item.id ? "opacity-45" : ""}`}>
+            <details key={item.id} open className="mb-2"><summary className="cursor-pointer truncate rounded px-2 py-2 text-xs font-medium text-slate-700">{item.name}</summary><div draggable onDragStart={() => setDraggedId(item.id)} onDragEnd={() => setDraggedId(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedId) moveAsset(draggedId, item.id); setDraggedId(null); }} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ asset: item, x: event.clientX, y: event.clientY }); }} className={`group flex w-full items-center gap-1 rounded-lg px-1 py-0.5 text-xs ${draggedId === item.id ? "opacity-45" : ""}`}>
               <GripVertical size={14} className="shrink-0 cursor-grab text-slate-300 group-hover:text-violet-400" aria-hidden="true" />
               <button type="button" onClick={() => { setActiveId(item.id); setShowSource(false); }} className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-2 text-left ${activeId === item.id ? "bg-violet-50 text-violet-700" : "text-slate-600 hover:bg-slate-100"}`}><FileCode2 size={15} className="shrink-0" /><span className="min-w-0 flex-1"><b className="block truncate font-medium">{item.name}.html</b><span className="mt-0.5 block truncate text-[10px] text-slate-400">{new Date(item.updated_at).toLocaleString()}</span></span></button>
             </div>
+              <PsdFiles name={item.name} html={decodePrototypeHtml(item.body)} />
+            </details>
           )) : <Empty text="还没有原型。直接在右侧描述你想做的界面。" />}
         </div>
         <p className="border-t border-slate-100 px-3 py-3 text-[10px] leading-4 text-slate-400">拖拽可排序；右键可重命名、下载或删除。输入 / 可把左侧 HTML 引用给 AI 修改。</p>
