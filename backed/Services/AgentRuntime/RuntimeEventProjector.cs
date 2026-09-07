@@ -56,10 +56,11 @@ public static class RuntimeEventProjector
         string? content = null,
         IReadOnlyDictionary<string, object?>? metadata = null,
         IReadOnlyList<AiAgent.Backend.Dtos.Knowledge.KnowledgeCitationDto>? citations = null,
-        TurnRunStatus? status = null)
+        TurnRunStatus? status = null,
+        string? itemId = null)
     {
         return new RuntimeEvent(
             Guid.NewGuid().ToString("N"), runId, sequence, DateTimeOffset.UtcNow,
-            kind, Content: content, Status: status, Metadata: metadata, Citations: citations);
+            kind, ItemId: itemId, Content: content, Status: status, Metadata: metadata, Citations: citations);
     }
 }

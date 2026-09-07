@@ -27,10 +27,10 @@ public sealed class RunCoordinator : IRunCoordinator
     private readonly ConcurrentDictionary<string, (string UserId, CancellationTokenSource Source)> _cancellations = new(StringComparer.Ordinal);
     private readonly IAgentRunStore _store;
 
-    public RunCoordinator(IEnumerable<IRuntimeEngine> engines, IAgentRunStore store)
+    public RunCoordinator(IEnumerable<IRuntimeEngine> engines, IAgentRunStore? store = null)
     {
         _engines = engines.ToDictionary(x => x.Kind);
-        _store = store;
+        _store = store ?? NullAgentRunStore.Instance;
     }
 
     public bool TryGetRun(string runId, out TurnRunSnapshot? snapshot) => _runs.TryGetValue(runId, out snapshot);
@@ -133,15 +133,19 @@ public sealed class RunCoordinator : IRunCoordinator
 
     private bool CanTransition(string runId, TurnRunStatus next)
     {
-        return _runs.TryGetValue(runId, out var current) && IsAllowed(current.Status, next);
+        return _runs.TryGetValue(runId, out var current) && RunStateMachine.CanTransition(current.Status, next);
     }
 
-    private static bool IsAllowed(TurnRunStatus current, TurnRunStatus next) => (current, next) switch
+    private sealed class NullAgentRunStore : IAgentRunStore
     {
-        (TurnRunStatus.Queued, TurnRunStatus.Starting) => true,
-        (TurnRunStatus.Starting, TurnRunStatus.Running) => true,
-        (TurnRunStatus.Running, TurnRunStatus.Completed or TurnRunStatus.Failed or TurnRunStatus.Cancelled or TurnRunStatus.WaitingApproval or TurnRunStatus.WaitingInput) => true,
-        (TurnRunStatus.Starting, TurnRunStatus.Failed or TurnRunStatus.Cancelled) => true,
-        _ => false
-    };
+        public static readonly NullAgentRunStore Instance = new();
+        public void Create(RuntimeTurnRequest request, IRuntimeEngine engine) { }
+        public void Append(RuntimeEvent runtimeEvent) { }
+        public void UpdateStatus(string runId, TurnRunStatus status, string? errorCode = null) { }
+        public void Complete(string runId, RuntimeTurnResult result) { }
+        public IReadOnlyList<AgentRunSummaryDto> List(AiAgent.Backend.Services.Auth.AuthenticatedUser user, string sessionId, int limit) => [];
+        public AgentRunDetailDto? Get(AiAgent.Backend.Services.Auth.AuthenticatedUser user, string runId) => null;
+    }
+
+    private static bool IsAllowed(TurnRunStatus current, TurnRunStatus next) => RunStateMachine.CanTransition(current, next);
 }

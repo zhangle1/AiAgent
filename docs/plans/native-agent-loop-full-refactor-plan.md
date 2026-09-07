@@ -1,10 +1,20 @@
 # 自有 Agent Loop 完全重构规划
 
-> 状态：规划稿，尚未实施  
+> 状态：实施中（Phase B 基础设施已落地；原生模型/工具调用尚未切流）
 > 编制日期：2026-09-07  
 > 目标仓库：AiAgent 后端（`.NET 9`）  
 > 参考项目：`APS 张乐 AI` 中的 Codex Runtime 实现  
 > 参考快照：`12ed76b09bf311d8d9a6f25be2f9a8eb37daf879`
+
+## 0. 实施记录
+
+### 2026-09-07：Phase B 运行时事实源基础
+
+- `RuntimeTurnRequest` 已支持独立 `TurnId`；旧调用方未传时按 `RunId` 兼容。
+- 新增不可变 `RuntimeTurnContext`、`RuntimeStepContext`：每一次采样固化 Step、模型、工具快照哈希、上下文规模和工作区 revision 是否存在等安全审计字段。
+- `NativeAgentRuntime` 在旧循环的每轮迭代前后写出 `TurnStarted`、`StepStarted`、`StepCompleted` 事件；Run 账本只持久化脱敏元数据，不记录 prompt、附件正文或工具原始输出。
+- 新增 `RuntimeExecutionCheckpoint` 和 `RunStateMachine`，后者已允许 `WaitingApproval` / `WaitingInput` 回到 `Running`，但 durable resume 尚未宣称完成。
+- 旧 `FINISH / TOOL / THINK` 协议仍是生产执行内核；下一阶段才引入 provider-neutral 原生 tool calling，不能把本记录误解为已完成全量重构。
 
 ## 1. 结论
 
@@ -519,4 +529,3 @@ Running → WaitingInput    → Running
 6. 让 legacy loop 的现有事件以 shadow 方式映射到 v2 账本，验证顺序与脱敏。
 
 该变更集完成后，再进入原生模型 tool calling；这样可以先稳定协议和生命周期，避免模型适配、工具迁移、数据库迁移和前端改造在同一个提交中互相耦合。
-

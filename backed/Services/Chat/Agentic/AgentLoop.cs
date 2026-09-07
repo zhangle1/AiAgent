@@ -265,7 +265,8 @@ public sealed class AgentLoop : IAgentLoop
     private static Dictionary<string, object?> BuildToolMetadata(AgentContext context, IReadOnlyList<ToolCall> toolCalls)
     {
         var metadata = context.Stats.ToMetadata();
-        metadata["tools"] = toolCalls.Select(x => x.Name).ToArray();
+        metadata["tool_names"] = toolCalls.Select(x => x.Name).ToArray();
+        metadata["tool_call_ids"] = toolCalls.Select(x => x.Id).ToArray();
         return metadata;
     }
 

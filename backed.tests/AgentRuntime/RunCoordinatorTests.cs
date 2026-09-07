@@ -61,6 +61,7 @@ public sealed class RunCoordinatorTests
 
     private static RuntimeTurnRequest CreateRequest(string runId) => new(
         runId,
+        "user-1",
         "thread-1",
         RuntimeKind.Native,
         null,

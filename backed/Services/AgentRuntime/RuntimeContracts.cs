@@ -27,6 +27,8 @@ public enum RuntimeEventKind
 {
     RunStatusChanged,
     TurnStarted,
+    StepStarted,
+    StepCompleted,
     ItemStarted,
     ItemDelta,
     ItemCompleted,
@@ -35,7 +37,8 @@ public enum RuntimeEventKind
     ApprovalRequested,
     UsageUpdated,
     TurnCompleted,
-    TurnFailed
+    TurnFailed,
+    TurnCancelled
 }
 
 public sealed record RuntimeAttachment(
@@ -70,7 +73,14 @@ public sealed record RuntimeTurnRequest(
     string? ModelId,
     RuntimeTurnInput Input,
     RuntimeCapabilitySnapshot Capabilities,
-    IReadOnlyDictionary<string, object?> Metadata);
+    IReadOnlyDictionary<string, object?> Metadata)
+{
+    /// <summary>
+    /// Semantic boundary for one user objective. Legacy callers may omit it during
+    /// the protocol-v1 transition; the runtime then uses RunId as the stable value.
+    /// </summary>
+    public string? TurnId { get; init; }
+}
 
 public sealed record RuntimeEvent(
     string EventId,

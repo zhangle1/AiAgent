@@ -134,7 +134,7 @@ public sealed class AgentRunStore : IAgentRunStore
     private static Dictionary<string, object?> SanitizeMetadata(IReadOnlyDictionary<string, object?>? source)
     {
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "iteration", "llm_calls", "tool_calls", "prompt_tokens", "completion_tokens", "total_tokens", "elapsed_seconds", "tool_names", "file_changes", "changed_files" };
+        { "iteration", "llm_calls", "tool_calls", "prompt_tokens", "completion_tokens", "total_tokens", "elapsed_seconds", "tool_names", "tool_call_ids", "file_changes", "changed_files", "turn_id", "step_id", "step", "tool_count", "tool_snapshot_id", "context_characters", "context_tokens_estimated", "workspace_revision_present", "maximum_steps", "maximum_tool_calls" };
         return source?.Where(x => allowed.Contains(x.Key)).ToDictionary(x => x.Key, x => x.Value) ?? [];
     }
 
