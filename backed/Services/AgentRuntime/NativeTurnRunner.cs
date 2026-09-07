@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Services.Chat.Agentic;
@@ -26,12 +27,18 @@ public sealed class NativeTurnRunner : INativeTurnRunner
     private readonly ILlmChatClient _llm;
     private readonly INativeToolRouter _tools;
     private readonly INativeThreadHistoryStore _history;
+    private readonly INativeToolClaimStore _claims;
 
+    /// <summary>Compatibility constructor used by isolated hosts and unit tests.</summary>
     public NativeTurnRunner(ILlmChatClient llm, INativeToolRouter tools, INativeThreadHistoryStore history)
+        : this(llm, tools, history, new EphemeralNativeToolClaimStore()) { }
+
+    public NativeTurnRunner(ILlmChatClient llm, INativeToolRouter tools, INativeThreadHistoryStore history, INativeToolClaimStore claims)
     {
         _llm = llm;
         _tools = tools;
         _history = history;
+        _claims = claims;
     }
 
     public async Task<RuntimeTurnResult> RunAsync(
@@ -252,31 +259,64 @@ public sealed class NativeTurnRunner : INativeTurnRunner
                     ToolResult.Failed("This exact tool call was already attempted in the current turn. Use the prior result instead of repeating it."), []);
                 continue;
             }
+            var fingerprint = CreateToolInvocationFingerprint(call);
+            if (!_claims.TryClaim(turn, step, call, fingerprint))
+            {
+                completed[call.Id] = new NativeToolExecution(call,
+                    ToolResult.Failed("This tool invocation was already claimed for the current turn and will not be replayed automatically."), []);
+                continue;
+            }
             dispatchable.Add(call);
         }
 
         if (NativeToolExecutionPolicy.CanExecuteInParallel(dispatchable))
         {
-            var executions = await Task.WhenAll(dispatchable.Select(call => _tools.ExecuteAsync(context, toolPlan, call, cancellationToken)));
+            var executions = await Task.WhenAll(dispatchable.Select(call => ExecuteClaimedToolAsync(context, toolPlan, turn, call, cancellationToken)));
             foreach (var execution in executions) completed[execution.Call.Id] = execution;
         }
         else
         {
             foreach (var call in dispatchable)
             {
-                var execution = await _tools.ExecuteAsync(context, toolPlan, call, cancellationToken);
+                var execution = await ExecuteClaimedToolAsync(context, toolPlan, turn, call, cancellationToken);
                 completed[call.Id] = execution;
             }
         }
         return calls.Select(call => completed[call.Id]).ToList();
     }
 
-    private static string CreateToolInvocationKey(ToolCall call)
+    private async Task<NativeToolExecution> ExecuteClaimedToolAsync(AgentContext context, NativeToolPlan plan, RuntimeTurnContext turn, ToolCall call, CancellationToken cancellationToken)
     {
-        var arguments = string.Join("&", call.Arguments.OrderBy(pair => pair.Key, StringComparer.Ordinal)
-            .Select(pair => pair.Key + "=" + JsonSerializer.Serialize(pair.Value)));
-        return call.Name.Trim().ToLowerInvariant() + "|" + arguments;
+        var fingerprint = CreateToolInvocationFingerprint(call);
+        try
+        {
+            var execution = await _tools.ExecuteAsync(context, plan, call, cancellationToken);
+            _claims.Complete(turn, call, fingerprint, execution.Result.Success);
+            return execution;
+        }
+        catch
+        {
+            _claims.Complete(turn, call, fingerprint, false);
+            throw;
+        }
     }
+
+    internal static string CreateToolInvocationFingerprint(ToolCall call)
+    {
+        var canonical = call.Name.Trim().ToLowerInvariant() + "|" + CanonicalJson(call.Arguments);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+    }
+
+    private static string CreateToolInvocationKey(ToolCall call) => CreateToolInvocationFingerprint(call);
+
+    private static string CanonicalJson(object? value) => value switch
+    {
+        null => "null",
+        IReadOnlyDictionary<string, object?> dictionary => "{" + string.Join(",", dictionary.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => JsonSerializer.Serialize(x.Key) + ":" + CanonicalJson(x.Value))) + "}",
+        IDictionary<string, object?> dictionary => "{" + string.Join(",", dictionary.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => JsonSerializer.Serialize(x.Key) + ":" + CanonicalJson(x.Value))) + "}",
+        System.Collections.IEnumerable values when value is not string => "[" + string.Join(",", values.Cast<object?>().Select(CanonicalJson)) + "]",
+        _ => JsonSerializer.Serialize(value)
+    };
 
     private static IReadOnlyDictionary<string, object?> ToolMetadata(RuntimeTurnContext turn, RuntimeStepContext step, ToolCall call) => new Dictionary<string, object?>
     {
@@ -297,7 +337,8 @@ public sealed class NativeTurnRunner : INativeTurnRunner
         ["total_tokens"] = promptTokens + completionTokens
     };
 
-    private static int EstimateTokens(string value) => string.IsNullOrWhiteSpace(value) ? 0 : Math.Max(1, (int)Math.Ceiling(value.Length / 3.6d));
+    private static int EstimateTokens(string value) => string.IsNullOrWhiteSpace(value) ? 0 : EstimateTokens(value.Length);
+    private static int EstimateTokens(int characterCount) => characterCount <= 0 ? 0 : Math.Max(1, (int)Math.Ceiling(characterCount / 3.6d));
     private static string TrimToolOutput(string value) => value.Length <= MaximumToolOutputCharacters ? value : value[..MaximumToolOutputCharacters] + "\n[Tool output truncated]";
 
     /// <summary>
@@ -453,5 +494,15 @@ public sealed class NativeTurnRunner : INativeTurnRunner
             JsonValueKind.Array => value.EnumerateArray().Select(JsonValue).ToList(),
             _ => null
         };
+    }
+
+    private sealed class EphemeralNativeToolClaimStore : INativeToolClaimStore
+    {
+        private readonly HashSet<string> _claims = new(StringComparer.Ordinal);
+
+        public bool TryClaim(RuntimeTurnContext turn, RuntimeStepContext step, ToolCall call, string invocationFingerprint) =>
+            _claims.Add(turn.TurnId + "|" + invocationFingerprint);
+
+        public void Complete(RuntimeTurnContext turn, ToolCall call, string invocationFingerprint, bool succeeded) { }
     }
 }

@@ -234,6 +234,14 @@ public sealed class CatalogModel
     public string? ContextWindowDetectedAt { get; set; }
 
     /// <summary>
+    /// Whether this model has been explicitly verified to support the
+    /// OpenAI-compatible tools/tool_calls protocol used by Native V2.
+    /// Unset models intentionally remain on the legacy loop.
+    /// </summary>
+    [JsonPropertyName("supports_native_tool_calling")]
+    public bool? SupportsNativeToolCalling { get; set; }
+
+    /// <summary>
     /// 语音模型音色。
     /// </summary>
     [JsonPropertyName("voice")]

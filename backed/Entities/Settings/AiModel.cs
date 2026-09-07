@@ -41,6 +41,13 @@ public sealed class AiModel
     public int? ContextWindow { get; set; }
 
     /// <summary>
+    /// Explicit Native V2 eligibility. Null is treated as false so existing
+    /// model records cannot accidentally opt into provider-native tools.
+    /// </summary>
+    [SugarColumn(IsNullable = true)]
+    public bool? SupportsNativeToolCalling { get; set; }
+
+    /// <summary>
     /// 向量维度。
     /// </summary>
     [SugarColumn(IsNullable = true)]

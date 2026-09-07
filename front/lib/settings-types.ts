@@ -17,6 +17,7 @@ export type CatalogModel = {
   context_window?: string;
   context_window_source?: string;
   context_window_detected_at?: string;
+  supports_native_tool_calling?: boolean;
   voice?: string;
   response_format?: string;
   language?: string;

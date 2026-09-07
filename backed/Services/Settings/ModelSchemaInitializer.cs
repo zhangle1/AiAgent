@@ -65,6 +65,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiChatDebugTrace),
             typeof(AiAgentRun),
             typeof(AiAgentRunEvent),
+            typeof(AiAgentToolClaim),
             typeof(AiPromptTemplate),
             typeof(AiPromptTemplateUserState),
             typeof(AiMemoryItem),
@@ -95,6 +96,9 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
         ExecuteIndexSql("""
 IF COL_LENGTH(N'dbo.ai_model', N'SupportedDimensions') IS NULL
     ALTER TABLE dbo.ai_model ADD SupportedDimensions NVARCHAR(256) NULL;
+
+IF COL_LENGTH(N'dbo.ai_model', N'SupportsNativeToolCalling') IS NULL
+    ALTER TABLE dbo.ai_model ADD SupportsNativeToolCalling BIT NULL;
 
 IF COL_LENGTH(N'dbo.ai_code_repository', N'ProjectId') IS NULL
     ALTER TABLE dbo.ai_code_repository ADD ProjectId BIGINT NULL;

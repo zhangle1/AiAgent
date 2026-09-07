@@ -129,6 +129,7 @@ builder.Services.AddSingleton<ILlmChatClient, LlmChatClient>();
 builder.Services.AddSingleton<ILabeledStepRunner, LabeledStepRunner>();
 builder.Services.AddSingleton<IAgentLoop, AgentLoop>();
 builder.Services.AddSingleton<INativeToolRouter, NativeToolRouter>();
+builder.Services.AddSingleton<INativeToolClaimStore, NativeToolClaimStore>();
 builder.Services.AddSingleton<INativeThreadHistoryStore, NativeThreadHistoryStore>();
 builder.Services.AddSingleton<INativeTurnRunner, NativeTurnRunner>();
 builder.Services.AddSingleton<IRuntimeEngine, NativeAgentRuntime>();

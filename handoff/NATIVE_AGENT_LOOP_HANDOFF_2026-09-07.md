@@ -2,6 +2,12 @@
 
 ## 交接结论
 
+### 2026-09-07 后续实现：按模型 Native V2 灰度
+
+- 模型目录新增可空 `supports_native_tool_calling` 能力字段，并通过 `ai_model.SupportsNativeToolCalling` 兼容性迁移持久化；历史记录的空值按 `false` 处理。
+- `NativeAgentRuntime` 现在仅在全局 `NativeV2Enabled` 已开启且当前选中模型明确声明该能力时进入 V2；其余模型继续使用 legacy 标签循环。
+- 设置页 LLM 模型编辑器提供对应开关，并明确提示必须先完成 OpenAI-compatible `tools` / `tool_calls` 冒烟验证后再启用。
+
 AiAgent 的原生运行时已从“仅把旧 `AgentLoop` 包在 Runtime 接口外”的 Phase B，推进到具备 OpenAI-compatible 原生 function calling 的 **Phase C 灰度实现**。
 
 当前生产默认行为没有改变：仅当下列两个配置都为 `true` 时，普通聊天才进入 V2；否则仍走旧的 `FINISH / TOOL / THINK` 标签循环。
@@ -26,6 +32,7 @@ AiAgent 的原生运行时已从“仅把旧 `AgentLoop` 包在 Runtime 接口�
 - 新增 `RuntimeTurnContext`、`RuntimeStepContext`、`RuntimeExecutionCheckpoint` 和运行状态机；Step 记录模型、工具快照哈希、上下文规模和工作区 revision 是否存在等脱敏事实。
 - `RunCoordinator` 既持久化状态变更，也持久化运行时事件；V2 会发出 Turn、Step、Provider、Tool、Usage、ContextCompacted、Completed/Failed/Cancelled 事件。
 - `AgentRunStore` 只允许白名单元数据进入账本，避免 prompt、附件正文、工具原始结果和密钥进入运行记录。
+- Native V2 在工具分发前写入持久化 claim；claim 仅保存用户/会话/Turn 范围、工具名、canonical 参数哈希和状态，不保存参数或工具输出。重入同一 Turn 时已 claim 的调用不会自动重放；完整 checkpoint 恢复仍未实现。
 
 ### 原生模型与工具循环
 

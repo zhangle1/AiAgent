@@ -61,7 +61,12 @@ public sealed class LlmChatClient : ILlmChatClient
     public LlmModelCapabilities GetCapabilities(string? modelId)
     {
         var selection = ResolveLlm(modelId);
-        return new LlmModelCapabilities(selection.Model.Id, selection.Model.Model, ParseContextWindow(selection.Model.ContextWindow), 1600);
+        return new LlmModelCapabilities(
+            selection.Model.Id,
+            selection.Model.Model,
+            ParseContextWindow(selection.Model.ContextWindow),
+            1600,
+            selection.Model.SupportsNativeToolCalling == true);
     }
 
     /// <summary>
@@ -521,9 +526,14 @@ public sealed class LlmMessage
 }
 
 /// <summary>Model-window data that is safe to use for runtime budgeting.</summary>
-public sealed record LlmModelCapabilities(string? ModelId, string? Model, int ContextWindowTokens, int OutputReserveTokens)
+public sealed record LlmModelCapabilities(
+    string? ModelId,
+    string? Model,
+    int ContextWindowTokens,
+    int OutputReserveTokens,
+    bool SupportsNativeToolCalling)
 {
-    public static readonly LlmModelCapabilities Default = new(null, null, 16_000, 1_600);
+    public static readonly LlmModelCapabilities Default = new(null, null, 16_000, 1_600, false);
 }
 
 public sealed class LlmToolCall

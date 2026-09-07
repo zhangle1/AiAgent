@@ -1,7 +1,9 @@
 using AiAgent.Backend.Dtos.Chat;
+using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Services.AgentRuntime;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Chat.Llm;
+using AiAgent.Backend.Services.Chat.Planning;
 using System.Net.Http;
 
 namespace AiAgent.Backend.Tests.AgentRuntime;
@@ -75,7 +77,7 @@ public sealed class NativeTurnRunnerTests
         var router = new NativeToolRouter(dispatcher, TimeSpan.FromSeconds(1));
         var context = CreateContext();
 
-        var execution = await router.ExecuteAsync(context, router.BuildPlan(context), new ToolCall { Id = "call-retry", Name = "search" }, CancellationToken.None);
+        var execution = await router.ExecuteAsync(context, router.BuildPlan(context), new ToolCall { Id = "call-retry", Name = AgentToolNames.RagSearch }, CancellationToken.None);
 
         Assert.True(execution.Result.Success);
         Assert.Equal(2, dispatcher.CallCount);
@@ -129,6 +131,43 @@ public sealed class NativeTurnRunnerTests
 
         Assert.True(result.Completed);
         Assert.Equal("duplicate handled", result.Answer);
+        Assert.Equal(1, dispatcher.CallCount);
+    }
+
+    [Fact]
+    public void ToolInvocationFingerprint_IsStableAcrossNestedObjectPropertyOrder()
+    {
+        var first = new ToolCall
+        {
+            Name = "search",
+            Arguments = new Dictionary<string, object?>
+            {
+                ["filter"] = new Dictionary<string, object?> { ["status"] = "open", ["owner"] = "u-1" }
+            }
+        };
+        var second = new ToolCall
+        {
+            Name = "SEARCH",
+            Arguments = new Dictionary<string, object?>
+            {
+                ["filter"] = new Dictionary<string, object?> { ["owner"] = "u-1", ["status"] = "open" }
+            }
+        };
+
+        Assert.Equal(NativeTurnRunner.CreateToolInvocationFingerprint(first), NativeTurnRunner.CreateToolInvocationFingerprint(second));
+    }
+
+    [Fact]
+    public async Task RunAsync_DoesNotReplayPersistentlyClaimedInvocationAcrossRunnerInstances()
+    {
+        var dispatcher = new StubToolDispatcher();
+        var claims = new SharedClaimStore();
+
+        var first = new NativeTurnRunner(new StubLlm(), new NativeToolRouter(dispatcher), new StubHistoryStore(), claims);
+        var second = new NativeTurnRunner(new StubLlm(), new NativeToolRouter(dispatcher), new StubHistoryStore(), claims);
+
+        Assert.True((await first.RunAsync(CreateRequest(), CreateContext(), null, CancellationToken.None)).Completed);
+        Assert.True((await second.RunAsync(CreateRequest(), CreateContext(), null, CancellationToken.None)).Completed);
         Assert.Equal(1, dispatcher.CallCount);
     }
 
@@ -211,7 +250,7 @@ public sealed class NativeTurnRunnerTests
     private sealed class FlakyReadToolDispatcher : IToolDispatcher
     {
         public int CallCount { get; private set; }
-        public IReadOnlyList<ToolDefinition> GetDefinitions(AgentContext context) => [new ToolDefinition { Name = "search" }];
+        public IReadOnlyList<ToolDefinition> GetDefinitions(AgentContext context) => [new ToolDefinition { Name = AgentToolNames.RagSearch }];
         public Task<ToolDispatchOutcome> DispatchAsync(AgentContext context, IReadOnlyList<ToolCall> toolCalls, CancellationToken cancellationToken)
         {
             CallCount++;
@@ -234,5 +273,15 @@ public sealed class NativeTurnRunnerTests
     private sealed class StubHistoryStore : INativeThreadHistoryStore
     {
         public NativeThreadHistory Load(RuntimeTurnRequest request) => new([], false);
+    }
+
+    private sealed class SharedClaimStore : INativeToolClaimStore
+    {
+        private readonly HashSet<string> _claims = new(StringComparer.Ordinal);
+
+        public bool TryClaim(RuntimeTurnContext turn, RuntimeStepContext step, ToolCall call, string invocationFingerprint) =>
+            _claims.Add(turn.UserId + "|" + turn.ThreadId + "|" + turn.TurnId + "|" + invocationFingerprint);
+
+        public void Complete(RuntimeTurnContext turn, ToolCall call, string invocationFingerprint, bool succeeded) { }
     }
 }

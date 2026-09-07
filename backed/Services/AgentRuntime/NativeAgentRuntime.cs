@@ -1,4 +1,5 @@
 using AiAgent.Backend.Services.Chat.Agentic;
+using AiAgent.Backend.Services.Chat.Llm;
 
 namespace AiAgent.Backend.Services.AgentRuntime;
 
@@ -11,6 +12,7 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
     private readonly IAgentLoop _legacyLoop;
     private readonly IToolDispatcher _toolDispatcher;
     private readonly INativeTurnRunner _nativeTurnRunner;
+    private readonly ILlmChatClient? _llm;
     private readonly bool _nativeV2Enabled;
 
     /// <summary>Compatibility constructor for isolated tests and legacy hosts that do not register V2 services.</summary>
@@ -19,6 +21,7 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
         _legacyLoop = legacyLoop;
         _toolDispatcher = toolDispatcher;
         _nativeTurnRunner = new DisabledNativeTurnRunner();
+        _llm = null;
         _nativeV2Enabled = false;
     }
 
@@ -27,7 +30,14 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
         _legacyLoop = legacyLoop;
         _toolDispatcher = toolDispatcher;
         _nativeTurnRunner = nativeTurnRunner;
+        _llm = null;
         _nativeV2Enabled = configuration.GetValue("AgentRuntime:NativeV2Enabled", false);
+    }
+
+    public NativeAgentRuntime(IAgentLoop legacyLoop, IToolDispatcher toolDispatcher, INativeTurnRunner nativeTurnRunner, ILlmChatClient llm, IConfiguration configuration)
+        : this(legacyLoop, toolDispatcher, nativeTurnRunner, configuration)
+    {
+        _llm = llm;
     }
 
     public RuntimeKind Kind => RuntimeKind.Native;
@@ -40,7 +50,10 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
         CancellationToken cancellationToken)
     {
         var context = ToAgentContext(request);
-        if (_nativeV2Enabled)
+        // Native V2 is an opt-in at both the deployment and model levels.
+        // A global flag alone must not send tools to a provider that has not
+        // been verified against the OpenAI-compatible wire protocol.
+        if (_nativeV2Enabled && _llm?.GetCapabilities(request.ModelId).SupportsNativeToolCalling == true)
             return await _nativeTurnRunner.RunAsync(request, context, onEvent, cancellationToken);
         var turn = RuntimeTurnContext.Create(request);
         var checkpoint = new RuntimeExecutionCheckpoint { RunId = turn.RunId, TurnId = turn.TurnId };

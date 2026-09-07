@@ -196,6 +196,20 @@ export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
                     );
                   })}
                 </div>
+                {service === "llm" && (
+                  <label className="mt-4 flex items-start gap-3 rounded-lg border border-[var(--border)] bg-zinc-50 p-3 text-[12px]">
+                    <input
+                      type="checkbox"
+                      checked={model?.supports_native_tool_calling === true}
+                      onChange={(event) => updateModel(service, "supports_native_tool_calling", event.target.checked)}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block font-semibold text-black">Enable Native V2 tool calling</span>
+                      <span className="mt-1 block text-[var(--muted-foreground)]">Enable only after this model has passed an OpenAI-compatible tools/tool_calls smoke test.</span>
+                    </span>
+                  </label>
+                )}
               </>
             )}
           </section>

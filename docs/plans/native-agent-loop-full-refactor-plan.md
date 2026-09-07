@@ -18,8 +18,11 @@
 
 ### 2026-09-07：Phase C 原生工具调用灰度入口
 
+- 模型目录新增 `supports_native_tool_calling` 显式能力声明；Native V2 的运行时选择同时要求全局开关和当前模型声明为 `true`。未声明的历史模型保持 legacy 路径，避免把 provider 兼容性假设扩大为全局默认。
+
 - `ILlmChatClient` 新增 OpenAI-compatible `tools` 请求和流式 `tool_calls` 增量读取；assistant tool call 与后续 `role=tool` result 按 `CallId` 配对回传。
 - 新增 `NativeTurnRunner`，原生路径以结构化模型响应决定“继续调用工具”或“完成回答”，不再解析 `FINISH / TOOL / THINK`。
+- Native V2 在分发工具前持久化 owner/session/Turn 作用域内的 invocation claim；只保存 canonical 参数的哈希和状态，进程中断后的同一 Turn 不会自动重放已 claim 的工具调用。完整 durable resume 仍未实现。
 - 工具输出进入下一次采样前会截断，调用 ID 必须唯一；取消仍沿用 `CancellationToken`，并写出 `TurnCancelled`。
 - V2 对用户输入、项目/文档/记忆引用分别设定上下文上限；历史超过窗口时只移除最早、完整的 assistant-tool/tool-result 配对，并写出 `ContextCompacted`，不会留下无对应调用的 tool message。
 - 发送到 OpenAI-compatible provider 前再做一次非破坏性消息规范化：只保留完整的 assistant `tool_calls` 和按 `CallId` 配对的 `role=tool` 结果，孤立/不完整的工具消息不会污染下一步模型请求。

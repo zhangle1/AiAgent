@@ -291,6 +291,7 @@ public sealed class ModelCatalogService : IModelCatalogService
             row.ModelName = model.Name;
             row.ModelId = model.Model;
             row.ContextWindow = ParseInt(model.ContextWindow);
+            row.SupportsNativeToolCalling = model.SupportsNativeToolCalling;
             row.Dimension = ParseInt(model.Dimension);
             row.SendDimensions = model.SendDimensions;
             row.SupportedDimensions = model.SupportedDimensions;
@@ -338,6 +339,7 @@ public sealed class ModelCatalogService : IModelCatalogService
             Name = row.ModelName,
             Model = row.ModelId,
             ContextWindow = row.ContextWindow?.ToString(),
+            SupportsNativeToolCalling = row.SupportsNativeToolCalling,
             Dimension = row.Dimension?.ToString(),
             SendDimensions = row.SendDimensions,
             SupportedDimensions = row.SupportedDimensions,
