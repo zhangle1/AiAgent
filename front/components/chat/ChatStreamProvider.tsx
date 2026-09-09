@@ -1,15 +1,22 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
+import { CHAT_STREAM_QUIET_AFTER_MS, getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 
 export type ChatStreamStatus = "streaming" | "done" | "stopped" | "error";
+export type ChatStreamHealth = "connecting" | "active" | "quiet";
+export type ChatStreamTerminalReason = "completed" | "legacy_done" | "user_stopped" | "idle_timeout" | "transport_error";
 export type ChatStreamRecord = {
   id: string;
   sessionId: string;
   status: ChatStreamStatus;
   events: ChatStreamEvent[];
   startedAt: number;
+  lastEventAt: number;
+  observedAt: number;
+  health: ChatStreamHealth;
+  lastEventType?: ChatStreamEvent["type"];
+  terminalReason?: ChatStreamTerminalReason;
   errorMessage?: string;
   unread: boolean;
   agent?: "codex" | "deepseek-harness" | "codebuddy";
@@ -82,7 +89,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     const initialEvents: ChatStreamEvent[] = streamRequest.debug_trace && streamRequest.trace_id
       ? [{ type: "debug_trace", debug_trace: { trace_id: streamRequest.trace_id, stage: "browser_submit", status: "completed", elapsed_ms: 0, duration_ms: 0, provider: streamRequest.agent === "codex" ? "codex" : "openai_compatible", transport: "websocket" } }]
       : [];
-    const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", events: initialEvents, startedAt: Date.now(), unread: false, agent: request.agent };
+    const startedAt = Date.now();
+    const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", events: initialEvents, startedAt, lastEventAt: startedAt, observedAt: startedAt, health: "connecting", unread: false, agent: request.agent };
     const next = { ...streamsRef.current, [streamId]: record };
     streamsRef.current = next;
     setStreams(next);
@@ -91,16 +99,28 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       // The server emits this only after the first user message is persisted. Refreshing here
       // makes a brand-new conversation appear in the sidebar while the answer is still streaming.
       if (event.type === "session_ready") window.dispatchEvent(new Event("aiagent:sessions-updated"));
+      const receivedAt = Date.now();
       update(streamId, (current) => ({
         ...current,
         status: event.type === "error" ? "error" : current.status,
+        health: "active",
+        lastEventAt: receivedAt,
+        observedAt: receivedAt,
+        lastEventType: event.type,
+        terminalReason: event.type === "error" ? "transport_error" : current.terminalReason,
         errorMessage: event.type === "error" ? event.content || "Chat stream failed." : current.errorMessage,
         events: [...current.events, event],
       }));
     }, controller.signal).then(() => {
       if (controller.signal.aborted) return;
       flushUpdates();
-      update(streamId, (current) => ({ ...current, status: current.status === "error" ? "error" : "done", unread: true }));
+      update(streamId, (current) => ({
+        ...current,
+        status: current.status === "error" ? "error" : "done",
+        observedAt: Date.now(),
+        terminalReason: current.status === "error" ? current.terminalReason : current.events.some((event) => event.type === "completed") ? "completed" : "legacy_done",
+        unread: true,
+      }));
       const completed = streamsRef.current[streamId];
       const contentEvents = completed?.events ?? [];
       // "done" 携带服务端聚合后的完整回答；流式 content 仅用于界面实时展示，不能作为原型文件的主来源。
@@ -112,9 +132,12 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       flushUpdates();
       const stopped = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
       const message = error instanceof Error ? error.message : "Chat stream failed.";
+      const idleTimeout = !stopped && message.includes("6 分钟没有收到服务端事件");
       update(streamId, (current) => ({
         ...current,
         status: stopped ? "stopped" : "error",
+        observedAt: Date.now(),
+        terminalReason: stopped ? "user_stopped" : idleTimeout ? "idle_timeout" : "transport_error",
         errorMessage: stopped ? current.errorMessage : message,
         unread: !stopped,
         events: stopped || current.events.some((event) => event.type === "error") ? current.events : [...current.events, { type: "error", content: message }],
@@ -138,7 +161,9 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const clearFinishedStreams = useCallback((sessionId: string) => {
     const current = streamsRef.current;
     const entries = Object.entries(current);
-    const remaining = entries.filter(([, stream]) => stream.sessionId !== sessionId || stream.status === "streaming");
+    // Completed answers are replaced by persisted history. Keep stopped/failed attempts in this
+    // browser session so users can still inspect why a turn did not finish after switching away.
+    const remaining = entries.filter(([, stream]) => stream.sessionId !== sessionId || stream.status !== "done");
     if (remaining.length === entries.length) return;
     const next = Object.fromEntries(remaining);
     streamsRef.current = next;
@@ -155,6 +180,23 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       // Sending remains available; the stream request will surface a real Codex failure if one occurs.
     });
   }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const now = Date.now();
+      Object.values(streamsRef.current).forEach((stream) => {
+        if (stream.status !== "streaming") return;
+        update(stream.id, (current) => ({
+          ...current,
+          observedAt: now,
+          health: now - current.lastEventAt >= CHAT_STREAM_QUIET_AFTER_MS
+            ? "quiet"
+            : current.lastEventType ? "active" : "connecting",
+        }));
+      });
+    }, 5_000);
+    return () => window.clearInterval(intervalId);
+  }, [update]);
 
   useEffect(() => {
     const heartbeat = () => {

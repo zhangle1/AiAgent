@@ -49,6 +49,11 @@ type ChatMessage = {
   model?: string | null;
   status?: "streaming" | "done" | "stopped" | "error";
   startedAt?: number;
+  lastEventAt?: number;
+  observedAt?: number;
+  streamHealth?: ChatStreamRecord["health"];
+  streamTerminalReason?: ChatStreamRecord["terminalReason"];
+  lastEventType?: ChatStreamEvent["type"];
   elapsedSeconds?: number;
   iteration?: number;
   llmCalls?: number;
@@ -178,8 +183,15 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
     const candidate = {
       ...message,
       status: stream.status === "streaming" ? message.status : stream.status,
+      lastEventAt: stream.lastEventAt,
+      observedAt: stream.observedAt,
+      streamHealth: stream.health,
+      streamTerminalReason: stream.terminalReason,
+      lastEventType: stream.lastEventType,
       content: stream.status === "done" ? message.content.trim() || t("chat.emptyAnswer") : message.content,
-      elapsedSeconds: message.elapsedSeconds ?? (stream.status === "streaming" ? undefined : Math.max(1, Math.round((Date.now() - stream.startedAt) / 1000))),
+      elapsedSeconds: stream.status === "streaming"
+        ? Math.max(1, Math.round((stream.observedAt - stream.startedAt) / 1000))
+        : message.elapsedSeconds ?? Math.max(1, Math.round((stream.observedAt - stream.startedAt) / 1000)),
     };
     const index = next.findIndex((item) => item.id === id);
     if (index >= 0) next[index] = { ...next[index], ...candidate };
@@ -2154,6 +2166,10 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   const selectionRangeRef = useRef<Range | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<{ text: string; top: number; left: number } | null>(null);
   const [copied, setCopied] = useState(false);
+  const runState = !isUser ? chatRunState(message) : null;
+  const quietSeconds = message.streamHealth === "quiet" && message.lastEventAt && message.observedAt
+    ? Math.max(1, Math.round((message.observedAt - message.lastEventAt) / 1000))
+    : 0;
 
   useEffect(() => {
     if (!selectionMenu) return;
@@ -2204,11 +2220,21 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
       <div className={`${isUser ? "max-w-[82%] rounded-2xl bg-blue-600 px-4 py-3 text-[13px] leading-6 text-white" : "w-full max-w-[860px] text-zinc-900"}`}>
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
-            <span className={`font-semibold ${message.status === "error" ? "text-red-600" : "text-zinc-900"}`}>{message.status === "streaming" ? (message.agent === "codex" ? "Codex working" : "Working") : message.status === "stopped" ? "Stopped" : message.status === "error" ? "Error" : message.modificationStatus === "completed_changed" ? "Codex 已修改完成" : message.modificationStatus === "completed_no_change" ? "Codex 已完成（未修改文件）" : "Done"}</span>
+            {runState && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{runState.label}</span>}
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}
             {message.totalTokens ? <span>- {formatCompactNumber(message.totalTokens)} tokens</span> : null}
             {message.llmCalls || message.toolCalls ? <span>- {(message.llmCalls ?? 0) + (message.toolCalls ?? 0)} calls</span> : null}
+          </div>
+        )}
+        {!isUser && message.status === "streaming" && message.streamHealth === "quiet" && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900">
+            <div>
+              <p className="font-semibold">已 {quietSeconds} 秒未收到新的执行事件</p>
+              <p className="mt-0.5 leading-5 text-amber-700">连接尚未返回完成或中断状态。系统会在连续 6 分钟无事件后自动停止，避免一直卡在执行中。</p>
+              {message.trace?.length ? <p className="mt-1 max-w-2xl truncate text-[11px] text-amber-700" title={message.trace.at(-1)}>最后事件：{message.trace.at(-1)}</p> : null}
+            </div>
+            <button type="button" onClick={onOpenDiagnostics} className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-medium text-amber-800 hover:bg-amber-100">诊断记录</button>
           </div>
         )}
         {isUser ? (
@@ -2238,11 +2264,11 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
             )}
           </>
         ) : (
-          <div ref={contentRef} onContextMenu={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{t("chat.thinking")}</div>}</div>
+          <div ref={contentRef} onContextMenu={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{message.status === "stopped" ? "本次执行已由你停止。" : message.status === "error" ? "本次执行未完成，请查看运行日志后重试。" : t("chat.thinking")}</div>}</div>
         )}
         {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
-          <details className="mt-3 rounded-lg border border-zinc-200 bg-white p-2 text-[11px] text-zinc-500" open={!message.content}>
+          <details className="mt-3 rounded-lg border border-zinc-200 bg-white p-2 text-[11px] text-zinc-500" open={!message.content || message.streamHealth === "quiet"}>
             <summary className="cursor-pointer select-none font-medium">{message.status === "streaming" ? t("chat.traceLive") : t("chat.traceHistory")}</summary>
             {message.trace && message.trace.length > 0 && (
               <div className="mt-2 space-y-1 border-l border-zinc-200 pl-3">
@@ -2295,6 +2321,20 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
     </article>
   );
 }, (previous, next) => previous.message === next.message && previous.projectId === next.projectId && previous.showDebugTrace === next.showDebugTrace);
+
+function chatRunState(message: ChatMessage): { label: string; tone: string; dot: string } {
+  if (message.status === "streaming") {
+    if (message.streamHealth === "quiet") return { label: "执行中 · 等待新事件", tone: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500 animate-pulse" };
+    if (message.streamHealth === "connecting") return { label: message.agent === "codex" ? "正在连接 Codex" : "正在连接模型", tone: "border-blue-200 bg-blue-50 text-blue-700", dot: "bg-blue-500 animate-pulse" };
+    if (message.lastEventType === "tool_result") return { label: "步骤已完成 · 正在继续处理", tone: "border-violet-200 bg-violet-50 text-violet-700", dot: "bg-violet-500 animate-pulse" };
+    return { label: message.agent === "codex" ? "Codex 正在执行" : "模型正在执行", tone: "border-blue-200 bg-blue-50 text-blue-700", dot: "bg-blue-500 animate-pulse" };
+  }
+  if (message.status === "stopped") return { label: "已由你中断", tone: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500" };
+  if (message.status === "error") return { label: message.streamTerminalReason === "idle_timeout" ? "无事件超时 · 已停止" : "执行失败或连接中断", tone: "border-rose-200 bg-rose-50 text-rose-700", dot: "bg-rose-500" };
+  if (message.modificationStatus === "completed_changed") return { label: "正常完成 · 已修改文件", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
+  if (message.modificationStatus === "completed_no_change") return { label: "正常完成 · 未修改文件", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
+  return { label: "正常完成", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
+}
 
 function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
   const latestByStage = new Map<string, ChatDebugTraceEvent>();

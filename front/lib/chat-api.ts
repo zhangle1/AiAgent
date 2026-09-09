@@ -3,6 +3,15 @@ import type { KnowledgeCitation } from "@/lib/knowledge-types";
 export type CodexSandboxMode = "full-access" | "workspace-write" | "read-only";
 
 const CHAT_RUNTIME_STORAGE_KEY = "aiagent:chat-runtime-id";
+export const CHAT_STREAM_CONNECT_TIMEOUT_MS = 15_000;
+export const CHAT_STREAM_QUIET_AFTER_MS = 45_000;
+export const CHAT_STREAM_IDLE_TIMEOUT_MS = 360_000;
+
+function chatStreamError(message: string): Error {
+  const error = new Error(message);
+  error.name = "ChatStreamError";
+  return error;
+}
 
 function directWebSocket(path: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -233,11 +242,15 @@ async function streamCompleteChatWs(
   let settled = false;
   let opened = false;
   let completed = false;
+  let connectTimer: number | null = null;
   let legacyDoneTimer: number | null = null;
+  let idleTimer: number | null = null;
 
   return await new Promise<void>((resolve, reject) => {
     const cleanup = () => {
       if (legacyDoneTimer !== null) window.clearTimeout(legacyDoneTimer);
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      if (connectTimer !== null) window.clearTimeout(connectTimer);
       signal?.removeEventListener("abort", abort);
       socket.onopen = null;
       socket.onmessage = null;
@@ -272,6 +285,14 @@ async function streamCompleteChatWs(
       reject(error);
     };
 
+    const armIdleTimeout = () => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        idleTimer = null;
+        fail(chatStreamError("连接已连续 6 分钟没有收到服务端事件，已停止本次执行。请查看运行日志后重试。"));
+      }, CHAT_STREAM_IDLE_TIMEOUT_MS);
+    };
+
     const abort = () => {
       try {
         socket.close(1000, "aborted");
@@ -287,13 +308,25 @@ async function streamCompleteChatWs(
       return;
     }
 
+    connectTimer = window.setTimeout(() => fail(new Error("Chat WebSocket connection timed out.")), CHAT_STREAM_CONNECT_TIMEOUT_MS);
+
     socket.onopen = () => {
       opened = true;
-      socket.send(JSON.stringify(payload));
+      if (connectTimer !== null) {
+        window.clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+      armIdleTimeout();
+      try {
+        socket.send(JSON.stringify(payload));
+      } catch {
+        fail(chatStreamError("聊天请求发送失败，未进入执行状态。"));
+      }
     };
 
     socket.onmessage = (message) => {
       try {
+        armIdleTimeout();
         const event = JSON.parse(String(message.data)) as ChatStreamEvent;
         if (event.type === "error") {
           try {
@@ -301,9 +334,7 @@ async function streamCompleteChatWs(
           } catch {
             // The terminal WebSocket error below is the authoritative result.
           }
-          const error = new Error(event.content || "Chat WebSocket returned an error.");
-          error.name = "ChatStreamError";
-          fail(error);
+          fail(chatStreamError(event.content || "Chat WebSocket returned an error."));
           return;
         }
         onEvent(event);
@@ -314,13 +345,15 @@ async function streamCompleteChatWs(
         }
         if (event.type === "done") scheduleLegacyDoneCompletion();
       } catch (ex) {
-        fail(ex instanceof Error ? ex : new Error("Invalid WebSocket event."));
+        fail(chatStreamError(ex instanceof SyntaxError ? "聊天服务返回了无法识别的流事件，本次执行已停止。" : "聊天流事件处理失败，本次执行已停止。"));
       }
     };
 
     socket.onerror = () => {
       if (legacyDoneTimer !== null) return;
-      fail(new Error("Chat WebSocket connection failed."));
+      fail(opened
+        ? chatStreamError("聊天连接在执行过程中断开，任务已停止。请查看运行日志后重试。")
+        : new Error("Chat WebSocket connection failed."));
     };
 
     socket.onclose = () => {
@@ -330,7 +363,7 @@ async function streamCompleteChatWs(
       }
       if (!completed) {
         if (legacyDoneTimer !== null) return;
-        fail(new Error("Chat WebSocket closed before completion."));
+        fail(chatStreamError("聊天连接在收到完成状态前关闭，任务可能已中断。请查看运行日志后重试。"));
         return;
       }
       finish();
@@ -343,12 +376,7 @@ async function streamCompleteChatSse(
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch("/api/v1/chat/complete/stream", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal,
-  });
+  const response = await openSseResponse(payload, signal);
 
   if (!response.ok || !response.body) {
     throw new Error(`Request failed with HTTP ${response.status}`);
@@ -366,7 +394,7 @@ async function streamCompleteChatSse(
   };
 
   while (true) {
-    const { value, done } = await reader.read();
+    const { value, done } = await readSseChunk(reader);
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const frames = buffer.split("\n\n");
@@ -383,6 +411,50 @@ async function streamCompleteChatSse(
   }
 
   if (!completed && !sawDone) throw new Error("Chat stream ended before completion.");
+}
+
+async function openSseResponse(payload: ChatCompleteRequest, signal?: AbortSignal): Promise<Response> {
+  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  let connectTimer: number | null = null;
+  try {
+    return await Promise.race([
+      fetch("/api/v1/chat/complete/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }),
+      new Promise<never>((_, reject) => {
+        connectTimer = window.setTimeout(() => {
+          controller.abort();
+          reject(chatStreamError("连接聊天服务超时，本次执行尚未开始。请稍后重试。"));
+        }, CHAT_STREAM_CONNECT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (connectTimer !== null) window.clearTimeout(connectTimer);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+async function readSseChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let idleTimer: number | null = null;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        idleTimer = window.setTimeout(() => {
+          void reader.cancel("chat_stream_idle_timeout");
+          reject(chatStreamError("连接已连续 6 分钟没有收到服务端事件，已停止本次执行。请查看运行日志后重试。"));
+        }, CHAT_STREAM_IDLE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (idleTimer !== null) window.clearTimeout(idleTimer);
+  }
 }
 
 function parseSseFrame(frame: string): ChatStreamEvent | null {
