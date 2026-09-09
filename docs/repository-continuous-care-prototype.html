@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>代码库持续养护 · 原型</title>
+  <style>
+    :root{--bg:#f5f7fb;--panel:#fff;--ink:#172033;--muted:#718096;--line:#e7ebf2;--blue:#356dff;--blue-soft:#edf3ff;--green:#20a36a;--orange:#f08a35;--red:#df5b62;--shadow:0 10px 30px rgba(33,52,91,.07)}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+    button{font:inherit;cursor:pointer;border:0} .app{display:flex;min-height:100vh}.sidebar{width:236px;background:#101828;color:#b5c0d4;padding:24px 16px;display:flex;flex-direction:column}.brand{color:#fff;font-weight:700;font-size:17px;display:flex;align-items:center;gap:10px;padding:0 10px 28px}.brand-mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#78a1ff,#5b5ce2);display:grid;place-items:center;color:#fff}.nav-title{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;padding:16px 10px 8px}.nav a{display:flex;gap:11px;align-items:center;color:inherit;text-decoration:none;border-radius:9px;padding:10px;margin:3px 0}.nav a.active,.nav a:hover{background:#1d2a43;color:#fff}.nav .count{margin-left:auto;background:#284474;color:#a9c8ff;border-radius:10px;padding:0 7px;font-size:11px}.user{margin-top:auto;border-top:1px solid #243149;padding:18px 10px 0;display:flex;gap:10px;align-items:center}.avatar{width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#2756bb;display:grid;place-items:center;font-weight:700}.user small{display:block;color:#7e8ca5}
+    main{flex:1;min-width:0}.topbar{height:72px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 36px}.crumb{color:var(--muted)}.crumb strong{color:var(--ink)}.top-actions{display:flex;align-items:center;gap:18px}.bell{font-size:19px;color:#65728a}.main{padding:30px 36px 50px;max-width:1500px}.heading{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:25px}.heading h1{font-size:27px;margin:0 0 5px;letter-spacing:-.5px}.heading p{margin:0;color:var(--muted)}.primary{background:var(--blue);color:#fff;border-radius:8px;padding:11px 17px;box-shadow:0 5px 12px #356dff33}.primary:hover{background:#2559e7}.ghost{background:#fff;color:#334155;border:1px solid var(--line);border-radius:8px;padding:10px 15px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.metric{padding:19px 20px}.metric .label{color:var(--muted);font-size:13px;display:flex;justify-content:space-between}.metric .value{font-size:25px;font-weight:700;margin-top:7px}.metric .sub{font-size:12px;color:var(--green);margin-top:3px}.progress{height:6px;background:#edf0f5;border-radius:4px;margin-top:13px;overflow:hidden}.progress i{display:block;height:100%;background:var(--blue);border-radius:4px}.layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,.9fr);gap:20px}.panel-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.panel-head h2{font-size:16px;margin:0}.tabs{display:flex;gap:20px;padding:0 20px;border-bottom:1px solid var(--line)}.tab{padding:14px 2px;color:var(--muted);border-bottom:2px solid transparent}.tab.active{color:var(--blue);border-color:var(--blue);font-weight:600}.task{padding:17px 20px;border-bottom:1px solid var(--line);display:flex;gap:15px;align-items:flex-start}.task:last-child{border-bottom:0}.task-icon{width:36px;height:36px;border-radius:9px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-size:17px}.task-body{flex:1;min-width:0}.task-title{font-weight:600;margin-bottom:4px}.task-meta{font-size:12px;color:var(--muted)}.tag{display:inline-block;border-radius:12px;padding:2px 8px;font-size:11px;margin-left:8px}.tag.green{background:#e9f8f0;color:#158354}.tag.orange{background:#fff3e8;color:#b8661d}.tag.blue{background:#edf3ff;color:#356dff}.task-score{font-weight:700;color:var(--orange);white-space:nowrap}.side-panel{padding:20px}.side-panel h3{font-size:15px;margin:0 0 16px}.mode{display:flex;gap:10px;padding:12px;border:1px solid var(--line);border-radius:9px;margin-bottom:10px}.mode.selected{border-color:#9ab6ff;background:#f5f8ff}.radio{width:17px;height:17px;border:2px solid #bdc7d8;border-radius:50%;margin-top:3px}.selected .radio{border:5px solid var(--blue)}.mode strong{display:block}.mode span{font-size:12px;color:var(--muted)}.schedule{margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}.schedule-row{display:flex;justify-content:space-between;align-items:center;margin:12px 0;color:#526074}.switch{width:38px;height:22px;border-radius:12px;background:#ccd4e1;padding:3px}.switch.on{background:var(--blue)}.switch i{display:block;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}.switch.on i{margin-left:16px}.log{margin-top:20px}.log-item{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}.dot{width:8px;height:8px;border-radius:50%;background:var(--green);margin:7px 2px 0}.dot.blue{background:var(--blue)}.log-item small{display:block;color:var(--muted)}.notice{margin-top:20px;border-radius:10px;background:#fff8ec;color:#875a20;padding:13px 15px;font-size:12px}.empty{display:none;padding:30px;text-align:center;color:var(--muted)}
+    .toast{position:fixed;right:30px;bottom:28px;background:#172033;color:#fff;padding:13px 18px;border-radius:8px;box-shadow:var(--shadow);opacity:0;transform:translateY(10px);transition:.25s}.toast.show{opacity:1;transform:translateY(0)}
+    @media(max-width:950px){.sidebar{width:190px}.cards{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}.main{padding:24px}.topbar{padding:0 24px}}
+    @media(max-width:650px){.sidebar{display:none}.cards{grid-template-columns:1fr 1fr}.heading{display:block}.heading button{margin-top:15px}.topbar{height:58px}.main{padding:20px 14px}.top-actions .bell{display:none}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">✦</span> AiAgent</div>
+      <div class="nav-title">工作台</div>
+      <nav class="nav">
+        <a href="#">⌂ <span>总览</span></a><a href="#" class="active">⌘ <span>代码库养护</span><span class="count">3</span></a><a href="#">◈ <span>项目任务</span></a><a href="#">▱ <span>知识中心</span></a>
+      </nav>
+      <div class="nav-title">管理</div><nav class="nav"><a href="#">◷ <span>运行记录</span></a><a href="#">⚙ <span>模型与预算</span></a></nav>
+      <div class="user"><div class="avatar">A</div><div>管理员<small>组织工作区</small></div></div>
+    </aside>
+    <main>
+      <header class="topbar"><div class="crumb">项目 / <strong>AIAGENT</strong> / 代码库养护</div><div class="top-actions"><span class="bell">♧</span><span>北京时间 ▾</span><div class="avatar">A</div></div></header>
+      <section class="main">
+        <div class="heading"><div><h1>代码库持续养护</h1><p>把富余 Token 转化为可复用的代码理解、建议与验证成果。</p></div><button class="primary" id="runBtn">＋ 立即养护</button></div>
+        <div class="cards">
+          <div class="card metric"><div class="label">本周期可用预算 <span>ⓘ</span></div><div class="value">68,420 <small style="font-size:13px;font-weight:500"> tokens</small></div><div class="sub">↑ 12.4% 较上周期</div><div class="progress"><i style="width:68%"></i></div></div>
+          <div class="card metric"><div class="label">已完成任务</div><div class="value">24</div><div class="sub">+ 6 个待复用知识卡片</div></div>
+          <div class="card metric"><div class="label">待审核建议</div><div class="value">3</div><div class="sub" style="color:var(--orange)">其中 1 个高优先级</div></div>
+          <div class="card metric"><div class="label">最近一次运行</div><div class="value" style="font-size:20px">今天 02:18</div><div class="sub">已正常完成 · 12,680 tokens</div></div>
+        </div>
+        <div class="layout">
+          <div>
+            <section class="panel"><div class="panel-head"><h2>养护任务池</h2><button class="ghost" id="filterBtn">筛选 ▾</button></div><div class="tabs"><button class="tab active" data-tab="recommended">推荐任务 <span class="tag blue">3</span></button><button class="tab" data-tab="running">运行中</button><button class="tab" data-tab="done">已完成</button></div>
+              <div id="taskList">
+                <div class="task" data-state="recommended"><div class="task-icon">⌕</div><div class="task-body"><div class="task-title">梳理 Agent Runtime 调用链 <span class="tag orange">高优先级</span></div><div class="task-meta">backed/Services/AgentRuntime · 预计 18,000 tokens · 增量变更</div></div><div class="task-score">92 分</div></div>
+                <div class="task" data-state="recommended"><div class="task-icon">▤</div><div class="task-body"><div class="task-title">检查文档与接口行为一致性</div><div class="task-meta">API 文档 / Controller · 预计 8,500 tokens · 有明确证据</div></div><div class="task-score">86 分</div></div>
+                <div class="task" data-state="recommended"><div class="task-icon">◒</div><div class="task-body"><div class="task-title">建立代码库入口地图</div><div class="task-meta">backed/Services/CodeRepository · 预计 12,000 tokens · 首次理解</div></div><div class="task-score">79 分</div></div>
+                <div class="task" data-state="running" style="display:none"><div class="task-icon">↻</div><div class="task-body"><div class="task-title">增量变更巡检 <span class="tag green">运行中</span></div><div class="task-meta">正在分析最近 7 天变更 · 已消耗 2,480 tokens</div></div><div class="task-score" style="color:var(--blue)">42%</div></div>
+                <div class="task" data-state="done" style="display:none"><div class="task-icon">✓</div><div class="task-body"><div class="task-title">模块职责与依赖关系卡片</div><div class="task-meta">昨天 02:31 完成 · 产生 8 张知识卡片</div></div><div class="task-score" style="color:var(--green)">已完成</div></div>
+              </div><div class="empty" id="empty">当前没有该状态的任务</div>
+            </section>
+            <section class="panel log"><div class="panel-head"><h2>最近运行</h2><button class="ghost">查看全部</button></div><div class="log-item"><span class="dot"></span><div><b>夜间增量巡检</b><small>今天 02:00 · 12,680 tokens · 生成 2 条建议</small></div></div><div class="log-item"><span class="dot blue"></span><div><b>手动理解：CodeRepository</b><small>昨天 16:42 · 9,320 tokens · 生成 14 张知识卡片</small></div></div></section>
+          </div>
+          <div>
+            <section class="panel side-panel"><h3>运行设置</h3><div class="mode selected"><i class="radio"></i><div><strong>理解 + 建议</strong><span>读取代码并生成可审核建议，不修改文件</span></div></div><div class="mode"><i class="radio"></i><div><strong>仅理解代码库</strong><span>沉淀模块地图、调用链和知识卡片</span></div></div><div class="mode"><i class="radio"></i><div><strong>生成优化草案</strong><span>在隔离副本中补丁、验证并等待审批</span></div></div><div class="schedule"><h3>定时养护计划 <span class="tag green">已开启</span></h3><div class="schedule-row"><span>执行频率</span><b>每天</b></div><div class="schedule-row"><span>执行时间</span><b>02:00</b></div><div class="schedule-row"><span>空闲补充运行</span><button class="switch on" id="switch"><i></i></button></div><button class="ghost" style="width:100%;margin-top:10px" id="editSchedule">编辑计划</button></div></section>
+            <div class="notice">安全边界：任务固定在隔离副本执行，原工作区不会被后台养护直接修改。所有补丁必须人工审核后交付。</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script>
+    const toast=document.getElementById('toast'); function show(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2600)}
+    document.getElementById('runBtn').onclick=()=>show('已创建养护运行，正在进行预算预留…');
+    document.getElementById('editSchedule').onclick=()=>show('计划编辑面板将在接入后端后开放');
+    document.getElementById('filterBtn').onclick=()=>show('筛选：高优先级 · 最近变更 · 有明确证据');
+    document.getElementById('switch').onclick=function(){this.classList.toggle('on');show(this.classList.contains('on')?'已开启空闲补充运行':'已关闭空闲补充运行')};
+    document.querySelectorAll('.mode').forEach(x=>x.onclick=()=>{document.querySelectorAll('.mode').forEach(y=>y.classList.remove('selected'));x.classList.add('selected');show('运行模式已切换为：'+x.querySelector('strong').textContent)});
+    document.querySelectorAll('.tab').forEach(tab=>tab.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));tab.classList.add('active');let state=tab.dataset.tab;let shown=0;document.querySelectorAll('.task').forEach(t=>{let yes=t.dataset.state===state;t.style.display=yes?'flex':'none';if(yes)shown++});document.getElementById('empty').style.display=shown?'none':'block'});
+  </script>
+</body>
+</html>
