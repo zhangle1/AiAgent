@@ -6,13 +6,13 @@ $frontendScript = Join-Path $PSScriptRoot "Start-Frontend.ps1"
 Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoExit",
     "-ExecutionPolicy", "Bypass",
-    "-File", $backendScript
+    "-File", ('"' + $backendScript + '"')
 ) -WorkingDirectory (Split-Path -Parent $PSScriptRoot)
 
 Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoExit",
     "-ExecutionPolicy", "Bypass",
-    "-File", $frontendScript
+    "-File", ('"' + $frontendScript + '"')
 ) -WorkingDirectory (Split-Path -Parent $PSScriptRoot)
 
 Write-Host "Backend and frontend terminals were opened." -ForegroundColor Green
