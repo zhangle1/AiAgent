@@ -1,0 +1,102 @@
+{
+    "kind":  "local-review-manifest",
+    "status":  "pending_human_review",
+    "scope":  "Current maintenance implementation, including pre-existing workspace changes. Not a server-side delivery approval.",
+    "base_commit":  "c3ffa1e40dd1cd3a96923ed85e10e02c89493afb",
+    "validation":  {
+                       "maintenance_tests":  "16 passed",
+                       "typescript":  "tsc --noEmit --incremental false passed",
+                       "diff_check":  "passed",
+                       "live_codex_and_deployment":  "not tested"
+                   },
+    "files":  [
+                  {
+                      "path":  "AGENTS.md",
+                      "sha256":  "e7c22507a2e38eddc684dde4184af88e8369018ff3ab03650bc824d4aba62bd8"
+                  },
+                  {
+                      "path":  "README.md",
+                      "sha256":  "c6dff167791fa6d494465c67f0d261cee316bea9200f3c6a8aa54a04fcd67915"
+                  },
+                  {
+                      "path":  "backed/Dtos/Chat/ChatDtos.cs",
+                      "sha256":  "9d0900823a317ee7e46c61c34c47d513424ca6b9c3c1520cbbda294453ec5bbb"
+                  },
+                  {
+                      "path":  "backed/Program.cs",
+                      "sha256":  "a615b4d1bd4de14a67008e1b84b976370358a4f37a9c3a422966534d51388ed4"
+                  },
+                  {
+                      "path":  "backed/Services/Chat/Codex/CodexChatService.cs",
+                      "sha256":  "d121ffaece77c98fa2744259bbf26256c2b581895b6603c030af428aa86aad67"
+                  },
+                  {
+                      "path":  "backed/Services/CodeDelivery/CodeDeliveryAppService.cs",
+                      "sha256":  "ab2cb33ebaee9edd6e6866e1e1d21a4cf456430438b740cb771ebaf6b1733101"
+                  },
+                  {
+                      "path":  "backed/Services/Git/GitWorkspaceService.cs",
+                      "sha256":  "e399b761a21c846cac6d7e4e0f07abad918333e1b31d73bc726a7aeaea7d9927"
+                  },
+                  {
+                      "path":  "backed/Services/Settings/ModelSchemaInitializer.cs",
+                      "sha256":  "624a22239050df38d89bc70bbb192e2ea3a7f2cd92def2a5708134f7e78b9420"
+                  },
+                  {
+                      "path":  "docs/repository-continuous-care-design.md",
+                      "sha256":  "ab0afef7eb381680a11122dc17d2d57fd5508e317c804e464b419366c7304fb1"
+                  },
+                  {
+                      "path":  "front/components/layout/AppSidebar.tsx",
+                      "sha256":  "e9b9b23c2fc2ef7415a7e3f88278cb0ed6e29eb82a4e5113d86a393935979786"
+                  },
+                  {
+                      "path":  "backed.tests/RepositoryMaintenanceTests.cs",
+                      "sha256":  "8e048ad427899c5bd320fe0d62888b78b89748a69ef52f23a7e81f0d0e537566"
+                  },
+                  {
+                      "path":  "backed/Dtos/CodeRepository/RepositoryMaintenanceDtos.cs",
+                      "sha256":  "939487bd6e77300fa623a90b528b2fd7d9b66fa362039c4974eaebcc834c8b29"
+                  },
+                  {
+                      "path":  "backed/Entities/CodeRepository/AiRepositoryMaintenance.cs",
+                      "sha256":  "9401b663631e3a310e5dedf8c6cce2443b788b4870468cb64977022bccb89fc0"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/RepositoryMaintenanceAppService.cs",
+                      "sha256":  "0db3063b0b18bd821b7633297008868daa1bdf089b155258e1227a2251dc4457"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/RepositoryMaintenanceBuildService.cs",
+                      "sha256":  "65ca95c300ca33e5216fb20effb2faf9cb5fba1b91093df75a2543b871f75be2"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/RepositoryMaintenanceService.cs",
+                      "sha256":  "6213eedfa7c1c1c874183755de619aee894c99eea8e864a17789971a95876792"
+                  },
+                  {
+                      "path":  "backed/Services/Git/GitWorkspaceService.Maintenance.cs",
+                      "sha256":  "331acd30680953ff4c92a8a4dd300e217b181fbffff0ee8b91c617ac6c6a0637"
+                  },
+                  {
+                      "path":  "docs/repository-maintenance-implementation.md",
+                      "sha256":  "babe0e953fbe1bd6e6aef66704116ae74066f69a80c90def127a67ff7251d467"
+                  },
+                  {
+                      "path":  "front/app/repository-maintenance/page.tsx",
+                      "sha256":  "4e72361b2edc82cca8ea5e78b6165214c5fc409c1432b19e00d9110a09fbb0f7"
+                  },
+                  {
+                      "path":  "front/components/code-repositories/RepositoryMaintenancePage.tsx",
+                      "sha256":  "ebc685396c68b2a19ac2025e7fb7306e3cb7b4dd16bd33954aae6a56a240bd34"
+                  },
+                  {
+                      "path":  "front/lib/repository-maintenance-api.ts",
+                      "sha256":  "e4847c6cad99602b5f7ff9f68d45a78593556db24253675376cdec9819aac6e3"
+                  },
+                  {
+                      "path":  "front/lib/repository-maintenance-types.ts",
+                      "sha256":  "e52688d6c8f7a34914517ad14ac7d87f5e43e1315ae7d3d502e7f973e737708b"
+                  }
+              ]
+}

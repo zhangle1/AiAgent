@@ -133,6 +133,10 @@ public sealed class ChatCompleteRequest
     [JsonIgnore]
     public string? RuntimeUserId { get; set; }
 
+    /// <summary>Server-owned isolated maintenance workspace; never accepted from HTTP JSON.</summary>
+    [JsonIgnore]
+    public string? MaintenanceWorkspacePath { get; set; }
+
     /// <summary>
     /// Server-only resolved image paths. This field must never be accepted from or returned to the browser.
     /// </summary>

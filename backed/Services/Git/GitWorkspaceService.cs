@@ -19,6 +19,8 @@ public sealed record GitWorkspaceCredential(string Username, string AccessToken)
 /// </summary>
 public interface IGitWorkspaceService
 {
+    Task<string> PrepareMaintenanceAsync(string sourceRoot, string destination, string branch, CancellationToken token, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> PushMaintenanceAsync(string root, string branch, string baseHead, string snapshot, string message, CancellationToken token, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
@@ -111,7 +113,7 @@ public sealed class GitWorkspaceLocalChange
     public DateTime? LastWriteTimeUtc { get; set; }
 }
 
-public sealed class GitWorkspaceService : IGitWorkspaceService
+public sealed partial class GitWorkspaceService : IGitWorkspaceService
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _operationGates = new(StringComparer.OrdinalIgnoreCase);
     private readonly AsyncLocal<GitWorkspaceCredential?> _credential = new();
@@ -539,7 +541,10 @@ public sealed class GitWorkspaceService : IGitWorkspaceService
             output.Append(await process.StandardOutput.ReadToEndAsync(cancellationToken));
             output.Append(await process.StandardError.ReadToEndAsync(cancellationToken));
             await process.WaitForExitAsync(cancellationToken);
-            return new GitProcessResult(process.ExitCode, SanitizeOutput(output.ToString().Trim(), credential));
+            // NUL-delimited porcelain begins with a significant space for unstaged changes.
+            // Trimming it shifts the filename and makes delivery fingerprints miss file content.
+            var value = arguments.Contains("-z") ? output.ToString() : output.ToString().Trim();
+            return new GitProcessResult(process.ExitCode, SanitizeOutput(value, credential));
         }
         finally
         {

@@ -62,6 +62,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 页面保持轻量；复杂状态放在 Provider、hook 或领域组件中。
 - 长列表、终端、聊天内容必须拥有独立滚动容器，不能撑破工作台布局。
 - 看板工作台相关代码在 `components/dashboard-applications/` 与 `lib/dashboard-application-api.ts`。
+- 代码库养护入口为 `components/code-repositories/RepositoryMaintenancePage.tsx`；HTTP 契约位于 `lib/repository-maintenance-{api,types}.ts`。后台调度与编译分别位于 `RepositoryMaintenanceService`、`RepositoryMaintenanceBuildService`，测试使用临时本地 Git 远端，不能连接用户仓库。
 
 
 ## Git 规则
@@ -71,6 +72,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 不使用破坏性 Git 命令（如 `reset --hard`）处理未知改动。
 - Git 拉取/推送的命令输出应回传给用户；认证失败时不要输出凭据。
 - Agent 完成项目代码修改后应创建代码变更集并通过自动校验；只有具备代码提交权限的人工审批人可以批准和执行交付。交付前必须复核审批快照指纹，禁止绕过变更集直接把 Agent 修改提交到远端。
+- 代码库养护的定时执行仅负责生成建议或编译验证后的变更集；交付仍需有提交权限的用户逐次批准，交付时复核权限、编译快照与基线。仅推送本轮独立 `maintenance/*` 分支。普通变更集 API 不得重新校验、批准或交付养护副本。
 
 ## 文档更新
 

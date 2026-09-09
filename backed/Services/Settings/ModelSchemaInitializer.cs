@@ -57,6 +57,8 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiCodeRepositoryFile),
             typeof(AiCodeChangeSet),
             typeof(AiCodeChangeSetRepository),
+            typeof(AiRepositoryMaintenancePlan),
+            typeof(AiRepositoryMaintenanceRun),
             typeof(AiUser),
             typeof(AiUserCodeProject),
             typeof(AiUserSession),

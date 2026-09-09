@@ -70,6 +70,8 @@ public sealed class CodeDeliveryAppService : IDynamicApiController
         var row = FindVisible(await User(token), id);
         if (row is null) return new NotFoundObjectResult(new { message = "变更集不存在。" });
         if (row.Status is "approved" or "delivering" or "delivered") return new ConflictObjectResult(new { message = "已批准或已交付的变更集不能重新生成快照。" });
+        if (_db.Queryable<AiRepositoryMaintenanceRun>().Any(x => x.ChangeSetId == id))
+            return new ConflictObjectResult(new { message = "养护变更集的编译快照由养护任务生成，请重新执行养护。" });
         await ValidateCore(row, token);
         return new OkObjectResult(Detail(row));
     }
@@ -82,6 +84,8 @@ public sealed class CodeDeliveryAppService : IDynamicApiController
         var row = FindVisible(user, id);
         if (row is null) return new NotFoundObjectResult(new { message = "变更集不存在。" });
         if (row.Status != "pending_approval") return new ConflictObjectResult(new { message = "仅待审批变更集可审批。" });
+        if (_db.Queryable<AiRepositoryMaintenanceRun>().Any(x => x.ChangeSetId == id))
+            return new ConflictObjectResult(new { message = "请在代码库养护页面批准并推送，或保留为待审批状态。" });
         row.Status = request.Approved ? "approved" : "rejected";
         row.ApprovedBy = user.Id;
         row.ApprovalComment = Trim(request.Comment, 1000);
@@ -99,6 +103,8 @@ public sealed class CodeDeliveryAppService : IDynamicApiController
         var row = FindVisible(user, id);
         if (row is null) return new NotFoundObjectResult(new { message = "变更集不存在。" });
         if (row.Status != "approved") return new ConflictObjectResult(new { message = "变更集尚未批准。" });
+        if (_db.Queryable<AiRepositoryMaintenanceRun>().Any(x => x.ChangeSetId == id))
+            return new ConflictObjectResult(new { message = "养护变更集使用独立副本，请在代码库养护页面批准并推送。" });
         var gate = Gates.GetOrAdd(row.ProjectId!.Value, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(token);
         try

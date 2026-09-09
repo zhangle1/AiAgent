@@ -70,7 +70,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         request.CodexReasoningEffort = model.ReasoningEffort;
         var sandboxMode = ResolveSandboxMode(request.CodexSandboxMode);
         request.CodexSandboxMode = sandboxMode;
-        var workspacePath = ResolveWorkspacePath(request.CodeProjectId);
+        var workspacePath = request.MaintenanceWorkspacePath ?? ResolveWorkspacePath(request.CodeProjectId);
         var activeSession = AcquireActiveSession(request.RuntimeUserId, request.SessionId);
 
         try
