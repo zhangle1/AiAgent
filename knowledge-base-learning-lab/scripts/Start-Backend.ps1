@@ -20,7 +20,7 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 
 & $venvPython -c "import sys
 try:
-    import fastapi, uvicorn
+    import cryptography, fastapi, pyodbc, uvicorn
 except ImportError as exc:
     print('Backend dependencies need installation: ' + str(exc))
     sys.exit(1)

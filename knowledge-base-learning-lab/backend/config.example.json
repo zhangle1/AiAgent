@@ -1,0 +1,9 @@
+{
+  "storage": {
+    "mode": "sqlserver",
+    "sql_server_connection_string": "Driver={ODBC Driver 17 for SQL Server};Server=127.0.0.1,1433;Database=KnowledgeLab;Trusted_Connection=yes;Encrypt=yes;TrustServerCertificate=yes"
+  },
+  "security": {
+    "api_key_encryption_key_env": "KNOWLEDGE_LAB_CONFIG_KEY"
+  }
+}
