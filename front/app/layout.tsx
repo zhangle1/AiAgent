@@ -7,6 +7,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "AiAgent",
   description: "AiAgent chat, knowledge base, model, and service workspace",
+  icons: {
+    icon: "/kunbuddy-mark.png",
+    apple: "/kunbuddy-mark.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
