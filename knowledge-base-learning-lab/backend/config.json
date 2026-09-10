@@ -1,0 +1,9 @@
+{
+  "storage": {
+    "mode": "memory",
+    "sql_server_connection_string": ""
+  },
+  "security": {
+    "api_key_encryption_key_env": "KNOWLEDGE_LAB_CONFIG_KEY"
+  }
+}
