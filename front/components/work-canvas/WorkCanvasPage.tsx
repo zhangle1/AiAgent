@@ -1206,7 +1206,7 @@ function FloatingActions({ anchorRef, layoutKey, open, onOpenChange, onAddExisti
         <div id="work-canvas-floating-actions" role="menu" aria-label="画布快捷操作" className="order-1 w-[min(18rem,calc(100vw-2.5rem))] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_48px_rgba(15,23,42,0.18)]">
           <button type="button" role="menuitem" onClick={onAddExisting} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600"><MessageSquare size={18} /></span>
-            <span><b className="block font-semibold">添加已有会话</b><span className="mt-0.5 block text-xs text-slate-500">按 AiAgent 项目筛选后，快速加入画布</span></span>
+            <span><b className="block font-semibold">添加已有会话</b><span className="mt-0.5 block text-xs text-slate-500">按坤伴项目筛选后，快速加入画布</span></span>
           </button>
           <button type="button" role="menuitem" onClick={onChooseTemplate} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600"><LayoutTemplate size={18} /></span>
@@ -1264,11 +1264,11 @@ function TaskSessionDialog({ tasks, loading, error, projectFilter, search, selec
       <section className="flex max-h-[min(46rem,100dvh)] w-full flex-col rounded-t-3xl bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:max-w-3xl sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="task-session-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><ListTodo size={20} /></span>
-          <div className="min-w-0 flex-1"><h2 id="task-session-title" className="text-base font-semibold text-slate-900">从任务创建会话</h2><p className="mt-1 text-xs leading-5 text-slate-500">每项任务将创建一个关联 AiAgent 项目的空会话；内容和图片只进入草稿，不会自动发送或执行。</p></div>
+          <div className="min-w-0 flex-1"><h2 id="task-session-title" className="text-base font-semibold text-slate-900">从任务创建会话</h2><p className="mt-1 text-xs leading-5 text-slate-500">每项任务将创建一个关联坤伴项目的空会话；内容和图片只进入草稿，不会自动发送或执行。</p></div>
           <button type="button" onClick={onClose} disabled={busy} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" aria-label="关闭"><X size={17} /></button>
         </div>
         <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:px-5">
-          <select value={projectFilter} onChange={(event) => onProjectFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="all">全部 AiAgent 项目</option>{projects.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
+          <select value={projectFilter} onChange={(event) => onProjectFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="all">全部坤伴项目</option>{projects.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
           <div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input autoFocus value={search} onChange={(event) => onSearch(event.target.value)} placeholder="搜索任务标题、详情或工作项 ID" className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></div>
         </div>
         {error && <p role="alert" className="mx-4 mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 sm:mx-5">{error}</p>}
@@ -1389,7 +1389,7 @@ function SessionPicker({ sessions, projects, projectId, query, onProjectChange, 
   const createEmptySession = async () => {
     const selectedProjectId = Number(projectId);
     if (!selectedProjectId) {
-      setCreateError("请先选择一个 AiAgent 项目，再新建会话。");
+      setCreateError("请先选择一个坤伴项目，再新建会话。");
       return;
     }
     setCreating(true);
@@ -1416,7 +1416,7 @@ function SessionPicker({ sessions, projects, projectId, query, onProjectChange, 
         </div>
         <div className="p-4">
           <label className="block text-xs font-medium text-slate-600">
-            AiAgent 项目
+            坤伴项目
             <select value={projectId} onChange={(event) => { onProjectChange(event.target.value); setCreateError(""); }} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
               <option value="all">选择项目以新建或筛选</option>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.display_name || project.name}</option>)}

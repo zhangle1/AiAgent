@@ -5,7 +5,7 @@ export type AppLanguage = (typeof supportedLanguages)[number];
 export type TranslationKey = keyof typeof zhCN;
 
 const zhCN = {
-  "app.name": "AiAgent",
+  "app.name": "坤伴",
   "common.loadingSettings": "正在加载设置...",
   "common.tour": "导览",
   "common.retry": "重试",
@@ -107,7 +107,7 @@ const zhCN = {
   "codeRepository.name": "标识名称",
   "codeRepository.namePlaceholder": "例如 aiagent",
   "codeRepository.displayName": "显示名称",
-  "codeRepository.displayNamePlaceholder": "例如 AiAgent",
+  "codeRepository.displayNamePlaceholder": "例如 坤伴",
   "codeRepository.rootPath": "代码库目录",
   "codeRepository.rootPathHint": "请选择后端允许访问的本地目录；浏览器不会直接读取你的文件。",
   "codeRepository.browse": "浏览目录",
@@ -286,7 +286,7 @@ const zhCN = {
 } as const;
 
 const enUS: Record<TranslationKey, string> = {
-  "app.name": "AiAgent",
+  "app.name": "KunBuddy",
   "common.loadingSettings": "Loading settings...",
   "common.tour": "Tour",
   "common.retry": "Retry",
@@ -388,7 +388,7 @@ const enUS: Record<TranslationKey, string> = {
   "codeRepository.name": "Identifier",
   "codeRepository.namePlaceholder": "For example, aiagent",
   "codeRepository.displayName": "Display name",
-  "codeRepository.displayNamePlaceholder": "For example, AiAgent",
+  "codeRepository.displayNamePlaceholder": "For example, KunBuddy",
   "codeRepository.rootPath": "Repository directory",
   "codeRepository.rootPathHint": "Select a local directory that the backend is allowed to access. The browser does not read your files directly.",
   "codeRepository.browse": "Browse directories",

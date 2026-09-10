@@ -92,7 +92,7 @@ export function FrontendOnboarding() {
   return <div className="fixed inset-0 z-[110] flex items-end bg-slate-950/40 p-3 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="frontend-onboarding-title">
     <section className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
-        <div><p className="text-xs font-semibold tracking-[.14em] text-blue-600">快速上手</p><h2 id="frontend-onboarding-title" className="mt-1 text-lg font-semibold text-slate-900">3 步开始使用 AiAgent</h2></div>
+        <div><p className="text-xs font-semibold tracking-[.14em] text-blue-600">快速上手</p><h2 id="frontend-onboarding-title" className="mt-1 text-lg font-semibold text-slate-900">3 步开始使用坤伴</h2></div>
         <button type="button" onClick={completeGuide} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="跳过新手引导" title="跳过新手引导"><X size={17}/></button>
       </header>
       <div className="px-5 pt-5 sm:px-6"><div className="flex items-center gap-2" aria-label={`第 ${stepIndex + 1} 步，共 ${steps.length} 步`}>{steps.map((step, index) => <span key={step.title} className={`h-1.5 flex-1 rounded-full ${index <= stepIndex ? "bg-blue-600" : "bg-slate-100"}`}/>)}</div></div>

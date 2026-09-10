@@ -2133,7 +2133,7 @@ function EmptyState({ title }: { title: string }) {
         <div className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-200">
           <Sparkles size={23} strokeWidth={1.8} />
         </div>
-        <p className="mb-2 text-[11px] font-semibold tracking-[0.18em] text-blue-600">AIAGENT WORKSPACE</p>
+        <p className="mb-2 text-[11px] font-semibold tracking-[0.18em] text-blue-600">KUNBUDDY WORKSPACE</p>
         <h2 className="font-serif text-[30px] font-semibold tracking-normal text-slate-950 sm:text-[40px]">{title}</h2>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">选择项目后，AI 会基于该项目下已登记的代码库协助你阅读、分析和修改代码。</p>
       </div>
