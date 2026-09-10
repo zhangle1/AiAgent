@@ -16,3 +16,9 @@ public sealed class AuthStatusResponse
     [JsonPropertyName("is_admin")] public bool IsAdmin { get; set; }
     [JsonPropertyName("registration_enabled")] public bool RegistrationEnabled { get; set; }
 }
+
+public sealed class ChangePasswordRequest
+{
+    [JsonPropertyName("current_password")] public string CurrentPassword { get; set; } = string.Empty;
+    [JsonPropertyName("new_password")] public string NewPassword { get; set; } = string.Empty;
+}

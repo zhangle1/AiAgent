@@ -32,6 +32,17 @@ public sealed class AdminUpdateUserCodeCommitPermissionRequest
     [JsonPropertyName("can_commit_code")] public bool CanCommitCode { get; set; }
 }
 
+public sealed class AdminUpdateUserStatusRequest
+{
+    [JsonPropertyName("is_disabled")] public bool IsDisabled { get; set; }
+}
+
+public sealed class AdminUserImportResultDto
+{
+    [JsonPropertyName("created_count")] public int CreatedCount { get; set; }
+    [JsonPropertyName("errors")] public List<string> Errors { get; set; } = [];
+}
+
 public sealed class AdminUserDto
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;

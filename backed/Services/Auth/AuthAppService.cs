@@ -56,4 +56,16 @@ public sealed class AuthAppService : IDynamicApiController
         context.Response.Cookies.Delete(AuthService.CookieName, new CookieOptions { Path = "/" });
         return new OkObjectResult(new { ok = true });
     }
+
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        var context = _httpContextAccessor.HttpContext!;
+        var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken);
+        if (user == null) return new UnauthorizedResult();
+        var result = await _authService.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword, cancellationToken);
+        if (!result.Succeeded) return new BadRequestObjectResult(new { message = result.Error });
+        context.Response.Cookies.Delete(AuthService.CookieName, new CookieOptions { Path = "/" });
+        return new OkObjectResult(new { ok = true });
+    }
 }

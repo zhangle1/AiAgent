@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, FileUp, GitBranch, MessageSquare, Network, Palette, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
+import { BarChart3, Bot, Brain, ChevronRight, Code2, Database, FileUp, GitBranch, KeyRound, MessageSquare, Network, Palette, Settings2, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAuthStatus } from "@/lib/auth-api";
 import { activeModel, activeProfile, serviceConfigured, type Catalog, type ServiceName } from "@/lib/settings-types";
@@ -18,6 +18,7 @@ const cards: Array<{ id: string; titleKey?: TranslationKey; descKey?: Translatio
   { id: "chat", titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },
   { id: "usage", titleKey: "settings.usage", descKey: "settings.usageDesc", icon: BarChart3, href: "/settings/usage" },
   { id: "uploads", title: "我的上传", description: "查看聊天中已发送的图片、文档和文本提取。", icon: FileUp, href: "/settings/uploads" },
+  { id: "account-security", title: "账号安全", description: "验证当前密码后修改登录密码，修改完成将退出所有登录会话。", icon: KeyRound, href: "/settings/account" },
   { id: "memory", titleKey: "nav.memory", descKey: "settings.memoryDesc", icon: Brain, href: "/settings" },
 ];
 

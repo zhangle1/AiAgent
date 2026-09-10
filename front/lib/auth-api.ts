@@ -16,3 +16,4 @@ export function getAuthStatus() { return request<AuthStatus>("/api/v1/auth/statu
 export function login(username: string, password: string) { return request<{ ok: true }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }); }
 export function register(username: string, password: string) { return request<{ ok: true }>("/api/v1/auth/register", { method: "POST", body: JSON.stringify({ username, password }) }); }
 export function logout() { return request<{ ok: true }>("/api/v1/auth/logout", { method: "POST", body: "{}" }); }
+export function changePassword(currentPassword: string, newPassword: string) { return request<{ ok: true }>("/api/v1/auth/change-password", { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }); }

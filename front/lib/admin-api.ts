@@ -20,6 +20,15 @@ export function updateAdminUserAlias(userId: string, alias: string) { return req
 export function updateAdminUserProjects(userId: string, projectIds: number[]) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/projects`, { method: "PUT", body: JSON.stringify({ project_ids: projectIds }) }); }
 export function updateAdminUserCodeCommitPermission(userId: string, canCommitCode: boolean) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/code-commit-permission`, { method: "PUT", body: JSON.stringify({ can_commit_code: canCommitCode }) }); }
 export function resetAdminUserPassword(userId: string, password: string) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }); }
+export function updateAdminUserStatus(userId: string, isDisabled: boolean) { return request<{ ok: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/status`, { method: "PUT", body: JSON.stringify({ is_disabled: isDisabled }) }); }
+export async function importAdminUsers(file: File) {
+  const data = new FormData(); data.append("file", file);
+  const response = await fetch("/api/v1/admin/users/import", { method: "POST", body: data });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof payload.message === "string" ? payload.message : `请求失败（HTTP ${response.status}）`);
+  return payload as { created_count: number; errors: string[] };
+}
+export const adminUserImportTemplateUrl = "/api/v1/admin/users/import-template";
 export function getAdminSessions(userId?: string) { return request<AdminSession[]>(`/api/v1/admin/sessions?${new URLSearchParams({ limit: "100", ...(userId ? { user_id: userId } : {}) })}`); }
 export function getAdminSession(userId: string, sessionId: string) { return request<SessionDetail>(`/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`); }
 export function getAdminUsage(period: "day" | "week" | "month" | "year", days: number, userId?: string) { return request<AdminUsageReport>(`/api/v1/admin/usage?${new URLSearchParams({ period, days: String(days), ...(userId ? { user_id: userId } : {}) })}`); }

@@ -17,6 +17,7 @@ public interface IAuthService
     Task<(bool Succeeded, string? Error)> RegisterAsync(string username, string password, CancellationToken cancellationToken);
     Task<(AiUser? User, string? Error)> CreateUserAsync(string username, string password, string? alias, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> ResetPasswordAsync(string userId, string password, CancellationToken cancellationToken);
+    Task<(bool Succeeded, string? Error)> ChangePasswordAsync(AuthenticatedUser user, string currentPassword, string newPassword, CancellationToken cancellationToken);
     Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task LogoutAsync(HttpContext context, CancellationToken cancellationToken);
@@ -77,6 +78,15 @@ public sealed class AuthService : IAuthService
         _db.Updateable<AiUserSession>().SetColumns(item => item.RevokedAt == now)
             .Where(item => item.UserId == user.Id && item.RevokedAt == null).ExecuteCommand();
         return Task.FromResult((true, (string?)null));
+    }
+
+    public Task<(bool Succeeded, string? Error)> ChangePasswordAsync(AuthenticatedUser user, string currentPassword, string newPassword, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var account = _db.Queryable<AiUser>().First(item => item.Id == user.Id && !item.IsDisabled);
+        if (account == null) return Task.FromResult((false, (string?)"The account is unavailable."));
+        if (!VerifyPassword(currentPassword, account.PasswordSalt, account.PasswordHash)) return Task.FromResult((false, (string?)"Current password is incorrect."));
+        return ResetPasswordAsync(account.Id, newPassword, cancellationToken);
     }
 
     public Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken)

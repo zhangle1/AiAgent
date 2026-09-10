@@ -44,6 +44,7 @@ public interface IAdminService
     Task<(bool Succeeded, string? Error)> ResetUserPasswordAsync(AuthenticatedUser administrator, string userId, string password, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> UpdateUserProjectsAsync(AuthenticatedUser administrator, string userId, IReadOnlyCollection<long> projectIds, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> UpdateUserCodeCommitPermissionAsync(AuthenticatedUser administrator, string userId, bool canCommitCode, CancellationToken cancellationToken);
+    Task<(bool Succeeded, string? Error)> UpdateUserStatusAsync(AuthenticatedUser administrator, string userId, bool isDisabled, CancellationToken cancellationToken);
     Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken);
     Task<ChatSessionDetailDto?> GetSessionAsync(AuthenticatedUser administrator, string userId, string sessionId, CancellationToken cancellationToken);
     Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken);
@@ -166,6 +167,26 @@ public sealed class AdminService : IAdminService
             .SetColumns(item => item.UpdatedAt == DateTime.UtcNow)
             .Where(item => item.Id == user.Id)
             .ExecuteCommand();
+        return Task.FromResult((true, (string?)null));
+    }
+
+    public Task<(bool Succeeded, string? Error)> UpdateUserStatusAsync(AuthenticatedUser administrator, string userId, bool isDisabled, CancellationToken cancellationToken)
+    {
+        RequireAdministrator(administrator);
+        cancellationToken.ThrowIfCancellationRequested();
+        var user = _db.Queryable<AiUser>().First(item => item.Id == userId);
+        if (user == null) return Task.FromResult((false, (string?)"The user does not exist."));
+        if (isDisabled && user.Id == administrator.Id) return Task.FromResult((false, (string?)"You cannot disable your own account."));
+        if (isDisabled && string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase)
+            && _db.Queryable<AiUser>().Count(item => item.Role == "admin" && !item.IsDisabled) <= 1)
+            return Task.FromResult((false, (string?)"The last active administrator cannot be disabled."));
+
+        var now = DateTime.UtcNow;
+        _db.Updateable<AiUser>().SetColumns(item => item.IsDisabled == isDisabled).SetColumns(item => item.UpdatedAt == now)
+            .Where(item => item.Id == user.Id).ExecuteCommand();
+        if (isDisabled)
+            _db.Updateable<AiUserSession>().SetColumns(item => item.RevokedAt == now)
+                .Where(item => item.UserId == user.Id && item.RevokedAt == null).ExecuteCommand();
         return Task.FromResult((true, (string?)null));
     }
 
