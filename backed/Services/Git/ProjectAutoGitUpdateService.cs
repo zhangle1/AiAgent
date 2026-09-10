@@ -139,7 +139,14 @@ public sealed class ProjectAutoGitUpdateHostedService : BackgroundService
             try { await _updates.RunDueProjectsAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
             catch (Exception ex) { _logger.LogError(ex, "Project automatic Git update scheduler failed."); }
-            if (!await timer.WaitForNextTickAsync(stoppingToken)) return;
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(stoppingToken)) return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
         }
     }
 }

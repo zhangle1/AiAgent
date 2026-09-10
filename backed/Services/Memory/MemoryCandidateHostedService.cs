@@ -30,7 +30,14 @@ public sealed class MemoryCandidateHostedService : BackgroundService
                 _logger.LogError(ex, "Idle memory candidate consolidation failed.");
             }
 
-            if (!await timer.WaitForNextTickAsync(stoppingToken)) return;
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(stoppingToken)) return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
         }
     }
 }
