@@ -9,6 +9,9 @@ using AiAgent.Backend.Services.Git;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using SqlSugar;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
+using System.Reflection;
 
 namespace AiAgent.Backend.Tests;
 
@@ -35,6 +38,24 @@ public sealed class RepositoryMaintenanceTests
         return db;
     }
     private static RepositoryMaintenanceService Service(ISqlSugarClient db) => new(db, new Access(), null!, null!, new(), new EphemeralDataProtectionProvider(), new ConfigurationBuilder().Build());
+
+    [Fact]
+    public void RoutesDeclareProjectIdOncePerAction()
+    {
+        var controllerRoute = typeof(RepositoryMaintenanceAppService)
+            .GetCustomAttributes<RouteAttribute>(inherit: true)
+            .Single()
+            .Template;
+        Assert.DoesNotContain("{projectId", controllerRoute, StringComparison.OrdinalIgnoreCase);
+
+        foreach (var method in typeof(RepositoryMaintenanceAppService).GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly))
+        {
+            var route = method.GetCustomAttributes<HttpMethodAttribute>(inherit: true).SingleOrDefault()?.Template;
+            if (route is null) continue;
+            var projectIdCount = System.Text.RegularExpressions.Regex.Matches(route, @"\{projectId(?::[^}]*)?\}", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count;
+            Assert.Equal(1, projectIdCount);
+        }
+    }
 
     [Fact]
     public void SavingSettingsTwicePersistsSettingsAndCannotResetActiveRun()

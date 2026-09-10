@@ -7,15 +7,15 @@ namespace AiAgent.Backend.Services.CodeRepository;
 
 [DynamicApiController]
 [ApiDescriptionSettings("v1", KeepName = true)]
-[Route("api/v1/projects/{projectId:long}/maintenance")]
+[Route("api/v1/projects")]
 public sealed class RepositoryMaintenanceAppService(RepositoryMaintenanceService service, IAuthService auth, IHttpContextAccessor http) : IDynamicApiController
 {
-    [HttpGet] public Task<IActionResult> Get(long projectId, CancellationToken token) => Act(user => service.Get(user, projectId), token);
-    [HttpPut] public Task<IActionResult> Save(long projectId, [FromBody] MaintenanceSettings settings, CancellationToken token) => Act(user => service.Save(user, projectId, settings), token);
-    [HttpGet("runs")] public Task<IActionResult> Runs(long projectId, CancellationToken token) => Act(user => service.List(user, projectId), token);
-    [HttpPost("runs")] public Task<IActionResult> Run(long projectId, CancellationToken token) => Act(user => service.Enqueue(user, projectId), token);
-    [HttpPost("runs/{runId}/cancel")] public Task<IActionResult> Cancel(long projectId, string runId, CancellationToken token) => Act(user => { service.Cancel(user, projectId, runId); return new { ok = true }; }, token);
-    [HttpPost("runs/{runId}/push")] public Task<IActionResult> Push(long projectId, string runId, CancellationToken token) => Act(user => service.RequestPush(user, projectId, runId), token);
+    [HttpGet("{projectId:long}/maintenance")] public Task<IActionResult> Get(long projectId, CancellationToken token) => Act(user => service.Get(user, projectId), token);
+    [HttpPut("{projectId:long}/maintenance")] public Task<IActionResult> Save(long projectId, [FromBody] MaintenanceSettings settings, CancellationToken token) => Act(user => service.Save(user, projectId, settings), token);
+    [HttpGet("{projectId:long}/maintenance/runs")] public Task<IActionResult> Runs(long projectId, CancellationToken token) => Act(user => service.List(user, projectId), token);
+    [HttpPost("{projectId:long}/maintenance/runs")] public Task<IActionResult> Run(long projectId, CancellationToken token) => Act(user => service.Enqueue(user, projectId), token);
+    [HttpPost("{projectId:long}/maintenance/runs/{runId}/cancel")] public Task<IActionResult> Cancel(long projectId, string runId, CancellationToken token) => Act(user => { service.Cancel(user, projectId, runId); return new { ok = true }; }, token);
+    [HttpPost("{projectId:long}/maintenance/runs/{runId}/push")] public Task<IActionResult> Push(long projectId, string runId, CancellationToken token) => Act(user => service.RequestPush(user, projectId, runId), token);
     private async Task<IActionResult> Act<T>(Func<AuthenticatedUser, T> action, CancellationToken token)
     {
         var user = await auth.TryGetCurrentUserAsync(http.HttpContext!, token);
