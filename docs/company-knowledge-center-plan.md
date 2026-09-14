@@ -18,7 +18,17 @@
 统一资源地址：guokun://{tenant}/{scope}/{owner}/{collection}/{path}
 ```
 
-首期应聚焦“目录、权限、上传、提炼、检索、引用、API Key”七件事，不要一开始就投入知识图谱、自学习 Agent 或跨组织联邦检索。
+首期应聚焦“目录、权限、上传、原件留存、解析提炼、审核发布、检索引用、Agent 分发”八件事，不要一开始就投入知识图谱、自学习 Agent 或跨组织联邦检索。
+
+本方案的产品核心可进一步提炼为 **一份原件、三层知识、多个消费端**：
+
+```text
+一份原件：不可变保存，可下载、可校验、可追溯
+三层知识：解析正文（Parsed）/ AI 提炼（Artifact）/ 已发布知识（Publication）
+多个消费端：Web / Codex / WorkBuddy / MCP Agent / REST API
+```
+
+配套的可交互前端原型见 [`company-knowledge-center-prototype.html`](./company-knowledge-center-prototype.html)。
 
 ## 2. 当前代码库能力盘点
 
@@ -210,6 +220,55 @@ Discover
 - Git 数据源保存 commit SHA；数据库/API 数据源保存游标或水位线。
 - 原文、AI 派生产物、人工修订内容分别存储，不互相覆盖。
 
+### 7.1 多格式解析矩阵
+
+格式支持要按“解析质量等级”管理，而不是简单宣称支持扩展名。每个 Parser Adapter 输出统一的 `ParsedDocument`，同时保留格式特有定位信息。
+
+| 类型 | 首期格式 | 解析策略 | 引用定位 |
+| --- | --- | --- | --- |
+| 文档 | PDF、DOCX、TXT、Markdown、HTML | 文本层优先；扫描 PDF 按页 OCR；保留标题层级、段落与表格 | 页码、章节、段落 |
+| 演示 | PPTX | 提取每页标题、正文、备注与图片 OCR | 幻灯片页码、元素 |
+| 表格 | XLSX、CSV | Sheet 结构识别、表头推断、按行块化；大表生成字段画像与统计摘要 | Sheet、行列范围 |
+| 图片 | PNG、JPEG、WebP、TIFF | 真实签名校验后 OCR/视觉解析；保存 bounding box | 页/图、坐标框 |
+| 代码 | Git 仓、ZIP 中源码 | 语言解析器/符号树优先，文本回退；绑定 commit 和仓库相对路径 | commit、文件、行号、符号 |
+| 数据 | JSON、JSONL、XML | 结构采样、Schema 推断、分层展开；限制深度和单值大小 | JSONPath/XMLPath |
+| 邮件/归档 | EML、MSG、ZIP | 二期启用；附件递归受深度、数量、大小和压缩比限制 | 邮件头、附件路径 |
+
+建议首期承诺 PDF、DOCX、PPTX、XLSX、CSV、TXT、Markdown、HTML、PNG/JPEG、常见源码、JSON/XML；`.doc/.xls/.ppt` 等旧二进制格式通过受隔离的 LibreOffice 转换 Worker 进入现代格式解析，转换失败时仍保留原件并标记 `unsupported`，不能生成伪成功索引。
+
+### 7.2 原件、解析稿、提炼稿的存储分层
+
+```text
+KnowledgeResource（稳定 URI）
+  └─ ResourceVersion（一次不可变版本）
+       ├─ SourceBlob       原文件：对象存储/受控文件区，SHA-256，永不被 AI 覆盖
+       ├─ ParsedDocument   规范化正文：结构树、表格、页码、坐标、解析器版本
+       ├─ KnowledgeChunk   检索切片：指回 ParsedDocument span 与 SourceBlob locator
+       ├─ ArtifactRevision 提炼文档：摘要、概览、FAQ、Skill Card、Code Map
+       └─ Publication      审核后可见的 Artifact/Chunk 快照
+```
+
+- `SourceBlob` 保存原始文件名、媒体类型、大小、哈希、存储对象 ID 和上传主体；API 永不返回物理路径。
+- 同内容哈希可在存储层去重，但每次上传仍创建独立来源记录和权限边界，不能因去重串权。
+- `ParsedDocument` 是可重建缓存，不是事实原件；保存 parser 名称、版本、配置哈希、OCR 模型和质量分。
+- `ArtifactRevision` 采用 append-only 修订，区分 `ai_generated`、`human_edited`、`approved`，人工修改不能丢失 AI 初稿。
+- 每个提炼结论保存 `EvidenceLink[]`，至少包含资源版本、页码/行号/Sheet 范围及原文 span；无证据的结论不能进入正式发布版。
+- 生命周期策略分别控制原件、派生产物、索引和审计；删除采用软删除与延迟清理，并阻止已撤权内容继续被检索。
+
+### 7.3 可配置提炼配方
+
+提炼不是一个固定 Prompt，而是按空间与文件类型选择 Recipe：
+
+| Recipe | 输入 | 产物 | 典型用途 |
+| --- | --- | --- | --- |
+| 通用文档 | PDF/DOCX/MD | abstract、overview、outline、FAQ、术语 | 制度、方案、手册 |
+| 会议决策 | 纪要/听记 | 决策、行动项、责任人、截止日、争议 | 项目协作 |
+| 项目知识 | 文档 + Git | 项目概览、架构、运行手册、风险、依赖 | `project/{id}` |
+| 人员技能 | 授权资料 | skill_card、证据、熟练度建议、有效期 | `user/{id}/skill` |
+| 数据字典 | XLSX/CSV/JSON | Schema、字段解释、质量报告、示例查询 | 数据资产 |
+
+Recipe 必须版本化，支持选择模型、输出 Schema、敏感字段规则、是否强制审核和质量阈值。模型输出先做 JSON Schema 校验与引用覆盖率检查，再渲染成 Markdown；不得让模型直接写入已发布正文。
+
 ## 8. 检索与回答架构
 
 ```text
@@ -300,6 +359,31 @@ final_score = semantic * 0.45
 - 所有读取和搜索记录 client、subject、URI 范围、命中资源、耗时和状态，但日志不保存完整敏感原文。
 - 外部响应永不返回 `StoragePath`、向量路径、服务器绝对路径或内部异常堆栈。
 - 使用 cursor 分页、`Idempotency-Key`、标准错误码和 API 版本；后续可发布 OpenAPI 3.1 文档。
+
+### 9.1 Agent 与插件分发中心
+
+开放能力不应只绑定 Codex。知识中心内部先提供稳定的 `list/read/search/answer` Tool Contract，再由 Adapter 生成不同平台的安装包：
+
+| 分发目标 | 交付物 | 鉴权与能力 |
+| --- | --- | --- |
+| Codex | Plugin manifest + Skill/`SKILL.md` + MCP server 配置模板 | OAuth 或短期 Token；按 URI Scope 暴露工具 |
+| WorkBuddy / 企业 Agent | OpenAPI schema、工具说明、示例 Prompt | OAuth2 client credentials；list/read/search/answer |
+| MCP 客户端 | 远程 MCP endpoint 或本地轻量代理配置 | 标准 tools/resources；服务端统一鉴权审计 |
+| 通用应用 | OpenAPI 3.1 + SDK（TS/C#/Python） | API Key/OAuth；配额、限流、Webhook |
+
+推荐统一工具名和语义：
+
+```text
+knowledge.list(uri, cursor)
+knowledge.read(uri, version?, locator?)
+knowledge.search(query, uri_prefixes?, filters?, top_k?)
+knowledge.answer(question, uri_prefixes?, citation_required=true)
+knowledge.get_artifact(uri, artifact_type, revision?)
+```
+
+“安装插件”本质上只安装连接描述和交互说明，不复制公司知识到用户机器。安装向导完成组织地址、授权登录、可访问空间选择和连通性测试；服务端随时撤权。平台专属 manifest 由同一 `IntegrationPackage` 模型生成，避免 Codex、WorkBuddy 和其他 Agent 各维护一套知识协议。
+
+分发中心还需提供：版本兼容范围、安装说明、权限预览、测试控制台、凭证轮换、调用日志和撤销安装。首期先交付 OpenAPI + MCP，再生成 Codex Skill/Plugin 包；平台差异只留在 Adapter 层。
 
 ## 10. 后端模块落位
 
@@ -434,4 +518,3 @@ Controller/Dynamic API 只做 HTTP 参数、身份和响应映射；URI 校验�
 - [Dify：Dataset Service API 与权限模型](https://github.com/langgenius/dify/blob/main/api/controllers/service_api/dataset/dataset.py)
 - [Dify：Dataset Service 权限过滤](https://github.com/langgenius/dify/blob/main/api/services/dataset_service.py)
 - [AnythingLLM OpenAPI](https://github.com/Mintplex-Labs/anything-llm/blob/master/server/swagger/openapi.json)
-
