@@ -91,6 +91,25 @@ Dify 的数据集权限区分仅本人、全团队和部分成员，并支持外
 - 外部 API 和 Web 用户共用授权内核，但凭证、配额和审计分开。
 - API 的检索结果返回来源、分数、资源地址和版本，而不只返回生成答案。
 
+### 3.4 `nashsu/llm_wiki`：借鉴“知识编译”，不迁移桌面架构
+
+对固定版本 [`e808211`](https://github.com/nashsu/llm_wiki/tree/e8082119649e6a8e1cf85eaf289adcabfdf39d4e) 的源码核查表明，它把导入资料编译为长期维护的 Markdown Wiki，再联合关键词、向量和 WikiLink 图检索。单次导入不是普通的“切块后入向量库”，而是“解析 → LLM 分析 → LLM 生成 Wiki 页面 → 校验并提交 → 可选向量化”的两阶段知识编译流程。详细逐文件研究见 [`llm-wiki-research.md`](./llm-wiki-research.md)。
+
+运行配置应按能力拆分，不应笼统要求一个“LLM API”：
+
+| 配置组 | 必需性 | AiAgent 建议 |
+| --- | --- | --- |
+| 文本生成 LLM | Wiki 自动提炼必需 | 复用现有服务端 Provider 管理；保存 provider、model、prompt version 和调用快照 |
+| Embedding | 可选但建议用于语义召回 | 复用现有 LlamaIndex/Embedding 链路；关闭时仍保留关键词检索，不新建 LanceDB 真源 |
+| 视觉模型 | 仅图片理解需要 | 作为独立能力路由；普通 PDF/Office 文本解析不强依赖视觉模型 |
+| MinerU Cloud/Local | 复杂 PDF 可选 | 作为 Parser Adapter，超时或失败回退轻量解析器 |
+| Tavily/SerpApi/SearXNG | 仅 Deep Research 需要 | 不纳入知识上传 MVP；未来作为外部来源连接器 |
+| MCP / HTTP API | Agent 消费时需要 | 由 AiAgent 服务端直接提供多租户、Scope、审计和限流，不代理桌面回环地址 |
+
+上游支持 OpenAI、Anthropic、Gemini、Azure OpenAI、Ollama/OpenAI-compatible、自定义 wire，以及 Claude Code/Codex CLI 等分支；这不意味着这些配置可以混用。不同供应商的 URL、鉴权头、流式协议和错误语义应留在 Provider Adapter 内，浏览器不得保存模型密钥。
+
+最适合本项目复用的四点是：原件与 Wiki 派生物分层；分析和生成分阶段；模型输出经路径/结构校验后确定性提交；检索融合原始 chunk 与结构化 Wiki。最不适合照搬的是 Tauri 单机目录即数据库、前端编排并持有密钥、桌面回环 API 和第二套 LanceDB 存储。
+
 ## 4. 产品信息架构
 
 建议把前端 `/knowledge` 升级为五个一级模块：
