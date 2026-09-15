@@ -19,6 +19,7 @@ public interface IAuthService
     Task<(bool Succeeded, string? Error)> ResetPasswordAsync(string userId, string password, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> ChangePasswordAsync(AuthenticatedUser user, string currentPassword, string newPassword, CancellationToken cancellationToken);
     Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken);
+    Task<(AuthenticatedUser? User, string? Token)> LoginPluginAsync(string username, string password, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task LogoutAsync(HttpContext context, CancellationToken cancellationToken);
     Task EnsureInitialAdministratorAsync(CancellationToken cancellationToken);
@@ -90,7 +91,14 @@ public sealed class AuthService : IAuthService
     }
 
     public Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken)
+        => LoginCoreAsync(username, password, TimeSpan.FromDays(14), cancellationToken);
+
+    public Task<(AuthenticatedUser? User, string? Token)> LoginPluginAsync(string username, string password, CancellationToken cancellationToken)
+        => LoginCoreAsync(username, password, TimeSpan.FromHours(8), cancellationToken);
+
+    private Task<(AuthenticatedUser? User, string? Token)> LoginCoreAsync(string username, string password, TimeSpan lifetime, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var user = _db.Queryable<AiUser>().First(x => x.Username == username.Trim());
         if (user == null || user.IsDisabled || !VerifyPassword(password, user.PasswordSalt, user.PasswordHash))
             return Task.FromResult<(AuthenticatedUser?, string?)>((null, null));
@@ -100,14 +108,15 @@ public sealed class AuthService : IAuthService
         {
             UserId = user.Id,
             TokenHash = HashToken(token),
-            ExpiresAt = DateTime.UtcNow.AddDays(14)
+            ExpiresAt = DateTime.UtcNow.Add(lifetime)
         }).ExecuteCommand();
         return Task.FromResult<(AuthenticatedUser?, string?)>((new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode), token));
     }
 
     public Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken)
     {
-        if (!context.Request.Cookies.TryGetValue(CookieName, out var token) || string.IsNullOrWhiteSpace(token))
+        var token = ResolveToken(context);
+        if (string.IsNullOrWhiteSpace(token))
             return Task.FromResult<AuthenticatedUser?>(null);
         var tokenHash = HashToken(token);
         var now = DateTime.UtcNow;
@@ -119,7 +128,8 @@ public sealed class AuthService : IAuthService
 
     public Task LogoutAsync(HttpContext context, CancellationToken cancellationToken)
     {
-        if (context.Request.Cookies.TryGetValue(CookieName, out var token) && !string.IsNullOrWhiteSpace(token))
+        var token = ResolveToken(context);
+        if (!string.IsNullOrWhiteSpace(token))
         {
             _db.Updateable<AiUserSession>().SetColumns(x => x.RevokedAt == DateTime.UtcNow)
                 .Where(x => x.TokenHash == HashToken(token) && x.RevokedAt == null).ExecuteCommand();
@@ -149,5 +159,18 @@ public sealed class AuthService : IAuthService
     private static string HashPassword(string password, byte[] salt) => Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, Iterations, HashAlgorithmName.SHA256, 32));
     private static bool VerifyPassword(string password, string salt, string expected) => CryptographicOperations.FixedTimeEquals(Convert.FromBase64String(HashPassword(password, Convert.FromBase64String(salt))), Convert.FromBase64String(expected));
     private static string HashToken(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    private static string? ResolveToken(HttpContext context)
+    {
+        if (context.Request.Headers.Authorization.Count == 1)
+        {
+            var authorization = context.Request.Headers.Authorization.ToString();
+            if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var bearer = authorization["Bearer ".Length..].Trim();
+                if (bearer.Length > 0) return bearer;
+            }
+        }
+        return context.Request.Cookies.TryGetValue(CookieName, out var cookie) ? cookie : null;
+    }
     private static string? NormalizeAlias(string? alias) => string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
 }

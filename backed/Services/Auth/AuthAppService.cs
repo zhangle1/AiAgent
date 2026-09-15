@@ -57,6 +57,14 @@ public sealed class AuthAppService : IDynamicApiController
         return new OkObjectResult(new { ok = true });
     }
 
+    [HttpPost("plugin-login")]
+    public async Task<IActionResult> PluginLogin([FromBody] LoginRequest request, CancellationToken cancellationToken)
+    {
+        var (user, token) = await _authService.LoginPluginAsync(request.Username, request.Password, cancellationToken);
+        if (user == null || token == null) return new UnauthorizedObjectResult(new { message = "账号或密码错误。" });
+        return new OkObjectResult(new { access_token = token, token_type = "Bearer", expires_in = 8 * 60 * 60, user_id = user.Id, username = user.Username });
+    }
+
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
     {

@@ -182,3 +182,7 @@ npm run dev
 - 管理配置提供三个卡片入口：用户管理、历史会话（只读审计）和用户流量。流量支持按日、周、月、年聚合，并提供时间范围、用户筛选与柱状趋势图。
 
 管理员接口均位于 `/api/v1/admin/*`，只接受服务端根据会话识别出的管理员身份；浏览器不会提交可伪造的管理员或用户身份字段。
+
+## DeepSeek Harness 本地插件
+
+`deepseek-plugins/aiagent-remote` 可通过账号密码换取 8 小时短期令牌，选择平台允许的远程 LLM 与 Codex 模型，同时由用户本机的 DeepSeek Harness 负责本地文件访问和最终修改。部署与安全边界见 [DeepSeek Harness 远程插件](docs/deepseek-harness-remote-plugin.md)。
