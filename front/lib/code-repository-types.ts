@@ -86,6 +86,11 @@ export type CodeProjectMarkdownDocumentContent = {
   is_truncated: boolean;
 };
 
+export type CodeProjectDocumentImportResult = {
+  documents: CodeProjectMarkdownDocument[];
+  items: Array<{ file_name: string; status: "imported" | "skipped" | "failed"; message: string }>;
+};
+
 export type CodeProjectAgentMarkdownIndex = {
   available: boolean;
   is_stale: boolean;

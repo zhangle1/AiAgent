@@ -210,6 +210,16 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         }
     }
 
+    [HttpPost("projects/{projectId:long}/documents/import")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportProjectDocuments([FromRoute] long projectId, [FromForm(Name = "repository_name")] string? repositoryName, [FromForm(Name = "directory_path")] string? directoryPath, [FromForm(Name = "files")] List<IFormFile>? files, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try { return new OkObjectResult(await _manager.ImportProjectDocumentsAsync(projectId, user, repositoryName, directoryPath, files ?? [], cancellationToken)); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
     [HttpGet("projects/{projectId:long}/agent-markdown-index")]
     public async Task<IActionResult> GetProjectAgentMarkdownIndex([FromRoute] long projectId, CancellationToken cancellationToken)
     {

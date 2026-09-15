@@ -185,4 +185,4 @@ npm run dev
 
 ## DeepSeek Harness 本地插件
 
-`deepseek-plugins/aiagent-remote` 可通过账号密码换取 8 小时短期令牌，选择平台允许的远程 LLM 与 Codex 模型，同时由用户本机的 DeepSeek Harness 负责本地文件访问和最终修改。部署与安全边界见 [DeepSeek Harness 远程插件](docs/deepseek-harness-remote-plugin.md)。
+`plugins/aiagent-remote` 可通过账号密码换取 8 小时短期令牌，选择平台允许的远程 LLM 与 Codex 模型，同时由用户本机的 DeepSeek Harness 负责本地文件访问和最终修改。部署与安全边界见 [DeepSeek Harness 远程插件](docs/deepseek-harness-remote-plugin.md)。
