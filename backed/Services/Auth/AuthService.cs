@@ -21,6 +21,7 @@ public interface IAuthService
     Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken);
     Task<(AuthenticatedUser? User, string? Token)> LoginPluginAsync(string username, string password, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken);
+    Task<AuthenticatedUser?> TryGetPluginUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task LogoutAsync(HttpContext context, CancellationToken cancellationToken);
     Task EnsureInitialAdministratorAsync(CancellationToken cancellationToken);
 }
@@ -91,12 +92,12 @@ public sealed class AuthService : IAuthService
     }
 
     public Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken)
-        => LoginCoreAsync(username, password, TimeSpan.FromDays(14), cancellationToken);
+        => LoginCoreAsync(username, password, TimeSpan.FromDays(14), null, cancellationToken);
 
     public Task<(AuthenticatedUser? User, string? Token)> LoginPluginAsync(string username, string password, CancellationToken cancellationToken)
-        => LoginCoreAsync(username, password, TimeSpan.FromHours(8), cancellationToken);
+        => LoginCoreAsync(username, password, TimeSpan.FromHours(8), "deepseek-plugin", cancellationToken);
 
-    private Task<(AuthenticatedUser? User, string? Token)> LoginCoreAsync(string username, string password, TimeSpan lifetime, CancellationToken cancellationToken)
+    private Task<(AuthenticatedUser? User, string? Token)> LoginCoreAsync(string username, string password, TimeSpan lifetime, string? purpose, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var user = _db.Queryable<AiUser>().First(x => x.Username == username.Trim());
@@ -108,19 +109,28 @@ public sealed class AuthService : IAuthService
         {
             UserId = user.Id,
             TokenHash = HashToken(token),
+            Purpose = purpose,
             ExpiresAt = DateTime.UtcNow.Add(lifetime)
         }).ExecuteCommand();
         return Task.FromResult<(AuthenticatedUser?, string?)>((new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode), token));
     }
 
     public Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken)
+        => TryGetUserAsync(context, pluginSession: false, cancellationToken);
+
+    public Task<AuthenticatedUser?> TryGetPluginUserAsync(HttpContext context, CancellationToken cancellationToken)
+        => TryGetUserAsync(context, pluginSession: true, cancellationToken);
+
+    private Task<AuthenticatedUser?> TryGetUserAsync(HttpContext context, bool pluginSession, CancellationToken cancellationToken)
     {
         var token = ResolveToken(context);
         if (string.IsNullOrWhiteSpace(token))
             return Task.FromResult<AuthenticatedUser?>(null);
         var tokenHash = HashToken(token);
         var now = DateTime.UtcNow;
-        var session = _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.RevokedAt == null && x.ExpiresAt > now);
+        var session = pluginSession
+            ? _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.Purpose == "deepseek-plugin" && x.RevokedAt == null && x.ExpiresAt > now)
+            : _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.Purpose == null && x.RevokedAt == null && x.ExpiresAt > now);
         if (session == null) return Task.FromResult<AuthenticatedUser?>(null);
         var user = _db.Queryable<AiUser>().First(x => x.Id == session.UserId && !x.IsDisabled);
         return Task.FromResult(user == null ? null : new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode));

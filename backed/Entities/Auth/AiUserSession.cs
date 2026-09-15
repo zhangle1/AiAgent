@@ -14,6 +14,9 @@ public sealed class AiUserSession
     [SugarColumn(Length = 128)]
     public string TokenHash { get; set; } = string.Empty;
 
+    [SugarColumn(IsNullable = true, Length = 32)]
+    public string? Purpose { get; set; }
+
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [SugarColumn(IsNullable = true)]

@@ -140,6 +140,9 @@ IF COL_LENGTH(N'dbo.ai_user', N'Alias') IS NULL
 IF COL_LENGTH(N'dbo.ai_user', N'CanCommitCode') IS NULL
     ALTER TABLE dbo.ai_user ADD CanCommitCode BIT NULL CONSTRAINT DF_ai_user_CanCommitCode DEFAULT 0;
 
+IF COL_LENGTH(N'dbo.ai_user_session', N'Purpose') IS NULL
+    ALTER TABLE dbo.ai_user_session ADD Purpose NVARCHAR(32) NULL;
+
 IF OBJECT_ID(N'dbo.ai_code_repo_run', N'U') IS NOT NULL
 BEGIN
     IF COL_LENGTH(N'dbo.ai_code_repo_run', N'TestScript') IS NULL
