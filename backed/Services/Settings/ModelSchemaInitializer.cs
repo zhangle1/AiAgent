@@ -47,6 +47,8 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiSettingSnapshot),
             typeof(AiKnowledgeBase),
             typeof(AiKnowledgeDocument),
+            typeof(AiKnowledgeParsedDocument),
+            typeof(AiKnowledgeArtifact),
             typeof(AiKnowledgeIndexVersion),
             typeof(AiKnowledgeChunk),
             typeof(AiKnowledgeJob),
@@ -348,6 +350,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_knowledge_base_Nam
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_document_Kb_Status' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_document'))
     CREATE INDEX IX_ai_knowledge_document_Kb_Status ON dbo.ai_knowledge_document(KnowledgeBaseId, Status) WHERE IsDeleted = 0;
+""");
+        ExecuteIndexSql("""
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_parsed_document_Document' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_parsed_document'))
+    CREATE INDEX IX_ai_knowledge_parsed_document_Document ON dbo.ai_knowledge_parsed_document(DocumentId, CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_artifact_Document' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_artifact'))
+    CREATE INDEX IX_ai_knowledge_artifact_Document ON dbo.ai_knowledge_artifact(DocumentId, CreatedAt DESC);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_index_version_Kb_Status' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_index_version'))

@@ -39,6 +39,7 @@ import {
   deleteKnowledgeDocument,
   getKnowledgeBase,
   getKnowledgeDiagnostics,
+  getKnowledgeDocumentContent,
   getKnowledgeBases,
   getKnowledgeIndexVersions,
   getKnowledgeProgress,
@@ -46,12 +47,13 @@ import {
   getKnowledgeProviders,
   knowledgeDocumentFileUrl,
   knowledgeProgressWebSocketUrl,
+  processKnowledgeDocument,
   reindexKnowledgeBase,
   saveKnowledgeProviderConfig,
   setDefaultKnowledgeBase,
   uploadKnowledgeDocuments,
 } from "@/lib/knowledge-api";
-import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocument, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeProvider } from "@/lib/knowledge-types";
+import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocument, KnowledgeDocumentContent, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeProvider } from "@/lib/knowledge-types";
 import { activeModel, activeProfile } from "@/lib/settings-types";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -703,6 +705,9 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
   const [textPreview, setTextPreview] = useState("");
   const [textLoading, setTextLoading] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
+  const [compiled, setCompiled] = useState<KnowledgeDocumentContent | null>(null);
+  const [contentMode, setContentMode] = useState<"source" | "parsed" | "artifact">("source");
+  const [processing, setProcessing] = useState<"llm_api" | "codex" | null>(null);
 
   useEffect(() => {
     if (!document || !isTextDocument(document)) {
@@ -734,6 +739,28 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
     return () => controller.abort();
   }, [document, kbName]);
 
+  useEffect(() => {
+    setCompiled(null);
+    setContentMode("source");
+    if (!document) return;
+    getKnowledgeDocumentContent(kbName, document.id).then(setCompiled).catch(() => setCompiled(null));
+  }, [document, kbName]);
+
+  async function process(generator: "llm_api" | "codex") {
+    if (!document) return;
+    setProcessing(generator);
+    setTextError(null);
+    try {
+      await processKnowledgeDocument(kbName, document.id, { generator });
+      setCompiled(await getKnowledgeDocumentContent(kbName, document.id));
+      setContentMode("artifact");
+    } catch (error) {
+      setTextError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setProcessing(null);
+    }
+  }
+
   if (!document) {
     return <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-[var(--border)] text-[13px] text-[var(--muted-foreground)]">{t("knowledge.selectFile")}</div>;
   }
@@ -749,12 +776,22 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
           <div className="truncate text-[13px] font-semibold">{document.original_file_name || document.file_name}</div>
           <div className="text-[11px] text-[var(--muted-foreground)]">{document.content_type || document.extension || t("common.notSet")} · {formatBytes(document.file_size)}</div>
         </div>
-        <a href={downloadUrl} download className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border)] px-2.5 text-[12px] hover:border-blue-300">
-          <Download size={14} />
-          {t("knowledge.download")}
-        </a>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button type="button" disabled={processing !== null} onClick={() => process("llm_api")} className="h-8 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white disabled:opacity-50">{processing === "llm_api" ? "LLM 加工中…" : "LLM API 入库"}</button>
+          <button type="button" disabled={processing !== null} onClick={() => process("codex")} className="h-8 rounded-md border border-[var(--border)] px-3 text-[12px] disabled:opacity-50">{processing === "codex" ? "Codex 加工中…" : "Codex CLI 入库"}</button>
+          <a href={downloadUrl} download className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border)] px-2.5 text-[12px] hover:border-blue-300"><Download size={14} />{t("knowledge.download")}</a>
+        </div>
       </div>
-      {isPdf ? (
+      <div className="mb-3 flex gap-1 rounded-md bg-zinc-100 p-1 text-[12px]">
+        {(["source", "parsed", "artifact"] as const).map((mode) => <button key={mode} type="button" onClick={() => setContentMode(mode)} className={`rounded px-3 py-1.5 ${contentMode === mode ? "bg-white font-medium shadow-sm" : "text-[var(--muted-foreground)]"}`}>{mode === "source" ? "原文件" : mode === "parsed" ? "解析正文" : "AI 提炼"}</button>)}
+        {compiled?.provider && <span className="ml-auto self-center px-2 text-[11px] text-[var(--muted-foreground)]">{compiled.generator} · {compiled.provider} · {compiled.review_status}</span>}
+      </div>
+      {textError ? (
+        <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-[12px] text-red-700">{textError}</div>
+      ) : null}
+      {contentMode !== "source" ? (
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-white"><pre className="min-h-full whitespace-pre-wrap break-words p-4 font-sans text-[13px] leading-6">{contentMode === "parsed" ? compiled?.parsed_content || "尚未生成解析正文，请先执行入库。" : compiled?.artifact_content || "尚未生成 AI 提炼内容，请先执行入库。"}</pre></div>
+      ) : isPdf ? (
         <PdfDocumentPreview title={document.original_file_name || document.file_name} url={url} />
       ) : isText ? (
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-white">

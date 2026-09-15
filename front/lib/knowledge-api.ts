@@ -1,4 +1,4 @@
-import type { KnowledgeBase, KnowledgeDetail, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
+import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 
 function directApi(path: string): string {
   // Keep browser requests on the address the user opened. Next.js then proxies
@@ -135,6 +135,22 @@ export async function deleteKnowledgeDocument(kbName: string, documentId: number
     await fetch(`/api/v1/knowledge/${encodeURIComponent(kbName)}/documents/${documentId}`, {
       method: "DELETE",
     }),
+  );
+}
+
+export async function processKnowledgeDocument(kbName: string, documentId: number, request: KnowledgeProcessRequest): Promise<KnowledgeProcessingResult> {
+  return parseJson<KnowledgeProcessingResult>(
+    await fetch(`/api/v1/knowledge/${encodeURIComponent(kbName)}/documents/${documentId}/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
+  );
+}
+
+export async function getKnowledgeDocumentContent(kbName: string, documentId: number): Promise<KnowledgeDocumentContent> {
+  return parseJson<KnowledgeDocumentContent>(
+    await fetch(`/api/v1/knowledge/${encodeURIComponent(kbName)}/documents/${documentId}/content`, { cache: "no-store" }),
   );
 }
 

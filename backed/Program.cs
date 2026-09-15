@@ -117,6 +117,7 @@ builder.Services.AddSingleton<IKnowledgeBaseManager, KnowledgeBaseManager>();
 builder.Services.AddSingleton<IKnowledgeProgressHub, KnowledgeProgressHub>();
 builder.Services.AddSingleton<IKnowledgeIndexMaterializer, KnowledgeIndexMaterializer>();
 builder.Services.AddSingleton<IKnowledgeTaskRunner, KnowledgeTaskRunner>();
+builder.Services.AddSingleton<IKnowledgeIngestionService, KnowledgeIngestionService>();
 builder.Services.AddSingleton<IPythonWorkerHost, PythonWorkerHost>();
 builder.Services.AddSingleton<IDocumentParsingService, DocumentParsingService>();
 builder.Services.AddSingleton<IRagPipelineFactory, RagPipelineFactory>();

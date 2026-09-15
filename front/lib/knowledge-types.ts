@@ -49,6 +49,36 @@ export type KnowledgeDocument = {
   created_at: string;
 };
 
+export type KnowledgeProcessRequest = {
+  generator: "llm_api" | "codex";
+  model_id?: string | null;
+  reasoning_effort?: string | null;
+};
+
+export type KnowledgeProcessingResult = {
+  document_id: number;
+  parsed_document_id: number;
+  artifact_id: number;
+  status: string;
+  generator: string;
+  parser: string;
+};
+
+export type KnowledgeDocumentContent = {
+  document_id: number;
+  original_file_name: string;
+  status: string;
+  parsed_document_id?: number | null;
+  parsed_content?: string | null;
+  parser?: string | null;
+  artifact_id?: number | null;
+  artifact_content?: string | null;
+  generator?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  review_status?: string | null;
+};
+
 export type KnowledgeDetail = KnowledgeBase & {
   documents: KnowledgeDocument[];
 };

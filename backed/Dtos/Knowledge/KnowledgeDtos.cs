@@ -440,6 +440,82 @@ public sealed class KnowledgeUploadRequest
     public List<IFormFile> Files { get; set; } = [];
 }
 
+/// <summary>Requests parsing and knowledge compilation for one uploaded source document.</summary>
+public sealed class KnowledgeProcessRequest
+{
+    /// <summary>Generation adapter: llm_api (default) or codex.</summary>
+    [JsonPropertyName("generator")]
+    public string Generator { get; set; } = "llm_api";
+
+    /// <summary>Optional configured model identifier.</summary>
+    [JsonPropertyName("model_id")]
+    public string? ModelId { get; set; }
+
+    /// <summary>Optional Codex reasoning effort.</summary>
+    [JsonPropertyName("reasoning_effort")]
+    public string? ReasoningEffort { get; set; }
+}
+
+public sealed class KnowledgeProcessingResultDto
+{
+    [JsonPropertyName("document_id")]
+    public long DocumentId { get; set; }
+
+    [JsonPropertyName("parsed_document_id")]
+    public long ParsedDocumentId { get; set; }
+
+    [JsonPropertyName("artifact_id")]
+    public long ArtifactId { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("generator")]
+    public string Generator { get; set; } = string.Empty;
+
+    [JsonPropertyName("parser")]
+    public string Parser { get; set; } = string.Empty;
+}
+
+public sealed class KnowledgeDocumentContentDto
+{
+    [JsonPropertyName("document_id")]
+    public long DocumentId { get; set; }
+
+    [JsonPropertyName("original_file_name")]
+    public string OriginalFileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("parsed_document_id")]
+    public long? ParsedDocumentId { get; set; }
+
+    [JsonPropertyName("parsed_content")]
+    public string? ParsedContent { get; set; }
+
+    [JsonPropertyName("parser")]
+    public string? Parser { get; set; }
+
+    [JsonPropertyName("artifact_id")]
+    public long? ArtifactId { get; set; }
+
+    [JsonPropertyName("artifact_content")]
+    public string? ArtifactContent { get; set; }
+
+    [JsonPropertyName("generator")]
+    public string? Generator { get; set; }
+
+    [JsonPropertyName("provider")]
+    public string? Provider { get; set; }
+
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    [JsonPropertyName("review_status")]
+    public string? ReviewStatus { get; set; }
+}
+
 /// <summary>
 /// 知识库检索请求。
 /// </summary>

@@ -19,6 +19,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     private readonly IKnowledgeProviderConfigService _providerConfigService;
     private readonly IKnowledgeProgressHub _progressHub;
     private readonly IKnowledgeTaskRunner _taskRunner;
+    private readonly IKnowledgeIngestionService _ingestionService;
     private readonly IDocumentParsingService _documentParsingService;
     private readonly IRagService _ragService;
     private readonly ILogger<KnowledgeAppService> _logger;
@@ -32,6 +33,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         IKnowledgeProviderConfigService providerConfigService,
         IKnowledgeProgressHub progressHub,
         IKnowledgeTaskRunner taskRunner,
+        IKnowledgeIngestionService ingestionService,
         IDocumentParsingService documentParsingService,
         IRagService ragService,
         ILogger<KnowledgeAppService> logger)
@@ -41,6 +43,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         _providerConfigService = providerConfigService;
         _progressHub = progressHub;
         _taskRunner = taskRunner;
+        _ingestionService = ingestionService;
         _documentParsingService = documentParsingService;
         _ragService = ragService;
         _logger = logger;
@@ -199,6 +202,26 @@ public sealed class KnowledgeAppService : IDynamicApiController
         return result;
     }
 
+    /// <summary>Parse an immutable source and compile it into a reviewable Markdown knowledge artifact.</summary>
+    [HttpPost("{kbName}/documents/{documentId:long}/process")]
+    public Task<KnowledgeProcessingResultDto> ProcessDocument([FromRoute] string kbName, [FromRoute] long documentId, [FromBody] KnowledgeProcessRequest request, CancellationToken cancellationToken)
+    {
+        var generator = (request.Generator ?? "llm_api").Trim().ToLowerInvariant();
+        if (generator is not ("llm_api" or "codex")) throw new ArgumentException("generator must be llm_api or codex.");
+        request.Generator = generator;
+        var kb = FindKnowledgeBase(kbName);
+        var document = FindDocument(kb.Id, documentId);
+        return _ingestionService.ProcessAsync(kb, document, request, cancellationToken);
+    }
+
+    /// <summary>Read the latest parsed document and AI artifact without exposing server file paths.</summary>
+    [HttpGet("{kbName}/documents/{documentId:long}/content")]
+    public KnowledgeDocumentContentDto GetDocumentContent([FromRoute] string kbName, [FromRoute] long documentId)
+    {
+        var kb = FindKnowledgeBase(kbName);
+        return _ingestionService.GetContent(kb, FindDocument(kb.Id, documentId));
+    }
+
     [HttpDelete("{kbName}/documents/{documentId:long}")]
     public object DeleteDocument([FromRoute] string kbName, [FromRoute] long documentId)
     {
@@ -232,6 +255,14 @@ public sealed class KnowledgeAppService : IDynamicApiController
             .ExecuteCommand();
 
         return new { ok = true };
+    }
+
+    private AiKnowledgeDocument FindDocument(long knowledgeBaseId, long documentId)
+    {
+        var document = _db.Queryable<AiKnowledgeDocument>()
+            .Where(x => x.Id == documentId && x.KnowledgeBaseId == knowledgeBaseId && !x.IsDeleted)
+            .First();
+        return document ?? throw new InvalidOperationException("Knowledge document does not exist.");
     }
 
     /// <summary>
