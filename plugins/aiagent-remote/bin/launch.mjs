@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { AiAgentClient } from '../src/client.mjs'
+import { AiAgentClient, normalizeAiAgentBaseUrl } from '../src/client.mjs'
 
 const separator = process.argv.indexOf('--')
 const command = separator >= 0 ? process.argv.slice(separator + 1) : []
@@ -13,7 +13,14 @@ if (command.length === 0) {
 } else {
   const rl = createInterface({ input: stdin, output: stdout })
   try {
-    const baseUrl = (await rl.question('AiAgent URL: ')).trim()
+    const configuredBaseUrl = process.env.AIAGENT_BASE_URL?.trim() ?? ''
+    const addressPrompt = configuredBaseUrl
+      ? `AiAgent backend address [${configuredBaseUrl}]: `
+      : 'AiAgent backend address (for example 192.168.1.20:5000): '
+    const baseUrl = normalizeAiAgentBaseUrl((await rl.question(addressPrompt)).trim() || configuredBaseUrl)
+    if (baseUrl.startsWith('http://')) {
+      stdout.write('Warning: HTTP sends login credentials without transport encryption; use it only on a trusted development network.\n')
+    }
     const username = (await rl.question('Username: ')).trim()
     const password = await hiddenQuestion('Password: ')
     const client = await AiAgentClient.login(baseUrl, username, password)
@@ -44,7 +51,7 @@ if (command.length === 0) {
     if (!(await stat(cwd)).isDirectory()) throw new Error('Local folder does not exist')
     const child = spawn(command[0], command.slice(1), {
       cwd, stdio: 'inherit', shell: false,
-      env: { ...process.env, AIAGENT_BASE_URL: baseUrl.replace(/\/+$/, ''), AIAGENT_LLM_BASE_URL: `${baseUrl.replace(/\/+$/, '')}/api/v1/deepseek-plugin`, AIAGENT_ACCESS_TOKEN: client.token, AIAGENT_MODEL_ID: models[selectedIndex].id, AIAGENT_CODEX_MODEL_ID: codexModelId },
+      env: { ...process.env, AIAGENT_BASE_URL: baseUrl, AIAGENT_LLM_BASE_URL: `${baseUrl}/api/v1/deepseek-plugin`, AIAGENT_ACCESS_TOKEN: client.token, AIAGENT_MODEL_ID: models[selectedIndex].id, AIAGENT_CODEX_MODEL_ID: codexModelId },
     })
     process.exitCode = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => resolve(code ?? 1)) })
   } catch (error) {

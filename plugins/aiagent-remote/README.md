@@ -17,4 +17,13 @@ The included launcher performs those steps without persisting the password or to
 node .\bin\launch.mjs -- pnpm dsh --profile <your-profile> "your task"
 ```
 
-Never put a password or bearer token in `cordis.yml`, shell history, logs, or source control. Production deployments must use HTTPS. The remote Codex tool accepts bounded text excerpts only: it never receives a local path and cannot directly edit client files. Harness reviews the response and performs any local change through its native local tools and approval policy.
+When prompted for the backend address, you can enter a development IP and port directly, such as `192.168.1.20:5000`; the launcher normalizes it to `http://192.168.1.20:5000`. You can also enter a complete address such as `https://aiagent.example.com`. Set `AIAGENT_BASE_URL` before launching to provide an editable default:
+
+```powershell
+$env:AIAGENT_BASE_URL="http://192.168.1.20:5000"
+node .\bin\launch.mjs -- pnpm dsh --profile <your-profile> "your task"
+```
+
+Enter the backend root only, without `/api` or `/api/v1`. The selected address is passed to the child Harness process and is not written to the plugin configuration.
+
+Never put a password or bearer token in `cordis.yml`, shell history, logs, or source control. Plain HTTP exposes login credentials in transit, so use it only on a trusted development network; production deployments must use HTTPS. The remote Codex tool accepts bounded text excerpts only: it never receives a local path and cannot directly edit client files. Harness reviews the response and performs any local change through its native local tools and approval policy.

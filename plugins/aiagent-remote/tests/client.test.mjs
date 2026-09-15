@@ -1,6 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { AiAgentClient } from '../src/client.mjs'
+import { AiAgentClient, normalizeAiAgentBaseUrl } from '../src/client.mjs'
+
+test('backend address accepts a development IP and normalizes its origin', () => {
+  assert.equal(normalizeAiAgentBaseUrl('192.168.1.20:5000'), 'http://192.168.1.20:5000')
+  assert.equal(normalizeAiAgentBaseUrl('https://aiagent.example.test/'), 'https://aiagent.example.test')
+})
+
+test('backend address rejects API paths and embedded credentials', () => {
+  assert.throws(() => normalizeAiAgentBaseUrl('192.168.1.20:5000/api'), /root address/)
+  assert.throws(() => normalizeAiAgentBaseUrl('http://user:pass@192.168.1.20:5000'), /credentials/)
+})
 
 test('login keeps credentials in request body and uses returned bearer token', async () => {
   const calls = []
