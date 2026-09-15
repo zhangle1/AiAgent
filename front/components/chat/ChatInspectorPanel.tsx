@@ -5,7 +5,7 @@ import { ArrowRight, ChevronDown, ChevronRight, Download, FileText, Folder, Fold
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
-import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeFile, getProjectMarkdownDirectories, getProjectMarkdownDocuments, projectMarkdownDocumentDownloadUrl, readProjectMarkdownDocument, uploadProjectMarkdownDocument } from "@/lib/code-repository-api";
+import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeFile, getProjectMarkdownDirectories, getProjectMarkdownDocuments, importProjectDocuments, projectMarkdownDocumentDownloadUrl, readProjectMarkdownDocument } from "@/lib/code-repository-api";
 import type { CodeProject, CodeProjectMarkdownDirectory, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeLog } from "@/lib/code-runtime-types";
 import { getChatFileExtraction, getChatUploadText, getMyChatUploads, myChatUploadContentUrl, type ChatFileAttachment, type ChatFileExtractionPreview, type ChatUploadFile } from "@/lib/chat-api";
@@ -38,6 +38,8 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   const [markdownDirectories, setMarkdownDirectories] = useState<CodeProjectMarkdownDirectory[]>([]);
   const [selectedMarkdownDirectory, setSelectedMarkdownDirectory] = useState<CodeProjectMarkdownDirectory>({ repository_name: "aiagent-uploads", path: "" });
   const [loadingMarkdownDocuments, setLoadingMarkdownDocuments] = useState(false);
+  const [importingDocuments, setImportingDocuments] = useState(false);
+  const [documentImportSummary, setDocumentImportSummary] = useState<string | null>(null);
   const [selectedMarkdownDocument, setSelectedMarkdownDocument] = useState<CodeProjectMarkdownDocument | null>(null);
   const [markdownDocumentContent, setMarkdownDocumentContent] = useState<CodeProjectMarkdownDocumentContent | null>(null);
   const [loadingMarkdownDocument, setLoadingMarkdownDocument] = useState(false);
@@ -274,14 +276,21 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     }
   }
 
-  async function uploadMarkdownDocument(file: File) {
-    if (!project) return;
+  async function uploadDocuments(files: File[]) {
+    if (!project || files.length === 0) return;
     setError(null);
+    setDocumentImportSummary(null);
+    setImportingDocuments(true);
     try {
-      const document = await uploadProjectMarkdownDocument(project.id, selectedMarkdownDirectory.repository_name, selectedMarkdownDirectory.path, file);
-      await refreshMarkdownDocuments(document, selectedMarkdownDirectory);
+      const result = await importProjectDocuments(project.id, selectedMarkdownDirectory.repository_name, selectedMarkdownDirectory.path, files);
+      const count = (status: string) => result.items.filter((item) => item.status === status).length;
+      const failures = result.items.filter((item) => item.status === "failed");
+      setDocumentImportSummary(`导入 ${count("imported")} 个，跳过 ${count("skipped")} 个，失败 ${count("failed")} 个。${failures.length ? ` ${failures.map((item) => `${item.file_name}：${item.message}`).join("；")}` : ""}`);
+      await refreshMarkdownDocuments(result.documents.at(-1), selectedMarkdownDirectory);
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : "无法上传 Markdown 文档。");
+      setError(ex instanceof Error ? ex.message : "无法导入项目文档。");
+    } finally {
+      setImportingDocuments(false);
     }
   }
 
@@ -377,7 +386,9 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
           onSelectDirectory={setSelectedMarkdownDirectory}
           onInsert={onInsertMarkdownReference}
           uploadInputRef={markdownUploadInputRef}
-          onUpload={uploadMarkdownDocument}
+          onUpload={uploadDocuments}
+          importing={importingDocuments}
+          importSummary={documentImportSummary}
           onCreateDirectory={createMarkdownDirectory}
           onDownload={downloadMarkdownDocument}
           onDelete={deleteMarkdownDocument}
@@ -460,7 +471,7 @@ function buildMarkdownDocumentTree(documents: CodeProjectMarkdownDocument[], dir
   return root;
 }
 
-function ProjectDocumentsTab({ documents, directories, loadingDocuments, selectedDocument, selectedDirectory, content, loadingContent, onSelect, onSelectDirectory, onInsert, uploadInputRef, onUpload, onCreateDirectory, onDownload, onDelete, onPrepareAgentMarkdown, onRefresh }: {
+function ProjectDocumentsTab({ documents, directories, loadingDocuments, selectedDocument, selectedDirectory, content, loadingContent, onSelect, onSelectDirectory, onInsert, uploadInputRef, onUpload, importing, importSummary, onCreateDirectory, onDownload, onDelete, onPrepareAgentMarkdown, onRefresh }: {
   documents: CodeProjectMarkdownDocument[];
   directories: CodeProjectMarkdownDirectory[];
   loadingDocuments: boolean;
@@ -472,7 +483,9 @@ function ProjectDocumentsTab({ documents, directories, loadingDocuments, selecte
   onSelectDirectory: (directory: CodeProjectMarkdownDirectory) => void;
   onInsert?: (document: CodeProjectMarkdownDocument) => void;
   uploadInputRef: RefObject<HTMLInputElement | null>;
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
+  importing: boolean;
+  importSummary: string | null;
   onCreateDirectory: () => void;
   onDownload: (document: CodeProjectMarkdownDocument) => void;
   onDelete: (document: CodeProjectMarkdownDocument) => void;
@@ -480,9 +493,11 @@ function ProjectDocumentsTab({ documents, directories, loadingDocuments, selecte
   onRefresh: () => void;
 }) {
   const tree = useMemo(() => buildMarkdownDocumentTree(documents, directories), [documents, directories]);
-  return <div className="flex min-h-0 flex-1 overflow-hidden">
+  const [dragging, setDragging] = useState(false);
+  return <div className="relative flex min-h-0 flex-1 overflow-hidden" onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false); }} onDrop={(event) => { event.preventDefault(); setDragging(false); onUpload(Array.from(event.dataTransfer.files)); }}>
+    {dragging && <div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-xl border-2 border-dashed border-blue-500 bg-blue-50/95 text-center text-sm font-semibold text-blue-700">拖放到这里，导入当前文件夹</div>}
     <div className="workspace-scroll w-[44%] min-w-[160px] max-w-[300px] overflow-auto border-r border-slate-200 bg-slate-50/60 p-2">
-      <div className="px-2 py-1.5"><div className="flex items-center gap-1"><span className="flex-1 text-[11px] font-semibold text-slate-500">项目 Markdown 文档</span><button type="button" onClick={onRefresh} disabled={loadingDocuments} className="grid h-6 w-6 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-40" title="刷新目录" aria-label="刷新目录"><RefreshCw size={13} className={loadingDocuments ? "animate-spin" : ""}/></button><button type="button" onClick={onPrepareAgentMarkdown} className="rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50">生成 Agent 文档</button></div><p className="mt-1 truncate text-[10px] text-slate-400">上传目标：{selectedDirectory.repository_name}{selectedDirectory.path ? ` / ${selectedDirectory.path}` : " / 根目录"}</p><p className="mt-0.5 text-[10px] leading-4 text-slate-400">{selectedDirectory.repository_name === "aiagent-uploads" ? "专用上传区，不写入 Git 仓库。" : "已注册仓库：上传、新建和删除都会成为 Git 可见变更。"}</p><div className="mt-1 flex gap-1"><button type="button" onClick={onCreateDirectory} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"><FolderPlus size={12}/>新建文件夹</button><button type="button" onClick={() => uploadInputRef.current?.click()} className="rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50">上传到此处</button></div><input ref={uploadInputRef} type="file" accept=".md,.markdown,text/markdown,text/plain" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }}/></div>
+      <div className="px-2 py-1.5"><div className="flex items-center gap-1"><span className="flex-1 text-[11px] font-semibold text-slate-500">项目资料库</span><button type="button" onClick={onRefresh} disabled={loadingDocuments} className="grid h-6 w-6 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-40" title="刷新目录" aria-label="刷新目录"><RefreshCw size={13} className={loadingDocuments ? "animate-spin" : ""}/></button><button type="button" onClick={onPrepareAgentMarkdown} className="rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50">生成 Agent 文档</button></div><p className="mt-1 truncate text-[10px] text-slate-400">上传目标：{selectedDirectory.repository_name}{selectedDirectory.path ? ` / ${selectedDirectory.path}` : " / 根目录"}</p><p className="mt-0.5 text-[10px] leading-4 text-slate-400">支持拖放、批量上传、ZIP、PDF、DOCX、XLSX、PPTX 及常见文本；统一转换为 Markdown。</p><div className="mt-1 flex gap-1"><button type="button" onClick={onCreateDirectory} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"><FolderPlus size={12}/>新建文件夹</button><button type="button" disabled={importing} onClick={() => uploadInputRef.current?.click()} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50">{importing && <Loader2 size={11} className="animate-spin"/>}{importing ? "正在导入" : "上传到此处"}</button></div>{importSummary && <p className="mt-1 text-[10px] leading-4 text-slate-500">{importSummary}</p>}<input ref={uploadInputRef} type="file" multiple accept=".zip,.md,.markdown,.txt,.csv,.json,.jsonl,.xml,.yaml,.yml,.html,.htm,.pdf,.docx,.xlsx,.pptx" className="hidden" onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; if (files.length) onUpload(files); }}/></div>
       {loadingDocuments ? <div className="flex min-h-24 items-center justify-center gap-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin"/>正在读取目录…</div>
         : directories.length === 0 && documents.length === 0 ? <p className="px-2 py-5 text-center text-xs leading-5 text-slate-500">当前项目没有可读取的 Markdown 目录。</p>
           : <MarkdownDocumentTreeNode node={tree} selectedDocument={selectedDocument} selectedDirectory={selectedDirectory} onSelect={onSelect} onSelectDirectory={onSelectDirectory}/>}

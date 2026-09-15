@@ -7,6 +7,7 @@ import type {
   CodeProjectMarkdownDirectory,
   CodeProjectMarkdownDocument,
   CodeProjectMarkdownDocumentContent,
+  CodeProjectDocumentImportResult,
   CodeProjectAgentMarkdownIndex,
   CodeProjectReference,
   CodeProjectSaveRequest,
@@ -84,6 +85,14 @@ export async function uploadProjectMarkdownDocument(projectId: number, repositor
   body.set("directory_path", directoryPath);
   body.set("file", file);
   return parseJson<CodeProjectMarkdownDocument>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents/upload`, { method: "POST", body }));
+}
+
+export async function importProjectDocuments(projectId: number, repositoryName: string, directoryPath: string, files: File[]): Promise<CodeProjectDocumentImportResult> {
+  const body = new FormData();
+  body.set("repository_name", repositoryName);
+  body.set("directory_path", directoryPath);
+  files.forEach((file) => body.append("files", file));
+  return parseJson<CodeProjectDocumentImportResult>(await fetch(`/api/v1/code-repositories/projects/${projectId}/documents/import`, { method: "POST", body }));
 }
 
 export async function getProjectMarkdownDirectories(projectId: number): Promise<CodeProjectMarkdownDirectory[]> {

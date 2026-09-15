@@ -271,6 +271,27 @@ public sealed class CodeProjectMarkdownDocumentDto
     public DateTime? UpdatedAt { get; set; }
 }
 
+public sealed class CodeProjectDocumentImportResultDto
+{
+    [JsonPropertyName("documents")]
+    public List<CodeProjectMarkdownDocumentDto> Documents { get; set; } = [];
+
+    [JsonPropertyName("items")]
+    public List<CodeProjectDocumentImportItemDto> Items { get; set; } = [];
+}
+
+public sealed class CodeProjectDocumentImportItemDto
+{
+    [JsonPropertyName("file_name")]
+    public string FileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "failed";
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+}
+
 public sealed class CodeProjectMarkdownDocumentContentDto
 {
     [JsonPropertyName("repository_name")]

@@ -7,6 +7,11 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.IO.Compression;
+using System.Xml.Linq;
+using System.Xml;
+using ClosedXML.Excel;
+using AiAgent.Backend.Services.Parsing;
 
 namespace AiAgent.Backend.Services.CodeRepository;
 
@@ -59,6 +64,8 @@ public interface ICodeRepositoryManager
 
     Task<CodeProjectMarkdownDocumentDto> UploadProjectMarkdownDocumentAsync(long projectId, AuthenticatedUser user, string? repositoryName, string? directoryPath, IFormFile file, CancellationToken cancellationToken = default);
 
+    Task<CodeProjectDocumentImportResultDto> ImportProjectDocumentsAsync(long projectId, AuthenticatedUser user, string? repositoryName, string? directoryPath, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default);
+
     List<CodeProjectMarkdownDirectoryDto> ListProjectMarkdownDirectories(long projectId);
 
     CodeProjectMarkdownDirectoryDto CreateProjectMarkdownDirectory(long projectId, string repositoryName, string? parentPath, string name);
@@ -87,6 +94,10 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     private const int MaxMarkdownDocumentPreviewCharacters = 400_000;
     private const long MaxProjectMarkdownUploadBytes = 2L * 1024 * 1024;
     private const int MaxProjectMarkdownUploadCharacters = 200_000;
+    private const long MaxProjectDocumentUploadBytes = 25L * 1024 * 1024;
+    private const long MaxProjectArchiveExpandedBytes = 100L * 1024 * 1024;
+    private const int MaxProjectImportFiles = 50;
+    private static readonly HashSet<string> ProjectDocumentExtensions = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx" };
     private const string ProjectUploadDirectoryName = "uploads";
     private const string ProjectAiAgentDocumentsDirectoryName = "aiagent-documents";
     private const string UploadedDocumentRepositoryName = "aiagent-uploads";
@@ -99,15 +110,17 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     private readonly List<string> _allowedRoots;
     private readonly List<string> _registeredProjectRoots;
     private readonly ILogger<CodeRepositoryManager> _logger;
+    private readonly IDocumentParsingService _documentParser;
 
     /// <summary>
     /// Initializes the manager and resolves the allowed local roots.
     /// </summary>
-    public CodeRepositoryManager(ISqlSugarClient db, IConfiguration configuration, ILogger<CodeRepositoryManager> logger)
+    public CodeRepositoryManager(ISqlSugarClient db, IConfiguration configuration, ILogger<CodeRepositoryManager> logger, IDocumentParsingService documentParser)
     {
         _db = db;
         _allowedRoots = ResolveAllowedRoots(configuration);
         _logger = logger;
+        _documentParser = documentParser;
         _registeredProjectRoots = LoadRegisteredProjectRoots();
     }
 
@@ -638,6 +651,121 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         {
             if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
+    }
+
+    public async Task<CodeProjectDocumentImportResultDto> ImportProjectDocumentsAsync(long projectId, AuthenticatedUser user, string? repositoryName, string? directoryPath, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default)
+    {
+        if (files.Count is 0 or > MaxProjectImportFiles) throw new ArgumentException($"每次请选择 1 到 {MaxProjectImportFiles} 个文件。", nameof(files));
+        var result = new CodeProjectDocumentImportResultDto();
+        var candidates = new List<(string Name, byte[] Content)>();
+        foreach (var file in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var safeName = Path.GetFileName(file.FileName);
+            if (file.Length <= 0 || file.Length > MaxProjectDocumentUploadBytes)
+            {
+                result.Items.Add(new() { FileName = safeName, Status = "failed", Message = "文件为空或超过 25 MB。" });
+                continue;
+            }
+            await using var input = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await input.CopyToAsync(buffer, cancellationToken);
+            if (Path.GetExtension(safeName).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                ExpandDocumentArchive(safeName, buffer.ToArray(), candidates, result.Items);
+            else candidates.Add((safeName, buffer.ToArray()));
+        }
+
+        foreach (var candidate in candidates.Take(MaxProjectImportFiles))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var markdown = await ConvertProjectDocumentToMarkdownAsync(projectId, candidate.Name, candidate.Content, cancellationToken);
+                var markdownName = GetImportedMarkdownName(candidate.Name);
+                var bytes = new UTF8Encoding(false).GetBytes(markdown);
+                if (bytes.Length > MaxProjectMarkdownUploadBytes || markdown.Length > MaxProjectMarkdownUploadCharacters)
+                    throw new ArgumentException("解析后的内容超过 2 MB 或 200,000 字符上限。");
+                await using var stream = new MemoryStream(bytes, writable: false);
+                var formFile = new FormFile(stream, 0, bytes.Length, "file", markdownName) { Headers = new HeaderDictionary(), ContentType = "text/markdown" };
+                var document = await UploadProjectMarkdownDocumentAsync(projectId, user, repositoryName, directoryPath, formFile, cancellationToken);
+                result.Documents.Add(document);
+                result.Items.Add(new() { FileName = candidate.Name, Status = "imported", Message = $"已导入为 {markdownName}" });
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or InvalidDataException or XmlException)
+            {
+                result.Items.Add(new() { FileName = candidate.Name, Status = "failed", Message = ex.Message });
+            }
+        }
+        if (candidates.Count > MaxProjectImportFiles)
+            result.Items.Add(new() { FileName = "ZIP", Status = "skipped", Message = $"每次最多导入 {MaxProjectImportFiles} 个文档，其余条目已跳过。" });
+        return result;
+    }
+
+    private static void ExpandDocumentArchive(string archiveName, byte[] bytes, List<(string Name, byte[] Content)> candidates, List<CodeProjectDocumentImportItemDto> items)
+    {
+        try
+        {
+            using var archive = new ZipArchive(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read);
+            long expanded = 0;
+            foreach (var entry in archive.Entries)
+            {
+                if (string.IsNullOrEmpty(entry.Name)) continue;
+                var normalized = entry.FullName.Replace('\\', '/');
+                if (normalized.StartsWith('/') || normalized.Split('/').Any(part => part is ".." or ".") || Path.GetExtension(entry.Name).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                { items.Add(new() { FileName = entry.FullName, Status = "skipped", Message = "不安全路径或嵌套 ZIP 已跳过。" }); continue; }
+                if (!ProjectDocumentExtensions.Contains(Path.GetExtension(entry.Name)))
+                { items.Add(new() { FileName = entry.FullName, Status = "skipped", Message = "不支持的文件类型。" }); continue; }
+                expanded += entry.Length;
+                if (entry.Length > MaxProjectDocumentUploadBytes || expanded > MaxProjectArchiveExpandedBytes) throw new InvalidDataException("ZIP 解压内容超过安全上限（单文件 25 MB、合计 100 MB）。");
+                using var source = entry.Open(); using var target = new MemoryStream(); source.CopyTo(target);
+                candidates.Add((entry.Name, target.ToArray()));
+            }
+        }
+        catch (InvalidDataException ex) { items.Add(new() { FileName = archiveName, Status = "failed", Message = $"无法安全解压 ZIP：{ex.Message}" }); }
+    }
+
+    private static string GetImportedMarkdownName(string name)
+    {
+        var extension = Path.GetExtension(name);
+        var stem = Path.GetFileNameWithoutExtension(name);
+        return extension.Equals(".md", StringComparison.OrdinalIgnoreCase) || extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase) ? Path.GetFileName(name) : $"{stem}.md";
+    }
+
+    private async Task<string> ConvertProjectDocumentToMarkdownAsync(long projectId, string name, byte[] bytes, CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(name).ToLowerInvariant();
+        if (!ProjectDocumentExtensions.Contains(extension)) throw new ArgumentException($"不支持 {extension} 文件；旧版 .doc/.xls/.ppt 请另存为新版格式。" );
+        if (extension == ".pdf")
+        {
+            var workingDirectory = Path.Combine(EnsureProjectUploadDirectory(projectId), $".pdf-import-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(workingDirectory);
+            try
+            {
+                var sourcePath = Path.Combine(workingDirectory, "source.pdf");
+                await File.WriteAllBytesAsync(sourcePath, bytes, cancellationToken);
+                var parsed = await _documentParser.ParsePdfAsync(new DocumentParseRequest { FilePath = sourcePath, OutputDir = workingDirectory }, cancellationToken);
+                if (!parsed.Ok || string.IsNullOrWhiteSpace(parsed.MarkdownPath) || !File.Exists(parsed.MarkdownPath)) throw new InvalidDataException(parsed.ErrorMessage ?? "PDF 解析失败。");
+                return await File.ReadAllTextAsync(parsed.MarkdownPath, Encoding.UTF8, cancellationToken);
+            }
+            finally { try { Directory.Delete(workingDirectory, true); } catch (Exception ex) { _logger.LogWarning(ex, "Unable to clean PDF import workspace {WorkingDirectory}.", workingDirectory); } }
+        }
+        if (extension == ".xlsx")
+        {
+            using var workbook = new XLWorkbook(new MemoryStream(bytes, writable: false)); var output = new StringBuilder();
+            foreach (var sheet in workbook.Worksheets) { output.AppendLine($"# Sheet: {sheet.Name}"); var range = sheet.RangeUsed(); if (range is null) continue; foreach (var row in range.Rows()) output.AppendLine($"- Row {row.RowNumber()}: {string.Join(" | ", row.Cells().Select(cell => cell.GetFormattedString()))}"); }
+            return output.ToString();
+        }
+        if (extension is ".docx" or ".pptx")
+        {
+            using var archive = new ZipArchive(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read);
+            var prefix = extension == ".docx" ? "word/document.xml" : "ppt/slides/slide"; var output = new StringBuilder();
+            foreach (var entry in archive.Entries.Where(item => item.FullName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && item.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(item => item.FullName)) { using var stream = entry.Open(); var xml = XDocument.Load(stream); var extractedText = string.Join(" ", xml.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value).Where(value => !string.IsNullOrWhiteSpace(value))); if (extractedText.Length > 0) output.AppendLine($"# {entry.FullName}\n\n{extractedText}\n"); }
+            if (output.Length == 0) throw new InvalidDataException("Office 文档中没有可提取文本。"); return output.ToString();
+        }
+        var text = new UTF8Encoding(false, true).GetString(bytes);
+        if (extension is ".html" or ".htm") text = Regex.Replace(Regex.Replace(text, "<script[\\s\\S]*?</script>|<style[\\s\\S]*?</style>", "", RegexOptions.IgnoreCase), "<[^>]+>", " ");
+        if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException("文档中没有可提取文本。");
+        return text;
     }
 
     public CodeProjectAgentMarkdownIndexDto GetProjectAgentMarkdownIndex(long projectId)
