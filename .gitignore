@@ -1,6 +1,8 @@
 # Build and package output
 [Bb]in/
 [Oo]bj/
+!plugins/aiagent-remote/bin/
+!plugins/aiagent-remote/bin/launch.mjs
 **/node_modules/
 front/.next/
 front/out/
