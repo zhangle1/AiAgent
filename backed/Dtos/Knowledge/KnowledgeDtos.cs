@@ -440,6 +440,36 @@ public sealed class KnowledgeUploadRequest
     public List<IFormFile> Files { get; set; } = [];
 }
 
+public sealed class KnowledgeDocumentImportResultDto
+{
+    [JsonPropertyName("knowledge_base")]
+    public KnowledgeBaseDto KnowledgeBase { get; set; } = new();
+
+    [JsonPropertyName("items")]
+    public List<KnowledgeDocumentImportItemDto> Items { get; set; } = [];
+
+    [JsonPropertyName("task_id")]
+    public long? TaskId { get; set; }
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+}
+
+public sealed class KnowledgeDocumentImportItemDto
+{
+    [JsonPropertyName("file_name")]
+    public string FileName { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "failed";
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("document_id")]
+    public long? DocumentId { get; set; }
+}
+
 /// <summary>Requests parsing and knowledge compilation for one uploaded source document.</summary>
 public sealed class KnowledgeProcessRequest
 {

@@ -53,7 +53,7 @@ import {
   setDefaultKnowledgeBase,
   uploadKnowledgeDocuments,
 } from "@/lib/knowledge-api";
-import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocument, KnowledgeDocumentContent, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeProvider } from "@/lib/knowledge-types";
+import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocument, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeProvider } from "@/lib/knowledge-types";
 import { activeModel, activeProfile } from "@/lib/settings-types";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -83,12 +83,17 @@ const supportedDocumentAccept = [
   "text/csv",
   ".json",
   "application/json",
-  ".doc",
+  ".jsonl",
+  ".xml",
+  ".yaml",
+  ".yml",
+  ".html",
+  ".htm",
   ".docx",
-  ".xls",
   ".xlsx",
-  ".ppt",
   ".pptx",
+  ".zip",
+  "application/zip",
 ].join(",");
 
 export function KnowledgeHome() {
@@ -209,7 +214,7 @@ export function KnowledgeHome() {
     }
   }
 
-  async function handleUpload(files: File[]) {
+  async function handleUpload(files: File[]): Promise<KnowledgeDocumentImportResult | undefined> {
     if (!detail || files.length === 0) return;
     const kbName = detail.name || selectedKbName;
     if (!kbName) {
@@ -220,9 +225,13 @@ export function KnowledgeHome() {
     setBusy(true);
     setError(null);
     try {
-      await uploadKnowledgeDocuments(kbName, files);
+      const result = await uploadKnowledgeDocuments(kbName, files);
       await Promise.all([reload(), reloadDetail(kbName)]);
-      setNotice(t("knowledge.uploadStarted"));
+      const imported = result.items.filter((item) => item.status === "imported").length;
+      const skipped = result.items.filter((item) => item.status === "skipped").length;
+      const failed = result.items.filter((item) => item.status === "failed").length;
+      setNotice(`${t("knowledge.uploadStarted")} (${imported} imported, ${skipped} skipped, ${failed} failed)`);
+      return result;
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : t("knowledge.errorUpload"));
     } finally {
@@ -610,7 +619,7 @@ function CreateKnowledgeModal({ busy, providers, onClose, onCreate }: { busy: bo
   );
 }
 
-function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, error, notice, tab, versions, onBack, onDelete, onDeleteDocument, onRefresh, onReindex, onSetDefault, onTabChange, onUpload }: { busy: boolean; detail: KnowledgeDetail | null; detailLoading: boolean; embeddingLabel: string; error: string | null; notice: string | null; tab: DetailTab; versions: KnowledgeIndexVersion[]; onBack: () => void; onDelete: (kb: KnowledgeDetail) => Promise<void>; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onRefresh: () => void; onReindex: (kb: KnowledgeDetail) => Promise<void>; onSetDefault: (kb: KnowledgeDetail) => Promise<void>; onTabChange: (tab: DetailTab) => void; onUpload: (files: File[]) => Promise<void> }) {
+function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, error, notice, tab, versions, onBack, onDelete, onDeleteDocument, onRefresh, onReindex, onSetDefault, onTabChange, onUpload }: { busy: boolean; detail: KnowledgeDetail | null; detailLoading: boolean; embeddingLabel: string; error: string | null; notice: string | null; tab: DetailTab; versions: KnowledgeIndexVersion[]; onBack: () => void; onDelete: (kb: KnowledgeDetail) => Promise<void>; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onRefresh: () => void; onReindex: (kb: KnowledgeDetail) => Promise<void>; onSetDefault: (kb: KnowledgeDetail) => Promise<void>; onTabChange: (tab: DetailTab) => void; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
   const { t } = useI18n();
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const selectedDocument = detail?.documents.find((item) => item.id === selectedDocId) ?? detail?.documents[0] ?? null;
@@ -914,20 +923,38 @@ function PdfPagePreview({ pageNumber, width }: { pageNumber: number; width: numb
   );
 }
 
-function AddDocumentsTab({ busy, documents, onUpload }: { busy: boolean; documents: KnowledgeDocument[]; onUpload: (files: File[]) => Promise<void> }) {
+function AddDocumentsTab({ busy, documents, onUpload }: { busy: boolean; documents: KnowledgeDocument[]; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
   const { t } = useI18n();
   const [files, setFiles] = useState<File[]>([]);
+  const [result, setResult] = useState<KnowledgeDocumentImportResult | null>(null);
+  async function submit() {
+    const next = await onUpload(files);
+    if (next) {
+      setResult(next);
+      setFiles([]);
+    }
+  }
   return (
     <div className="mx-auto max-w-5xl px-6 py-6">
       <h2 className="text-[15px] font-semibold">{t("knowledge.addDocuments")}</h2>
       <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">{t("knowledge.addDocumentsDesc")}</p>
       <FilePicker files={files} onFiles={setFiles} />
       <div className="mt-4 flex justify-end">
-        <button type="button" disabled={busy || files.length === 0} onClick={() => void onUpload(files)} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:bg-zinc-300">
+        <button type="button" disabled={busy || files.length === 0} onClick={() => void submit()} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:bg-zinc-300">
           <Upload size={15} />
           {busy ? t("common.saving") : t("knowledge.upload")}
         </button>
       </div>
+      {result && (
+        <div className="mt-4 overflow-hidden rounded-lg border border-[var(--border)] bg-white">
+          {result.items.map((item, index) => (
+            <div key={`${item.file_name}-${index}`} className="flex items-start gap-3 border-b border-[var(--border)] px-3 py-2.5 last:border-b-0">
+              <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.status === "imported" ? "bg-emerald-50 text-emerald-700" : item.status === "failed" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{item.status}</span>
+              <div className="min-w-0 text-[11.5px]"><div className="truncate font-medium">{item.file_name}</div><div className="mt-0.5 text-[var(--muted-foreground)]">{item.message}</div></div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="mt-8">
         <SectionTitle icon={RefreshCw} title={`${t("knowledge.updateHistory")} · ${documents.length}`} />
         <div className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-white">
@@ -1153,11 +1180,12 @@ function SettingsTab({ busy, detail, embeddingLabel, onDelete, onSetDefault }: {
 
 function FilePicker({ files, onFiles }: { files: File[]; onFiles: (files: File[]) => void }) {
   const { t } = useI18n();
+  const [dragging, setDragging] = useState(false);
   return (
-    <label className="mt-2 flex min-h-[126px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-white px-4 py-6 text-center transition hover:border-blue-300">
+    <label onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={(event) => { event.preventDefault(); setDragging(false); }} onDrop={(event) => { event.preventDefault(); setDragging(false); onFiles(Array.from(event.dataTransfer.files)); }} className={`mt-2 flex min-h-[126px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-white px-4 py-6 text-center transition ${dragging ? "border-blue-500 bg-blue-50" : "border-[var(--border)] hover:border-blue-300"}`}>
       <FileUp size={24} className="text-[var(--muted-foreground)]" />
       <span className="mt-2 text-[13px] font-semibold">{files.length > 0 ? t("knowledge.fileCount", { count: files.length }) : t("knowledge.chooseFiles")}</span>
-      <span className="mt-1 text-[11px] text-[var(--muted-foreground)]">{t("knowledge.supportedDocuments")}</span>
+      <span className="mt-1 text-[11px] text-[var(--muted-foreground)]">{t("knowledge.supportedDocuments")} · ZIP</span>
       {files.length > 0 && <span className="mt-2 max-w-full truncate text-[11px] text-blue-600">{files.map((file) => file.name).join(", ")}</span>}
       <input type="file" multiple accept={supportedDocumentAccept} className="hidden" onChange={(event) => onFiles(Array.from(event.target.files ?? []))} />
     </label>

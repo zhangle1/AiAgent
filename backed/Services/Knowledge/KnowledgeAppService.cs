@@ -127,12 +127,16 @@ public sealed class KnowledgeAppService : IDynamicApiController
     public async Task<KnowledgeMutationResponse> CreateKnowledgeBase([FromForm] KnowledgeCreateRequest request, CancellationToken cancellationToken)
     {
         var kb = _manager.CreateKnowledgeBase(request.Name, request.DisplayName, request.Description, request.Provider);
-        var documents = await _manager.SaveDocumentsAsync(kb, request.Files, cancellationToken);
+        var documents = request.Files.Count == 0
+            ? []
+            : (await _manager.ImportDocumentsAsync(kb, request.Files, cancellationToken)).Documents;
+        var job = documents.Count == 0 ? null : _taskRunner.StartIndexTask(kb, documents, "initialize");
 
         return new KnowledgeMutationResponse
         {
-            KnowledgeBase = BuildMutationKnowledgeBase(kb, null),
-            Message = documents.Count > 0 ? "Knowledge base created and files uploaded." : "Knowledge base created."
+            KnowledgeBase = BuildMutationKnowledgeBase(kb, job, job is null ? null : "initializing"),
+            TaskId = job?.Id,
+            Message = documents.Count > 0 ? "Knowledge base created; documents imported and indexing started." : "Knowledge base created."
         };
     }
 
@@ -272,7 +276,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     /// 基于知识库全部文档重建索引。
     /// </summary>
     [HttpPost("{kbName}/upload")]
-    public async Task<KnowledgeMutationResponse> UploadFiles([FromRoute(Name = "kbName")] string kbName, [FromForm(Name = "Files")] List<IFormFile>? files, CancellationToken cancellationToken)
+    public async Task<KnowledgeDocumentImportResultDto> UploadFiles([FromRoute(Name = "kbName")] string kbName, [FromForm(Name = "Files")] List<IFormFile>? files, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         var fileCount = files?.Count ?? 0;
@@ -281,12 +285,20 @@ public sealed class KnowledgeAppService : IDynamicApiController
         var kb = FindKnowledgeBase(kbName);
         _logger.LogInformation("Knowledge upload kb resolved. Kb={KbName}, ElapsedMs={ElapsedMs}", kb.Name, stopwatch.ElapsedMilliseconds);
         var uploadedFiles = files ?? [];
-        var documents = await _manager.SaveDocumentsAsync(kb, uploadedFiles, cancellationToken);
-        _logger.LogInformation("Knowledge upload saved. Kb={KbName}, Documents={DocumentCount}, ElapsedMs={ElapsedMs}", kb.Name, documents.Count, stopwatch.ElapsedMilliseconds);
-        return new KnowledgeMutationResponse
+        var imported = await _manager.ImportDocumentsAsync(kb, uploadedFiles, cancellationToken);
+        AiKnowledgeJob? job = null;
+        if (imported.Documents.Count > 0)
         {
-            KnowledgeBase = BuildMutationKnowledgeBase(kb, null),
-            Message = documents.Count == 0 ? "No files uploaded." : "Upload saved."
+            var allDocuments = _db.Queryable<AiKnowledgeDocument>().Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted).ToList();
+            job = _taskRunner.StartIndexTask(kb, allDocuments, "upload");
+        }
+        _logger.LogInformation("Knowledge upload saved. Kb={KbName}, Documents={DocumentCount}, ElapsedMs={ElapsedMs}", kb.Name, imported.Documents.Count, stopwatch.ElapsedMilliseconds);
+        return new KnowledgeDocumentImportResultDto
+        {
+            KnowledgeBase = BuildMutationKnowledgeBase(kb, job, job is null ? null : "processing"),
+            Items = imported.Items,
+            TaskId = job?.Id,
+            Message = imported.Documents.Count == 0 ? "No documents imported." : $"Imported {imported.Documents.Count} document(s); indexing started."
         };
     }
 

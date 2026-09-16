@@ -2,6 +2,8 @@ using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using SqlSugar;
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Security.Cryptography;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
@@ -29,6 +31,8 @@ public interface IKnowledgeBaseManager
     /// 保存上传文件并写入文档记录。
     /// </summary>
     Task<List<AiKnowledgeDocument>> SaveDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default);
+
+    Task<(List<AiKnowledgeDocument> Documents, List<KnowledgeDocumentImportItemDto> Items)> ImportDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 创建新的索引版本记录。
@@ -83,6 +87,14 @@ public interface IKnowledgeBaseManager
 /// </summary>
 public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
 {
+    private const int MaxImportFiles = 50;
+    private const long MaxDocumentBytes = 25L * 1024 * 1024;
+    private const long MaxArchiveExpandedBytes = 100L * 1024 * 1024;
+    private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx"
+    };
+    private static readonly HashSet<string> LegacyOfficeExtensions = new(StringComparer.OrdinalIgnoreCase) { ".doc", ".xls", ".ppt" };
     private readonly ISqlSugarClient _db;
     private readonly IKnowledgePathService _paths;
     private readonly ILogger<KnowledgeBaseManager> _logger;
@@ -219,6 +231,136 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         _logger.LogInformation("Knowledge documents saved. Kb={KbName}, FileCount={FileCount}, SavedCount={SavedCount}, ElapsedMs={ElapsedMs}", kb.Name, files.Count, result.Count, stopwatch.ElapsedMilliseconds);
         return result;
     }
+
+    public async Task<(List<AiKnowledgeDocument> Documents, List<KnowledgeDocumentImportItemDto> Items)> ImportDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default)
+    {
+        if (files.Count is 0 or > MaxImportFiles)
+            throw new ArgumentException($"Please select between 1 and {MaxImportFiles} files.", nameof(files));
+
+        var candidates = new List<(string Name, string ContentType, byte[] Content)>();
+        var items = new List<KnowledgeDocumentImportItemDto>();
+        foreach (var file in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var safeName = Path.GetFileName(file.FileName);
+            if (file.Length <= 0 || file.Length > MaxDocumentBytes)
+            {
+                items.Add(ImportItem(safeName, "failed", "The file is empty or exceeds 25 MB."));
+                continue;
+            }
+
+            await using var source = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await source.CopyToAsync(buffer, cancellationToken);
+            var bytes = buffer.ToArray();
+            if (Path.GetExtension(safeName).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                ExpandArchive(safeName, bytes, candidates, items);
+            else if (LegacyOfficeExtensions.Contains(Path.GetExtension(safeName)))
+                items.Add(ImportItem(safeName, "failed", "Legacy Office files are not supported. Save the file as DOCX, XLSX, or PPTX and retry."));
+            else if (!SupportedExtensions.Contains(Path.GetExtension(safeName)))
+                items.Add(ImportItem(safeName, "skipped", "Unsupported document type."));
+            else
+                candidates.Add((safeName, file.ContentType, bytes));
+        }
+
+        if (candidates.Count > MaxImportFiles)
+        {
+            foreach (var candidate in candidates.Skip(MaxImportFiles))
+                items.Add(ImportItem(candidate.Name, "skipped", $"Only the first {MaxImportFiles} importable documents are accepted per batch."));
+            candidates.RemoveRange(MaxImportFiles, candidates.Count - MaxImportFiles);
+        }
+
+        var existingHashes = _db.Queryable<AiKnowledgeDocument>()
+            .Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted)
+            .Select(x => x.FileHash)
+            .ToList()
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var documents = new List<AiKnowledgeDocument>();
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var hash = Convert.ToHexString(SHA256.HashData(candidate.Content)).ToLowerInvariant();
+            if (!existingHashes.Add(hash))
+            {
+                items.Add(ImportItem(candidate.Name, "skipped", "An identical document already exists in this knowledge base."));
+                continue;
+            }
+
+            try
+            {
+                await using var stream = new MemoryStream(candidate.Content, writable: false);
+                var formFile = new FormFile(stream, 0, candidate.Content.Length, "Files", candidate.Name)
+                {
+                    Headers = new HeaderDictionary(),
+                    ContentType = string.IsNullOrWhiteSpace(candidate.ContentType) ? "application/octet-stream" : candidate.ContentType
+                };
+                var saved = await SaveDocumentsAsync(kb, [formFile], cancellationToken);
+                var document = saved.Single();
+                documents.Add(document);
+                items.Add(new KnowledgeDocumentImportItemDto { FileName = candidate.Name, Status = "imported", Message = "Imported and queued for indexing.", DocumentId = document.Id });
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                existingHashes.Remove(hash);
+                items.Add(ImportItem(candidate.Name, "failed", ex.Message));
+            }
+        }
+
+        return (documents, items);
+    }
+
+    private static void ExpandArchive(string archiveName, byte[] bytes, List<(string Name, string ContentType, byte[] Content)> candidates, List<KnowledgeDocumentImportItemDto> items)
+    {
+        var archiveCandidates = new List<(string Name, string ContentType, byte[] Content)>();
+        try
+        {
+            using var archive = new ZipArchive(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read);
+            long expandedBytes = 0;
+            foreach (var entry in archive.Entries)
+            {
+                if (string.IsNullOrEmpty(entry.Name)) continue;
+                var normalized = entry.FullName.Replace('\\', '/');
+                var extension = Path.GetExtension(entry.Name);
+                if (normalized.StartsWith('/') || normalized.Split('/').Any(part => part is "." or ".."))
+                    throw new InvalidDataException($"Unsafe archive path: {entry.FullName}");
+                if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    items.Add(ImportItem(entry.FullName, "skipped", "Nested ZIP archives are not supported."));
+                    continue;
+                }
+                if (LegacyOfficeExtensions.Contains(extension))
+                {
+                    items.Add(ImportItem(entry.FullName, "failed", "Legacy Office files must be saved as DOCX, XLSX, or PPTX."));
+                    continue;
+                }
+                if (!SupportedExtensions.Contains(extension))
+                {
+                    items.Add(ImportItem(entry.FullName, "skipped", "Unsupported document type."));
+                    continue;
+                }
+                expandedBytes += entry.Length;
+                if (entry.Length <= 0 || entry.Length > MaxDocumentBytes || expandedBytes > MaxArchiveExpandedBytes)
+                    throw new InvalidDataException("Archive content exceeds the 25 MB per-file or 100 MB expanded-size limit.");
+                using var entryStream = entry.Open();
+                using var output = new MemoryStream();
+                entryStream.CopyTo(output);
+                archiveCandidates.Add((entry.Name, "application/octet-stream", output.ToArray()));
+            }
+            candidates.AddRange(archiveCandidates);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            items.Add(ImportItem(archiveName, "failed", $"The ZIP archive could not be safely expanded: {ex.Message}"));
+        }
+    }
+
+    private static KnowledgeDocumentImportItemDto ImportItem(string fileName, string status, string message) => new()
+    {
+        FileName = fileName,
+        Status = status,
+        Message = message
+    };
 
     /// <summary>
     /// 创建索引版本记录，并计算 provider 对应的持久化目录。

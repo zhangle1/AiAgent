@@ -1,4 +1,4 @@
-import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
+import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 
 function directApi(path: string): string {
   // Keep browser requests on the address the user opened. Next.js then proxies
@@ -95,7 +95,7 @@ export async function createKnowledgeBase(name: string, files: File[], provider 
   );
 }
 
-export async function uploadKnowledgeDocuments(name: string, files: File[]): Promise<KnowledgeMutationResponse> {
+export async function uploadKnowledgeDocuments(name: string, files: File[]): Promise<KnowledgeDocumentImportResult> {
   const normalizedName = name?.trim();
   if (!normalizedName) {
     throw new Error("Knowledge base name is required.");
@@ -106,7 +106,7 @@ export async function uploadKnowledgeDocuments(name: string, files: File[]): Pro
     body.append("Files", file);
   }
 
-  return parseJson<KnowledgeMutationResponse>(
+  return parseJson<KnowledgeDocumentImportResult>(
     await fetch(directApi(`/api/v1/knowledge/${encodeURIComponent(normalizedName)}/upload`), {
       method: "POST",
       body,

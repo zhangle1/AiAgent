@@ -103,6 +103,20 @@ export type KnowledgeMutationResponse = {
   message: string;
 };
 
+export type KnowledgeDocumentImportItem = {
+  file_name: string;
+  status: "imported" | "skipped" | "failed";
+  message: string;
+  document_id?: number | null;
+};
+
+export type KnowledgeDocumentImportResult = {
+  knowledge_base: KnowledgeBase;
+  items: KnowledgeDocumentImportItem[];
+  task_id?: number | null;
+  message: string;
+};
+
 export type KnowledgeEnvironmentCheck = {
   ok?: boolean;
   provider?: string;
