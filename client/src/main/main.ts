@@ -15,6 +15,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({ width: 1280, height: 820, minWidth: 980, minHeight: 650, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
   mainWindow.removeMenu();
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', event => event.preventDefault());
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }

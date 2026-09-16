@@ -10,7 +10,8 @@
     "test": "vitest run",
     "start": "npm run build && electron .",
     "dev": "npm run start",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run test && npm run build && npm run smoke"
   },
   "dependencies": {
     "@xterm/xterm": "^5.5.0",

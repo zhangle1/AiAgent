@@ -33,6 +33,7 @@ export class Workspace {
     return canonical;
   }
   async list(relative: string): Promise<DirectoryPage> {
+    const relativeParts = allowedPath(relative);
     const directory = await opendir(await this.resolve(relative));
     const entries: DirectoryPage['entries'] = [];
     let truncated = false;
@@ -41,7 +42,7 @@ export class Workspace {
       if (++scanned > 2000 || entries.length >= 500) { truncated = true; break; }
       if (item.isSymbolicLink() || (!item.isDirectory() && !item.isFile())) continue;
       try { allowedPath(item.name); } catch { continue; }
-      entries.push({ name: item.name, path: [...allowedPath(relative), item.name].join('/'), directory: item.isDirectory() });
+      entries.push({ name: item.name, path: [...relativeParts, item.name].join('/'), directory: item.isDirectory() });
     }
     entries.sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
     return { entries, truncated };
