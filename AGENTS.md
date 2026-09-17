@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 知识库创建/上传仅写入 raw，不自动索引或提炼。`knowledge_compiler.retrieval_mode` 默认 `wiki`：使用 Codex CLI/LLM API 读取知识表示层并校验引用；`rag` 才使用活动索引。查询不得写草稿或原文。规则与验收见 `docs/knowledge-wiki-retrieval.md`。
+
 - 知识提炼的供应商无关循环位于后端项目内的 `backed/Services/Knowledge/Core/` 文件夹，与 AiAgent 后端一起编译和部署，不单独创建类库项目；仅接收文本与 `IKnowledgeModel`，不依赖 ASP.NET、数据库或文件系统。`KnowledgeModelAdapter` 复用现有 Codex/API 客户端；模型只提出结构化操作，宿主校验原文证据后保存草稿。
 - `KnowledgeCompilationWorker` 为单后端实例的独立有界队列，任务类型为 `wiki_compile`；不得混入 `GetLatestJob` 的 RAG 索引进度，也不得改变活动索引版本。重启中断应标记失败供用户重试，不自动重复模型调用。旧 `/process` 接口保留同步返回契约。
 - 公司／项目归属保存在知识库 `MetadataJson.organization`，保存时保留其他键。这是目录分类，不是新的租户或项目授权边界。

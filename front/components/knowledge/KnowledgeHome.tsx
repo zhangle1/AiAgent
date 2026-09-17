@@ -405,8 +405,9 @@ function CreateKnowledgeModal({ busy, providers, onClose, onCreate }: { busy: bo
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("knowledge.namePlaceholder")} className="mt-2 h-10 w-full rounded-md border border-[var(--border)] px-3 text-[13px] outline-none focus:border-blue-400" />
           </label>
 
-          <div className="mt-5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">{t("knowledge.indexEngine")}</div>
+          <details className="mt-5">
+            <summary className="cursor-pointer text-sm font-semibold">可选索引引擎（创建知识库无需配置）</summary>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">文件默认保存到 raw，按需通过 Codex CLI 或 LLM API 提炼知识。此引擎仅在手动创建 RAG 索引时使用。</p>
             <div className="mt-2 grid gap-2 md:grid-cols-2">
               {providers.filter((item) => item.id !== "obsidian").map((item) => {
                 const active = provider === item.id;
@@ -422,7 +423,7 @@ function CreateKnowledgeModal({ busy, providers, onClose, onCreate }: { busy: bo
                 );
               })}
             </div>
-          </div>
+          </details>
 
           <div className="mt-5">
             <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">{t("knowledge.initialDocuments")}</div>
@@ -1080,6 +1081,7 @@ function EngineBadge({ tone, label }: { tone: "emerald" | "amber" | "zinc"; labe
 }
 
 function statusLabel(status: string, t: ReturnType<typeof useI18n>["t"]) {
+  if (status === "not_checked") return "按需检查环境";
   if (status === "ready") return t("knowledge.ready");
   if (status === "needs_setup") return t("knowledge.needsSetup");
   if (status === "planned") return t("knowledge.planned");

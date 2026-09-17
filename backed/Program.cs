@@ -120,6 +120,7 @@ builder.Services.AddSingleton<IKnowledgeTaskRunner, KnowledgeTaskRunner>();
 builder.Services.AddSingleton<IKnowledgeIngestionService, KnowledgeIngestionService>();
 builder.Services.AddSingleton<KnowledgeCompilerSettings>();
 builder.Services.AddSingleton<KnowledgeWorkspaceService>();
+builder.Services.AddSingleton<KnowledgeWikiRetrievalService>();
 builder.Services.AddSingleton<KnowledgeCompilationWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KnowledgeCompilationWorker>());
 builder.Services.AddSingleton<IPythonWorkerHost, PythonWorkerHost>();

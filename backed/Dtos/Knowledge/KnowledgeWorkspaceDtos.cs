@@ -4,6 +4,7 @@ namespace AiAgent.Backend.Dtos.Knowledge;
 
 public sealed class KnowledgeCompilerSettingsDto
 {
+    [JsonPropertyName("retrieval_mode")] public string RetrievalMode { get; set; } = "wiki";
     [JsonPropertyName("generator")] public string Generator { get; set; } = "codex";
     [JsonPropertyName("model_id")] public string? ModelId { get; set; }
     [JsonPropertyName("reasoning_effort")] public string? ReasoningEffort { get; set; }

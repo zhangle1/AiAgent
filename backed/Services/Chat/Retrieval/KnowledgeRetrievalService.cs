@@ -3,6 +3,7 @@ using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Chat.Planning;
 using AiAgent.Backend.Services.Rag;
+using AiAgent.Backend.Services.Knowledge;
 using SqlSugar;
 using System.Text;
 using System.Text.Json;
@@ -32,14 +33,16 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
 {
     private readonly ISqlSugarClient _db;
     private readonly IRagService _ragService;
+    private readonly KnowledgeWikiRetrievalService _wikiRetrieval;
 
     /// <summary>
     /// 初始化知识库检索服务。
     /// </summary>
-    public KnowledgeRetrievalService(ISqlSugarClient db, IRagService ragService)
+    public KnowledgeRetrievalService(ISqlSugarClient db, IRagService ragService, KnowledgeWikiRetrievalService wikiRetrieval)
     {
         _db = db;
         _ragService = ragService;
+        _wikiRetrieval = wikiRetrieval;
     }
 
     /// <summary>
@@ -58,6 +61,12 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
         }
 
         var kb = FindKnowledgeBase(context.KnowledgeBaseName);
+        if (_wikiRetrieval.Enabled)
+        {
+            var wiki = await _wikiRetrieval.SearchAsync(kb.Name, query, topK, cancellationToken);
+            return new ToolResult { Success = true, Content = wiki.Content, Citations = wiki.Citations,
+                Metadata = { ["tool"] = AgentToolNames.RagSearch, ["provider"] = wiki.Provider } };
+        }
         var version = FindActiveVersion(kb);
         if (version is null)
         {

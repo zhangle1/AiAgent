@@ -82,10 +82,11 @@ public sealed class KnowledgeWorkspaceTests
 
     private sealed class Codex : ICodexChatService
     {
+        public Queue<string> Replies { get; } = new();
         public List<ChatCompleteRequest> Requests { get; } = [];
         public Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
         {
-            Requests.Add(request); return Task.FromResult(new ChatCompleteResponse { Content = "{}", Model = "cli-model" });
+            Requests.Add(request); return Task.FromResult(new ChatCompleteResponse { Content = Replies.Count > 0 ? Replies.Dequeue() : "{}", Model = "cli-model" });
         }
         public Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken) => Task.CompletedTask;
     }
@@ -154,6 +155,88 @@ public sealed class KnowledgeWorkspaceTests
         {
             var resolved = Path.GetFullPath(root);
             if (resolved.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Path.GetFileName(resolved).StartsWith("aiagent-knowledge-tests-", StringComparison.Ordinal))
+                Directory.Delete(resolved, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("codex")]
+    [InlineData("llm_api")]
+    public async Task WikiSearchWorksWithoutIndexThroughBothModels(string generator)
+    {
+        using var db = Database(); var kb = CreateBase(db);
+        db.Updateable<AiKnowledgeBase>().SetColumns(x => x.ActiveVersionId == null).Where(x => x.Id == kb.Id).ExecuteCommand();
+        var doc = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id, OriginalFileName = "source.txt" };
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        const string evidence = "This is the evidence preserved in the knowledge representation.";
+        var artifact = new AiKnowledgeArtifact { KnowledgeBaseId = kb.Id, DocumentId = doc.Id, Content = evidence, ReviewStatus = "draft" };
+        artifact.Id = db.Insertable(artifact).ExecuteReturnBigIdentity();
+        var config = new KnowledgeCompilerSettings(db); config.Save(new() { Generator = generator, MaxSteps = 8 });
+        Assert.Equal("wiki", config.Get().RetrievalMode);
+        var api = new Llm(); var cli = new Codex();
+        var replies = generator == "codex" ? cli.Replies : api.Replies;
+        replies.Enqueue(JsonSerializer.Serialize(new { action = "read", id = $"{artifact.Id}:0", part = 1 }));
+        replies.Enqueue(JsonSerializer.Serialize(new { action = "cite", id = $"{artifact.Id}:0", quote = evidence }));
+        replies.Enqueue("{\"action\":\"finish\"}");
+        var root = Path.Combine(Path.GetTempPath(), "aiagent-knowledge-tests-" + Guid.NewGuid().ToString("N"));
+        var paths = new KnowledgePathService(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DataPath"] = root }).Build(), NullLogger<KnowledgePathService>.Instance);
+        var service = new KnowledgeWikiRetrievalService(new(db), config, paths, api, cli);
+        var search = await service.SearchAsync(kb.Name, "evidence", 5, default);
+        Assert.Equal(evidence, Assert.Single(search.Citations).Text);
+        Assert.Equal("draft", search.Citations[0].Metadata["review_status"]);
+        Assert.Empty(db.Queryable<AiKnowledgeJob>().ToList());
+        if (generator == "codex")
+        {
+            Assert.All(cli.Requests, request => Assert.Equal("read-only", request.CodexSandboxMode));
+            Assert.False(Directory.Exists(cli.Requests[0].MaintenanceWorkspacePath));
+            Directory.Delete(Path.Combine(paths.RootPath, ".wiki-query"));
+            Directory.Delete(paths.RootPath);
+            Directory.Delete(root);
+        }
+        db.Updateable<AiKnowledgeDocument>().SetColumns(x => x.IsDeleted == true).Where(x => x.Id == doc.Id).ExecuteCommand();
+        var empty = await service.SearchAsync(kb.Name, "evidence", 5, default);
+        Assert.Empty(empty.Citations);
+        Assert.Contains("提炼知识", empty.Content);
+        config.Save(new() { RetrievalMode = "rag" });
+        Assert.False(service.Enabled);
+    }
+
+    [Fact]
+    public void OlderSettingsDefaultToWikiAndUnknownModeIsRejected()
+    {
+        Assert.Equal("wiki", JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>("{\"generator\":\"llm_api\"}")!.RetrievalMode);
+        Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { RetrievalMode = "unknown" }));
+    }
+
+    [Fact]
+    public async Task CreateAndUploadOnlySaveRawWithoutAnIndexRunner()
+    {
+        using var db = Database();
+        var root = Path.Combine(Path.GetTempPath(), "aiagent-knowledge-tests-" + Guid.NewGuid().ToString("N"));
+        var paths = new KnowledgePathService(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DataPath"] = root }).Build(), NullLogger<KnowledgePathService>.Instance);
+        try
+        {
+            var manager = new KnowledgeBaseManager(db, paths, NullLogger<KnowledgeBaseManager>.Instance);
+            // No model or index dependencies are supplied: importing must not call them.
+            var app = new KnowledgeAppService(db, new(db), new(db), null!, null!, manager, null!, null!, null!, null!, null!, null!, NullLogger<KnowledgeAppService>.Instance);
+            using var first = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("First raw source."));
+            var created = await app.CreateKnowledgeBase(new() { Name = "raw-only", Files = [new Microsoft.AspNetCore.Http.FormFile(first, 0, first.Length, "Files", "first.txt") { Headers = new Microsoft.AspNetCore.Http.HeaderDictionary(), ContentType = "text/plain" }] }, default);
+            Assert.Null(created.TaskId);
+            Assert.Null(created.KnowledgeBase.ActiveVersionId);
+            using var second = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("Second raw source."));
+            db.Updateable<AiKnowledgeBase>().SetColumns(x => x.ActiveVersionId == 99).Where(x => x.Name == "raw-only").ExecuteCommand();
+            var uploaded = await app.UploadFiles("raw-only", [new Microsoft.AspNetCore.Http.FormFile(second, 0, second.Length, "Files", "second.txt") { Headers = new Microsoft.AspNetCore.Http.HeaderDictionary(), ContentType = "text/plain" }], default);
+            Assert.Null(uploaded.TaskId);
+            Assert.Equal(99, uploaded.KnowledgeBase.ActiveVersionId);
+            Assert.Empty(db.Queryable<AiKnowledgeJob>().ToList());
+            Assert.Equal(2, db.Queryable<AiKnowledgeDocument>().Count());
+            Assert.Equal("First raw source.", await File.ReadAllTextAsync(Path.Combine(paths.GetRawPath("raw-only"), "first.txt")));
+            Assert.Equal("Second raw source.", await File.ReadAllTextAsync(Path.Combine(paths.GetRawPath("raw-only"), "second.txt")));
+        }
+        finally
+        {
+            var resolved = Path.GetFullPath(root);
+            if (resolved.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Path.GetFileName(resolved).StartsWith("aiagent-knowledge-tests-", StringComparison.Ordinal) && Directory.Exists(resolved))
                 Directory.Delete(resolved, true);
         }
     }

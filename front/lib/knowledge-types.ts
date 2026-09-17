@@ -59,6 +59,7 @@ export type KnowledgeProcessRequest = {
 
 export type KnowledgeOrganization = { company?: string | null; project?: string | null };
 export type KnowledgeCompilerSettings = {
+  retrieval_mode: "wiki" | "rag";
   generator: "codex" | "llm_api";
   model_id?: string | null;
   reasoning_effort?: string | null;

@@ -384,7 +384,7 @@ internal sealed class RagSearchTool : IAgentTool
         return new ToolDefinition
         {
             Name = Name,
-            Description = "从当前知识库中执行向量/混合检索，适合普通语义问答。",
+            Description = "从当前知识库检索引用：默认使用模型浏览知识表示层，无需索引；设置为 RAG 时使用向量/混合检索。",
             Parameters =
             {
                 new ToolParameter { Name = "query", Type = "string", Description = "检索问题" },

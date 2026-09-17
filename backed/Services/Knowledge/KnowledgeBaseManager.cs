@@ -303,7 +303,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                 var saved = await SaveDocumentsAsync(kb, [formFile], cancellationToken);
                 var document = saved.Single();
                 documents.Add(document);
-                items.Add(new KnowledgeDocumentImportItemDto { FileName = candidate.Name, Status = "imported", Message = "Imported and queued for indexing.", DocumentId = document.Id });
+                items.Add(new KnowledgeDocumentImportItemDto { FileName = candidate.Name, Status = "imported", Message = "Saved to raw; ready for optional knowledge compilation.", DocumentId = document.Id });
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
             {

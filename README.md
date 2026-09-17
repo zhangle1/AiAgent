@@ -1,10 +1,12 @@
 # AiAgent
 
+知识库默认将导入文件保存到 `raw/`。按需使用 Codex CLI 或平台 LLM API 提炼 Markdown 知识表示层，并使用模型检索这些知识页面，无需先创建向量索引。设置 → 知识库可切换到可选 RAG 检索；已有索引保留，重建需手动触发。详见 [知识表示层与检索](docs/knowledge-wiki-retrieval.md)。
+
 ## 知识库工作区
 
 `/knowledge` 按公司／项目展示知识库；进入后分别查看「知识」和「原始文件」，提炼主题可跳回来源文件。原始文件中点击「提炼知识」启动独立后台 Agent loop，支持本地 Codex CLI 和 LLM API；统一配置位于 `/settings/knowledge`。CLI 运行在后端所在机器，沿用该机器的 Codex 登录与模型配置。
 
-知识提炼逻辑组织在 AiAgent 后端项目的 `backed/Services/Knowledge/Core/` 文件夹内，随同后端编译和部署。原有上传、索引和 RAG 检索继续使用原链路。新知识为可核对的派生草稿，提炼失败保留上次成功结果；服务重启中断的任务可手动重试。公司／项目目前用于目录归类，不新增权限隔离。模块、接口及验证边界见 [知识库重构说明](docs/knowledge-workspace-implementation.md)。
+知识提炼与模型检索逻辑组织在 AiAgent 后端项目的 `backed/Services/Knowledge/Core/` 文件夹内，随同后端编译和部署。上传保留原始资料，RAG 索引链路改为按需使用。新知识为可核对的派生草稿，提炼失败保留上次成功结果；服务重启中断的任务可手动重试。公司／项目目前用于目录归类，不新增权限隔离。模块、接口及验证边界见 [知识库重构说明](docs/knowledge-workspace-implementation.md)。
 
 原型工作台支持按界面展开 HTML / PSD 产物目录，点击生成并下载桌面、平板、移动端带分组像素图层的 PSD。文字暂为栅格化图层；PSD 在浏览器生成，刷新后可重新导出。详见 [PSD 导出说明](docs/prototype-psd-export.md)。
 

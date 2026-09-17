@@ -17,6 +17,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     private readonly ISqlSugarClient _db;
     private readonly KnowledgeCompilerSettings _compilerSettings;
     private readonly KnowledgeWorkspaceService _workspace;
+    private readonly KnowledgeWikiRetrievalService _wikiRetrieval;
     private readonly KnowledgeCompilationWorker _compiler;
     private readonly IKnowledgeBaseManager _manager;
     private readonly IKnowledgeProviderConfigService _providerConfigService;
@@ -34,6 +35,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         ISqlSugarClient db,
         KnowledgeCompilerSettings compilerSettings,
         KnowledgeWorkspaceService workspace,
+        KnowledgeWikiRetrievalService wikiRetrieval,
         KnowledgeCompilationWorker compiler,
         IKnowledgeBaseManager manager,
         IKnowledgeProviderConfigService providerConfigService,
@@ -47,6 +49,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         _db = db;
         _compilerSettings = compilerSettings;
         _workspace = workspace;
+        _wikiRetrieval = wikiRetrieval;
         _compiler = compiler;
         _manager = manager;
         _providerConfigService = providerConfigService;
@@ -62,9 +65,9 @@ public sealed class KnowledgeAppService : IDynamicApiController
     /// 获取当前支持或预留的 RAG provider 列表。
     /// </summary>
     [HttpGet("rag-providers")]
-    public async Task<List<KnowledgeProviderDto>> GetRagProviders()
+    public List<KnowledgeProviderDto> GetRagProviders()
     {
-        var preflight = await _ragService.PreflightAsync("llamaindex");
+        // Listing optional engines must not require a running Python worker or an embedding model.
         return
         [
             new KnowledgeProviderDto
@@ -72,8 +75,8 @@ public sealed class KnowledgeAppService : IDynamicApiController
                 Id = "llamaindex",
                 Name = "LlamaIndex",
                 Description = "Local vector retrieval backed by LlamaIndex.",
-                Configured = preflight.Ok,
-                Status = preflight.Ok ? "ready" : "needs_setup",
+                Configured = false,
+                Status = "not_checked",
                 Modes = ["semantic"],
                 DefaultMode = "semantic"
             },
@@ -151,7 +154,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     }
 
     /// <summary>
-    /// 创建知识库，并在上传文件存在时启动首次索引任务。
+    /// 创建知识库，上传文件仅保存到 raw，索引由用户按需创建。
     /// </summary>
     [HttpPost("create")]
     public async Task<KnowledgeMutationResponse> CreateKnowledgeBase([FromForm] KnowledgeCreateRequest request, CancellationToken cancellationToken)
@@ -160,13 +163,12 @@ public sealed class KnowledgeAppService : IDynamicApiController
         var documents = request.Files.Count == 0
             ? []
             : (await _manager.ImportDocumentsAsync(kb, request.Files, cancellationToken)).Documents;
-        var job = documents.Count == 0 ? null : _taskRunner.StartIndexTask(kb, documents, "initialize");
 
         return new KnowledgeMutationResponse
         {
-            KnowledgeBase = BuildMutationKnowledgeBase(kb, job, job is null ? null : "initializing"),
-            TaskId = job?.Id,
-            Message = documents.Count > 0 ? "Knowledge base created; documents imported and indexing started." : "Knowledge base created."
+            KnowledgeBase = BuildMutationKnowledgeBase(kb, null, null),
+            TaskId = null,
+            Message = documents.Count > 0 ? "Knowledge base created; documents saved to raw. Compile knowledge or build an index when needed." : "Knowledge base created."
         };
     }
 
@@ -300,10 +302,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     }
 
     /// <summary>
-    /// 上传文件到已有知识库，并触发索引重建任务。
-    /// </summary>
-    /// <summary>
-    /// 基于知识库全部文档重建索引。
+    /// 上传文件到已有知识库的 raw 目录，不隐式启动索引或提炼。
     /// </summary>
     [HttpPost("{kbName}/upload")]
     public async Task<KnowledgeDocumentImportResultDto> UploadFiles([FromRoute(Name = "kbName")] string kbName, [FromForm(Name = "Files")] List<IFormFile>? files, CancellationToken cancellationToken)
@@ -316,19 +315,13 @@ public sealed class KnowledgeAppService : IDynamicApiController
         _logger.LogInformation("Knowledge upload kb resolved. Kb={KbName}, ElapsedMs={ElapsedMs}", kb.Name, stopwatch.ElapsedMilliseconds);
         var uploadedFiles = files ?? [];
         var imported = await _manager.ImportDocumentsAsync(kb, uploadedFiles, cancellationToken);
-        AiKnowledgeJob? job = null;
-        if (imported.Documents.Count > 0)
-        {
-            var allDocuments = _db.Queryable<AiKnowledgeDocument>().Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted).ToList();
-            job = _taskRunner.StartIndexTask(kb, allDocuments, "upload");
-        }
         _logger.LogInformation("Knowledge upload saved. Kb={KbName}, Documents={DocumentCount}, ElapsedMs={ElapsedMs}", kb.Name, imported.Documents.Count, stopwatch.ElapsedMilliseconds);
         return new KnowledgeDocumentImportResultDto
         {
-            KnowledgeBase = BuildMutationKnowledgeBase(kb, job, job is null ? null : "processing"),
+            KnowledgeBase = BuildMutationKnowledgeBase(kb, null, null),
             Items = imported.Items,
-            TaskId = job?.Id,
-            Message = imported.Documents.Count == 0 ? "No documents imported." : $"Imported {imported.Documents.Count} document(s); indexing started."
+            TaskId = null,
+            Message = imported.Documents.Count == 0 ? "No documents imported." : $"Imported {imported.Documents.Count} document(s) into raw; knowledge compilation and indexing are optional."
         };
     }
 
@@ -407,6 +400,8 @@ public sealed class KnowledgeAppService : IDynamicApiController
     public async Task<KnowledgeSearchResponse> Search([FromRoute] string kbName, [FromBody] KnowledgeSearchRequest request, CancellationToken cancellationToken)
     {
         var kb = FindKnowledgeBase(kbName);
+        if (_wikiRetrieval.Enabled)
+            return await _wikiRetrieval.SearchAsync(kb.Name, request.Query, request.TopK, cancellationToken);
         if (!kb.ActiveVersionId.HasValue)
         {
             throw new InvalidOperationException("Knowledge base has no active index version.");

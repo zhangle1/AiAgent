@@ -277,7 +277,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     setDebugTraceEnabled(sessionStorage.getItem(chatDebugStorageKey(activeSessionId)) === "1");
   }, [activeSessionId]);
 
-  const readyKnowledgeBases = useMemo(() => knowledgeBases.filter((kb) => kb.active_version_id && kb.status !== "error"), [knowledgeBases]);
+  const readyKnowledgeBases = knowledgeBases;
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
   const currentKnowledgeBase = readyKnowledgeBases.find((kb) => kb.name === selectedKbNames[0]);
   // 嵌入式场景由宿主页面统一选择项目，发送时不能依赖异步状态同步。
