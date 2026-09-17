@@ -3,7 +3,7 @@ using AiAgent.Backend.Entities.Knowledge;
 using SqlSugar;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AiAgent.Knowledge.Core;
+using AiAgent.Backend.Services.Knowledge.Core;
 
 namespace AiAgent.Backend.Services.Knowledge;
 

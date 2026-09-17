@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace AiAgent.Knowledge.Core;
+namespace AiAgent.Backend.Services.Knowledge.Core;
 
 public sealed record CompilerReply(string Text, string? Provider = null, string? Model = null);
 public interface IKnowledgeModel

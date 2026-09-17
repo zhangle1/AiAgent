@@ -1,4 +1,4 @@
-using AiAgent.Knowledge.Core;
+using AiAgent.Backend.Services.Knowledge.Core;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Knowledge;

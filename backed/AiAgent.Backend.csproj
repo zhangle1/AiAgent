@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\knowledge-core\AiAgent.Knowledge.Core.csproj" />
+
     <Content Include="..\dashboard-templates\**\*">
       <Link>dashboard-templates\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -17,7 +17,7 @@ KnowledgeAppService（HTTP）
   ├─ KnowledgeCompilerSettings（配置快照）
   └─ KnowledgeCompilationWorker（有界串行队列、任务状态）
        └─ KnowledgeIngestionService（原文解析、数据库与文件保存）
-            ├─ knowledge-core / KnowledgeCompiler（有界 Agent loop）
+            ├─ backed/Services/Knowledge/Core/KnowledgeCompiler（项目内有界 Agent loop）
             └─ KnowledgeModelAdapter
                  ├─ ICodexChatService（已有 app-server / exec profile）
                  └─ ILlmChatClient（已有 API 模型目录）

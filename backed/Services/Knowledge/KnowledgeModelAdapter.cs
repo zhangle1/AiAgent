@@ -2,7 +2,7 @@ using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Llm;
-using AiAgent.Knowledge.Core;
+using AiAgent.Backend.Services.Knowledge.Core;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
