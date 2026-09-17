@@ -91,7 +91,7 @@ public sealed class AdminAppService : IDynamicApiController
 
     [HttpPost("users/import")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> ImportUsers([FromForm] IFormFile file, CancellationToken cancellationToken)
+    public async Task<IActionResult> ImportUsers(IFormFile file, CancellationToken cancellationToken)
     {
         var administrator = await RequireAdministrator(cancellationToken);
         if (file == null || file.Length == 0 || !string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">坤伴 AiAgent 业务功能全景</title>
+  <desc id="desc">以项目上下文为中心，展示从登录授权、任务进入、AI 协作、代码操作、变更交付到通知审计的业务闭环，以及知识和工作画布的横向能力。</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1"><stop stop-color="#1e3a8a"/><stop offset="1" stop-color="#4f46e5"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#172554" flood-opacity=".14"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker>
+    <style>
+      .f{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif}.title{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:#12233f}.white{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:white}.normal{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#52667d}.cap{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:#4f46e5;letter-spacing:1px}.line{fill:none;stroke:#64748b;stroke-width:2.5;marker-end:url(#arrow)}.dash{fill:none;stroke:#8da3bc;stroke-width:2;stroke-dasharray:8 7;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="1000" fill="#f8fafc"/>
+  <rect width="1600" height="104" fill="url(#header)"/>
+  <text x="64" y="49" class="white" font-size="32">坤伴（AiAgent）业务功能全景</text>
+  <text x="64" y="79" class="white" font-size="16" opacity=".87">从工作项到可审计代码交付的研发协作闭环 · 2026-09-10</text>
+
+  <!-- project context -->
+  <rect x="565" y="138" width="470" height="104" rx="22" fill="#e8edff" stroke="#95a4fa" stroke-width="2" filter="url(#shadow)"/>
+  <text x="595" y="177" class="cap" font-size="15">核心业务对象</text>
+  <text x="595" y="211" class="title" font-size="26">项目上下文（Project Context）</text>
+  <text x="595" y="232" class="normal" font-size="13">决定当前用户可用的代码库、知识、模板、运行配置与交付范围</text>
+
+  <!-- entry lane -->
+  <text x="80" y="290" class="cap" font-size="15">A · 进入与准备</text>
+  <rect x="80" y="316" width="275" height="155" rx="16" fill="white" stroke="#cbd9ee" filter="url(#shadow)"/>
+  <text x="104" y="350" class="title" font-size="19">登录与权限</text>
+  <text x="104" y="380" class="normal" font-size="14">账号会话、管理员、项目授权</text><text x="104" y="405" class="normal" font-size="14">代码提交权限与用户隔离</text><text x="104" y="434" class="normal" font-size="13">功能入口：登录、管理配置、账号安全</text>
+  <rect x="388" y="316" width="275" height="155" rx="16" fill="white" stroke="#cbd9ee" filter="url(#shadow)"/>
+  <text x="412" y="350" class="title" font-size="19">研发输入</text>
+  <text x="412" y="380" class="normal" font-size="14">直接新建会话 / 选择提示模板</text><text x="412" y="405" class="normal" font-size="14">Gitee 企业或仓库 Issue、CSV 工作项</text><text x="412" y="434" class="normal" font-size="13">任务附件图片经校验后带入会话</text>
+
+  <!-- collaboration lane -->
+  <text x="80" y="538" class="cap" font-size="15">B · AI 协作与上下文</text>
+  <rect x="80" y="564" width="275" height="180" rx="16" fill="#eef7ff" stroke="#9ec5f5" filter="url(#shadow)"/>
+  <text x="104" y="598" class="title" font-size="19">会话与流式对话</text>
+  <text x="104" y="628" class="normal" font-size="14">会话创建、重命名、归档、诊断</text><text x="104" y="653" class="normal" font-size="14">WebSocket 优先，SSE 可回退</text><text x="104" y="678" class="normal" font-size="14">图片 / 文件受控附件与上传库</text><text x="104" y="707" class="normal" font-size="13">运行轨迹、Token 与错误可见</text>
+  <rect x="388" y="564" width="275" height="180" rx="16" fill="#f5f3ff" stroke="#c7bdf7" filter="url(#shadow)"/>
+  <text x="412" y="598" class="title" font-size="19">Agent 选择与执行</text>
+  <text x="412" y="628" class="normal" font-size="14">内置 Agent Loop / Native Runtime</text><text x="412" y="653" class="normal" font-size="14">Codex 本地代理 / DeepSeek Harness</text><text x="412" y="678" class="normal" font-size="14">模型策略、工具调用、取消与记录</text><text x="412" y="707" class="normal" font-size="13">完全控制、工作区写入、只读分析</text>
+  <rect x="696" y="564" width="275" height="180" rx="16" fill="#fff9ed" stroke="#efd28d" filter="url(#shadow)"/>
+  <text x="720" y="598" class="title" font-size="19">知识与长期记忆</text>
+  <text x="720" y="628" class="normal" font-size="14">知识库导入、解析、索引与检索</text><text x="720" y="653" class="normal" font-size="14">项目 Markdown、代码索引与引用</text><text x="720" y="678" class="normal" font-size="14">观察 → 候选 → 审核 → 记忆</text><text x="720" y="707" class="normal" font-size="13">在发送前形成受控上下文</text>
+
+  <!-- execution lane -->
+  <text x="1007" y="290" class="cap" font-size="15">C · 代码执行与交付</text>
+  <rect x="1007" y="316" width="245" height="155" rx="16" fill="#f0fdf7" stroke="#9adcb9" filter="url(#shadow)"/>
+  <text x="1029" y="350" class="title" font-size="19">代码项目与仓库</text>
+  <text x="1029" y="380" class="normal" font-size="14">登记 / 克隆 / 挂载 / 索引</text><text x="1029" y="405" class="normal" font-size="14">受限目录、配置文件、Git 状态</text><text x="1029" y="434" class="normal" font-size="13">运行、打包、预览、仓库养护</text>
+  <rect x="1285" y="316" width="235" height="155" rx="16" fill="#f0fdf7" stroke="#9adcb9" filter="url(#shadow)"/>
+  <text x="1307" y="350" class="title" font-size="19">AI 改码与看板</text>
+  <text x="1307" y="380" class="normal" font-size="14">补丁 + SHA-256 版本保护</text><text x="1307" y="405" class="normal" font-size="14">Dashboard 独立工作区</text><text x="1307" y="434" class="normal" font-size="13">检查、修改、校验、预览</text>
+  <rect x="1007" y="564" width="245" height="180" rx="16" fill="#edfff5" stroke="#84d5aa" filter="url(#shadow)"/>
+  <text x="1029" y="598" class="title" font-size="19">变更集与交付</text>
+  <text x="1029" y="628" class="normal" font-size="14">创建变更集与固定 Git 校验</text><text x="1029" y="653" class="normal" font-size="14">审批时复核提交权限与 SHA-256</text><text x="1029" y="678" class="normal" font-size="14">提交、推送、关联工作项完成</text><text x="1029" y="707" class="normal" font-size="13">文件变化后必须重新审批</text>
+  <rect x="1285" y="564" width="235" height="180" rx="16" fill="#fff5fb" stroke="#ecb7d4" filter="url(#shadow)"/>
+  <text x="1307" y="598" class="title" font-size="19">通知与可追溯</text>
+  <text x="1307" y="628" class="normal" font-size="14">项目 Git 推送通知</text><text x="1307" y="653" class="normal" font-size="14">钉钉机器人接收群内请求</text><text x="1307" y="678" class="normal" font-size="14">后台会话完成后回传结果</text><text x="1307" y="707" class="normal" font-size="13">Push Audit / Usage / Run History</text>
+
+  <!-- canvas -->
+  <rect x="388" y="788" width="864" height="136" rx="18" fill="white" stroke="#cbd9ee" filter="url(#shadow)"/>
+  <text x="418" y="823" class="cap" font-size="14">横向编排能力 · WORK CANVAS</text>
+  <text x="418" y="854" class="title" font-size="20">把已有会话变为节点，组织为可视化协作与依赖流程</text>
+  <text x="418" y="884" class="normal" font-size="14">画布归用户所有；可筛选并加入有权限的会话，保存布局，配置节点模型 / 职责 / Skill，连线投递上下游产出，记录运行并推进满足依赖条件的节点。</text>
+
+  <!-- arrows -->
+  <path d="M355 394 H388" class="line"/><path d="M663 394 C728 394 726 270 800 242" class="line"/>
+  <path d="M800 242 C700 242 500 512 490 564" class="line"/><path d="M800 242 C850 242 835 512 834 564" class="line"/>
+  <path d="M1035 190 C1115 190 1125 298 1125 316" class="line"/>
+  <path d="M1125 471 V564" class="line"/><path d="M1252 394 H1285" class="line"/><path d="M1285 654 H1252" class="dash"/>
+  <path d="M971 654 H1007" class="dash"/><path d="M663 654 H696" class="dash"/>
+  <path d="M490 744 V788" class="dash"/><path d="M834 744 V788" class="dash"/><path d="M1125 744 V788" class="dash"/>
+  <text x="80" y="970" class="normal" font-size="13">阅读方式：实线是用户与代码交付主路径；虚线表示复用的上下文、画布编排或审计支撑。实际可用功能仍受当前用户、项目范围和提交权限控制。</text>
+</svg>

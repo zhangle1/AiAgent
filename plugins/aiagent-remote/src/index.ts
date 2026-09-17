@@ -1,23 +1,31 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { AiAgentClient } from './client.mjs'
+import { AiAgentRemoteController } from './remote.js'
 
-export interface Config { baseUrl: string; accessTokenEnv: string; codexModelEnv: string; enableCodex: boolean; maxContextChars: number }
+export interface Config { baseUrl: string; baseUrlEnv: string; accessTokenEnv: string; codexModelEnv: string; enableCodex: boolean; maxContextChars: number }
 export const Config: Schema<Config> = Schema.object({
   baseUrl: Schema.string().required(),
+  baseUrlEnv: Schema.string().default('AIAGENT_BASE_URL'),
   accessTokenEnv: Schema.string().default('AIAGENT_ACCESS_TOKEN'),
   codexModelEnv: Schema.string().default('AIAGENT_CODEX_MODEL_ID'),
   enableCodex: Schema.boolean().default(true),
   maxContextChars: Schema.number().min(1).max(200000).default(120000),
 })
 export const name = 'aiagent-remote'
-export const inject = ['tools']
+export const inject = ['tools', 'credentials']
 
 export function apply(ctx: Context, config: Config): void {
-  const token = process.env[config.accessTokenEnv]
-  if (!token) throw new Error(`aiagent-remote: ${config.accessTokenEnv} is not set; authenticate with the launcher first`)
-  const client = new AiAgentClient(config.baseUrl, token)
+  ctx.plugin(AiAgentRemoteController, config)
+  const accessTokenRef = credentialRef(config.accessTokenEnv)
+  const baseUrlRef = credentialRef(config.baseUrlEnv)
+  const client = async (): Promise<AiAgentClient> => {
+    const [token, baseUrl] = await Promise.all([ctx.credentials.resolve(accessTokenRef), ctx.credentials.resolve(baseUrlRef)])
+    if (token === undefined) throw new Error('AiAgent is not signed in. Open Settings > Plugins > AiAgent Remote to sign in.')
+    return new AiAgentClient(baseUrl?.value ?? config.baseUrl, token.value)
+  }
   if (!config.enableCodex) return
   const defaultCodexModel = process.env[config.codexModelEnv]?.trim() || undefined
   ctx.tools.register(defineTool({
@@ -33,7 +41,7 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, execution) {
       const context = args.context ?? ''
       if (context.length > config.maxContextChars) throw new Error(`Codex context exceeds ${config.maxContextChars} characters`)
-      return JSON.stringify(await client.delegateCodex({ prompt: args.prompt, context, model_id: args.model_id || defaultCodexModel, reasoning_effort: args.reasoning_effort }, execution.signal))
+      return JSON.stringify(await (await client()).delegateCodex({ prompt: args.prompt, context, model_id: args.model_id || defaultCodexModel, reasoning_effort: args.reasoning_effort }, execution.signal))
     },
   }))
 }

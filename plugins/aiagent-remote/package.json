@@ -1,18 +1,58 @@
 {
   "name": "@aiagent/deepseek-plugin-remote",
   "version": "0.1.0",
-  "private": true,
+  "description": "AiAgent remote LLM and bounded Codex delegation bundle for DeepSeek Harness.",
+  "license": "UNLICENSED",
   "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "bin": { "aiagent-dsh": "./bin/launch.mjs" },
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./remote": {
+      "types": "./lib/remote-client.d.ts",
+      "default": "./lib/remote-client.js"
+    }
+  },
+  "files": ["bin", "lib", "cordis.patch.yml", "README.md"],
+  "keywords": ["aiagent", "deepseek-harness", "cordis", "dsh"],
+  "publishConfig": { "access": "public" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "inject": ["@deepseek-ai/dsh-api-remotes", "@deepseek-ai/dsh-client-ui-settings-plugins"],
+      "platform": "web"
+    }
+  },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/cordis": "^4.0.1-rc.1",
+    "@deepseek-ai/dsh-api-remotes": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-credentials": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-settings": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.5-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/react": "~18.3.1",
+    "tsdown": "^0.22.2",
     "typescript": "^5.9.0"
   },
-  "scripts": { "test": "node --test tests/*.test.mjs", "typecheck": "tsc -p tsconfig.json" }
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsdown --config tsdown.config.ts && node scripts/copy-runtime.mjs",
+    "prepack": "npm run build",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  }
 }

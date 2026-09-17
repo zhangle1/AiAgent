@@ -7,7 +7,9 @@
 ## 身份与初始数据
 
 - 启动 CodeFirst 后，服务先检查是否已有未禁用的 `admin` 账号；有则不执行初始化。
-- 首次部署必须显式配置 `Authentication:InitialAdministratorUsername` 与 `Authentication:InitialAdministratorPassword`。初始化口令至少 16 个字符且没有默认值；缺少任一配置时启动失败，不创建管理员。
+- 生产、测试等受控环境首次部署必须显式配置 `Authentication:InitialAdministratorUsername` 与 `Authentication:InitialAdministratorPassword`。初始化口令至少 16 个字符且没有默认值；缺少任一配置时启动失败，不创建管理员。
+- 仅本地 `Development` 环境可使用首次启动引导：当两个初始化配置都未提供、当前终端错误流未重定向且数据库没有可用管理员时，服务会一次性创建 `superadmin` 并生成 32 位随机口令。口令只输出到当前启动终端，不会写入配置、数据库明文、日志或 HTTP 响应；Production/Test 等环境不会启用该逻辑。
+- 本地 `Development` 环境若显式配置初始化口令，可使用恰好 6 位纯数字；其他本地口令以及生产、测试环境仍至少需要 16 个字符。
 - 若使用环境变量，对应名称为 `Authentication__InitialAdministratorUsername` 与 `Authentication__InitialAdministratorPassword`；初始化口令只能通过受控环境或 Secret Store 注入，不得放入命令行、日志或版本库。
 - 配置的账号必须尚未存在。创建成功后应立即从配置文件和环境变量/Secret Store 中移除初始化口令；升级、重启和后续初始化检查不会重置任何已有用户或管理员密码。
 - `/api/v1/auth/register` 固定返回 403，前端 `/register` 重定向至登录页。

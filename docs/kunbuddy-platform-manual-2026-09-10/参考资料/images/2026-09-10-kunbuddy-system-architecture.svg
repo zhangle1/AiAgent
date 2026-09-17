@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="title desc">
+  <title id="title">坤伴 AiAgent 当前系统架构</title>
+  <desc id="desc">浏览器端的 Next.js 工作台经 API 代理访问 .NET 后端，后端编排会话、Agent、代码库、知识库、任务和工作画布，并连接 SQL Server、文件系统、CLI、模型及协作平台。</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1">
+      <stop stop-color="#0f3b8f"/><stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1e3a5f" flood-opacity=".13"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#5b7da8"/></marker>
+    <style>
+      .t{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#11233f}.h{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:white}.title{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:#0f2747}.small{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#49637e}.cap{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-size:14px;font-weight:700;fill:#2563eb;letter-spacing:1.2px}.box{fill:white;stroke:#cfdeef;stroke-width:1.5}.line{stroke:#5b7da8;stroke-width:2;fill:none;marker-end:url(#arrow)}.dash{stroke:#7f9bb8;stroke-width:2;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="1040" fill="#f6f9fd"/>
+  <rect x="0" y="0" width="1600" height="104" fill="url(#header)"/>
+  <text x="64" y="49" class="h" font-size="32">坤伴（AiAgent）当前系统架构</text>
+  <text x="64" y="79" class="h" font-size="16" opacity=".86">基于代码静态分析 · 2026-09-10 · 代码名称仍保留 AiAgent</text>
+  <rect x="64" y="132" width="1472" height="74" rx="16" fill="#e8f1ff" stroke="#b8d0fa"/>
+  <text x="92" y="163" class="cap">核心主线</text>
+  <text x="92" y="187" class="t" font-size="18">项目上下文 → 会话与 Agent → 代码/知识上下文 → 受控交付与协作闭环</text>
+
+  <!-- access and frontend -->
+  <rect x="64" y="246" width="306" height="296" rx="18" class="box" filter="url(#shadow)"/>
+  <text x="88" y="281" class="cap">01 · 使用入口</text>
+  <rect x="88" y="305" width="258" height="62" rx="10" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="108" y="334" class="title" font-size="18">浏览器 / 内网用户</text><text x="108" y="354" class="small" font-size="13">登录、项目授权、管理与审批</text>
+  <rect x="88" y="388" width="258" height="128" rx="10" fill="#fff" stroke="#cbdaf0"/>
+  <text x="108" y="417" class="title" font-size="18">Next.js 16 / React 19 工作台</text>
+  <text x="108" y="442" class="small" font-size="14">聊天 · 工作画布 · 工作项 · 代码交付</text>
+  <text x="108" y="466" class="small" font-size="14">知识库 · 提示模板 · 设置 · 看板应用</text>
+  <text x="108" y="491" class="small" font-size="13">App Router、Provider、领域 API Client</text>
+
+  <!-- edge protocol -->
+  <rect x="421" y="327" width="232" height="132" rx="18" fill="#eef7ff" stroke="#8ac1f4" filter="url(#shadow)"/>
+  <text x="447" y="362" class="cap">02 · 传输层</text>
+  <text x="447" y="393" class="title" font-size="18">/api rewrite</text>
+  <text x="447" y="421" class="small" font-size="14">HTTP / JSON</text>
+  <text x="447" y="445" class="small" font-size="14">WebSocket 优先 · SSE 降级</text>
+
+  <!-- backend -->
+  <rect x="704" y="246" width="832" height="470" rx="18" class="box" filter="url(#shadow)"/>
+  <rect x="704" y="246" width="832" height="58" rx="18" fill="#eaf2ff"/>
+  <text x="734" y="282" class="title" font-size="21">.NET 9 / ASP.NET Core / Furion Dynamic API</text>
+  <text x="734" y="326" class="cap">03 · 业务模块与编排层</text>
+  <rect x="730" y="348" width="238" height="142" rx="12" fill="#f8fbff" stroke="#bdd4f3"/>
+  <text x="750" y="377" class="title" font-size="17">身份、权限与设置</text>
+  <text x="750" y="404" class="small" font-size="13">Auth / Admin</text><text x="750" y="426" class="small" font-size="13">模型目录与供应商配置</text><text x="750" y="448" class="small" font-size="13">项目访问与提交权限</text>
+  <rect x="988" y="348" width="250" height="142" rx="12" fill="#f5f3ff" stroke="#c8bdf5"/>
+  <text x="1008" y="377" class="title" font-size="17">会话与 Agent 运行时</text>
+  <text x="1008" y="404" class="small" font-size="13">Chat Orchestrator / Agent Loop</text><text x="1008" y="426" class="small" font-size="13">Native Runtime / Run Coordinator</text><text x="1008" y="448" class="small" font-size="13">工具路由、流式事件、运行取消</text>
+  <rect x="1258" y="348" width="250" height="142" rx="12" fill="#f0fdf7" stroke="#a8dfc3"/>
+  <text x="1278" y="377" class="title" font-size="17">代码与受控交付</text>
+  <text x="1278" y="404" class="small" font-size="13">代码项目 / 仓库 / Git 工作区</text><text x="1278" y="426" class="small" font-size="13">运行、打包、养护、状态刷新</text><text x="1278" y="448" class="small" font-size="13">Change Set 审批、校验、交付</text>
+  <rect x="730" y="516" width="238" height="164" rx="12" fill="#fff9ed" stroke="#efd28d"/>
+  <text x="750" y="546" class="title" font-size="17">知识、记忆与上下文</text>
+  <text x="750" y="573" class="small" font-size="13">文档解析、索引、RAG 检索</text><text x="750" y="595" class="small" font-size="13">项目 Markdown / 附件引用</text><text x="750" y="617" class="small" font-size="13">Memory 观察、候选与沉淀</text><text x="750" y="643" class="small" font-size="13">Python Worker / LlamaIndex 适配</text>
+  <rect x="988" y="516" width="250" height="164" rx="12" fill="#fff5fb" stroke="#ecb7d4"/>
+  <text x="1008" y="546" class="title" font-size="17">协作编排</text>
+  <text x="1008" y="573" class="small" font-size="13">Work Canvas：节点、连线、运行记录</text><text x="1008" y="595" class="small" font-size="13">任务：Gitee / CSV 导入、会话交接</text><text x="1008" y="617" class="small" font-size="13">Prompt Template：变量、收藏与复用</text><text x="1008" y="643" class="small" font-size="13">Usage：用户隔离的用量账本</text>
+  <rect x="1258" y="516" width="250" height="164" rx="12" fill="#f1fbfd" stroke="#a9dbe6"/>
+  <text x="1278" y="546" class="title" font-size="17">通知与看板应用</text>
+  <text x="1278" y="573" class="small" font-size="13">项目 Git 推送 → 推送绑定</text><text x="1278" y="595" class="small" font-size="13">钉钉 Webhook / Stream 群机器人</text><text x="1278" y="617" class="small" font-size="13">Dashboard 工作区、预览运行时</text><text x="1278" y="643" class="small" font-size="13">受控文件读写、补丁与 Git</text>
+
+  <!-- infra -->
+  <rect x="64" y="770" width="1472" height="210" rx="18" fill="#102d52" filter="url(#shadow)"/>
+  <text x="92" y="806" class="h" font-size="17">04 · 数据、执行环境与外部集成</text>
+  <rect x="92" y="831" width="260" height="112" rx="12" fill="#173d68" stroke="#416b99"/>
+  <text x="114" y="862" class="h" font-size="17">SQL Server · SqlSugar</text><text x="114" y="889" class="h" font-size="13" opacity=".82">用户、项目、会话、任务、画布、</text><text x="114" y="911" class="h" font-size="13" opacity=".82">运行记录、知识索引元数据、审计</text>
+  <rect x="378" y="831" width="260" height="112" rx="12" fill="#173d68" stroke="#416b99"/>
+  <text x="400" y="862" class="h" font-size="17">受限文件系统 / Git</text><text x="400" y="889" class="h" font-size="13" opacity=".82">登记代码库、项目文档、附件、</text><text x="400" y="911" class="h" font-size="13" opacity=".82">工作区、变更集与维护副本</text>
+  <rect x="664" y="831" width="260" height="112" rx="12" fill="#173d68" stroke="#416b99"/>
+  <text x="686" y="862" class="h" font-size="17">Agent 与模型执行环境</text><text x="686" y="889" class="h" font-size="13" opacity=".82">内置 LLM / 原生工具调用、</text><text x="686" y="911" class="h" font-size="13" opacity=".82">Codex CLI、DeepSeek Harness、Python</text>
+  <rect x="950" y="831" width="260" height="112" rx="12" fill="#173d68" stroke="#416b99"/>
+  <text x="972" y="862" class="h" font-size="17">代码与工作项平台</text><text x="972" y="889" class="h" font-size="13" opacity=".82">Gitee OAuth / 企业工作项、</text><text x="972" y="911" class="h" font-size="13" opacity=".82">Git 远端（含 GitHub）</text>
+  <rect x="1236" y="831" width="272" height="112" rx="12" fill="#173d68" stroke="#416b99"/>
+  <text x="1258" y="862" class="h" font-size="17">协作通知</text><text x="1258" y="889" class="h" font-size="13" opacity=".82">钉钉机器人 Webhook 与 Stream，</text><text x="1258" y="911" class="h" font-size="13" opacity=".82">项目群中的任务请求与结果回传</text>
+
+  <!-- arrows -->
+  <path d="M370 394 H421" class="line"/><path d="M653 394 H704" class="line"/>
+  <path d="M831 490 V516" class="dash"/><path d="M1113 490 V516" class="dash"/><path d="M1383 490 V516" class="dash"/>
+  <path d="M830 716 V770" class="dash"/><path d="M1113 716 V770" class="dash"/><path d="M1383 716 V770" class="dash"/>
+  <text x="432" y="316" class="small" font-size="12">Next.js 服务端转发</text>
+  <text x="100" y="1015" class="small" font-size="13">说明：实线表示主请求路径；虚线表示业务模块对基础设施或相邻模块的依赖。所有 /api/v1（除认证）请求均由后端统一会话认证拦截。</text>
+</svg>

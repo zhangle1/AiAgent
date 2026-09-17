@@ -20,6 +20,10 @@ type SessionMenuState = { session: SessionSummary; top: number; left: number };
 
 const mainItems: NavItem[] = [
   { href: "/chat", label: "聊天", icon: MessageSquare },
+  { href: "/knowledge", label: "知识中心", icon: Library },
+];
+
+const workbenchItems: NavItem[] = [
   { href: "/prototype-studio", label: "原型设计", icon: Palette },
   { href: "/work-canvas", label: "工作画布", icon: LayoutDashboard },
   { href: "/repository-maintenance", label: "代码库养护", icon: Wrench },
@@ -29,7 +33,6 @@ const mainItems: NavItem[] = [
 const toolItems: NavItem[] = [
   { href: "/settings/code-repositories", label: "代码库", icon: Code2 },
   { href: "/settings/git", label: "Git 管理", icon: GitBranch },
-  { href: "/knowledge", label: "知识中心", icon: Library },
   { href: "/settings", label: "设置", icon: Settings },
 ];
 
@@ -55,6 +58,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
   const [sessionMenu, setSessionMenu] = useState<SessionMenuState | null>(null);
   const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
@@ -147,6 +151,11 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     });
     return next;
   }, [streams]);
+  const workbenchActive = workbenchItems.some((item) => isActive(pathname, item.href));
+
+  useEffect(() => {
+    if (workbenchActive) setWorkbenchOpen(true);
+  }, [workbenchActive]);
 
   async function archiveSessionItem(session: SessionSummary) {
     try {
@@ -236,7 +245,7 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     <aside onClickCapture={(event) => { if ((event.target as HTMLElement).closest("a")) setMobileOpen(false); }} className={`fixed inset-y-0 left-0 z-50 flex w-[min(86vw,344px)] -translate-x-full flex-col border-r border-slate-200 bg-[#fbfcff] transition-[transform,width] duration-200 ${mobileOpen ? "translate-x-0" : ""} lg:z-30 lg:translate-x-0 ${compact ? "lg:w-[72px]" : "lg:w-[240px]"}`}>
     <div className={`flex h-16 shrink-0 items-center ${compact ? "justify-center px-2" : "px-4"}`}>
       <button type="button" onClick={() => setMobileOpen(false)} className="order-2 ml-auto grid h-10 w-10 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 lg:hidden" aria-label="关闭工作台抽屉"><X size={18}/></button>
-      {compact ? <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="grid h-9 w-9 place-items-center rounded-[10px] border border-sky-200 bg-white shadow-sm transition hover:bg-sky-50" aria-label="展开侧边栏" title="展开侧边栏"><img src="/kunbuddy-mark.png" alt="" className="h-5 w-5 object-contain"/></button> : <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-1 text-left transition hover:bg-sky-50" aria-label="收起侧边栏" title="收起侧边栏"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-sky-200 bg-white shadow-sm"><img src="/kunbuddy-mark.png" alt="" className="h-5 w-5 object-contain"/></span><span className="truncate font-serif text-xl font-semibold italic text-sky-500">{t("app.name")}</span></button>}
+      {compact ? <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="grid h-9 w-9 place-items-center rounded-[10px] transition hover:bg-sky-50" aria-label="展开侧边栏" title="展开侧边栏"><img src="/kunbuddy-mark.png" alt="" className="h-6 w-6 object-contain"/></button> : <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="flex min-w-0 items-center gap-1 rounded-xl px-1 py-1 text-left transition hover:bg-sky-50" aria-label="收起侧边栏" title="收起侧边栏"><img src="/kunbuddy-mark.png" alt="" className="h-8 w-8 shrink-0 object-contain"/><span className="truncate font-sans text-xl font-bold leading-none text-slate-950">{t("app.name")}</span></button>}
     </div>
 
     <nav className={`${compact ? "px-2" : "px-3"} pb-3`}>
@@ -245,7 +254,9 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
         <button type="button" onClick={() => setSearchOpen(true)} className={`flex h-10 items-center rounded-xl text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 ${compact ? "w-full justify-center" : "w-full gap-3 px-3 text-sm"}`} title="搜索项目和会话（Ctrl+K）" aria-label="搜索项目和会话">
           <Search size={17}/>{!compact && <><span className="min-w-0 flex-1 truncate text-left">搜索项目和会话</span><kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400">Ctrl K</kbd></>}
         </button>
-        {mainItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} compact={compact}/>)}</div>
+        {mainItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} compact={compact}/>)}
+        <WorkbenchNavigation compact={compact} active={workbenchActive} open={workbenchOpen} onToggle={() => setWorkbenchOpen((current) => !current)} pathname={pathname}/>
+      </div>
     </nav>
 
     {!compact ? <section className="flex min-h-0 flex-1 flex-col border-t border-slate-200/80 px-3 py-3">
@@ -313,6 +324,16 @@ function WorkspaceSearchDialog({ projects, sessions, onClose, onSelectProject, o
       <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400"><span>项目 {matchingProjects.length} 个 · 会话 {matchingSessions.length} 个</span><span className="hidden sm:inline">Ctrl / ⌘ + K 随时唤起</span></div>
     </div>
   </div>, document.body);
+}
+
+function WorkbenchNavigation({ compact, active, open, onToggle, pathname }: { compact: boolean; active: boolean; open: boolean; onToggle: () => void; pathname: string }) {
+  return <div className="space-y-1">
+    <button type="button" onClick={onToggle} title={compact ? "研发工作台" : undefined} aria-label="研发工作台" aria-expanded={open} className={`flex h-10 w-full items-center rounded-xl transition ${compact ? "justify-center" : "gap-3 px-3 text-sm"} ${active ? "bg-blue-600 text-white shadow-sm shadow-blue-200" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}>
+      <LayoutDashboard size={17}/>{!compact && <><span className="min-w-0 flex-1 truncate text-left">研发工作台</span><ChevronDown size={15} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}/></>}
+    </button>
+    {open && <div className={`${compact ? "space-y-1" : "ml-5 space-y-1 border-l border-slate-200 py-1 pl-2"}`}>
+      {workbenchItems.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item.href)} compact={compact}/>)}</div>}
+  </div>;
 }
 
 function SidebarLink({ item, active, compact }: { item: NavItem; active: boolean; compact: boolean }) {

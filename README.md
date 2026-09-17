@@ -172,7 +172,9 @@ npm run dev
 
 ## 管理配置与账户权限
 
-- 首次部署必须通过受控配置提供 `Authentication:InitialAdministratorUsername` 和 `Authentication:InitialAdministratorPassword`，两者只用于创建第一个管理员；初始化口令至少 16 个字符，不提供默认值。找不到可用管理员且缺少配置时，后端会拒绝启动，不会创建可猜测账户。
+- 生产、测试等受控环境首次部署时，必须通过受控配置提供 `Authentication:InitialAdministratorUsername` 和 `Authentication:InitialAdministratorPassword`。两者只用于创建第一个管理员；初始化口令至少 16 个字符，不提供默认值。找不到可用管理员且缺少配置时，后端会拒绝启动，不会创建可猜测账户。
+- 仅本地 `Development` 环境可省略这两个初始化配置：当数据库没有可用管理员且启动终端未重定向时，服务会一次性创建 `superadmin`，生成 32 位随机口令并只输出到当前启动终端；口令不会写入配置、数据库明文或 HTTP 响应。该引导不适用于生产、测试等环境。
+- 本地 `Development` 环境若显式配置初始化口令，可使用恰好 6 位纯数字；其他本地口令以及生产、测试环境的口令仍至少需要 16 个字符。
 - 使用环境变量注入时，对应名称为 `Authentication__InitialAdministratorUsername` 和 `Authentication__InitialAdministratorPassword`；初始化口令应由服务账户环境或 Secret Store 提供，不要放在命令行参数、脚本、日志或版本库中。
 - 初始化成功后立即从配置文件和环境变量/Secret Store 中移除 `Authentication:InitialAdministratorPassword`。已有管理员或用户的密码不会因升级、重启或初始化检查而被重置；后续忘记密码时由现有管理员在管理配置中执行重置，若没有任何可用管理员则需按部署环境的人工账户恢复流程处理。
 - 公开注册已关闭，`/register` 会返回登录页，创建新账号只能通过“设置 → 管理配置 → 用户管理”。

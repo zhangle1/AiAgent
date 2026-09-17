@@ -6,7 +6,9 @@
     "strict": true,
     "noEmit": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "jsx": "react-jsx",
+    "skipLibCheck": true
   },
   "include": ["src/**/*", "types/**/*"]
 }

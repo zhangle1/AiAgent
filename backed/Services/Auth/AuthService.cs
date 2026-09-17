@@ -32,8 +32,10 @@ public sealed class AuthService : IAuthService
     private const int Iterations = 210_000;
     private readonly ISqlSugarClient _db;
     private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
 
-    public AuthService(ISqlSugarClient db, IConfiguration configuration) => (_db, _configuration) = (db, configuration);
+    public AuthService(ISqlSugarClient db, IConfiguration configuration, IHostEnvironment environment) =>
+        (_db, _configuration, _environment) = (db, configuration, environment);
 
     public Task<(bool Succeeded, string? Error)> RegisterAsync(string username, string password, CancellationToken cancellationToken)
         => Task.FromResult((false, (string?)"Public registration is disabled. Please ask an administrator to create an account."));
@@ -154,16 +156,38 @@ public sealed class AuthService : IAuthService
 
         var username = _configuration["Authentication:InitialAdministratorUsername"]?.Trim();
         var password = _configuration["Authentication:InitialAdministratorPassword"];
+        var generatedLocalDevelopmentPassword = false;
+
+        // Local development may start with an empty database. Never use a fixed password,
+        // and only disclose the generated one to an interactive, non-redirected terminal.
+        if (string.IsNullOrWhiteSpace(username)
+            && string.IsNullOrEmpty(password)
+            && _environment.IsDevelopment()
+            && !Console.IsErrorRedirected)
+        {
+            username = "superadmin";
+            password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+            generatedLocalDevelopmentPassword = true;
+        }
+
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
             throw new InvalidOperationException("No usable administrator exists. Set Authentication:InitialAdministratorUsername and Authentication:InitialAdministratorPassword before first startup.");
-        if (password.Length < 16)
-            throw new InvalidOperationException("Authentication:InitialAdministratorPassword must contain at least 16 characters.");
+        var isLocalDevelopmentSixDigitPassword = _environment.IsDevelopment()
+            && password.Length == 6
+            && password.All(char.IsAsciiDigit);
+        if (password.Length < 16 && !isLocalDevelopmentSixDigitPassword)
+            throw new InvalidOperationException("Authentication:InitialAdministratorPassword must contain at least 16 characters, except for exactly six numeric digits in local Development.");
         if (_db.Queryable<AiUser>().Any(item => item.Username == username))
             throw new InvalidOperationException("Authentication:InitialAdministratorUsername is already in use. Choose an unused username or recover an existing administrator.");
 
         var (created, error) = await CreateUserAsync(username, password, null, cancellationToken);
         if (created == null) throw new InvalidOperationException(error ?? "Failed to create the initial administrator.");
         _db.Updateable<AiUser>().SetColumns(item => item.Role == "admin").Where(item => item.Id == created.Id).ExecuteCommand();
+
+        if (generatedLocalDevelopmentPassword)
+        {
+            Console.Error.WriteLine($"[AiAgent] Local development administrator created. Username: {username}; one-time password: {password}");
+        }
     }
 
     private static string HashPassword(string password, byte[] salt) => Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, Iterations, HashAlgorithmName.SHA256, 32));

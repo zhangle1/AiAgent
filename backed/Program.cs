@@ -228,10 +228,19 @@ app.Use(async (context, next) =>
     if (context.Request.Path.StartsWithSegments("/api/v1") && !context.Request.Path.StartsWithSegments("/api/v1/auth"))
     {
         var auth = context.RequestServices.GetRequiredService<IAuthService>();
-        if (await auth.TryGetCurrentUserAsync(context, context.RequestAborted) == null)
+        var isDeepSeekPluginRequest = context.Request.Path.StartsWithSegments("/api/v1/deepseek-plugin");
+        var user = isDeepSeekPluginRequest
+            ? await auth.TryGetPluginUserAsync(context, context.RequestAborted)
+            : await auth.TryGetCurrentUserAsync(context, context.RequestAborted);
+        if (user == null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { message = "请先登录。" }, context.RequestAborted);
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = isDeepSeekPluginRequest
+                    ? "AiAgent 插件登录已失效，请在 DeepSeek Harness 中重新登录。"
+                    : "请先登录。"
+            }, context.RequestAborted);
             return;
         }
     }

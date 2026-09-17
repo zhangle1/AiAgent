@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">坤伴 1.0 到 2.0 产品迭代路径</title>
+  <desc id="desc">规划图分为 1.0 稳定交付、1.x 质量与可观测性、2.0 知识与跨 Agent 协同三层。2.0 以知识资产、kun URI、插件适配器、自有 Agent Loop 协作为核心。</desc>
+  <defs>
+    <linearGradient id="head" x1="0" x2="1"><stop stop-color="#0f3b8f"/><stop offset=".5" stop-color="#2563eb"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1e293b" flood-opacity=".14"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker>
+    <style>
+      .f{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif}.w{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:white}.t{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#52667d}.h{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;fill:#12233f}.cap{font-family:'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;font-weight:700;letter-spacing:1px;fill:#2563eb}.line{fill:none;stroke:#64748b;stroke-width:3;marker-end:url(#arrow)}.dash{fill:none;stroke:#8aa1bc;stroke-width:2.5;stroke-dasharray:8 7;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="1000" fill="#f8fafc"/>
+  <rect width="1600" height="106" fill="url(#head)"/>
+  <text x="64" y="50" class="w" font-size="32">坤伴（AiAgent）1.0 → 2.0 迭代路径</text>
+  <text x="64" y="79" class="w" font-size="16" opacity=".88">目标：从“受控的 AI 研发交付工作台”进化为“可复用知识与跨 Agent 协作网络”</text>
+
+  <!-- roadmap line -->
+  <path d="M200 190 H1400" stroke="#b8c9de" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="260" cy="190" r="22" fill="#2563eb"/><circle cx="800" cy="190" r="22" fill="#0ea5a8"/><circle cx="1340" cy="190" r="22" fill="#7c3aed"/>
+  <text x="218" y="232" class="h" font-size="18">1.0 发布</text><text x="713" y="232" class="h" font-size="18">1.x 持续优化</text><text x="1281" y="232" class="h" font-size="18">2.0 核心建设</text>
+
+  <!-- phase 1 -->
+  <rect x="70" y="282" width="410" height="430" rx="20" fill="white" stroke="#bad3fa" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="70" y="282" width="410" height="62" rx="20" fill="#eaf2ff"/>
+  <text x="96" y="321" class="h" font-size="22">1.0：稳定的研发交付闭环</text>
+  <text x="98" y="377" class="cap" font-size="14">发布承诺</text>
+  <text x="98" y="406" class="t" font-size="15">• 项目授权、会话、任务、画布可稳定使用</text>
+  <text x="98" y="435" class="t" font-size="15">• Agent 可读取受控上下文并完成代码协作</text>
+  <text x="98" y="464" class="t" font-size="15">• 变更集校验、审批、Git 推送可追溯</text>
+  <text x="98" y="493" class="t" font-size="15">• Gitee 工作项与钉钉项目群形成任务闭环</text>
+  <line x1="98" y1="527" x2="452" y2="527" stroke="#d8e4f4"/>
+  <text x="98" y="558" class="cap" font-size="14">版本门槛</text>
+  <text x="98" y="587" class="t" font-size="15">权限正确、关键路径可恢复、失败可定位、</text>
+  <text x="98" y="613" class="t" font-size="15">不绕过人工审批与代码提交控制。</text>
+  <rect x="98" y="643" width="350" height="42" rx="10" fill="#eff6ff"/>
+  <text x="114" y="670" class="h" font-size="14">定位：先成为团队每天敢用的工具</text>
+
+  <!-- phase 1x -->
+  <rect x="595" y="282" width="410" height="430" rx="20" fill="white" stroke="#9ce2dc" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="595" y="282" width="410" height="62" rx="20" fill="#e8fbf8"/>
+  <text x="621" y="321" class="h" font-size="22">1.x：可靠性与效率优先</text>
+  <text x="623" y="377" class="cap" font-size="14" fill="#0f766e">持续关注的优化</text>
+  <text x="623" y="406" class="t" font-size="15">• 运行成功率、超时、重试与断线恢复</text>
+  <text x="623" y="435" class="t" font-size="15">• 模型 / CLI / RAG / 外部平台就绪度诊断</text>
+  <text x="623" y="464" class="t" font-size="15">• 上下文命中率、答案质量、Token 成本</text>
+  <text x="623" y="493" class="t" font-size="15">• 交付耗时、失败率、审批后的返工率</text>
+  <line x1="623" y1="527" x2="977" y2="527" stroke="#cceae7"/>
+  <text x="623" y="558" class="cap" font-size="14" fill="#0f766e">优先功能</text>
+  <text x="623" y="587" class="t" font-size="15">运行中心、统一任务状态、上下文质量反馈、</text>
+  <text x="623" y="613" class="t" font-size="15">更强的移动端与运营诊断面板。</text>
+  <rect x="623" y="643" width="350" height="42" rx="10" fill="#ecfdf8"/>
+  <text x="639" y="670" class="h" font-size="14">原则：先让复杂能力可观察、可恢复、可衡量</text>
+
+  <!-- phase 2 -->
+  <rect x="1120" y="282" width="410" height="430" rx="20" fill="white" stroke="#d4b8fb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="1120" y="282" width="410" height="62" rx="20" fill="#f4edff"/>
+  <text x="1146" y="321" class="h" font-size="22">2.0：知识与多 Agent 协同</text>
+  <text x="1148" y="377" class="cap" font-size="14" fill="#6d28d9">核心能力</text>
+  <text x="1148" y="406" class="t" font-size="15">• 高价值对话提炼为可审核知识资产</text>
+  <text x="1148" y="435" class="t" font-size="15">• kun:// 统一寻址项目事实、技能与证据</text>
+  <text x="1148" y="464" class="t" font-size="15">• 插件 Adapter 对接外部 Agent 的交付能力</text>
+  <text x="1148" y="493" class="t" font-size="15">• 自有 Agent Loop 的规划、委派与协同</text>
+  <line x1="1148" y1="527" x2="1502" y2="527" stroke="#e6d8fb"/>
+  <text x="1148" y="558" class="cap" font-size="14" fill="#6d28d9">版本结果</text>
+  <text x="1148" y="587" class="t" font-size="15">知识能跨会话、跨 Agent、跨时间复用；</text>
+  <text x="1148" y="613" class="t" font-size="15">多个 Agent 能在明确任务契约下协同交付。</text>
+  <rect x="1148" y="643" width="350" height="42" rx="10" fill="#f7f1ff"/>
+  <text x="1164" y="670" class="h" font-size="14">定位：沉淀组织级研发智能，不只增加模型</text>
+
+  <!-- phase connectors -->
+  <path d="M480 496 H595" class="line"/><path d="M1005 496 H1120" class="line"/>
+  <text x="500" y="479" class="t" font-size="13">稳定后规模化</text><text x="1025" y="479" class="t" font-size="13">数据与接口成熟后</text>
+
+  <!-- 2.0 core map -->
+  <rect x="70" y="770" width="1460" height="170" rx="20" fill="#16213a" filter="url(#shadow)"/>
+  <text x="98" y="807" class="w" font-size="19">2.0 的最小闭环：知识资产 → kun:// 解析 → Agent 计划与协作 → 交付证据回流</text>
+  <rect x="100" y="838" width="255" height="70" rx="12" fill="#23385c" stroke="#48648e"/>
+  <text x="120" y="866" class="w" font-size="15">知识资产中心</text><text x="120" y="890" class="w" font-size="12" opacity=".8">对话、代码事实、Skill、证据、反馈</text>
+  <rect x="430" y="838" width="275" height="70" rx="12" fill="#23385c" stroke="#48648e"/>
+  <text x="450" y="866" class="w" font-size="15">kun:// 资源接口</text><text x="450" y="890" class="w" font-size="12" opacity=".8">解析、授权、版本、检索、引用包</text>
+  <rect x="780" y="838" width="275" height="70" rx="12" fill="#23385c" stroke="#48648e"/>
+  <text x="800" y="866" class="w" font-size="15">Agent 协同运行时</text><text x="800" y="890" class="w" font-size="12" opacity=".8">计划、委派、并行、验收、恢复</text>
+  <rect x="1130" y="838" width="360" height="70" rx="12" fill="#23385c" stroke="#48648e"/>
+  <text x="1150" y="866" class="w" font-size="15">外部 Agent / 插件 Adapter</text><text x="1150" y="890" class="w" font-size="12" opacity=".8">Codex、DSH、未来 Agent 与企业工具</text>
+  <path d="M355 873 H430" class="dash"/><path d="M705 873 H780" class="dash"/><path d="M1055 873 H1130" class="dash"/>
+</svg>

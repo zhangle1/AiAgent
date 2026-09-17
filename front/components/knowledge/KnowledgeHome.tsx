@@ -59,6 +59,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 
 type RetrievalProfile = "hybrid" | "vector";
 type DetailTab = "files" | "add" | "versions" | "settings";
+type IngestionGenerator = "llm_api" | "codex";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -105,6 +106,7 @@ export function KnowledgeHome() {
   const [detail, setDetail] = useState<KnowledgeDetail | null>(null);
   const [versions, setVersions] = useState<KnowledgeIndexVersion[]>([]);
   const [detailTab, setDetailTab] = useState<DetailTab>("files");
+  const [preferredGenerator, setPreferredGenerator] = useState<IngestionGenerator>("llm_api");
   const [embeddingLabel, setEmbeddingLabel] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [retrievalProfile, setRetrievalProfile] = useState<RetrievalProfile>("hybrid");
@@ -230,7 +232,8 @@ export function KnowledgeHome() {
       const imported = result.items.filter((item) => item.status === "imported").length;
       const skipped = result.items.filter((item) => item.status === "skipped").length;
       const failed = result.items.filter((item) => item.status === "failed").length;
-      setNotice(`${t("knowledge.uploadStarted")} (${imported} imported, ${skipped} skipped, ${failed} failed)`);
+      setDetailTab("files");
+      setNotice(`源文件已保存 (${imported} imported, ${skipped} skipped, ${failed} failed)。请选择文件后确认使用远程 LLM API 或 Codex CLI 入库。`);
       return result;
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : t("knowledge.errorUpload"));
@@ -238,6 +241,21 @@ export function KnowledgeHome() {
       setBusy(false);
     }
   }
+
+  function openSourceUpload(generator = preferredGenerator) {
+    setPreferredGenerator(generator);
+    const target = knowledgeBases.find((item) => item.is_default) ?? knowledgeBases[0];
+    if (!target) {
+      setCreateOpen(true);
+      return;
+    }
+    setSelectedKbName(target.name);
+    setDetailTab("add");
+    void reloadDetail(target.name);
+  }
+
+  const sourceDocumentCount = knowledgeBases.reduce((total, item) => total + item.document_count, 0);
+  const readyKnowledgeBaseCount = knowledgeBases.filter((item) => item.status === "ready").length;
 
   async function handleDeleteDocument(kbName: string, documentId: number) {
     setBusy(true);
@@ -365,6 +383,8 @@ export function KnowledgeHome() {
           onSetDefault={handleSetDefault}
           onTabChange={setDetailTab}
           onUpload={handleUpload}
+          preferredGenerator={preferredGenerator}
+          onPreferredGeneratorChange={setPreferredGenerator}
         />
       </main>
     );
@@ -442,25 +462,30 @@ export function KnowledgeHome() {
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[28px] font-semibold leading-tight tracking-tight">{t("knowledge.title")}</h1>
-          <p className="mt-2 text-[13px] text-[var(--muted-foreground)]">{t("knowledge.description")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void reload()} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-[12.5px] font-semibold transition hover:border-blue-300">
-            <RefreshCw size={15} />
-            {t("knowledge.refresh")}
-          </button>
-          <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[12.5px] font-semibold text-white transition hover:bg-blue-700">
-            <Plus size={15} />
-            {t("knowledge.new")}
-          </button>
-        </div>
-      </div>
-
       <PageMessage error={error} notice={notice} />
-      <EngineGrid providers={providers.length > 0 ? providers : fallbackProviders()} onSelect={setSelectedProviderId} />
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+          <div>
+            <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-blue-600"><Database size={14}/>KNOWLEDGE INGESTION</div>
+            <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-slate-950">知识入库工作台</h1>
+            <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-500">先保存不可变源文件，再选用远程 LLM API 或 Codex CLI 生成可复核的 Markdown 知识稿；原文件、解析正文和 AI 提炼结果始终分开保留。</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void reload()} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"><RefreshCw size={15}/>{t("knowledge.refresh")}</button>
+            <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-slate-700 transition hover:border-blue-300"><Plus size={15}/>{t("knowledge.new")}</button>
+          </div>
+        </div>
+        <div className="grid divide-y divide-slate-100 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_188px] md:divide-x md:divide-y-0">
+          <IngestionRouteCard active={preferredGenerator === "llm_api"} icon={Cloud} title="使用远程 LLM API 入库" description="调用平台已配置的模型，将源文件解析为可检索、可复核的 Markdown 知识稿。" action="上传并选择 LLM API" onClick={() => openSourceUpload("llm_api")}/>
+          <IngestionRouteCard active={preferredGenerator === "codex"} icon={Workflow} title="使用 Codex CLI 入库" description="在受控只读工作区调用 Codex CLI，适合复杂技术文档、代码说明与结构化提炼。" action="上传并选择 Codex" onClick={() => openSourceUpload("codex")}/>
+          <div className="grid grid-cols-2 gap-px bg-slate-100 text-center md:grid-cols-1">
+            <Metric label="知识空间" value={String(knowledgeBases.length)}/>
+            <Metric label="源文件" value={String(sourceDocumentCount)}/>
+            <Metric label="可用索引" value={String(readyKnowledgeBaseCount)}/>
+          </div>
+        </div>
+      </section>
+
       <KnowledgeBaseList
         busy={busy}
         loading={loading}
@@ -473,9 +498,23 @@ export function KnowledgeHome() {
         }}
         onReindex={handleReindex}
       />
+      <section className="mt-9 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+        <div className="mb-4"><h2 className="text-sm font-semibold text-slate-800">检索与解析引擎</h2><p className="mt-1 text-xs leading-5 text-slate-500">引擎和切块参数属于高级配置；日常入库只需要先上传源文件，再明确选择 LLM API 或 Codex CLI。</p></div>
+        <EngineGrid providers={providers.length > 0 ? providers : fallbackProviders()} onSelect={setSelectedProviderId} />
+      </section>
       {createOpen && <CreateKnowledgeModal busy={busy} providers={providers.length > 0 ? providers : fallbackProviders()} onClose={() => setCreateOpen(false)} onCreate={handleCreate} />}
     </main>
   );
+}
+
+function IngestionRouteCard({ active, icon: Icon, title, description, action, onClick }: { active: boolean; icon: LucideIcon; title: string; description: string; action: string; onClick: () => void }) {
+  return <div className={`p-5 transition ${active ? "bg-blue-50/70" : "bg-white hover:bg-slate-50"}`}>
+    <div className="flex items-start gap-3"><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}><Icon size={17}/></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold text-slate-900">{title}</h2>{active && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">已选方式</span>}</div><p className="mt-1.5 text-xs leading-5 text-slate-500">{description}</p><button type="button" onClick={onClick} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-xs font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-50"><FileUp size={13}/>{action}</button></div></div>
+  </div>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="flex flex-col justify-center bg-white px-3 py-3"><span className="text-[10px] font-semibold tracking-[0.1em] text-slate-400">{label}</span><span className="mt-1 text-xl font-semibold text-slate-800">{value}</span></div>;
 }
 
 function EngineGrid({ providers, onSelect }: { providers: KnowledgeProvider[]; onSelect: (id: string) => void }) {
@@ -619,7 +658,7 @@ function CreateKnowledgeModal({ busy, providers, onClose, onCreate }: { busy: bo
   );
 }
 
-function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, error, notice, tab, versions, onBack, onDelete, onDeleteDocument, onRefresh, onReindex, onSetDefault, onTabChange, onUpload }: { busy: boolean; detail: KnowledgeDetail | null; detailLoading: boolean; embeddingLabel: string; error: string | null; notice: string | null; tab: DetailTab; versions: KnowledgeIndexVersion[]; onBack: () => void; onDelete: (kb: KnowledgeDetail) => Promise<void>; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onRefresh: () => void; onReindex: (kb: KnowledgeDetail) => Promise<void>; onSetDefault: (kb: KnowledgeDetail) => Promise<void>; onTabChange: (tab: DetailTab) => void; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
+function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, error, notice, tab, versions, onBack, onDelete, onDeleteDocument, onRefresh, onReindex, onSetDefault, onTabChange, onUpload, preferredGenerator, onPreferredGeneratorChange }: { busy: boolean; detail: KnowledgeDetail | null; detailLoading: boolean; embeddingLabel: string; error: string | null; notice: string | null; tab: DetailTab; versions: KnowledgeIndexVersion[]; onBack: () => void; onDelete: (kb: KnowledgeDetail) => Promise<void>; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onRefresh: () => void; onReindex: (kb: KnowledgeDetail) => Promise<void>; onSetDefault: (kb: KnowledgeDetail) => Promise<void>; onTabChange: (tab: DetailTab) => void; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined>; preferredGenerator: IngestionGenerator; onPreferredGeneratorChange: (generator: IngestionGenerator) => void }) {
   const { t } = useI18n();
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const selectedDocument = detail?.documents.find((item) => item.id === selectedDocId) ?? detail?.documents[0] ?? null;
@@ -657,6 +696,12 @@ function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, erro
         <p className="mt-1 text-[12.5px] text-[var(--muted-foreground)]">
           {detail.engine_type} · {embeddingLabel || t("knowledge.noEmbeddingModel")} · {t("knowledge.updated")} {formatDate(detail.updated_at ?? detail.created_at)}
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+          <span className="px-1 text-[11px] font-semibold text-slate-500">本次入库方式</span>
+          <button type="button" onClick={() => onPreferredGeneratorChange("llm_api")} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${preferredGenerator === "llm_api" ? "bg-blue-600 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-blue-50 hover:text-blue-700"}`}><Cloud size={13}/>远程 LLM API</button>
+          <button type="button" onClick={() => onPreferredGeneratorChange("codex")} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${preferredGenerator === "codex" ? "bg-slate-900 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}><Workflow size={13}/>Codex CLI</button>
+          <span className="hidden text-[11px] text-slate-400 lg:inline">上传后在文件预览中确认执行，不会自动调用模型。</span>
+        </div>
         <nav className="mt-5 flex gap-1 overflow-x-auto">
           <DetailTabButton active={tab === "files"} icon={FileText} label={t("knowledge.files")} onClick={() => onTabChange("files")} />
           <DetailTabButton active={tab === "add"} icon={Upload} label={t("knowledge.addDocuments")} onClick={() => onTabChange("add")} />
@@ -665,15 +710,15 @@ function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, erro
         </nav>
       </div>
       <PageMessage error={error} notice={notice} />
-      {tab === "files" && <FilesTab busy={busy} detail={detail} selectedDocument={selectedDocument} onDeleteDocument={onDeleteDocument} onSelect={setSelectedDocId} />}
-      {tab === "add" && <AddDocumentsTab busy={busy} documents={detail.documents} onUpload={onUpload} />}
+      {tab === "files" && <FilesTab busy={busy} detail={detail} preferredGenerator={preferredGenerator} selectedDocument={selectedDocument} onDeleteDocument={onDeleteDocument} onSelect={setSelectedDocId} />}
+      {tab === "add" && <AddDocumentsTab busy={busy} documents={detail.documents} preferredGenerator={preferredGenerator} onUpload={onUpload} />}
       {tab === "versions" && <IndexVersionsTab busy={busy} detail={detail} versions={versions} onRefresh={onRefresh} onReindex={onReindex} />}
       {tab === "settings" && <SettingsTab busy={busy} detail={detail} embeddingLabel={embeddingLabel} onDelete={onDelete} onSetDefault={onSetDefault} />}
     </div>
   );
 }
 
-function FilesTab({ busy, detail, selectedDocument, onDeleteDocument, onSelect }: { busy: boolean; detail: KnowledgeDetail; selectedDocument: KnowledgeDocument | null; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onSelect: (id: number) => void }) {
+function FilesTab({ busy, detail, preferredGenerator, selectedDocument, onDeleteDocument, onSelect }: { busy: boolean; detail: KnowledgeDetail; preferredGenerator: IngestionGenerator; selectedDocument: KnowledgeDocument | null; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onSelect: (id: number) => void }) {
   const { t } = useI18n();
   return (
     <div className="grid min-h-[calc(100vh-178px)] grid-cols-1 md:grid-cols-[260px_1fr]">
@@ -703,13 +748,13 @@ function FilesTab({ busy, detail, selectedDocument, onDeleteDocument, onSelect }
         )}
       </aside>
       <section className="min-h-0 p-4">
-        <FilePreview kbName={detail.name} document={selectedDocument} />
+        <FilePreview kbName={detail.name} document={selectedDocument} preferredGenerator={preferredGenerator} />
       </section>
     </div>
   );
 }
 
-function FilePreview({ kbName, document }: { kbName: string; document: KnowledgeDocument | null }) {
+function FilePreview({ kbName, document, preferredGenerator }: { kbName: string; document: KnowledgeDocument | null; preferredGenerator: IngestionGenerator }) {
   const { t } = useI18n();
   const [textPreview, setTextPreview] = useState("");
   const [textLoading, setTextLoading] = useState(false);
@@ -778,6 +823,9 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
   const downloadUrl = knowledgeDocumentFileUrl(kbName, document.id, true);
   const isPdf = isPdfDocument(document);
   const isText = isTextDocument(document);
+  const primaryGenerator = preferredGenerator;
+  const secondaryGenerator: IngestionGenerator = primaryGenerator === "llm_api" ? "codex" : "llm_api";
+  const generatorLabel = (generator: IngestionGenerator) => generator === "codex" ? "Codex CLI" : "远程 LLM API";
   return (
     <div className="flex h-full min-h-[640px] flex-col">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -786,8 +834,8 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
           <div className="text-[11px] text-[var(--muted-foreground)]">{document.content_type || document.extension || t("common.notSet")} · {formatBytes(document.file_size)}</div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button type="button" disabled={processing !== null} onClick={() => process("llm_api")} className="h-8 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white disabled:opacity-50">{processing === "llm_api" ? "LLM 加工中…" : "LLM API 入库"}</button>
-          <button type="button" disabled={processing !== null} onClick={() => process("codex")} className="h-8 rounded-md border border-[var(--border)] px-3 text-[12px] disabled:opacity-50">{processing === "codex" ? "Codex 加工中…" : "Codex CLI 入库"}</button>
+          <button type="button" disabled={processing !== null} onClick={() => process(primaryGenerator)} className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium text-white disabled:opacity-50 ${primaryGenerator === "codex" ? "bg-slate-900" : "bg-blue-600"}`}>{processing === primaryGenerator ? `${generatorLabel(primaryGenerator)} 入库中…` : `用 ${generatorLabel(primaryGenerator)} 入库`}</button>
+          <button type="button" disabled={processing !== null} onClick={() => process(secondaryGenerator)} className="h-8 rounded-md border border-[var(--border)] bg-white px-3 text-[12px] text-slate-600 hover:border-slate-300 disabled:opacity-50">改用 {generatorLabel(secondaryGenerator)}</button>
           <a href={downloadUrl} download className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border)] px-2.5 text-[12px] hover:border-blue-300"><Download size={14} />{t("knowledge.download")}</a>
         </div>
       </div>
@@ -923,10 +971,11 @@ function PdfPagePreview({ pageNumber, width }: { pageNumber: number; width: numb
   );
 }
 
-function AddDocumentsTab({ busy, documents, onUpload }: { busy: boolean; documents: KnowledgeDocument[]; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
+function AddDocumentsTab({ busy, documents, preferredGenerator, onUpload }: { busy: boolean; documents: KnowledgeDocument[]; preferredGenerator: IngestionGenerator; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
   const { t } = useI18n();
   const [files, setFiles] = useState<File[]>([]);
   const [result, setResult] = useState<KnowledgeDocumentImportResult | null>(null);
+  const selectedEngine = preferredGenerator === "codex" ? "Codex CLI" : "远程 LLM API";
   async function submit() {
     const next = await onUpload(files);
     if (next) {
@@ -938,11 +987,12 @@ function AddDocumentsTab({ busy, documents, onUpload }: { busy: boolean; documen
     <div className="mx-auto max-w-5xl px-6 py-6">
       <h2 className="text-[15px] font-semibold">{t("knowledge.addDocuments")}</h2>
       <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">{t("knowledge.addDocumentsDesc")}</p>
+      <div className={`mt-4 flex items-start gap-3 rounded-xl border p-3 ${preferredGenerator === "codex" ? "border-slate-200 bg-slate-50" : "border-blue-100 bg-blue-50/60"}`}><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${preferredGenerator === "codex" ? "bg-slate-800 text-white" : "bg-blue-600 text-white"}`}>{preferredGenerator === "codex" ? <Workflow size={15}/> : <Cloud size={15}/>}</span><div><p className="text-xs font-semibold text-slate-800">本次上传将优先使用 {selectedEngine}</p><p className="mt-1 text-[11px] leading-5 text-slate-500">源文件会先保存，再由你在文件预览中明确点击入库；不会因为上传而自动调用模型。</p></div></div>
       <FilePicker files={files} onFiles={setFiles} />
       <div className="mt-4 flex justify-end">
         <button type="button" disabled={busy || files.length === 0} onClick={() => void submit()} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:bg-zinc-300">
           <Upload size={15} />
-          {busy ? t("common.saving") : t("knowledge.upload")}
+          {busy ? t("common.saving") : "保存源文件，进入入库确认"}
         </button>
       </div>
       {result && (
@@ -1184,7 +1234,7 @@ function FilePicker({ files, onFiles }: { files: File[]; onFiles: (files: File[]
   return (
     <label onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={(event) => { event.preventDefault(); setDragging(false); }} onDrop={(event) => { event.preventDefault(); setDragging(false); onFiles(Array.from(event.dataTransfer.files)); }} className={`mt-2 flex min-h-[126px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-white px-4 py-6 text-center transition ${dragging ? "border-blue-500 bg-blue-50" : "border-[var(--border)] hover:border-blue-300"}`}>
       <FileUp size={24} className="text-[var(--muted-foreground)]" />
-      <span className="mt-2 text-[13px] font-semibold">{files.length > 0 ? t("knowledge.fileCount", { count: files.length }) : t("knowledge.chooseFiles")}</span>
+      <span className="mt-2 text-[13px] font-semibold">{files.length > 0 ? t("knowledge.fileCount", { count: files.length }) : "点击或拖放源文件到这里"}</span>
       <span className="mt-1 text-[11px] text-[var(--muted-foreground)]">{t("knowledge.supportedDocuments")} · ZIP</span>
       {files.length > 0 && <span className="mt-2 max-w-full truncate text-[11px] text-blue-600">{files.map((file) => file.name).join(", ")}</span>}
       <input type="file" multiple accept={supportedDocumentAccept} className="hidden" onChange={(event) => onFiles(Array.from(event.target.files ?? []))} />
