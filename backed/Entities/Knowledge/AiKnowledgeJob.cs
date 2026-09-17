@@ -5,6 +5,9 @@ namespace AiAgent.Backend.Entities.Knowledge;
 [SugarTable("ai_knowledge_job")]
 public sealed class AiKnowledgeJob
 {
+    [SugarColumn(IsNullable = true)]
+    public DateTime? UpdatedAt { get; set; }
+
     /// <summary>
     /// 任务自增主键。
     /// </summary>

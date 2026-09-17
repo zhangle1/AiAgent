@@ -2,6 +2,16 @@ import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, Knowledg
 
 import type { KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeOrganization, KnowledgePage } from "@/lib/knowledge-types";
 
+export async function getKnowledgeCompilations(signal?: AbortSignal): Promise<KnowledgeCompilationJob[]> {
+  return parseJson(await fetch("/api/v1/knowledge/compilations", { cache: "no-store", signal }));
+}
+export async function cancelKnowledgeCompilation(name: string, id: number): Promise<KnowledgeCompilationJob> {
+  return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/compilations/${id}/cancel`, { method: "POST" }));
+}
+export async function getKnowledgeOfficePreview(name: string, id: number, signal?: AbortSignal): Promise<import("@/lib/knowledge-types").KnowledgeOfficePreview> {
+  return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/documents/${id}/office-preview`, { cache: "no-store", signal }));
+}
+
 export async function getKnowledgeCompilerSettings(): Promise<KnowledgeCompilerSettings> {
   return parseJson(await fetch("/api/v1/knowledge/compiler-settings", { cache: "no-store" }));
 }

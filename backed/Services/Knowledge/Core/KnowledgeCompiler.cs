@@ -9,7 +9,7 @@ public interface IKnowledgeModel
 }
 public sealed record Evidence(int Part, string Quote);
 public sealed record KnowledgePage(string Title, string Markdown, IReadOnlyList<Evidence> Evidence);
-public sealed record CompilerStep(int Number, string Action, string Result);
+public sealed record CompilerStep(int Number, string Action, string Result, int CoveredParts = 0, int TotalParts = 0);
 public sealed record Compilation(IReadOnlyList<KnowledgePage> Pages, IReadOnlyList<CompilerStep> Steps, string? Provider, string? Model);
 
 /// <summary>Provider-neutral, bounded agent loop. Models propose operations; the host owns reads and writes.</summary>
@@ -103,7 +103,8 @@ public sealed class KnowledgeCompiler
                 observation = "Validation rejected the operation: " + ex.Message + " Correct it and try again.";
             }
             // The trace intentionally excludes source text and model responses.
-            var step = new CompilerStep(i, action, observation.StartsWith("Validation") ? observation : "accepted");
+            var step = new CompilerStep(i, action, observation.StartsWith("Validation") ? observation : "accepted",
+                pages.SelectMany(p => p.Evidence).Select(e => e.Part).Distinct().Count(), parts.Length);
             steps.Add(step);
             if (progress is not null) await progress(step);
         }

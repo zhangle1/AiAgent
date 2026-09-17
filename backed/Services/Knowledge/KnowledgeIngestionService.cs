@@ -16,7 +16,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 
 public interface IKnowledgeIngestionService
 {
-    Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null);
+    Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null);
     KnowledgeDocumentContentDto GetContent(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document);
 }
 
@@ -39,10 +39,12 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
     private readonly IDocumentParsingService _parser;
     private readonly ILlmChatClient _llm;
     private readonly ICodexChatService _codex;
+    private readonly IConfiguration? _configuration;
 
-    public KnowledgeIngestionService(ISqlSugarClient db, IKnowledgePathService paths, IDocumentParsingService parser, ILlmChatClient llm, ICodexChatService codex, KnowledgeCompilerSettings settings)
+    public KnowledgeIngestionService(ISqlSugarClient db, IKnowledgePathService paths, IDocumentParsingService parser, ILlmChatClient llm, ICodexChatService codex, KnowledgeCompilerSettings settings, IConfiguration? configuration = null)
     {
         _settings = settings;
+        _configuration = configuration;
         _db = db;
         _paths = paths;
         _parser = parser;
@@ -50,7 +52,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         _codex = codex;
     }
 
-    public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null)
+    public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null)
     {
         var config = settings ?? _settings.Get();
         KnowledgeCompilerSettings.Validate(config);
@@ -62,10 +64,12 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         EnsureInside(sourcePath, kbPath);
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("Knowledge source file does not exist.");
 
+        progress?.Invoke(2, "等待文档处理器");
         await _gate.WaitAsync(cancellationToken);
         try
         {
             UpdateDocument(document.Id, "parsing", null);
+            progress?.Invoke(5, "正在解析原始文件");
             var parsed = await ParseAsync(knowledgeBase, document, sourcePath, cancellationToken);
             var parsedRow = new AiKnowledgeParsedDocument
             {
@@ -82,11 +86,13 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
             parsedRow.Id = _db.Insertable(parsedRow).ExecuteReturnBigIdentity();
 
             UpdateDocument(document.Id, "generating", null);
-            var generated = await GenerateAsync(knowledgeBase, document, parsed.Content, request, config, cancellationToken);
+            progress?.Invoke(15, "解析完成，等待模型第 1 步响应");
+            var generated = await GenerateAsync(knowledgeBase, document, parsed.Content, request, config, cancellationToken, progress);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_db.Queryable<AiKnowledgeDocument>().Any(x => x.Id == document.Id && !x.IsDeleted) ||
                 !_db.Queryable<AiKnowledgeBase>().Any(x => x.Id == knowledgeBase.Id && !x.IsDeleted))
                 throw new InvalidOperationException("The source was deleted during compilation.");
+            progress?.Invoke(95, "证据校验完成，正在保存知识草稿");
             var artifact = new AiKnowledgeArtifact
             {
                 KnowledgeBaseId = knowledgeBase.Id,
@@ -117,7 +123,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         }
         catch (Exception ex)
         {
-            UpdateDocument(document.Id, "error", ex.Message);
+            UpdateDocument(document.Id, ex is OperationCanceledException ? "cancelled" : "error", ex is OperationCanceledException ? "提炼已中断，可重试。" : "提炼失败，请检查文件或模型配置。");
             throw;
         }
         finally { _gate.Release(); }
@@ -157,6 +163,9 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
     private async Task<ParsedContent> ParseAsync(AiKnowledgeBase kb, AiKnowledgeDocument document, string sourcePath, CancellationToken cancellationToken)
     {
         var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+        using var converted = extension is ".doc" or ".xls"
+            ? await KnowledgeOfficePreviewService.ConvertLegacyAsync(sourcePath, _configuration?["Knowledge:LibreOfficePath"], cancellationToken) : null;
+        if (converted is not null) { sourcePath = converted.Path; extension = Path.GetExtension(sourcePath); }
         var outputDir = Path.Combine(_paths.GetKnowledgeBasePath(kb.Name), "parsed", document.Id.ToString());
         Directory.CreateDirectory(outputDir);
         string content;
@@ -199,13 +208,19 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         return new ParsedContent(content, target, parser, locators);
     }
 
-    private async Task<GeneratedContent> GenerateAsync(AiKnowledgeBase kb, AiKnowledgeDocument document, string parsedContent, KnowledgeProcessRequest request, KnowledgeCompilerSettingsDto config, CancellationToken cancellationToken)
+    private async Task<GeneratedContent> GenerateAsync(AiKnowledgeBase kb, AiKnowledgeDocument document, string parsedContent, KnowledgeProcessRequest request, KnowledgeCompilerSettingsDto config, CancellationToken cancellationToken, Action<int, string>? progress)
     {
         var workspace = Path.Combine(_paths.GetKnowledgeBasePath(kb.Name), "compiler-runtime");
         Directory.CreateDirectory(workspace);
         var model = new KnowledgeModelAdapter(_llm, _codex, request, workspace);
         var compilation = await new KnowledgeCompiler().CompileAsync(parsedContent, model, config.MaxSteps,
-            cancellationToken: cancellationToken);
+            progress: step => {
+                var action = step.Action switch { "read_source" => "读取原文", "propose_page" => "生成知识页", "finish" => "完成校验", _ => "解析模型响应" };
+                var result = step.Result.StartsWith("Validation", StringComparison.Ordinal) ? "校验未通过，正在修正" : action;
+                progress?.Invoke(15 + (step.TotalParts > 0 ? 75 * step.CoveredParts / step.TotalParts : 75),
+                    $"第 {step.Number}/{config.MaxSteps} 步：{result}；等待下一步模型响应");
+                return Task.CompletedTask;
+            }, cancellationToken: cancellationToken);
         var content = new StringBuilder();
         foreach (var page in compilation.Pages)
         {

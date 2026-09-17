@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- Office 预览在 `KnowledgeOfficePreviewService` 中进行，与模型提炼无关；返回经过编码的受限 HTML，前端必须使用无权限 sandbox iframe，不得开放脚本或外链。DOC/XLS 仅在临时目录调用配置的 LibreOffice 转换，不修改 raw。提炼进度来自解析阶段和已校验证据覆盖率，不用计时器伪造百分比；取消必须传递到模型调用，`cancelling` 仍视为活动任务以防重复提交。队列列表只包含 `wiki_compile`，不混入 RAG 任务。
+
 - 知识库创建/上传仅写入 raw，不自动索引或提炼。`knowledge_compiler.retrieval_mode` 默认 `wiki`：使用 Codex CLI/LLM API 读取知识表示层并校验引用；`rag` 才使用活动索引。查询不得写草稿或原文。规则与验收见 `docs/knowledge-wiki-retrieval.md`。
 
 - 知识提炼的供应商无关循环位于后端项目内的 `backed/Services/Knowledge/Core/` 文件夹，与 AiAgent 后端一起编译和部署，不单独创建类库项目；仅接收文本与 `IKnowledgeModel`，不依赖 ASP.NET、数据库或文件系统。`KnowledgeModelAdapter` 复用现有 Codex/API 客户端；模型只提出结构化操作，宿主校验原文证据后保存草稿。

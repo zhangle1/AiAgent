@@ -92,7 +92,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     private const long MaxArchiveExpandedBytes = 100L * 1024 * 1024;
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx"
+        ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".doc", ".xls", ".docx", ".xlsx", ".pptx"
     };
     private static readonly HashSet<string> LegacyOfficeExtensions = new(StringComparer.OrdinalIgnoreCase) { ".doc", ".xls", ".ppt" };
     private readonly ISqlSugarClient _db;

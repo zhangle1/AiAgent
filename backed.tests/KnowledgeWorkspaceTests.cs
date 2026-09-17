@@ -17,6 +17,98 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class KnowledgeWorkspaceTests
 {
+    [Fact]
+    public async Task CancellationDuringFinalSavePreservesSuccessfulCompletion()
+    {
+        using var db = Database(); var kb = CreateBase(db);
+        var doc = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id };
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        var ingestion = new FinishingIngestion();
+        using var worker = new KnowledgeCompilationWorker(db, new(db), ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        await worker.StartAsync(default);
+        try
+        {
+            var job = worker.Enqueue(kb.Name, doc.Id);
+            await ingestion.Saving.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal("cancelling", worker.Cancel(kb.Name, job.Id).Status);
+            Assert.Equal(job.Id, worker.Enqueue(kb.Name, doc.Id).Id);
+            ingestion.Saved.TrySetResult();
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (worker.Latest(kb.Name, doc.Id)!.Status == "cancelling") await Task.Delay(10, deadline.Token);
+            var finished = worker.Cancel(kb.Name, job.Id);
+            Assert.Equal("success", finished.Status);
+            Assert.Equal(100, finished.Progress);
+            Assert.NotNull(finished.FinishedAt);
+        }
+        finally { ingestion.Saved.TrySetResult(); await worker.StopAsync(default); }
+    }
+
+    private sealed class FinishingIngestion : IKnowledgeIngestionService
+    {
+        public TaskCompletionSource Saving { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Saved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase kb, AiKnowledgeDocument doc, KnowledgeProcessRequest request,
+            CancellationToken token, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null)
+        {
+            Saving.TrySetResult();
+            // Final persistence has committed and must report success even if cancellation arrives.
+            await Saved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            return new();
+        }
+        public KnowledgeDocumentContentDto GetContent(AiKnowledgeBase kb, AiKnowledgeDocument doc) => new();
+    }
+
+    [Fact]
+    public async Task CancellingRunningAndQueuedWorkLetsNextTaskComplete()
+    {
+        using var db = Database(); var kb = CreateBase(db);
+        var documents = Enumerable.Range(0, 3).Select(i => new AiKnowledgeDocument { KnowledgeBaseId = kb.Id, OriginalFileName = $"source-{i}.txt" }).ToArray();
+        foreach (var doc in documents) doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        var ingestion = new BlockingIngestion();
+        using var worker = new KnowledgeCompilationWorker(db, new(db), ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        await worker.StartAsync(default);
+        try
+        {
+            var first = worker.Enqueue(kb.Name, documents[0].Id);
+            await ingestion.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(40, worker.Latest(kb.Name, documents[0].Id)!.Progress);
+            var queued = worker.Enqueue(kb.Name, documents[1].Id);
+            Assert.Equal("cancelled", worker.Cancel(kb.Name, queued.Id).Status);
+            Assert.Throws<InvalidOperationException>(() => worker.Cancel("missing", first.Id));
+            worker.Cancel(kb.Name, first.Id);
+            var next = worker.Enqueue(kb.Name, documents[2].Id);
+            await ingestion.NextCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (worker.Latest(kb.Name, documents[2].Id)!.Status == "processing") await Task.Delay(10, deadline.Token);
+            Assert.Equal("cancelled", worker.Latest(kb.Name, documents[0].Id)!.Status);
+            Assert.Equal("success", worker.Latest(kb.Name, documents[2].Id)!.Status);
+            Assert.Equal(2, ingestion.Calls);
+            Assert.Equal("success", worker.Cancel(kb.Name, next.Id).Status);
+            Assert.Equal(3, worker.List().Count);
+            Assert.Equal(99, db.Queryable<AiKnowledgeBase>().InSingle(kb.Id).ActiveVersionId);
+        }
+        finally { await worker.StopAsync(default); }
+    }
+
+    private sealed class BlockingIngestion : IKnowledgeIngestionService
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource NextCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Calls;
+        public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase kb, AiKnowledgeDocument doc, KnowledgeProcessRequest request,
+            CancellationToken token, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null)
+        {
+            if (Interlocked.Increment(ref Calls) == 1)
+            {
+                progress?.Invoke(40, "Waiting for model"); Started.TrySetResult();
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            NextCompleted.TrySetResult();
+            return new();
+        }
+        public KnowledgeDocumentContentDto GetContent(AiKnowledgeBase kb, AiKnowledgeDocument doc) => new();
+    }
+
     private static SqlSugarScope Database()
     {
         var db = new SqlSugarScope(new ConnectionConfig {

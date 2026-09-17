@@ -118,6 +118,7 @@ builder.Services.AddSingleton<IKnowledgeProgressHub, KnowledgeProgressHub>();
 builder.Services.AddSingleton<IKnowledgeIndexMaterializer, KnowledgeIndexMaterializer>();
 builder.Services.AddSingleton<IKnowledgeTaskRunner, KnowledgeTaskRunner>();
 builder.Services.AddSingleton<IKnowledgeIngestionService, KnowledgeIngestionService>();
+builder.Services.AddSingleton<KnowledgeOfficePreviewService>();
 builder.Services.AddSingleton<KnowledgeCompilerSettings>();
 builder.Services.AddSingleton<KnowledgeWorkspaceService>();
 builder.Services.AddSingleton<KnowledgeWikiRetrievalService>();

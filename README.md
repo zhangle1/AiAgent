@@ -4,6 +4,8 @@
 
 ## 知识库工作区
 
+原始文件支持 DOCX 正文／表格／图片和 XLSX 工作表内容预览，无需先提炼，也不向在线 Office 服务发送文件。旧版 DOC/XLS 通过服务器 LibreOffice 转换后预览与提炼（需安装并设置 `Knowledge__LibreOfficePath`）。知识库顶部提供提炼任务队列，显示阶段、模型步数、原文覆盖进度与等待时长，支持取消、失败重试和刷新后恢复状态。详见 [Office 预览与提炼任务](docs/knowledge-preview-and-tasks.md)。
+
 `/knowledge` 按公司／项目展示知识库；进入后分别查看「知识」和「原始文件」，提炼主题可跳回来源文件。原始文件中点击「提炼知识」启动独立后台 Agent loop，支持本地 Codex CLI 和 LLM API；统一配置位于 `/settings/knowledge`。CLI 运行在后端所在机器，沿用该机器的 Codex 登录与模型配置。
 
 知识提炼与模型检索逻辑组织在 AiAgent 后端项目的 `backed/Services/Knowledge/Core/` 文件夹内，随同后端编译和部署。上传保留原始资料，RAG 索引链路改为按需使用。新知识为可核对的派生草稿，提炼失败保留上次成功结果；服务重启中断的任务可手动重试。公司／项目目前用于目录归类，不新增权限隔离。模块、接口及验证边界见 [知识库重构说明](docs/knowledge-workspace-implementation.md)。

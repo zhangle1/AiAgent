@@ -2,6 +2,17 @@ using System.Text.Json.Serialization;
 
 namespace AiAgent.Backend.Dtos.Knowledge;
 
+public sealed class KnowledgeOfficePreviewDto
+{
+    [JsonPropertyName("sections")] public List<KnowledgeOfficePreviewSectionDto> Sections { get; set; } = [];
+    [JsonPropertyName("truncated")] public bool Truncated { get; set; }
+}
+public sealed class KnowledgeOfficePreviewSectionDto
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("html")] public string Html { get; set; } = "";
+}
+
 public sealed class KnowledgeCompilerSettingsDto
 {
     [JsonPropertyName("retrieval_mode")] public string RetrievalMode { get; set; } = "wiki";
@@ -34,6 +45,12 @@ public sealed class KnowledgePageDto
 
 public sealed class KnowledgeCompilationJobDto
 {
+    [JsonPropertyName("knowledge_base_name")] public string KnowledgeBaseName { get; set; } = "";
+    [JsonPropertyName("document_name")] public string? DocumentName { get; set; }
+    [JsonPropertyName("created_at")] public DateTime CreatedAt { get; set; }
+    [JsonPropertyName("started_at")] public DateTime? StartedAt { get; set; }
+    [JsonPropertyName("finished_at")] public DateTime? FinishedAt { get; set; }
+    [JsonPropertyName("updated_at")] public DateTime? UpdatedAt { get; set; }
     [JsonPropertyName("id")] public long Id { get; set; }
     [JsonPropertyName("document_id")] public long? DocumentId { get; set; }
     [JsonPropertyName("status")] public string Status { get; set; } = "queued";

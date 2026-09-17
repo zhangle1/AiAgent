@@ -67,11 +67,21 @@ export type KnowledgeCompilerSettings = {
   timeout_minutes: number;
 };
 export type KnowledgeCompilationJob = {
+  knowledge_base_name: string;
+  document_name?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at?: string | null;
   id: number;
   document_id?: number | null;
   status: string;
   progress: number;
   message?: string | null;
+};
+export type KnowledgeOfficePreview = {
+  sections: { name: string; html: string }[];
+  truncated: boolean;
 };
 export type KnowledgePage = {
   id: number;

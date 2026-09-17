@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { KnowledgePages } from "./KnowledgePages";
+import { KnowledgeTaskQueue, knowledgeTasksChanged } from "./KnowledgeTaskQueue";
+import { OfficeDocumentPreview } from "./OfficeDocumentPreview";
 import { KnowledgeOrganizationEditor } from "./KnowledgeOrganizationEditor";
 import {
   ArrowLeft,
@@ -88,6 +90,8 @@ const supportedDocumentAccept = [
   ".html",
   ".htm",
   ".docx",
+  ".doc",
+  ".xls",
   ".xlsx",
   ".pptx",
   ".zip",
@@ -138,10 +142,10 @@ export function KnowledgeHome() {
     }
   }
 
-  async function reloadDetail(name = selectedKbName) {
+  async function reloadDetail(name = selectedKbName, silent = false) {
     if (!name) return;
     const request = ++detailRequest.current;
-    setDetailLoading(true);
+    if (!silent) setDetailLoading(true);
     setError(null);
     try {
       const [row, versionRows] = await Promise.all([getKnowledgeBase(name), getKnowledgeIndexVersions(name)]);
@@ -260,6 +264,7 @@ export function KnowledgeHome() {
   if (selectedKbName) {
     return (
       <main className="min-h-screen bg-white">
+        <KnowledgeTaskQueue onCompleted={() => { void reload(); void reloadDetail(selectedKbName, true); }} />
         <KnowledgeDetailView
           busy={busy}
           detail={detail}
@@ -291,6 +296,7 @@ export function KnowledgeHome() {
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
+      <KnowledgeTaskQueue onCompleted={() => void reload()} />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-semibold leading-tight tracking-tight">知识库</h1>
@@ -547,26 +553,34 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
   const [compilationMessage, setCompilationMessage] = useState("");
   const [jobRevision, setJobRevision] = useState(0);
   const [jobLoading, setJobLoading] = useState(true);
+  const loadedJob = useRef<number | null>(null);
+
+  useEffect(() => {
+    const update = () => setJobRevision(value => value + 1);
+    window.addEventListener(knowledgeTasksChanged, update);
+    return () => window.removeEventListener(knowledgeTasksChanged, update);
+  }, []);
 
   useEffect(() => {
     if (!document) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
+      let delay = 5000;
       try {
         const job = await getKnowledgeCompilation(kbName, document!.id);
         if (disposed) return;
-        const running = job?.status === "queued" || job?.status === "processing";
+        const running = job?.status === "queued" || job?.status === "processing" || job?.status === "cancelling";
         setProcessing(running);
         setCompilationMessage(job?.message || "");
-        if (running) timer = setTimeout(() => void poll(), 2000);
-        else if (job?.status === "success") {
+        delay = running ? 2000 : 5000;
+        if (job?.status === "success" && loadedJob.current !== job.id) {
           const value = await getKnowledgeDocumentContent(kbName, document!.id);
-          if (!disposed) setCompiled(value);
+          if (!disposed) { setCompiled(value); loadedJob.current = job.id; }
         }
       } catch (ex) {
-        if (!disposed) { setTextError(ex instanceof Error ? ex.message : String(ex)); timer = setTimeout(() => void poll(), 5000); }
-      } finally { if (!disposed) setJobLoading(false); }
+        if (!disposed) setTextError(ex instanceof Error ? ex.message : String(ex));
+      } finally { if (!disposed) { setJobLoading(false); timer = setTimeout(() => void poll(), delay); } }
     }
     void poll();
     return () => { disposed = true; clearTimeout(timer); };
@@ -596,7 +610,7 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
       });
 
     return () => controller.abort();
-  }, [document, kbName]);
+  }, [document?.id, kbName]);
 
   useEffect(() => {
     setCompiled(null);
@@ -605,7 +619,7 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
     let disposed = false;
     getKnowledgeDocumentContent(kbName, document.id).then((value) => { if (!disposed) setCompiled(value); }).catch(() => { if (!disposed) setCompiled(null); });
     return () => { disposed = true; };
-  }, [document, kbName]);
+  }, [document?.id, kbName]);
 
   async function process() {
     if (!document) return;
@@ -615,6 +629,7 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
       const job = await compileKnowledgeDocument(kbName, document.id);
       setCompilationMessage(job.message || "等待提炼");
       setJobRevision((value) => value + 1);
+      window.dispatchEvent(new Event(knowledgeTasksChanged));
     } catch (error) {
       setTextError(error instanceof Error ? error.message : String(error));
       setProcessing(false);
@@ -654,6 +669,8 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-white"><pre className="min-h-full whitespace-pre-wrap break-words p-4 font-sans text-[13px] leading-6">{contentMode === "parsed" ? compiled?.parsed_content || "尚未生成解析正文，请先执行入库。" : compiled?.artifact_content || "尚未生成 AI 提炼内容，请先执行入库。"}</pre></div>
       ) : isPdf ? (
         <PdfDocumentPreview title={document.original_file_name || document.file_name} url={url} />
+      ) : /\.(docx?|xlsx?)$/i.test(document.original_file_name || document.file_name) ? (
+        <OfficeDocumentPreview kbName={kbName} documentId={document.id} />
       ) : isText ? (
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-white">
           {textLoading ? (
@@ -667,7 +684,7 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] text-center text-[13px] text-[var(--muted-foreground)]">
           <Eye size={22} className="mb-2" />
-          {t("knowledge.previewPdfOnly")}
+          当前支持 PDF、文本、Word 和 Excel 预览；其他格式请下载查看。
         </div>
       )}
     </div>

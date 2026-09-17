@@ -144,6 +144,13 @@ public sealed class KnowledgeAppService : IDynamicApiController
     public KnowledgeCompilationJobDto? GetCompilation([FromRoute] string kbName, [FromRoute] long documentId)
         => _compiler.Latest(kbName, documentId);
 
+    [HttpGet("compilations")]
+    public IReadOnlyList<KnowledgeCompilationJobDto> ListCompilations() => _compiler.List();
+
+    [HttpPost("{kbName}/compilations/{jobId:long}/cancel")]
+    public KnowledgeCompilationJobDto CancelCompilation([FromRoute] string kbName, [FromRoute] long jobId)
+        => _compiler.Cancel(kbName, jobId);
+
     /// <summary>
     /// 获取知识库列表。
     /// </summary>
@@ -239,6 +246,14 @@ public sealed class KnowledgeAppService : IDynamicApiController
     }
 
     /// <summary>Parse an immutable source and compile it into a reviewable Markdown knowledge artifact.</summary>
+    [HttpGet("{kbName}/documents/{documentId:long}/office-preview")]
+    public Task<KnowledgeOfficePreviewDto> GetOfficePreview([FromRoute] string kbName, [FromRoute] long documentId,
+        [FromServices] KnowledgeOfficePreviewService preview, CancellationToken cancellationToken)
+    {
+        var kb = FindKnowledgeBase(kbName);
+        return preview.PreviewAsync(kb, FindDocument(kb.Id, documentId), cancellationToken);
+    }
+
     [HttpPost("{kbName}/documents/{documentId:long}/process")]
     public Task<KnowledgeProcessingResultDto> ProcessDocument([FromRoute] string kbName, [FromRoute] long documentId, [FromBody] KnowledgeProcessRequest request, CancellationToken cancellationToken)
     {
