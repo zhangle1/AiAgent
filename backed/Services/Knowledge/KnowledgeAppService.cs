@@ -15,6 +15,9 @@ namespace AiAgent.Backend.Services.Knowledge;
 public sealed class KnowledgeAppService : IDynamicApiController
 {
     private readonly ISqlSugarClient _db;
+    private readonly KnowledgeCompilerSettings _compilerSettings;
+    private readonly KnowledgeWorkspaceService _workspace;
+    private readonly KnowledgeCompilationWorker _compiler;
     private readonly IKnowledgeBaseManager _manager;
     private readonly IKnowledgeProviderConfigService _providerConfigService;
     private readonly IKnowledgeProgressHub _progressHub;
@@ -29,6 +32,9 @@ public sealed class KnowledgeAppService : IDynamicApiController
     /// </summary>
     public KnowledgeAppService(
         ISqlSugarClient db,
+        KnowledgeCompilerSettings compilerSettings,
+        KnowledgeWorkspaceService workspace,
+        KnowledgeCompilationWorker compiler,
         IKnowledgeBaseManager manager,
         IKnowledgeProviderConfigService providerConfigService,
         IKnowledgeProgressHub progressHub,
@@ -39,6 +45,9 @@ public sealed class KnowledgeAppService : IDynamicApiController
         ILogger<KnowledgeAppService> logger)
     {
         _db = db;
+        _compilerSettings = compilerSettings;
+        _workspace = workspace;
+        _compiler = compiler;
         _manager = manager;
         _providerConfigService = providerConfigService;
         _progressHub = progressHub;
@@ -110,6 +119,27 @@ public sealed class KnowledgeAppService : IDynamicApiController
     {
         return _providerConfigService.SaveConfig(provider, payload);
     }
+
+    [HttpGet("compiler-settings")]
+    public KnowledgeCompilerSettingsDto GetCompilerSettings() => _compilerSettings.Get();
+
+    [HttpPut("compiler-settings")]
+    public KnowledgeCompilerSettingsDto SaveCompilerSettings([FromBody] KnowledgeCompilerSettingsDto config) => _compilerSettings.Save(config);
+
+    [HttpGet("{kbName}/pages")]
+    public List<KnowledgePageDto> GetPages([FromRoute] string kbName) => _workspace.ListPages(kbName);
+
+    [HttpPut("{kbName}/organization")]
+    public KnowledgeOrganizationDto SaveOrganization([FromRoute] string kbName, [FromBody] KnowledgeOrganizationDto organization)
+        => _workspace.SaveOrganization(kbName, organization);
+
+    [HttpPost("{kbName}/documents/{documentId:long}/compile")]
+    public KnowledgeCompilationJobDto CompileDocument([FromRoute] string kbName, [FromRoute] long documentId)
+        => _compiler.Enqueue(kbName, documentId);
+
+    [HttpGet("{kbName}/documents/{documentId:long}/compilation")]
+    public KnowledgeCompilationJobDto? GetCompilation([FromRoute] string kbName, [FromRoute] long documentId)
+        => _compiler.Latest(kbName, documentId);
 
     /// <summary>
     /// 获取知识库列表。
@@ -450,6 +480,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
             Name = kb.Name,
             DisplayName = kb.DisplayName,
             Description = kb.Description,
+            Organization = KnowledgeWorkspaceService.ReadOrganization(kb.MetadataJson),
             EngineType = kb.EngineType,
             Status = status ?? kb.Status,
             IsDefault = kb.IsDefault,

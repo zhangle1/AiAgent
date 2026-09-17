@@ -23,6 +23,7 @@ export type KnowledgeJob = {
 };
 
 export type KnowledgeBase = {
+  organization?: KnowledgeOrganization;
   id: number;
   name: string;
   display_name: string;
@@ -39,6 +40,7 @@ export type KnowledgeBase = {
 
 export type KnowledgeDocument = {
   id: number;
+  has_artifact?: boolean;
   file_name: string;
   original_file_name: string;
   file_size: number;
@@ -53,6 +55,34 @@ export type KnowledgeProcessRequest = {
   generator: "llm_api" | "codex";
   model_id?: string | null;
   reasoning_effort?: string | null;
+};
+
+export type KnowledgeOrganization = { company?: string | null; project?: string | null };
+export type KnowledgeCompilerSettings = {
+  generator: "codex" | "llm_api";
+  model_id?: string | null;
+  reasoning_effort?: string | null;
+  max_steps: number;
+  timeout_minutes: number;
+};
+export type KnowledgeCompilationJob = {
+  id: number;
+  document_id?: number | null;
+  status: string;
+  progress: number;
+  message?: string | null;
+};
+export type KnowledgePage = {
+  id: number;
+  page_index: number;
+  document_id?: number | null;
+  title: string;
+  content?: string | null;
+  source_name?: string | null;
+  review_status?: string | null;
+  generator?: string | null;
+  model?: string | null;
+  created_at?: string | null;
 };
 
 export type KnowledgeProcessingResult = {

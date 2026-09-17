@@ -29,6 +29,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
           <Home size={14} />
           {t("settings.title")}
         </Link>
+        {pathname?.startsWith("/settings/knowledge") && <><span>/</span><span className="px-2 font-semibold">知识库设置</span></>}
         {onModelsPage && (
           <>
             <span>/</span>

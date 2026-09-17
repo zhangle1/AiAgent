@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { KnowledgePages } from "./KnowledgePages";
+import { KnowledgeOrganizationEditor } from "./KnowledgeOrganizationEditor";
 import {
   ArrowLeft,
   Boxes,
   Check,
   Cloud,
-  Cpu,
   Database,
   Download,
   Eye,
@@ -19,13 +21,11 @@ import {
   RefreshCw,
   Server,
   Settings,
-  SlidersHorizontal,
   Star,
   Trash2,
   Upload,
   Workflow,
   X,
-  XCircle,
   ZoomIn,
   ZoomOut,
   type LucideIcon,
@@ -33,33 +33,30 @@ import {
 import { Document, Page, pdfjs } from "react-pdf";
 import { getSettings } from "@/lib/api";
 import {
-  checkKnowledgeEnvironment,
   createKnowledgeBase,
   deleteKnowledgeBase,
   deleteKnowledgeDocument,
   getKnowledgeBase,
   getKnowledgeDiagnostics,
   getKnowledgeDocumentContent,
+  getKnowledgeSourceText,
   getKnowledgeBases,
   getKnowledgeIndexVersions,
   getKnowledgeProgress,
-  getKnowledgeProviderConfig,
   getKnowledgeProviders,
   knowledgeDocumentFileUrl,
   knowledgeProgressWebSocketUrl,
-  processKnowledgeDocument,
+  compileKnowledgeDocument,
+  getKnowledgeCompilation,
   reindexKnowledgeBase,
-  saveKnowledgeProviderConfig,
   setDefaultKnowledgeBase,
   uploadKnowledgeDocuments,
 } from "@/lib/knowledge-api";
-import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocument, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeProvider } from "@/lib/knowledge-types";
+import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocument, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeIndexVersion, KnowledgeJob, KnowledgeProvider } from "@/lib/knowledge-types";
 import { activeModel, activeProfile } from "@/lib/settings-types";
 import { useI18n } from "@/i18n/I18nProvider";
 
-type RetrievalProfile = "hybrid" | "vector";
-type DetailTab = "files" | "add" | "versions" | "settings";
-type IngestionGenerator = "llm_api" | "codex";
+type DetailTab = "knowledge" | "files" | "add" | "versions" | "settings";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -101,33 +98,18 @@ export function KnowledgeHome() {
   const { t } = useI18n();
   const [providers, setProviders] = useState<KnowledgeProvider[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [selectedKbName, setSelectedKbName] = useState<string | null>(null);
   const [detail, setDetail] = useState<KnowledgeDetail | null>(null);
   const [versions, setVersions] = useState<KnowledgeIndexVersion[]>([]);
-  const [detailTab, setDetailTab] = useState<DetailTab>("files");
-  const [preferredGenerator, setPreferredGenerator] = useState<IngestionGenerator>("llm_api");
+  const [detailTab, setDetailTab] = useState<DetailTab>("knowledge");
   const [embeddingLabel, setEmbeddingLabel] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [retrievalProfile, setRetrievalProfile] = useState<RetrievalProfile>("hybrid");
-  const [topK, setTopK] = useState(5);
-  const [vectorCandidate, setVectorCandidate] = useState(2);
-  const [keywordCandidate, setKeywordCandidate] = useState(2);
-  const [chunkSize, setChunkSize] = useState(512);
-  const [chunkOverlap, setChunkOverlap] = useState(50);
-  const [environmentResult, setEnvironmentResult] = useState<KnowledgeEnvironmentCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [savingConfig, setSavingConfig] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedProvider = useMemo(() => {
-    const rows = providers.length > 0 ? providers : fallbackProviders();
-    return rows.find((item) => item.id === selectedProviderId) ?? null;
-  }, [providers, selectedProviderId]);
+  const detailRequest = useRef(0);
 
   async function reload() {
     setLoading(true);
@@ -158,46 +140,24 @@ export function KnowledgeHome() {
 
   async function reloadDetail(name = selectedKbName) {
     if (!name) return;
+    const request = ++detailRequest.current;
     setDetailLoading(true);
     setError(null);
     try {
       const [row, versionRows] = await Promise.all([getKnowledgeBase(name), getKnowledgeIndexVersions(name)]);
+      if (request !== detailRequest.current) return;
       setDetail(row);
       setVersions(versionRows);
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : t("knowledge.errorLoad"));
+      if (request === detailRequest.current) setError(ex instanceof Error ? ex.message : t("knowledge.errorLoad"));
     } finally {
-      setDetailLoading(false);
+      if (request === detailRequest.current) setDetailLoading(false);
     }
   }
 
   useEffect(() => {
     void reload();
   }, []);
-
-  useEffect(() => {
-    if (!selectedProviderId) return;
-    let disposed = false;
-    async function loadProviderConfig() {
-      setError(null);
-      try {
-        const config = await getKnowledgeProviderConfig(selectedProviderId!);
-        if (disposed) return;
-        setRetrievalProfile(config.retrieval_profile === "vector" ? "vector" : "hybrid");
-        setTopK(config.top_k);
-        setVectorCandidate(config.vector_candidate_multiplier);
-        setKeywordCandidate(config.keyword_candidate_multiplier);
-        setChunkSize(config.chunk_size);
-        setChunkOverlap(config.chunk_overlap);
-      } catch (ex) {
-        if (!disposed) setError(ex instanceof Error ? ex.message : t("knowledge.errorLoad"));
-      }
-    }
-    void loadProviderConfig();
-    return () => {
-      disposed = true;
-    };
-  }, [selectedProviderId]);
 
   async function handleCreate(name: string, files: File[], provider: string) {
     setBusy(true);
@@ -207,7 +167,7 @@ export function KnowledgeHome() {
       setCreateOpen(false);
       await reload();
       setSelectedKbName(name.trim().toLowerCase());
-      setDetailTab("files");
+      setDetailTab("knowledge");
       await reloadDetail(name.trim().toLowerCase());
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : t("knowledge.errorCreate"));
@@ -233,7 +193,7 @@ export function KnowledgeHome() {
       const skipped = result.items.filter((item) => item.status === "skipped").length;
       const failed = result.items.filter((item) => item.status === "failed").length;
       setDetailTab("files");
-      setNotice(`源文件已保存 (${imported} imported, ${skipped} skipped, ${failed} failed)。请选择文件后确认使用远程 LLM API 或 Codex CLI 入库。`);
+      setNotice(`源文件已保存 (${imported} imported, ${skipped} skipped, ${failed} failed)。请选择文件后点击「提炼知识」，提炼方式可在知识库设置中选择。`);
       return result;
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : t("knowledge.errorUpload"));
@@ -241,21 +201,6 @@ export function KnowledgeHome() {
       setBusy(false);
     }
   }
-
-  function openSourceUpload(generator = preferredGenerator) {
-    setPreferredGenerator(generator);
-    const target = knowledgeBases.find((item) => item.is_default) ?? knowledgeBases[0];
-    if (!target) {
-      setCreateOpen(true);
-      return;
-    }
-    setSelectedKbName(target.name);
-    setDetailTab("add");
-    void reloadDetail(target.name);
-  }
-
-  const sourceDocumentCount = knowledgeBases.reduce((total, item) => total + item.document_count, 0);
-  const readyKnowledgeBaseCount = knowledgeBases.filter((item) => item.status === "ready").length;
 
   async function handleDeleteDocument(kbName: string, documentId: number) {
     setBusy(true);
@@ -312,52 +257,6 @@ export function KnowledgeHome() {
     }
   }
 
-  async function handleEnvironmentCheck(providerId: string) {
-    setChecking(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const result = await checkKnowledgeEnvironment(providerId);
-      setEnvironmentResult(result);
-      setNotice(isEnvironmentOk(result) ? t("knowledge.environmentReady") : t("knowledge.environmentFailed"));
-      await reload();
-    } catch (ex) {
-      setEnvironmentResult({ ok: false, error_message: ex instanceof Error ? ex.message : t("knowledge.errorEnvironment") });
-      setNotice(t("knowledge.environmentFailed"));
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  async function saveLocalConfig() {
-    if (!selectedProviderId || savingConfig) return;
-    setSavingConfig(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const config = await saveKnowledgeProviderConfig(selectedProviderId, {
-        provider: selectedProviderId,
-        retrieval_profile: retrievalProfile,
-        top_k: topK,
-        vector_candidate_multiplier: vectorCandidate,
-        keyword_candidate_multiplier: keywordCandidate,
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-      });
-      setRetrievalProfile(config.retrieval_profile === "vector" ? "vector" : "hybrid");
-      setTopK(config.top_k);
-      setVectorCandidate(config.vector_candidate_multiplier);
-      setKeywordCandidate(config.keyword_candidate_multiplier);
-      setChunkSize(config.chunk_size);
-      setChunkOverlap(config.chunk_overlap);
-      setNotice(t("knowledge.saved"));
-    } catch (ex) {
-      setError(ex instanceof Error ? ex.message : t("knowledge.errorSaveConfig"));
-    } finally {
-      setSavingConfig(false);
-    }
-  }
-
   if (selectedKbName) {
     return (
       <main className="min-h-screen bg-white">
@@ -371,6 +270,7 @@ export function KnowledgeHome() {
           tab={detailTab}
           versions={versions}
           onBack={() => {
+            detailRequest.current++;
             setSelectedKbName(null);
             setDetail(null);
             setVersions([]);
@@ -378,177 +278,60 @@ export function KnowledgeHome() {
           }}
           onDelete={handleDelete}
           onDeleteDocument={handleDeleteDocument}
-          onRefresh={() => void reloadDetail(selectedKbName)}
+          onRefresh={() => { void reload(); void reloadDetail(selectedKbName); }}
           onReindex={handleReindex}
           onSetDefault={handleSetDefault}
           onTabChange={setDetailTab}
           onUpload={handleUpload}
-          preferredGenerator={preferredGenerator}
-          onPreferredGeneratorChange={setPreferredGenerator}
         />
       </main>
     );
   }
 
-  if (selectedProvider) {
-    return (
-      <main className="mx-auto max-w-7xl px-6 py-10">
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedProviderId(null);
-            setEnvironmentResult(null);
-            setNotice(null);
-          }}
-          className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition hover:text-[var(--foreground)]"
-        >
-          <ArrowLeft size={15} />
-          {t("knowledge.back")}
-        </button>
-
-        <EngineHeader engine={selectedProvider} />
-        <PageMessage error={error} notice={notice} />
-
-        <section className="mt-8">
-          <SectionTitle icon={Database} title={t("knowledge.requirements")} />
-          <div className="rounded-lg border border-[var(--border)] bg-white p-4">
-            <p className="max-w-3xl text-[12.5px] leading-6 text-[var(--muted-foreground)]">{t("knowledge.requirementsDesc")}</p>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={checking}
-                onClick={() => void handleEnvironmentCheck(selectedProvider.id)}
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-[12.5px] font-semibold transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <RefreshCw size={15} className={checking ? "animate-spin" : ""} />
-                {checking ? t("common.checking") : t("knowledge.checkEnvironment")}
-              </button>
-              {environmentResult && <EnvironmentResult result={environmentResult} />}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-8">
-          <SectionTitle icon={SlidersHorizontal} title={t("knowledge.retrievalChunking")} />
-          <div className="rounded-lg border border-[var(--border)] bg-white p-4">
-            <label className="text-[12px] font-semibold">{t("knowledge.retrievalProfile")}</label>
-            <div className="mt-2 grid gap-2 md:grid-cols-2">
-              <RetrievalOption active={retrievalProfile === "hybrid"} title={t("knowledge.hybrid")} description={t("knowledge.hybridDesc")} onClick={() => setRetrievalProfile("hybrid")} />
-              <RetrievalOption active={retrievalProfile === "vector"} title={t("knowledge.vector")} description={t("knowledge.vectorDesc")} onClick={() => setRetrievalProfile("vector")} />
-            </div>
-            <div className="mt-6 grid gap-3 md:grid-cols-3">
-              <NumberField label={t("knowledge.resultsPerQuery")} value={topK} onChange={setTopK} />
-              <NumberField label={t("knowledge.vectorCandidate")} value={vectorCandidate} onChange={setVectorCandidate} />
-              <NumberField label={t("knowledge.keywordCandidate")} value={keywordCandidate} onChange={setKeywordCandidate} />
-            </div>
-            <div className="mt-6 flex items-center justify-between gap-3">
-              <label className="text-[12px] font-semibold">{t("knowledge.chunking")}</label>
-              <span className="text-[11px] text-[var(--muted-foreground)]">{t("knowledge.appliesNextReindex")}</span>
-            </div>
-            <div className="mt-2 grid gap-3 md:grid-cols-2">
-              <NumberField label={t("knowledge.chunkSize")} value={chunkSize} onChange={setChunkSize} />
-              <NumberField label={t("knowledge.chunkOverlap")} value={chunkOverlap} onChange={setChunkOverlap} />
-            </div>
-            <div className="mt-5 flex justify-end">
-              <button type="button" disabled={savingConfig} onClick={() => void saveLocalConfig()} className="inline-flex h-9 items-center rounded-md bg-blue-600 px-4 text-[12.5px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-zinc-300">
-                {savingConfig ? t("common.saving") : t("knowledge.saveChanges")}
-              </button>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <PageMessage error={error} notice={notice} />
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-blue-600"><Database size={14}/>KNOWLEDGE INGESTION</div>
-            <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-slate-950">知识入库工作台</h1>
-            <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-500">先保存不可变源文件，再选用远程 LLM API 或 Codex CLI 生成可复核的 Markdown 知识稿；原文件、解析正文和 AI 提炼结果始终分开保留。</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void reload()} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"><RefreshCw size={15}/>{t("knowledge.refresh")}</button>
-            <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-slate-700 transition hover:border-blue-300"><Plus size={15}/>{t("knowledge.new")}</button>
-          </div>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[28px] font-semibold leading-tight tracking-tight">知识库</h1>
+          <p className="mt-2 text-[13px] text-[var(--muted-foreground)]">{t("knowledge.description")}</p>
         </div>
-        <div className="grid divide-y divide-slate-100 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_188px] md:divide-x md:divide-y-0">
-          <IngestionRouteCard active={preferredGenerator === "llm_api"} icon={Cloud} title="使用远程 LLM API 入库" description="调用平台已配置的模型，将源文件解析为可检索、可复核的 Markdown 知识稿。" action="上传并选择 LLM API" onClick={() => openSourceUpload("llm_api")}/>
-          <IngestionRouteCard active={preferredGenerator === "codex"} icon={Workflow} title="使用 Codex CLI 入库" description="在受控只读工作区调用 Codex CLI，适合复杂技术文档、代码说明与结构化提炼。" action="上传并选择 Codex" onClick={() => openSourceUpload("codex")}/>
-          <div className="grid grid-cols-2 gap-px bg-slate-100 text-center md:grid-cols-1">
-            <Metric label="知识空间" value={String(knowledgeBases.length)}/>
-            <Metric label="源文件" value={String(sourceDocumentCount)}/>
-            <Metric label="可用索引" value={String(readyKnowledgeBaseCount)}/>
-          </div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => void reload()} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-[12.5px] font-semibold transition hover:border-blue-300">
+            <RefreshCw size={15} />
+            {t("knowledge.refresh")}
+          </button>
+          <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[12.5px] font-semibold text-white transition hover:bg-blue-700">
+            <Plus size={15} />
+            {t("knowledge.new")}
+          </button>
         </div>
-      </section>
+      </div>
 
+      <PageMessage error={error} notice={notice} />
+      <div className="flex justify-end"><Link href="/settings/knowledge" className="inline-flex items-center gap-2 text-sm text-blue-600"><Settings size={15} />知识库设置</Link></div>
       <KnowledgeBaseList
         busy={busy}
         loading={loading}
         knowledgeBases={knowledgeBases}
         onDelete={handleDelete}
         onOpen={(kb) => {
+          setDetail(null);
           setSelectedKbName(kb.name);
-          setDetailTab("files");
+          setDetailTab("knowledge");
           void reloadDetail(kb.name);
         }}
         onReindex={handleReindex}
       />
-      <section className="mt-9 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
-        <div className="mb-4"><h2 className="text-sm font-semibold text-slate-800">检索与解析引擎</h2><p className="mt-1 text-xs leading-5 text-slate-500">引擎和切块参数属于高级配置；日常入库只需要先上传源文件，再明确选择 LLM API 或 Codex CLI。</p></div>
-        <EngineGrid providers={providers.length > 0 ? providers : fallbackProviders()} onSelect={setSelectedProviderId} />
-      </section>
       {createOpen && <CreateKnowledgeModal busy={busy} providers={providers.length > 0 ? providers : fallbackProviders()} onClose={() => setCreateOpen(false)} onCreate={handleCreate} />}
     </main>
   );
 }
 
-function IngestionRouteCard({ active, icon: Icon, title, description, action, onClick }: { active: boolean; icon: LucideIcon; title: string; description: string; action: string; onClick: () => void }) {
-  return <div className={`p-5 transition ${active ? "bg-blue-50/70" : "bg-white hover:bg-slate-50"}`}>
-    <div className="flex items-start gap-3"><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}><Icon size={17}/></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold text-slate-900">{title}</h2>{active && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">已选方式</span>}</div><p className="mt-1.5 text-xs leading-5 text-slate-500">{description}</p><button type="button" onClick={onClick} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-xs font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-50"><FileUp size={13}/>{action}</button></div></div>
-  </div>;
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="flex flex-col justify-center bg-white px-3 py-3"><span className="text-[10px] font-semibold tracking-[0.1em] text-slate-400">{label}</span><span className="mt-1 text-xl font-semibold text-slate-800">{value}</span></div>;
-}
-
-function EngineGrid({ providers, onSelect }: { providers: KnowledgeProvider[]; onSelect: (id: string) => void }) {
-  const { t } = useI18n();
-  return (
-    <section>
-      <SectionTitle icon={Cpu} title={t("knowledge.retrievalEngines")} />
-      <div className="grid gap-4 md:grid-cols-2">
-        {providers.map((engine) => {
-          const Icon = engineIcons[engine.id] ?? Boxes;
-          const tone = engine.configured ? "emerald" : engine.status === "needs_setup" ? "amber" : "zinc";
-          return (
-            <button key={engine.id} type="button" onClick={() => onSelect(engine.id)} className="group flex min-h-[132px] flex-col justify-between rounded-2xl border border-[var(--border)] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Icon size={17} strokeWidth={1.7} className="shrink-0 text-[var(--muted-foreground)]" />
-                  <span className="truncate text-[14px] font-semibold">{engine.name}</span>
-                </div>
-                <EngineBadge tone={tone} label={statusLabel(engine.status, t)} />
-              </div>
-              <p className="mt-3 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">{providerDescription(engine.id, engine.description, t)}</p>
-              <div className="mt-3 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
-                <span className="rounded-full border border-[var(--border)] px-2 py-0.5">{modeLabel(engine.default_mode, t)}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 function KnowledgeBaseList({ busy, loading, knowledgeBases, onDelete, onOpen, onReindex }: { busy: boolean; loading: boolean; knowledgeBases: KnowledgeBase[]; onDelete: (kb: KnowledgeBase) => Promise<void>; onOpen: (kb: KnowledgeBase) => void; onReindex: (kb: KnowledgeBase) => Promise<void> }) {
   const { t } = useI18n();
+  const groups = new Map<string, KnowledgeBase[]>();
+  for (const kb of knowledgeBases) { const key = JSON.stringify([kb.organization?.company || "未归属公司", kb.organization?.project || "公共知识"]); groups.set(key, [...(groups.get(key) || []), kb]); }
   return (
     <section className="mt-9">
       <SectionTitle icon={Database} title={`${t("knowledge.knowledgeBases")} · ${knowledgeBases.length}`} />
@@ -560,8 +343,8 @@ function KnowledgeBaseList({ busy, loading, knowledgeBases, onDelete, onOpen, on
           <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">{t("knowledge.noKnowledgeBasesDesc")}</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {knowledgeBases.map((kb) => (
+        <div className="space-y-6">
+          {Array.from(groups, ([group, rows]) => <section key={group}><h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><FolderOpen size={16} />{(JSON.parse(group) as string[]).join(" / ")}</h3><div className="grid gap-4 md:grid-cols-2">{rows.map((kb) => (
             <div key={kb.id} className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
               <button type="button" onClick={() => onOpen(kb)} className="block w-full text-left">
                 <div className="flex items-start justify-between gap-3">
@@ -590,7 +373,7 @@ function KnowledgeBaseList({ busy, loading, knowledgeBases, onDelete, onOpen, on
                 </button>
               </div>
             </div>
-          ))}
+          ))}</div></section>)}
         </div>
       )}
     </section>
@@ -658,7 +441,7 @@ function CreateKnowledgeModal({ busy, providers, onClose, onCreate }: { busy: bo
   );
 }
 
-function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, error, notice, tab, versions, onBack, onDelete, onDeleteDocument, onRefresh, onReindex, onSetDefault, onTabChange, onUpload, preferredGenerator, onPreferredGeneratorChange }: { busy: boolean; detail: KnowledgeDetail | null; detailLoading: boolean; embeddingLabel: string; error: string | null; notice: string | null; tab: DetailTab; versions: KnowledgeIndexVersion[]; onBack: () => void; onDelete: (kb: KnowledgeDetail) => Promise<void>; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onRefresh: () => void; onReindex: (kb: KnowledgeDetail) => Promise<void>; onSetDefault: (kb: KnowledgeDetail) => Promise<void>; onTabChange: (tab: DetailTab) => void; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined>; preferredGenerator: IngestionGenerator; onPreferredGeneratorChange: (generator: IngestionGenerator) => void }) {
+function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, error, notice, tab, versions, onBack, onDelete, onDeleteDocument, onRefresh, onReindex, onSetDefault, onTabChange, onUpload }: { busy: boolean; detail: KnowledgeDetail | null; detailLoading: boolean; embeddingLabel: string; error: string | null; notice: string | null; tab: DetailTab; versions: KnowledgeIndexVersion[]; onBack: () => void; onDelete: (kb: KnowledgeDetail) => Promise<void>; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onRefresh: () => void; onReindex: (kb: KnowledgeDetail) => Promise<void>; onSetDefault: (kb: KnowledgeDetail) => Promise<void>; onTabChange: (tab: DetailTab) => void; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
   const { t } = useI18n();
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const selectedDocument = detail?.documents.find((item) => item.id === selectedDocId) ?? detail?.documents[0] ?? null;
@@ -696,29 +479,27 @@ function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, erro
         <p className="mt-1 text-[12.5px] text-[var(--muted-foreground)]">
           {detail.engine_type} · {embeddingLabel || t("knowledge.noEmbeddingModel")} · {t("knowledge.updated")} {formatDate(detail.updated_at ?? detail.created_at)}
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-          <span className="px-1 text-[11px] font-semibold text-slate-500">本次入库方式</span>
-          <button type="button" onClick={() => onPreferredGeneratorChange("llm_api")} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${preferredGenerator === "llm_api" ? "bg-blue-600 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-blue-50 hover:text-blue-700"}`}><Cloud size={13}/>远程 LLM API</button>
-          <button type="button" onClick={() => onPreferredGeneratorChange("codex")} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${preferredGenerator === "codex" ? "bg-slate-900 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}><Workflow size={13}/>Codex CLI</button>
-          <span className="hidden text-[11px] text-slate-400 lg:inline">上传后在文件预览中确认执行，不会自动调用模型。</span>
-        </div>
         <nav className="mt-5 flex gap-1 overflow-x-auto">
-          <DetailTabButton active={tab === "files"} icon={FileText} label={t("knowledge.files")} onClick={() => onTabChange("files")} />
+          <DetailTabButton active={tab === "knowledge"} icon={Layers} label="知识" onClick={() => onTabChange("knowledge")} />
+          <DetailTabButton active={tab === "files"} icon={FileText} label="原始文件" onClick={() => onTabChange("files")} />
           <DetailTabButton active={tab === "add"} icon={Upload} label={t("knowledge.addDocuments")} onClick={() => onTabChange("add")} />
           <DetailTabButton active={tab === "versions"} icon={Layers} label={t("knowledge.indexVersions")} onClick={() => onTabChange("versions")} />
-          <DetailTabButton active={tab === "settings"} icon={Settings} label={t("knowledge.settings")} onClick={() => onTabChange("settings")} />
+          <DetailTabButton active={tab === "settings"} icon={Settings} label="管理" onClick={() => onTabChange("settings")} />
         </nav>
       </div>
       <PageMessage error={error} notice={notice} />
-      {tab === "files" && <FilesTab busy={busy} detail={detail} preferredGenerator={preferredGenerator} selectedDocument={selectedDocument} onDeleteDocument={onDeleteDocument} onSelect={setSelectedDocId} />}
-      {tab === "add" && <AddDocumentsTab busy={busy} documents={detail.documents} preferredGenerator={preferredGenerator} onUpload={onUpload} />}
+      {tab === "knowledge" && <KnowledgePages name={detail.name} onSource={(id) => { setSelectedDocId(id); onTabChange("files"); }} />}
+      {tab === "files" && <FilesTab busy={busy} detail={detail} selectedDocument={selectedDocument} onDeleteDocument={onDeleteDocument} onSelect={setSelectedDocId} />}
+      {tab === "add" && <AddDocumentsTab busy={busy} documents={detail.documents} onUpload={onUpload} />}
       {tab === "versions" && <IndexVersionsTab busy={busy} detail={detail} versions={versions} onRefresh={onRefresh} onReindex={onReindex} />}
+      {tab === "settings" && <KnowledgeOrganizationEditor key={detail.name} knowledgeBase={detail} onSaved={onRefresh} />}
+      {tab === "settings" && <div className="mx-6"><Link href="/settings/knowledge" className="text-sm text-blue-600">提炼与检索配置 → 设置</Link></div>}
       {tab === "settings" && <SettingsTab busy={busy} detail={detail} embeddingLabel={embeddingLabel} onDelete={onDelete} onSetDefault={onSetDefault} />}
     </div>
   );
 }
 
-function FilesTab({ busy, detail, preferredGenerator, selectedDocument, onDeleteDocument, onSelect }: { busy: boolean; detail: KnowledgeDetail; preferredGenerator: IngestionGenerator; selectedDocument: KnowledgeDocument | null; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onSelect: (id: number) => void }) {
+function FilesTab({ busy, detail, selectedDocument, onDeleteDocument, onSelect }: { busy: boolean; detail: KnowledgeDetail; selectedDocument: KnowledgeDocument | null; onDeleteDocument: (kbName: string, documentId: number) => Promise<void>; onSelect: (id: number) => void }) {
   const { t } = useI18n();
   return (
     <div className="grid min-h-[calc(100vh-178px)] grid-cols-1 md:grid-cols-[260px_1fr]">
@@ -737,7 +518,7 @@ function FilesTab({ busy, detail, preferredGenerator, selectedDocument, onDelete
                     <FileText size={14} className="shrink-0" />
                     <span className="truncate">{doc.original_file_name || doc.file_name}</span>
                   </div>
-                  <div className="mt-1 text-[11px] text-[var(--muted-foreground)]">{formatBytes(doc.file_size)}</div>
+                  <div className="mt-1 text-[11px] text-[var(--muted-foreground)]">{formatBytes(doc.file_size)} · {doc.has_artifact ? "已有提炼" : "待提炼"}</div>
                 </button>
                 <button type="button" disabled={busy} onClick={() => void onDeleteDocument(detail.name, doc.id)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 group-hover:opacity-100" title={t("common.delete")}>
                   <Trash2 size={14} />
@@ -748,20 +529,47 @@ function FilesTab({ busy, detail, preferredGenerator, selectedDocument, onDelete
         )}
       </aside>
       <section className="min-h-0 p-4">
-        <FilePreview kbName={detail.name} document={selectedDocument} preferredGenerator={preferredGenerator} />
+        <FilePreview key={`${detail.name}:${selectedDocument?.id}`} kbName={detail.name} document={selectedDocument} />
       </section>
     </div>
   );
 }
 
-function FilePreview({ kbName, document, preferredGenerator }: { kbName: string; document: KnowledgeDocument | null; preferredGenerator: IngestionGenerator }) {
+function FilePreview({ kbName, document }: { kbName: string; document: KnowledgeDocument | null }) {
   const { t } = useI18n();
   const [textPreview, setTextPreview] = useState("");
   const [textLoading, setTextLoading] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
   const [compiled, setCompiled] = useState<KnowledgeDocumentContent | null>(null);
   const [contentMode, setContentMode] = useState<"source" | "parsed" | "artifact">("source");
-  const [processing, setProcessing] = useState<"llm_api" | "codex" | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [compilationMessage, setCompilationMessage] = useState("");
+  const [jobRevision, setJobRevision] = useState(0);
+  const [jobLoading, setJobLoading] = useState(true);
+
+  useEffect(() => {
+    if (!document) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const job = await getKnowledgeCompilation(kbName, document!.id);
+        if (disposed) return;
+        const running = job?.status === "queued" || job?.status === "processing";
+        setProcessing(running);
+        setCompilationMessage(job?.message || "");
+        if (running) timer = setTimeout(() => void poll(), 2000);
+        else if (job?.status === "success") {
+          const value = await getKnowledgeDocumentContent(kbName, document!.id);
+          if (!disposed) setCompiled(value);
+        }
+      } catch (ex) {
+        if (!disposed) { setTextError(ex instanceof Error ? ex.message : String(ex)); timer = setTimeout(() => void poll(), 5000); }
+      } finally { if (!disposed) setJobLoading(false); }
+    }
+    void poll();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [kbName, document?.id, jobRevision]);
 
   useEffect(() => {
     if (!document || !isTextDocument(document)) {
@@ -775,11 +583,7 @@ function FilePreview({ kbName, document, preferredGenerator }: { kbName: string;
     setTextPreview("");
     setTextError(null);
     setTextLoading(true);
-    fetch(knowledgeDocumentFileUrl(kbName, document.id), { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-      })
+    getKnowledgeSourceText(kbName, document.id, controller.signal)
       .then((text) => setTextPreview(text))
       .catch((error) => {
         if ((error as Error).name !== "AbortError") {
@@ -797,21 +601,22 @@ function FilePreview({ kbName, document, preferredGenerator }: { kbName: string;
     setCompiled(null);
     setContentMode("source");
     if (!document) return;
-    getKnowledgeDocumentContent(kbName, document.id).then(setCompiled).catch(() => setCompiled(null));
+    let disposed = false;
+    getKnowledgeDocumentContent(kbName, document.id).then((value) => { if (!disposed) setCompiled(value); }).catch(() => { if (!disposed) setCompiled(null); });
+    return () => { disposed = true; };
   }, [document, kbName]);
 
-  async function process(generator: "llm_api" | "codex") {
+  async function process() {
     if (!document) return;
-    setProcessing(generator);
+    setProcessing(true);
     setTextError(null);
     try {
-      await processKnowledgeDocument(kbName, document.id, { generator });
-      setCompiled(await getKnowledgeDocumentContent(kbName, document.id));
-      setContentMode("artifact");
+      const job = await compileKnowledgeDocument(kbName, document.id);
+      setCompilationMessage(job.message || "等待提炼");
+      setJobRevision((value) => value + 1);
     } catch (error) {
       setTextError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setProcessing(null);
+      setProcessing(false);
     }
   }
 
@@ -823,9 +628,6 @@ function FilePreview({ kbName, document, preferredGenerator }: { kbName: string;
   const downloadUrl = knowledgeDocumentFileUrl(kbName, document.id, true);
   const isPdf = isPdfDocument(document);
   const isText = isTextDocument(document);
-  const primaryGenerator = preferredGenerator;
-  const secondaryGenerator: IngestionGenerator = primaryGenerator === "llm_api" ? "codex" : "llm_api";
-  const generatorLabel = (generator: IngestionGenerator) => generator === "codex" ? "Codex CLI" : "远程 LLM API";
   return (
     <div className="flex h-full min-h-[640px] flex-col">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -834,11 +636,12 @@ function FilePreview({ kbName, document, preferredGenerator }: { kbName: string;
           <div className="text-[11px] text-[var(--muted-foreground)]">{document.content_type || document.extension || t("common.notSet")} · {formatBytes(document.file_size)}</div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button type="button" disabled={processing !== null} onClick={() => process(primaryGenerator)} className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium text-white disabled:opacity-50 ${primaryGenerator === "codex" ? "bg-slate-900" : "bg-blue-600"}`}>{processing === primaryGenerator ? `${generatorLabel(primaryGenerator)} 入库中…` : `用 ${generatorLabel(primaryGenerator)} 入库`}</button>
-          <button type="button" disabled={processing !== null} onClick={() => process(secondaryGenerator)} className="h-8 rounded-md border border-[var(--border)] bg-white px-3 text-[12px] text-slate-600 hover:border-slate-300 disabled:opacity-50">改用 {generatorLabel(secondaryGenerator)}</button>
+          <button type="button" disabled={processing || jobLoading} onClick={() => void process()} className="h-8 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white disabled:opacity-50">{processing ? "正在提炼知识…" : "提炼知识"}</button>
+          <Link href="/settings/knowledge" className="text-xs text-blue-600">提炼设置</Link>
           <a href={downloadUrl} download className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border)] px-2.5 text-[12px] hover:border-blue-300"><Download size={14} />{t("knowledge.download")}</a>
         </div>
       </div>
+      {compilationMessage && <p role="status" className="mb-3 text-sm text-zinc-600">{compilationMessage}</p>}
       <div className="mb-3 flex gap-1 rounded-md bg-zinc-100 p-1 text-[12px]">
         {(["source", "parsed", "artifact"] as const).map((mode) => <button key={mode} type="button" onClick={() => setContentMode(mode)} className={`rounded px-3 py-1.5 ${contentMode === mode ? "bg-white font-medium shadow-sm" : "text-[var(--muted-foreground)]"}`}>{mode === "source" ? "原文件" : mode === "parsed" ? "解析正文" : "AI 提炼"}</button>)}
         {compiled?.provider && <span className="ml-auto self-center px-2 text-[11px] text-[var(--muted-foreground)]">{compiled.generator} · {compiled.provider} · {compiled.review_status}</span>}
@@ -971,11 +774,10 @@ function PdfPagePreview({ pageNumber, width }: { pageNumber: number; width: numb
   );
 }
 
-function AddDocumentsTab({ busy, documents, preferredGenerator, onUpload }: { busy: boolean; documents: KnowledgeDocument[]; preferredGenerator: IngestionGenerator; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
+function AddDocumentsTab({ busy, documents, onUpload }: { busy: boolean; documents: KnowledgeDocument[]; onUpload: (files: File[]) => Promise<KnowledgeDocumentImportResult | undefined> }) {
   const { t } = useI18n();
   const [files, setFiles] = useState<File[]>([]);
   const [result, setResult] = useState<KnowledgeDocumentImportResult | null>(null);
-  const selectedEngine = preferredGenerator === "codex" ? "Codex CLI" : "远程 LLM API";
   async function submit() {
     const next = await onUpload(files);
     if (next) {
@@ -987,12 +789,11 @@ function AddDocumentsTab({ busy, documents, preferredGenerator, onUpload }: { bu
     <div className="mx-auto max-w-5xl px-6 py-6">
       <h2 className="text-[15px] font-semibold">{t("knowledge.addDocuments")}</h2>
       <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">{t("knowledge.addDocumentsDesc")}</p>
-      <div className={`mt-4 flex items-start gap-3 rounded-xl border p-3 ${preferredGenerator === "codex" ? "border-slate-200 bg-slate-50" : "border-blue-100 bg-blue-50/60"}`}><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${preferredGenerator === "codex" ? "bg-slate-800 text-white" : "bg-blue-600 text-white"}`}>{preferredGenerator === "codex" ? <Workflow size={15}/> : <Cloud size={15}/>}</span><div><p className="text-xs font-semibold text-slate-800">本次上传将优先使用 {selectedEngine}</p><p className="mt-1 text-[11px] leading-5 text-slate-500">源文件会先保存，再由你在文件预览中明确点击入库；不会因为上传而自动调用模型。</p></div></div>
       <FilePicker files={files} onFiles={setFiles} />
       <div className="mt-4 flex justify-end">
         <button type="button" disabled={busy || files.length === 0} onClick={() => void submit()} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:bg-zinc-300">
           <Upload size={15} />
-          {busy ? t("common.saving") : "保存源文件，进入入库确认"}
+          {busy ? t("common.saving") : "保存源文件，进入提炼确认"}
         </button>
       </div>
       {result && (
@@ -1260,68 +1061,6 @@ function Meta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EngineHeader({ engine }: { engine: KnowledgeProvider }) {
-  const { t } = useI18n();
-  const Icon = engineIcons[engine.id] ?? Boxes;
-  const tone = engine.configured ? "emerald" : engine.status === "needs_setup" ? "amber" : "zinc";
-  return (
-    <header className="flex items-start gap-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-white">
-        <Icon size={23} strokeWidth={1.7} />
-      </div>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[24px] font-semibold leading-tight">{engine.name}</h1>
-          <EngineBadge tone={tone} label={statusLabel(engine.status, t)} />
-        </div>
-        <p className="mt-2 text-[13px] leading-relaxed text-[var(--muted-foreground)]">{engine.id === "llamaindex" ? t("knowledge.llamaSubtitle") : providerDescription(engine.id, engine.description, t)}</p>
-      </div>
-    </header>
-  );
-}
-
-function RetrievalOption({ active, title, description, onClick }: { active: boolean; title: string; description: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className={`min-h-[72px] rounded-lg border p-3 text-left transition ${active ? "border-blue-500 bg-blue-50/30" : "border-[var(--border)] bg-white hover:border-blue-300"}`}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[12.5px] font-semibold">{title}</span>
-        {active && <Check size={15} className="shrink-0 text-blue-600" />}
-      </div>
-      <p className="mt-1 text-[11.5px] leading-5 text-[var(--muted-foreground)]">{description}</p>
-    </button>
-  );
-}
-
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return (
-    <label className="block">
-      <span className="text-[12px] font-semibold">{label}</span>
-      <input type="number" min={0} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] px-3 text-[12.5px] outline-none focus:border-blue-400" />
-    </label>
-  );
-}
-
-function EnvironmentResult({ result }: { result: KnowledgeEnvironmentCheck }) {
-  const { t } = useI18n();
-  const ok = isEnvironmentOk(result);
-  const message = result.error_message ?? result.errorMessage ?? result.ErrorMessage ?? (ok ? t("knowledge.environmentReady") : t("knowledge.environmentFailed"));
-  const details = (result.details ?? result.Details ?? {}) as Record<string, unknown>;
-  const dependencies = (details.dependencies ?? {}) as Record<string, unknown>;
-  return (
-    <div className={`rounded-md px-3 py-2 text-[12px] ${ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-      <div className="flex items-center gap-2 font-medium">{ok ? <Check size={15} /> : <XCircle size={15} />}{message}</div>
-      {Object.keys(details).length > 0 && (
-        <div className="mt-1 space-y-0.5 break-all text-[11px] opacity-90">
-          {typeof details.python === "string" && <div>Python: {details.python}</div>}
-          {typeof details.python_path === "string" && <div>PythonPath: {details.python_path}</div>}
-          {typeof details.worker_path === "string" && <div>Worker: {details.worker_path}</div>}
-          {Object.keys(dependencies).length > 0 && <div>Dependencies: {Object.entries(dependencies).map(([name, ready]) => `${name}=${String(ready)}`).join(", ")}</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SectionTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
   return (
     <h2 className="mb-3 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
@@ -1338,10 +1077,6 @@ function PageMessage({ error, notice }: { error: string | null; notice: string |
 function EngineBadge({ tone, label }: { tone: "emerald" | "amber" | "zinc"; label: string }) {
   const className = tone === "emerald" ? "bg-emerald-50 text-emerald-700" : tone === "amber" ? "bg-amber-50 text-amber-700" : "bg-zinc-100 text-zinc-600";
   return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${className}`}>{tone === "emerald" && <Check size={12} />}{label}</span>;
-}
-
-function isEnvironmentOk(result: KnowledgeEnvironmentCheck) {
-  return Boolean(result.ok ?? result.Ok);
 }
 
 function statusLabel(status: string, t: ReturnType<typeof useI18n>["t"]) {

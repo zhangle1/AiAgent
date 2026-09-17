@@ -30,6 +30,10 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 知识提炼的供应商无关循环位于 `knowledge-core/`，仅接收文本与 `IKnowledgeModel`，不依赖 ASP.NET、数据库或文件系统。`KnowledgeModelAdapter` 复用现有 Codex/API 客户端；模型只提出结构化操作，宿主校验原文证据后保存草稿。
+- `KnowledgeCompilationWorker` 为单后端实例的独立有界队列，任务类型为 `wiki_compile`；不得混入 `GetLatestJob` 的 RAG 索引进度，也不得改变活动索引版本。重启中断应标记失败供用户重试，不自动重复模型调用。旧 `/process` 接口保留同步返回契约。
+- 公司／项目归属保存在知识库 `MetadataJson.organization`，保存时保留其他键。这是目录分类，不是新的租户或项目授权边界。
+
 - 所有后续新增的实体字段必须显式标注 `[SugarColumn(IsNullable = true)]`；除非已明确完成现网数据迁移、回填和非空约束验收，不得新增非空列。
 
 - 聊天图片附件必须先以不透明附件 ID 上传到后端受控临时目录；校验真实图片签名、大小、数量和当前用户归属后，才可转换为 Codex app-server 的 `localImage` 输入。发送后应将图片迁移到按用户和会话隔离的历史目录，并在聊天消息元数据保存不含真实路径的附件信息。不得接受浏览器提供的本地路径、将路径拼入 shell，也不得假定第三方 CLI 兼容该协议。

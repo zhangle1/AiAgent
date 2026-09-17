@@ -1,5 +1,32 @@
 import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 
+import type { KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeOrganization, KnowledgePage } from "@/lib/knowledge-types";
+
+export async function getKnowledgeCompilerSettings(): Promise<KnowledgeCompilerSettings> {
+  return parseJson(await fetch("/api/v1/knowledge/compiler-settings", { cache: "no-store" }));
+}
+export async function saveKnowledgeCompilerSettings(config: KnowledgeCompilerSettings): Promise<KnowledgeCompilerSettings> {
+  return parseJson(await fetch("/api/v1/knowledge/compiler-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) }));
+}
+export async function getKnowledgePages(name: string): Promise<KnowledgePage[]> {
+  return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/pages`, { cache: "no-store" }));
+}
+export async function saveKnowledgeOrganization(name: string, organization: KnowledgeOrganization): Promise<KnowledgeOrganization> {
+  return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/organization`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(organization) }));
+}
+export async function compileKnowledgeDocument(name: string, id: number): Promise<KnowledgeCompilationJob> {
+  return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/documents/${id}/compile`, { method: "POST" }));
+}
+export async function getKnowledgeCompilation(name: string, id: number): Promise<KnowledgeCompilationJob | null> {
+  return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/documents/${id}/compilation`, { cache: "no-store" }));
+}
+
+export async function getKnowledgeSourceText(name: string, id: number, signal?: AbortSignal): Promise<string> {
+  const response = await fetch(knowledgeDocumentFileUrl(name, id), { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.text();
+}
+
 function directApi(path: string): string {
   // Keep browser requests on the address the user opened. Next.js then proxies
   // /api to the local backend, so LAN clients never resolve their own localhost.

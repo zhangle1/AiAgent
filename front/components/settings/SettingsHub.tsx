@@ -12,7 +12,7 @@ const cards: Array<{ id: string; titleKey?: TranslationKey; descKey?: Translatio
   { id: "appearance", titleKey: "settings.appearance", descKey: "settings.appearanceDesc", icon: Palette, href: "/settings" },
   { id: "network", titleKey: "settings.network", descKey: "settings.networkDesc", icon: Network, href: "/settings" },
   { id: "models", titleKey: "settings.models", descKey: "settings.modelsDesc", icon: Bot, href: "/settings/models" },
-  { id: "knowledge", titleKey: "settings.knowledgeBase", descKey: "settings.knowledgeBaseDesc", icon: Database, href: "/settings" },
+  { id: "knowledge", titleKey: "settings.knowledgeBase", descKey: "settings.knowledgeBaseDesc", icon: Database, href: "/settings/knowledge" },
   { id: "code-repository", titleKey: "settings.codeRepository", descKey: "settings.codeRepositoryDesc", icon: Code2, href: "/settings/code-repositories" },
   { id: "git-accounts", titleKey: "settings.gitAccounts", descKey: "settings.gitAccountsDesc", icon: GitBranch, href: "/settings/git-accounts" },
   { id: "chat", titleKey: "settings.chat", descKey: "settings.chatDesc", icon: MessageSquare, href: "/settings" },

@@ -135,6 +135,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
             Name = kb.Name,
             DisplayName = kb.DisplayName,
             Description = kb.Description,
+            Organization = KnowledgeWorkspaceService.ReadOrganization(kb.MetadataJson),
             EngineType = kb.EngineType,
             Status = kb.Status,
             IsDefault = kb.IsDefault,
@@ -151,6 +152,10 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                 .ToList()
         };
 
+        var compiledDocuments = _db.Queryable<AiKnowledgeArtifact>()
+            .Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId != null)
+            .Select(x => x.DocumentId).ToList().ToHashSet();
+        foreach (var document in dto.Documents) document.HasArtifact = compiledDocuments.Contains(document.Id);
         return dto;
     }
 
@@ -410,7 +415,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     public KnowledgeJobDto? GetLatestJob(long knowledgeBaseId)
     {
         var job = _db.Queryable<AiKnowledgeJob>()
-            .Where(x => x.KnowledgeBaseId == knowledgeBaseId)
+            .Where(x => x.KnowledgeBaseId == knowledgeBaseId && x.JobType != "wiki_compile")
             .OrderByDescending(x => x.CreatedAt)
             .OrderByDescending(x => x.Id)
             .First();
@@ -569,6 +574,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
             Name = kb.Name,
             DisplayName = kb.DisplayName,
             Description = kb.Description,
+            Organization = KnowledgeWorkspaceService.ReadOrganization(kb.MetadataJson),
             EngineType = kb.EngineType,
             Status = kb.Status,
             IsDefault = kb.IsDefault,

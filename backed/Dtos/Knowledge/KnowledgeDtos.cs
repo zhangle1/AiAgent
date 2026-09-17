@@ -55,6 +55,8 @@ public sealed class KnowledgeProviderDto
 /// </summary>
 public class KnowledgeBaseDto
 {
+    [JsonPropertyName("organization")]
+    public KnowledgeOrganizationDto Organization { get; set; } = new();
     /// <summary>
     /// 知识库主键。
     /// </summary>
@@ -133,6 +135,8 @@ public class KnowledgeBaseDto
 /// </summary>
 public sealed class KnowledgeDocumentDto
 {
+    [JsonPropertyName("has_artifact")]
+    public bool HasArtifact { get; set; }
     /// <summary>
     /// 文档主键。
     /// </summary>
