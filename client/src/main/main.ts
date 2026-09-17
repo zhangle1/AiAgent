@@ -24,7 +24,7 @@ function createWindow() {
 app.whenReady().then(() => {
   invoke('auth:login', (_event, value) => backend.login(loginSchema.parse(value)));
   invoke('auth:logout', () => { backend.logout(); return undefined; });
-  invoke('analysis:start', (_event, value) => backend.analyze(analyzeSchema.parse(value)));
+  invoke('analysis:start', (event, value) => backend.analyze(analyzeSchema.parse(value), text => { if (!event.sender.isDestroyed()) event.sender.send('analysis:delta', text); }));
   invoke('analysis:cancel', () => { backend.cancelAnalysis(); return undefined; });
   invoke('workspace:choose', async () => {
     const choice = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory', 'createDirectory'] });

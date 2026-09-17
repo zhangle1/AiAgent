@@ -1,3 +1,4 @@
+import { readAnalysisStream } from './analysis-stream';
 import { analyzeSchema, loginSchema, type LoginInput } from '../shared/contracts';
 
 export function normalizeAddress(input: string, allowHttp: boolean) {
@@ -60,14 +61,28 @@ export class BackendClient {
     this.session = { address, token: body.access_token };
     return { username: values.username, codexAvailable: capabilities.codex?.available === true };
   }
-  async analyze(input: { prompt: string; context: string }) {
+  async analyze(input: { prompt: string; context: string }, onDelta?: (text: string) => void) {
     const payload = analyzeSchema.parse(input);
     const session = this.session;
     if (!session) throw new Error('请先登录后端');
     if (this.analysis) throw new Error('已有分析正在进行');
     const controller = new AbortController(); this.analysis = controller;
     try {
-      const result = await this.json(session.address, '/api/v1/deepseek-plugin/codex/delegate', payload, session.token, controller, 300000);
+      let result: { answer: string };
+      if (onDelta) {
+        this.active.add(controller);
+        const timer = setTimeout(() => controller.abort(), 300000);
+        try {
+          const response = await this.fetchImpl(session.address + '/api/v1/deepseek-plugin/codex/delegate', {
+            method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${session.token}` },
+            body: JSON.stringify({ ...payload, stream: true }), redirect: 'error', signal: controller.signal,
+          });
+          if (!response.ok) { await response.body?.cancel(); throw new Error(`HTTP ${response.status}`); }
+          result = await readAnalysisStream(response, onDelta);
+        } finally { clearTimeout(timer); this.active.delete(controller); }
+      } else {
+        result = await this.json(session.address, '/api/v1/deepseek-plugin/codex/delegate', payload, session.token, controller, 300000);
+      }
       if (this.session !== session) throw new Error('登录已取消');
       if (typeof result.answer !== 'string') throw new Error('后端未返回分析结果');
       return { answer: result.answer };

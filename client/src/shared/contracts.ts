@@ -16,6 +16,7 @@ export interface ClientApi {
   login(input: LoginInput): Promise<{ username: string; codexAvailable: boolean }>;
   logout(): Promise<void>;
   analyze(input: { prompt: string; context: string }): Promise<{ answer: string }>;
+  onAnalysisDelta(callback: (text: string) => void): () => void;
   cancelAnalysis(): Promise<void>;
   chooseWorkspace(): Promise<WorkspaceInfo | null>;
   revokeWorkspace(): Promise<void>;

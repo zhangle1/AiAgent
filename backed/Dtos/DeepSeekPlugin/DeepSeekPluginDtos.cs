@@ -29,6 +29,7 @@ public sealed class PluginToolFunction
 }
 public sealed class PluginCodexDelegateRequest
 {
+    [JsonPropertyName("stream")] public bool Stream { get; set; }
     [JsonPropertyName("prompt")] public string Prompt { get; set; } = string.Empty;
     [JsonPropertyName("context")] public string? Context { get; set; }
     [JsonPropertyName("model_id")] public string? ModelId { get; set; }
