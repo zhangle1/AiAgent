@@ -19,6 +19,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     private readonly KnowledgeWorkspaceService _workspace;
     private readonly KnowledgeWikiRetrievalService _wikiRetrieval;
     private readonly KnowledgeCompilationWorker _compiler;
+    private readonly KnowledgeChainDiagnosticsService? _chainDiagnostics;
     private readonly IKnowledgeBaseManager _manager;
     private readonly IKnowledgeProviderConfigService _providerConfigService;
     private readonly IKnowledgeProgressHub _progressHub;
@@ -44,7 +45,8 @@ public sealed class KnowledgeAppService : IDynamicApiController
         IKnowledgeIngestionService ingestionService,
         IDocumentParsingService documentParsingService,
         IRagService ragService,
-        ILogger<KnowledgeAppService> logger)
+        ILogger<KnowledgeAppService> logger,
+        KnowledgeChainDiagnosticsService? chainDiagnostics = null)
     {
         _db = db;
         _compilerSettings = compilerSettings;
@@ -59,6 +61,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         _documentParsingService = documentParsingService;
         _ragService = ragService;
         _logger = logger;
+        _chainDiagnostics = chainDiagnostics;
     }
 
     /// <summary>
@@ -128,6 +131,12 @@ public sealed class KnowledgeAppService : IDynamicApiController
 
     [HttpPut("compiler-settings")]
     public KnowledgeCompilerSettingsDto SaveCompilerSettings([FromBody] KnowledgeCompilerSettingsDto config) => _compilerSettings.Save(config);
+
+    [HttpPost("compiler-settings/check")]
+    public Task<KnowledgeChainCheckResultDto> CheckCompilerChain(
+        [FromBody] KnowledgeCompilerSettingsDto config,
+        CancellationToken cancellationToken) => (_chainDiagnostics ?? throw new InvalidOperationException("Knowledge chain diagnostics are unavailable."))
+            .CheckAsync(config, cancellationToken);
 
     [HttpGet("{kbName}/pages")]
     public List<KnowledgePageDto> GetPages([FromRoute] string kbName) => _workspace.ListPages(kbName);

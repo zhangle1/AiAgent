@@ -23,6 +23,22 @@ public sealed class KnowledgeCompilerSettingsDto
     [JsonPropertyName("timeout_minutes")] public int TimeoutMinutes { get; set; } = 20;
 }
 
+public sealed class KnowledgeChainCheckStepDto
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("label")] public string Label { get; set; } = "";
+    [JsonPropertyName("status")] public string Status { get; set; } = "success";
+    [JsonPropertyName("detail")] public string Detail { get; set; } = "";
+}
+
+public sealed class KnowledgeChainCheckResultDto
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("provider")] public string? Provider { get; set; }
+    [JsonPropertyName("model")] public string? Model { get; set; }
+    [JsonPropertyName("steps")] public List<KnowledgeChainCheckStepDto> Steps { get; set; } = [];
+}
+
 public sealed class KnowledgeOrganizationDto
 {
     [JsonPropertyName("company")] public string? Company { get; set; }

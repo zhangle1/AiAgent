@@ -122,6 +122,7 @@ builder.Services.AddSingleton<KnowledgeOfficePreviewService>();
 builder.Services.AddSingleton<KnowledgeCompilerSettings>();
 builder.Services.AddSingleton<KnowledgeWorkspaceService>();
 builder.Services.AddSingleton<KnowledgeWikiRetrievalService>();
+builder.Services.AddSingleton<KnowledgeChainDiagnosticsService>();
 builder.Services.AddSingleton<KnowledgeCompilationWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KnowledgeCompilationWorker>());
 builder.Services.AddSingleton<IPythonWorkerHost, PythonWorkerHost>();

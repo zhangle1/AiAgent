@@ -1,6 +1,6 @@
 import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 
-import type { KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeOrganization, KnowledgePage } from "@/lib/knowledge-types";
+import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeOrganization, KnowledgePage } from "@/lib/knowledge-types";
 
 export async function getKnowledgeCompilations(signal?: AbortSignal): Promise<KnowledgeCompilationJob[]> {
   return parseJson(await fetch("/api/v1/knowledge/compilations", { cache: "no-store", signal }));
@@ -17,6 +17,9 @@ export async function getKnowledgeCompilerSettings(): Promise<KnowledgeCompilerS
 }
 export async function saveKnowledgeCompilerSettings(config: KnowledgeCompilerSettings): Promise<KnowledgeCompilerSettings> {
   return parseJson(await fetch("/api/v1/knowledge/compiler-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) }));
+}
+export async function checkKnowledgeCompilerChain(config: KnowledgeCompilerSettings): Promise<KnowledgeChainCheckResult> {
+  return parseJson(await fetch("/api/v1/knowledge/compiler-settings/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) }));
 }
 export async function getKnowledgePages(name: string): Promise<KnowledgePage[]> {
   return parseJson(await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/pages`, { cache: "no-store" }));

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { checkKnowledgeEnvironment, getKnowledgeCompilerSettings, getKnowledgeProviderConfig, getKnowledgeProviders, saveKnowledgeCompilerSettings, saveKnowledgeProviderConfig } from "@/lib/knowledge-api";
-import type { KnowledgeCompilerSettings, KnowledgeProvider, KnowledgeProviderConfig } from "@/lib/knowledge-types";
+import { checkKnowledgeCompilerChain, checkKnowledgeEnvironment, getKnowledgeCompilerSettings, getKnowledgeProviderConfig, getKnowledgeProviders, saveKnowledgeCompilerSettings, saveKnowledgeProviderConfig } from "@/lib/knowledge-api";
+import type { KnowledgeChainCheckResult, KnowledgeCompilerSettings, KnowledgeProvider, KnowledgeProviderConfig } from "@/lib/knowledge-types";
 import { SettingsPageHeader } from "./layout/SettingsShell";
 
 const inputClass = "mt-2 block w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm";
@@ -16,6 +16,7 @@ export function KnowledgeSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [chainCheck, setChainCheck] = useState<KnowledgeChainCheckResult | null>(null);
   useEffect(() => {
     let disposed = false;
     getKnowledgeCompilerSettings().then((settings) => {
@@ -60,8 +61,13 @@ export function KnowledgeSettingsPage() {
         <label className="text-sm">推理强度<select className={inputClass} value={compiler.reasoning_effort || ""} onChange={(e) => setCompiler({ ...compiler, reasoning_effort: e.target.value || null })}><option value="">默认</option>{["low", "medium", "high", "xhigh"].map((v) => <option key={v}>{v}</option>)}</select></label>
         <label className="text-sm">最大执行步数<input type="number" min={8} max={96} required className={inputClass} value={compiler.max_steps} onChange={(e) => setCompiler({ ...compiler, max_steps: Number(e.target.value) })} /></label>
         <label className="text-sm">超时（分钟）<input type="number" min={1} max={60} required className={inputClass} value={compiler.timeout_minutes} onChange={(e) => setCompiler({ ...compiler, timeout_minutes: Number(e.target.value) })} /></label>
-        <div className="flex items-end"><button className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">{busy ? "处理中…" : "保存知识设置"}</button></div>
+        <div className="flex items-end gap-3"><button className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">{busy ? "处理中…" : "保存知识设置"}</button><button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={() => void perform(async () => { setChainCheck(null); const result = await checkKnowledgeCompilerChain(compiler); setChainCheck(result); setMessage(result.ok ? "模拟检测通过：提炼、校验证据和模型检索链路通顺。" : "模拟检测未通过。"); })}>{busy ? "检测中…" : "模拟检测"}</button></div>
       </fieldset>
+      {chainCheck && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-emerald-800">链路检测通过</strong><span className="text-xs text-emerald-700">{chainCheck.provider || "model"}{chainCheck.model ? ` · ${chainCheck.model}` : ""}</span></div>
+        <ol className="mt-3 grid gap-2 md:grid-cols-2">{chainCheck.steps.map((step, index) => <li key={step.key} className="rounded-md bg-white px-3 py-2 text-xs text-zinc-600"><span className="font-semibold text-emerald-700">{index + 1}. {step.label}</span><p className="mt-1 leading-5">{step.detail}</p></li>)}</ol>
+        <p className="mt-3 text-xs text-emerald-700">检测仅使用内置测试文本和内存知识页，不保存草稿、不修改知识库、不创建索引。</p>
+      </div>}
     </form>}
     {compiler?.retrieval_mode === "rag" ? <form className="rounded-xl border p-6" onSubmit={(e) => { e.preventDefault(); if (config) void perform(async () => { setConfig(await saveKnowledgeProviderConfig(provider, config)); setMessage("检索配置已保存，分块调整在下次重建索引时生效。"); }); }}>
       <h2 className="text-lg font-semibold">可选 RAG 索引与分块</h2>

@@ -396,6 +396,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     if (!requestedSessionId) {
       pendingSessionIdRef.current = null;
       setActiveSessionId(null);
+      const defaultKnowledgeBase = knowledgeBases.find((kb) => kb.is_default);
+      setSelectedKbNames(defaultKnowledgeBase ? [defaultKnowledgeBase.name] : []);
       setMessages([]);
       setInput("");
       setImageAttachments([]);
@@ -415,6 +417,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         const draft = session.messages.length === 0 ? sessionDraft(session.preferences) : null;
         shouldStickToBottomRef.current = !scrollPositionsRef.current.has(session.id);
         setActiveSessionId(session.id);
+        const savedKnowledgeBases = Array.isArray(session.preferences.knowledge_base_names)
+          ? session.preferences.knowledge_base_names.filter((name): name is string => typeof name === "string")
+          : [];
+        setSelectedKbNames(savedKnowledgeBases);
         setSelectedProjectId(session.project_id ?? null);
         setMessages(toHistoryMessages(session));
         setInput(draft?.content ?? "");
@@ -546,6 +552,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     try {
       const [kbRows, projectRows, settings] = await Promise.all([getKnowledgeBases(), getCodeProjects(), getSettings()]);
       setKnowledgeBases(kbRows);
+      if (!requestedSessionId) setSelectedKbNames((current) => {
+        if (current.length > 0) return current;
+        const defaultKnowledgeBase = kbRows.find((kb) => kb.is_default);
+        return defaultKnowledgeBase ? [defaultKnowledgeBase.name] : [];
+      });
       setCodeProjects(projectRows);
       setSelectedAgentId(embedded && embeddedCodexModelId ? "codex" : settings.ui.preferred_agent === "codebuddy" ? "codebuddy" : settings.ui.preferred_agent === "none" ? "" : "codex");
       setSelectedProjectId((current) => current ?? requestedProjectId ?? null);

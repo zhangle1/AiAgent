@@ -150,4 +150,27 @@ public sealed class KnowledgeCompilerTests
         Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { MaxSteps = 0 }));
         Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { TimeoutMinutes = 0 }));
     }
+
+    [Fact]
+    public async Task ChainDiagnosticsCompilesSearchesAndReturnsValidatedCitationWithoutStorage()
+    {
+        var page = JsonSerializer.Serialize(new { pages = new[] { new {
+            title = "星河项目发布规范",
+            markdown = "星河项目每周三晚发布；紧急修复前必须评审回滚方案。",
+            evidence = new[] { new { part = 1, quote = KnowledgeChainDiagnosticsService.SampleSource } }
+        } } });
+        var model = new Model(
+            "识别出发布时间、负责人和紧急修复前置条件。",
+            page,
+            "{\"action\":\"read\",\"id\":\"check-1\",\"part\":1}",
+            "{\"action\":\"cite\",\"id\":\"check-1\",\"quote\":\"紧急修复前必须评审回滚方案。\"}",
+            "{\"action\":\"finish\"}");
+
+        var result = await KnowledgeChainDiagnosticsService.ExecuteAsync(new(), model, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Equal(new[] { "model", "analysis", "generation", "evidence", "retrieval", "citation" }, result.Steps.Select(step => step.Key));
+        Assert.Contains("回滚方案", result.Steps.Last().Detail);
+        Assert.Equal(5, model.Prompts.Count);
+    }
 }

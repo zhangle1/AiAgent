@@ -201,3 +201,17 @@ export type KnowledgeSearchResponse = {
   content: string;
   citations: KnowledgeCitation[];
 };
+
+export type KnowledgeChainCheckStep = {
+  key: string;
+  label: string;
+  status: "success" | "error";
+  detail: string;
+};
+
+export type KnowledgeChainCheckResult = {
+  ok: boolean;
+  provider?: string | null;
+  model?: string | null;
+  steps: KnowledgeChainCheckStep[];
+};
