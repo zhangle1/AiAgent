@@ -72,6 +72,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 后端地址由 `NEXT_PUBLIC_AIAGENT_API_BASE_URL` 控制；`next.config.js` 负责 `/api/*` rewrite。
 - 页面保持轻量；复杂状态放在 Provider、hook 或领域组件中。
 - 长列表、终端、聊天内容必须拥有独立滚动容器，不能撑破工作台布局。
+- 项目资料树只展示文档白名单格式，不展示代码后缀；PDF/HTML 使用当前页受限 iframe，Office/文本走服务端受控提取预览，下载保留原文件。聊天中的项目资料引用复用右侧资料面板，不得通过刷新或页面跳转打开。
 - 看板工作台相关代码在 `components/dashboard-applications/` 与 `lib/dashboard-application-api.ts`。
 - 代码库养护入口为 `components/code-repositories/RepositoryMaintenancePage.tsx`；HTTP 契约位于 `lib/repository-maintenance-{api,types}.ts`。后台调度与编译分别位于 `RepositoryMaintenanceService`、`RepositoryMaintenanceBuildService`，测试使用临时本地 Git 远端，不能连接用户仓库。
 

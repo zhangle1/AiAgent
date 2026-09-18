@@ -19,7 +19,7 @@ type CodeReferenceCandidate = {
 };
 
 const sourceFilePattern = /(?:^|[\\/])?[^\\/\s]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?$/i;
-const fileReferenceInText = /(?:[a-z]:)?(?:[^\s`[\](),]+[\\/])*[^\s`[\](),]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?/gi;
+const fileReferenceInText = /(?:[a-z]:)?(?:[^\s`[\](),]+[\\/])*[^\s`[\](),]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|jsonl|xml|yml|yaml|md|markdown|html|htm|txt|csv|pdf|docx|xlsx|pptx|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?/gi;
 
 function domProps(props: Record<string, any>) {
   const { node, ...rest } = props;
@@ -108,7 +108,7 @@ function codeReferenceFromText(value: string): CodeReferenceCandidate | null {
 
 function markdownDocumentReferenceFromText(value: string): string | null {
   const reference = value.trim();
-  return !reference.includes("\n") && /\.md(?:(?::|#L)[1-9]\d{0,8})?$/i.test(reference) ? reference : null;
+  return !reference.includes("\n") && /\.(?:md|markdown|txt|csv|json|jsonl|xml|ya?ml|html?|pdf|docx|xlsx|pptx)(?:(?::|#L)[1-9]\d{0,8})?$/i.test(reference) ? reference : null;
 }
 
 function linkifyAgentFileReferences(markdown: string): string {

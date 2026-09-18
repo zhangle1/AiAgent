@@ -72,6 +72,9 @@ export type CodeProjectMarkdownDocument = {
   uploader_id?: string | null;
   directory_path?: string | null;
   updated_at?: string | null;
+  extension: string;
+  preview_kind: "markdown" | "text" | "html" | "pdf" | "office";
+  has_original: boolean;
 };
 
 export type CodeProjectMarkdownDirectory = {

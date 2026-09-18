@@ -5,7 +5,7 @@ import { ArrowRight, ChevronDown, ChevronRight, Download, FileText, Folder, Fold
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
-import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeFile, getProjectMarkdownDirectories, getProjectMarkdownDocuments, importProjectDocuments, projectMarkdownDocumentDownloadUrl, readProjectMarkdownDocument } from "@/lib/code-repository-api";
+import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeFile, getProjectMarkdownDirectories, getProjectMarkdownDocuments, importProjectDocuments, previewProjectDocument, projectDocumentFileUrl, projectMarkdownDocumentDownloadUrl } from "@/lib/code-repository-api";
 import type { CodeProject, CodeProjectMarkdownDirectory, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeLog } from "@/lib/code-runtime-types";
 import { getChatFileExtraction, getChatUploadText, getMyChatUploads, myChatUploadContentUrl, type ChatFileAttachment, type ChatFileExtractionPreview, type ChatUploadFile } from "@/lib/chat-api";
@@ -201,10 +201,15 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 
   useEffect(() => {
     if (!project || !selectedMarkdownDocument) { setMarkdownDocumentContent(null); return; }
+    if (selectedMarkdownDocument.preview_kind === "pdf" || selectedMarkdownDocument.preview_kind === "html") {
+      setMarkdownDocumentContent(null);
+      setLoadingMarkdownDocument(false);
+      return;
+    }
     let disposed = false;
     setLoadingMarkdownDocument(true);
     setError(null);
-    void readProjectMarkdownDocument(project.id, selectedMarkdownDocument.repository_name, selectedMarkdownDocument.path)
+    void previewProjectDocument(project.id, selectedMarkdownDocument.repository_name, selectedMarkdownDocument.path)
       .then((value) => { if (!disposed) setMarkdownDocumentContent(value); })
       .catch((ex) => { if (!disposed) setError(ex instanceof Error ? ex.message : "无法读取 Markdown 文档。"); })
       .finally(() => { if (!disposed) setLoadingMarkdownDocument(false); });
@@ -326,7 +331,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   async function deleteMarkdownDocument(document: CodeProjectMarkdownDocument) {
     if (!project || document.source === "agent_index") return;
     const source = document.source === "repository" ? "这会删除注册仓库中的真实文件，Git 将显示该删除变更。" : "这会删除专用上传区中的文件。";
-    if (!window.confirm(`删除 Markdown 文件“${document.name}”？\n${source}`)) return;
+    if (!window.confirm(`删除项目资料“${document.name}”？\n${source}`)) return;
     setError(null);
     try {
       await deleteProjectMarkdownDocument(project.id, document.repository_name, document.path);
@@ -334,7 +339,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
       setMarkdownDocumentContent(null);
       await refreshMarkdownDocuments(undefined, selectedMarkdownDirectory);
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : "无法删除 Markdown 文件。");
+      setError(ex instanceof Error ? ex.message : "无法删除项目资料。");
     }
   }
 
@@ -375,6 +380,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
         <UploadsTab uploads={uploads} selectedUpload={selectedUpload} requestedExtraction={requestedExtraction} loading={loadingUploads} onSelect={(item) => { setRequestedExtraction(null); setSelectedUpload(item); }} />
       ) : activeTab === "documents" ? (
         <ProjectDocumentsTab
+          projectId={project?.id ?? null}
           documents={markdownDocuments}
           loadingDocuments={loadingMarkdownDocuments}
           selectedDocument={selectedMarkdownDocument}
@@ -471,7 +477,8 @@ function buildMarkdownDocumentTree(documents: CodeProjectMarkdownDocument[], dir
   return root;
 }
 
-function ProjectDocumentsTab({ documents, directories, loadingDocuments, selectedDocument, selectedDirectory, content, loadingContent, onSelect, onSelectDirectory, onInsert, uploadInputRef, onUpload, importing, importSummary, onCreateDirectory, onDownload, onDelete, onPrepareAgentMarkdown, onRefresh }: {
+function ProjectDocumentsTab({ projectId, documents, directories, loadingDocuments, selectedDocument, selectedDirectory, content, loadingContent, onSelect, onSelectDirectory, onInsert, uploadInputRef, onUpload, importing, importSummary, onCreateDirectory, onDownload, onDelete, onPrepareAgentMarkdown, onRefresh }: {
+  projectId: number | null;
   documents: CodeProjectMarkdownDocument[];
   directories: CodeProjectMarkdownDirectory[];
   loadingDocuments: boolean;
@@ -497,18 +504,20 @@ function ProjectDocumentsTab({ documents, directories, loadingDocuments, selecte
   return <div className="relative flex min-h-0 flex-1 overflow-hidden" onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false); }} onDrop={(event) => { event.preventDefault(); setDragging(false); onUpload(Array.from(event.dataTransfer.files)); }}>
     {dragging && <div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-xl border-2 border-dashed border-blue-500 bg-blue-50/95 text-center text-sm font-semibold text-blue-700">拖放到这里，导入当前文件夹</div>}
     <div className="workspace-scroll w-[44%] min-w-[160px] max-w-[300px] overflow-auto border-r border-slate-200 bg-slate-50/60 p-2">
-      <div className="px-2 py-1.5"><div className="flex items-center gap-1"><span className="flex-1 text-[11px] font-semibold text-slate-500">项目资料库</span><button type="button" onClick={onRefresh} disabled={loadingDocuments} className="grid h-6 w-6 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-40" title="刷新目录" aria-label="刷新目录"><RefreshCw size={13} className={loadingDocuments ? "animate-spin" : ""}/></button><button type="button" onClick={onPrepareAgentMarkdown} className="rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50">生成 Agent 文档</button></div><p className="mt-1 truncate text-[10px] text-slate-400">上传目标：{selectedDirectory.repository_name}{selectedDirectory.path ? ` / ${selectedDirectory.path}` : " / 根目录"}</p><p className="mt-0.5 text-[10px] leading-4 text-slate-400">支持拖放、批量上传、ZIP、PDF、DOCX、XLSX、PPTX 及常见文本；统一转换为 Markdown。</p><div className="mt-1 flex gap-1"><button type="button" onClick={onCreateDirectory} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"><FolderPlus size={12}/>新建文件夹</button><button type="button" disabled={importing} onClick={() => uploadInputRef.current?.click()} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50">{importing && <Loader2 size={11} className="animate-spin"/>}{importing ? "正在导入" : "上传到此处"}</button></div>{importSummary && <p className="mt-1 text-[10px] leading-4 text-slate-500">{importSummary}</p>}<input ref={uploadInputRef} type="file" multiple accept=".zip,.md,.markdown,.txt,.csv,.json,.jsonl,.xml,.yaml,.yml,.html,.htm,.pdf,.docx,.xlsx,.pptx" className="hidden" onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; if (files.length) onUpload(files); }}/></div>
+      <div className="px-2 py-1.5"><div className="flex items-center gap-1"><span className="flex-1 text-[11px] font-semibold text-slate-500">项目资料库</span><button type="button" onClick={onRefresh} disabled={loadingDocuments} className="grid h-6 w-6 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-40" title="刷新目录" aria-label="刷新目录"><RefreshCw size={13} className={loadingDocuments ? "animate-spin" : ""}/></button><button type="button" onClick={onPrepareAgentMarkdown} className="rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50">生成 Agent 文档</button></div><p className="mt-1 truncate text-[10px] text-slate-400">上传目标：{selectedDirectory.repository_name}{selectedDirectory.path ? ` / ${selectedDirectory.path}` : " / 根目录"}</p><p className="mt-0.5 text-[10px] leading-4 text-slate-400">支持 PDF、Word、Excel、PPT、HTML 与常见文本；保留原文件并可预览下载。</p><div className="mt-1 flex gap-1"><button type="button" onClick={onCreateDirectory} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"><FolderPlus size={12}/>新建文件夹</button><button type="button" disabled={importing} onClick={() => uploadInputRef.current?.click()} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50">{importing && <Loader2 size={11} className="animate-spin"/>}{importing ? "正在导入" : "上传到此处"}</button></div>{importSummary && <p className="mt-1 text-[10px] leading-4 text-slate-500">{importSummary}</p>}<input ref={uploadInputRef} type="file" multiple accept=".zip,.md,.markdown,.txt,.csv,.json,.jsonl,.xml,.yaml,.yml,.html,.htm,.pdf,.docx,.xlsx,.pptx" className="hidden" onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; if (files.length) onUpload(files); }}/></div>
       {loadingDocuments ? <div className="flex min-h-24 items-center justify-center gap-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin"/>正在读取目录…</div>
-        : directories.length === 0 && documents.length === 0 ? <p className="px-2 py-5 text-center text-xs leading-5 text-slate-500">当前项目没有可读取的 Markdown 目录。</p>
+        : directories.length === 0 && documents.length === 0 ? <p className="px-2 py-5 text-center text-xs leading-5 text-slate-500">当前项目没有可预览的资料。</p>
           : <MarkdownDocumentTreeNode node={tree} selectedDocument={selectedDocument} selectedDirectory={selectedDirectory} onSelect={onSelect} onSelectDirectory={onSelectDirectory}/>}
     </div>
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="flex min-h-12 items-center gap-2 border-b border-slate-100 px-3">
         <FileText size={15} className="shrink-0 text-blue-600"/>
-        <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{selectedDocument?.path || "选择一个 Markdown 文档"}</p>{selectedDocument && <p className="mt-0.5 truncate text-[10px] text-slate-400">{selectedDocument.repository_name}</p>}</div>
-        {selectedDocument && <button type="button" onClick={() => onDownload(selectedDocument)} title="下载 Markdown" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Download size={14}/></button>}{selectedDocument && selectedDocument.source !== "agent_index" && <button type="button" onClick={() => onDelete(selectedDocument)} title="删除 Markdown" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 size={14}/></button>}{selectedDocument && onInsert && <button type="button" onClick={() => onInsert(selectedDocument)} className="shrink-0 rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-700">引用到聊天</button>}
+        <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{selectedDocument?.path || "选择一份项目资料"}</p>{selectedDocument && <p className="mt-0.5 truncate text-[10px] text-slate-400">{selectedDocument.repository_name}</p>}</div>
+        {selectedDocument && <button type="button" onClick={() => onDownload(selectedDocument)} title="下载原文件" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Download size={14}/></button>}{selectedDocument && selectedDocument.source !== "agent_index" && <button type="button" onClick={() => onDelete(selectedDocument)} title="删除资料" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 size={14}/></button>}{selectedDocument && onInsert && <button type="button" onClick={() => onInsert(selectedDocument)} className="shrink-0 rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-700">引用到聊天</button>}
       </div>
-      {loadingContent ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>正在预览文档…</div>
+      {selectedDocument && projectId && selectedDocument.preview_kind === "pdf" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} className="min-h-0 flex-1 border-0 bg-slate-100"/>
+        : selectedDocument && projectId && selectedDocument.preview_kind === "html" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} sandbox="" className="min-h-0 flex-1 border-0 bg-white"/>
+        : loadingContent ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>正在预览文档…</div>
         : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><article className="markdown-document-preview mx-auto max-w-4xl"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
           h1: ({ className, ...props }) => <h1 className={`mb-5 border-b border-slate-200 pb-3 text-2xl font-bold tracking-tight text-slate-950 ${className ?? ""}`} {...props}/>,
           h2: ({ className, ...props }) => <h2 className={`mb-3 mt-8 border-b border-slate-100 pb-2 text-xl font-bold text-slate-900 ${className ?? ""}`} {...props}/>,

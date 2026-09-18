@@ -30,7 +30,7 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
         _projectAccess = projectAccess;
     }
 
-    public Task ResolveAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+    public async Task ResolveAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // Prefer the structured fields emitted by the composer, then retain text-token parsing
@@ -42,7 +42,7 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
         {
             request.ResolvedMarkdownDocumentReferences = [];
             request.ServerMarkdownDocumentContext = string.Empty;
-            return Task.CompletedTask;
+            return;
         }
 
         if (!request.CodeProjectId.HasValue || !_projectAccess.CanAccess(user, request.CodeProjectId.Value))
@@ -54,7 +54,7 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
         {
             try
             {
-                var document = _repositories.ReadProjectMarkdownDocument(request.CodeProjectId.Value, reference.RepositoryName, reference.Path);
+                var document = await _repositories.PreviewProjectDocumentAsync(request.CodeProjectId.Value, reference.RepositoryName, reference.Path, cancellationToken);
                 if (remainingCharacters <= 0) throw new InvalidOperationException("The referenced Markdown documents exceed the 160,000-character chat context limit.");
                 var content = document.Content.Length <= remainingCharacters ? document.Content : document.Content[..remainingCharacters];
                 resolved.Add(new ResolvedChatMarkdownDocumentReference
@@ -87,7 +87,6 @@ public sealed class MarkdownDocumentReferenceContextService : IMarkdownDocumentR
         request.ServerPromptMessage = string.IsNullOrWhiteSpace(request.ServerPromptMessage)
             ? request.Message
             : request.ServerPromptMessage;
-        return Task.CompletedTask;
     }
 
     private static List<(string RepositoryName, string Path)> ExtractReferences(ChatCompleteRequest request)

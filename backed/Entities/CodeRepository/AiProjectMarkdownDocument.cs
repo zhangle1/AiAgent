@@ -30,6 +30,16 @@ public sealed class AiProjectMarkdownDocument
     [SugarColumn(Length = 80)]
     public string StorageName { get; set; } = string.Empty;
 
+    /// <summary>Optional original file kept for preview and download after its Markdown representation is generated.</summary>
+    [SugarColumn(Length = 120, IsNullable = true)]
+    public string? OriginalStorageName { get; set; }
+
+    [SugarColumn(Length = 256, IsNullable = true)]
+    public string? OriginalFileName { get; set; }
+
+    [SugarColumn(Length = 160, IsNullable = true)]
+    public string? OriginalContentType { get; set; }
+
     public long SizeBytes { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -269,6 +269,16 @@ public sealed class CodeProjectMarkdownDocumentDto
     /// <summary>UTC timestamp used by clients to make newly created project documents easy to find.</summary>
     [JsonPropertyName("updated_at")]
     public DateTime? UpdatedAt { get; set; }
+
+    [JsonPropertyName("extension")]
+    public string Extension { get; set; } = string.Empty;
+
+    /// <summary>markdown, text, html, pdf, or office.</summary>
+    [JsonPropertyName("preview_kind")]
+    public string PreviewKind { get; set; } = "markdown";
+
+    [JsonPropertyName("has_original")]
+    public bool HasOriginal { get; set; }
 }
 
 public sealed class CodeProjectDocumentImportResultDto

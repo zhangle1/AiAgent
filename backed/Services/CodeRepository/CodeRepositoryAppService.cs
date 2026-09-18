@@ -119,6 +119,17 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         }
     }
 
+    [HttpGet("projects/{projectId:long}/documents/preview")]
+    public async Task<IActionResult> PreviewProjectDocument([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] string path, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try { return new OkObjectResult(await _manager.PreviewProjectDocumentAsync(projectId, repositoryName, path, cancellationToken)); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (FileNotFoundException) { return new NotFoundObjectResult(new { message = "The referenced project document is unavailable." }); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
     [HttpGet("projects/{projectId:long}/markdown-documents/download")]
     public async Task<IActionResult> DownloadMarkdownDocument([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] string path, CancellationToken cancellationToken)
     {
@@ -126,10 +137,25 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
         try
         {
-            var document = _manager.DownloadProjectMarkdownDocument(projectId, repositoryName, path);
-            return new FileContentResult(document.Content, "text/markdown; charset=utf-8") { FileDownloadName = document.FileName };
+            var document = _manager.GetProjectDocumentFile(projectId, repositoryName, path);
+            return new FileStreamResult(new FileStream(document.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read), document.ContentType) { FileDownloadName = document.FileName, EnableRangeProcessing = true };
         }
         catch (DecoderFallbackException) { return new BadRequestObjectResult(new { message = "Markdown 文件必须使用 UTF-8 或 Unicode BOM 编码。" }); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (FileNotFoundException) { return new NotFoundObjectResult(new { message = "The referenced project document is unavailable." }); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
+    [HttpGet("projects/{projectId:long}/documents/file")]
+    public async Task<IActionResult> OpenProjectDocumentFile([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] string path, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try
+        {
+            var document = _manager.GetProjectDocumentFile(projectId, repositoryName, path);
+            return new FileStreamResult(new FileStream(document.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read), document.ContentType) { EnableRangeProcessing = true };
+        }
         catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
         catch (FileNotFoundException) { return new NotFoundObjectResult(new { message = "The referenced project document is unavailable." }); }
         catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
