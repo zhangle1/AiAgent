@@ -1,18 +1,15 @@
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { copyFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const { chromium } = await import(pathToFileURL("C:/Users/zhang/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs").href);
-const htmlPath = path.join(root, "坤伴Agent协同研发平台介绍手册.html");
-const pdfPath = process.env.MANUAL_PDF_OUTPUT
-  ? path.resolve(process.env.MANUAL_PDF_OUTPUT)
-  : path.join(root, "坤伴Agent协同研发平台介绍手册.pdf");
-const browser = await chromium.launch({ headless: true, executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" });
-try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
-  await page.goto(pathToFileURL(htmlPath).href, { waitUntil: "networkidle" });
-  await page.emulateMedia({ media: "print" });
-  await page.pdf({ path: pdfPath, format: "A4", printBackground: true, preferCSSPageSize: true });
-} finally {
-  await browser.close();
+// Share the full build's portable renderer and two-page validation.
+const result = spawnSync(process.env.PYTHON || "python", [
+  "-c", "from build_manual_assets import render_pdf; render_pdf()",
+], { cwd: root, stdio: "inherit", windowsHide: true });
+if (result.error) throw result.error;
+if (result.status !== 0) process.exit(result.status || 1);
+if (process.env.MANUAL_PDF_OUTPUT) {
+  copyFileSync(path.join(root, "坤伴Agent协同研发平台介绍手册.pdf"), path.resolve(process.env.MANUAL_PDF_OUTPUT));
 }
