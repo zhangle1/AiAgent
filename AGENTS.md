@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 知识提炼采用 Analysis → Generation 两阶段：宿主确定分段，先分析全部原文，再按段生成并校验证据；模型调用预算覆盖两阶段，校验修正每段最多三次生成调用。队列、提炼和设置操作使用独立 `CopyNew()` 客户端，不跨请求共享连接。任务开始、进度及终态异常均隔离在任务边界；终态写库失败暂存内存并在状态查询时补写，不重复模型调用。草稿插入与文档成功状态在同一短事务内提交。
+
 - Office 预览在 `KnowledgeOfficePreviewService` 中进行，与模型提炼无关；返回经过编码的受限 HTML，前端必须使用无权限 sandbox iframe，不得开放脚本或外链。DOC/XLS 仅在临时目录调用配置的 LibreOffice 转换，不修改 raw。提炼进度来自解析阶段和已校验证据覆盖率，不用计时器伪造百分比；取消必须传递到模型调用，`cancelling` 仍视为活动任务以防重复提交。队列列表只包含 `wiki_compile`，不混入 RAG 任务。
 
 - 知识库创建/上传仅写入 raw，不自动索引或提炼。`knowledge_compiler.retrieval_mode` 默认 `wiki`：使用 Codex CLI/LLM API 读取知识表示层并校验引用；`rag` 才使用活动索引。查询不得写草稿或原文。规则与验收见 `docs/knowledge-wiki-retrieval.md`。

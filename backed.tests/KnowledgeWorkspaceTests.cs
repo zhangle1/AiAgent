@@ -15,8 +15,66 @@ using System.Text.Json;
 
 namespace AiAgent.Backend.Tests;
 
-public sealed class KnowledgeWorkspaceTests
+public sealed class KnowledgeWorkspaceTests : IDisposable
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DatabaseFailureDuringTaskStartDoesNotStopQueueOrKnowledgeReads(bool failErrorWrite)
+    {
+        using var db = Database(); var kb = CreateBase(db);
+        var first = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id };
+        var second = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id };
+        first.Id = db.Insertable(first).ExecuteReturnBigIdentity();
+        second.Id = db.Insertable(second).ExecuteReturnBigIdentity();
+        var condition = failErrorWrite ? "NEW.Status IN ('processing', 'error')" : "NEW.Status = 'processing'";
+        db.Ado.ExecuteCommand($"CREATE TRIGGER fail_start BEFORE UPDATE ON ai_knowledge_job WHEN NEW.DocumentId = {first.Id} AND {condition} BEGIN SELECT RAISE(ABORT, 'Injected connection failure'); END;");
+        var ingestion = new FinishingIngestion();
+        ingestion.Saved.TrySetResult();
+        using var worker = new KnowledgeCompilationWorker(db, new(db), ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        await worker.StartAsync(default);
+        try
+        {
+            worker.Enqueue(kb.Name, first.Id);
+            worker.Enqueue(kb.Name, second.Id);
+            await ingestion.Saving.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (worker.Latest(kb.Name, second.Id)!.Status != "success") await Task.Delay(10, deadline.Token);
+            Assert.False(worker.ExecuteTask!.IsCompleted);
+            Assert.Equal(2, worker.List().Count);
+            Assert.Equal(kb.Id, db.Queryable<AiKnowledgeBase>().InSingle(kb.Id).Id);
+            Assert.Equal("error", worker.Latest(kb.Name, first.Id)!.Status);
+            db.Ado.ExecuteCommand("DROP TRIGGER fail_start;");
+            worker.List();
+            Assert.Equal("error", db.Queryable<AiKnowledgeJob>().Where(x => x.DocumentId == first.Id).First().Status);
+        }
+        finally { await worker.StopAsync(default); }
+    }
+
+    [Fact]
+    public async Task SuccessfulCompilationRemainsSuccessfulWhenTerminalWriteFails()
+    {
+        using var db = Database(); var kb = CreateBase(db);
+        var doc = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id };
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        db.Ado.ExecuteCommand("CREATE TRIGGER fail_success BEFORE UPDATE ON ai_knowledge_job WHEN NEW.Status = 'success' BEGIN SELECT RAISE(ABORT, 'Injected status failure'); END;");
+        var ingestion = new FinishingIngestion(); ingestion.Saved.TrySetResult();
+        using var worker = new KnowledgeCompilationWorker(db, new(db), ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        await worker.StartAsync(default);
+        try
+        {
+            var job = worker.Enqueue(kb.Name, doc.Id);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (worker.Latest(kb.Name, doc.Id)!.Status != "success") await Task.Delay(10, deadline.Token);
+            Assert.Equal("success", worker.Cancel(kb.Name, job.Id).Status);
+            Assert.Equal("processing", db.Queryable<AiKnowledgeJob>().InSingle(job.Id).Status);
+            db.Ado.ExecuteCommand("DROP TRIGGER fail_success;");
+            Assert.Equal(100, worker.Latest(kb.Name, doc.Id)!.Progress);
+            Assert.Equal("success", db.Queryable<AiKnowledgeJob>().InSingle(job.Id).Status);
+        }
+        finally { await worker.StopAsync(default); }
+    }
+
     [Fact]
     public async Task CancellationDuringFinalSavePreservesSuccessfulCompletion()
     {
@@ -109,10 +167,18 @@ public sealed class KnowledgeWorkspaceTests
         public KnowledgeDocumentContentDto GetContent(AiKnowledgeBase kb, AiKnowledgeDocument doc) => new();
     }
 
-    private static SqlSugarScope Database()
+    private readonly List<string> _databases = [];
+    public void Dispose()
     {
+        foreach (var path in _databases) File.Delete(path);
+    }
+
+    private SqlSugarScope Database()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"knowledge-tests-{Guid.NewGuid():N}.db");
+        _databases.Add(path);
         var db = new SqlSugarScope(new ConnectionConfig {
-            DbType = DbType.Sqlite, ConnectionString = "Data Source=:memory:", IsAutoCloseConnection = false, InitKeyType = InitKeyType.Attribute,
+            DbType = DbType.Sqlite, ConnectionString = $"Data Source={path};Pooling=False", IsAutoCloseConnection = true, InitKeyType = InitKeyType.Attribute,
             ConfigureExternalServices = new() { EntityService = (_, column) => {
                 if (column.DataType == "nvarchar(max)") column.DataType = "text";
                 if (column.IsIdentity) column.DataType = "INTEGER";
@@ -213,8 +279,10 @@ public sealed class KnowledgeWorkspaceTests
         Assert.Equal(3, cli.Requests.Count);
     }
 
-    [Fact]
-    public async Task FailedRecompilePreservesSourceAndPreviousDraftAndRagVersion()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedRecompilePreservesSourceAndPreviousDraftAndRagVersion(bool failFinalSave)
     {
         using var db = Database(); var kb = CreateBase(db);
         var root = Path.Combine(Path.GetTempPath(), "aiagent-knowledge-tests-" + Guid.NewGuid().ToString("N"));
@@ -229,13 +297,18 @@ public sealed class KnowledgeWorkspaceTests
             doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
             var settings = new KnowledgeCompilerSettings(db); settings.Save(new() { Generator = "llm_api", MaxSteps = 8 });
             var api = new Llm();
-            api.Replies.Enqueue("{\"action\":\"read_source\",\"part\":1}");
-            api.Replies.Enqueue(JsonSerializer.Serialize(new { action = "propose_page", title = "Project", markdown = "Project facts", evidence = new[] { new { part = 1, quote = source } } }));
-            api.Replies.Enqueue("{\"action\":\"finish\"}");
+            api.Replies.Enqueue("The source describes a company project.");
+            api.Replies.Enqueue(JsonSerializer.Serialize(new { pages = new[] { new { title = "Project", markdown = "Project facts", evidence = new[] { new { part = 1, quote = source } } } } }));
             var ingestion = new KnowledgeIngestionService(db, paths, null!, api, new Codex(), settings);
             var result = await ingestion.ProcessAsync(kb, doc, new() { Generator = "llm_api" }, CancellationToken.None);
             Assert.True(result.ParsedDocumentId > 0);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => ingestion.ProcessAsync(kb, doc, new() { Generator = "llm_api" }, CancellationToken.None));
+            if (failFinalSave)
+            {
+                api.Replies.Enqueue("Analysis for recompile");
+                api.Replies.Enqueue(JsonSerializer.Serialize(new { pages = new[] { new { title = "Replacement", markdown = "Replacement facts", evidence = new[] { new { part = 1, quote = source } } } } }));
+                db.Ado.ExecuteCommand("CREATE TRIGGER fail_save BEFORE UPDATE ON ai_knowledge_document WHEN NEW.Status = 'processed' BEGIN SELECT RAISE(ABORT, 'Injected final save failure'); END;");
+            }
+            await Assert.ThrowsAnyAsync<Exception>(() => ingestion.ProcessAsync(kb, doc, new() { Generator = "llm_api" }, CancellationToken.None));
             Assert.Single(db.Queryable<AiKnowledgeArtifact>().ToList());
             Assert.Equal(result.ArtifactId, ingestion.GetContent(kb, doc).ArtifactId);
             Assert.Equal(source, await File.ReadAllTextAsync(sourcePath));

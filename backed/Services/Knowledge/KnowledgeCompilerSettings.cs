@@ -5,17 +5,19 @@ using System.Text.Json;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
-public sealed class KnowledgeCompilerSettings(ISqlSugarClient db)
+public sealed class KnowledgeCompilerSettings(ISqlSugarClient database)
 {
     private const string Key = "knowledge_compiler";
     public KnowledgeCompilerSettingsDto Get()
     {
+        using var db = database.CopyNew();
         var row = db.Queryable<AiSettingSnapshot>().Where(x => x.SettingKey == Key).OrderByDescending(x => x.Id).First();
         return row is null ? new() : JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>(row.PayloadJson) ?? new();
     }
 
     public KnowledgeCompilerSettingsDto Save(KnowledgeCompilerSettingsDto config)
     {
+        using var db = database.CopyNew();
         Validate(config);
         var version = db.Queryable<AiSettingSnapshot>().Where(x => x.SettingKey == Key).Max(x => x.VersionNo);
         db.Insertable(new AiSettingSnapshot { SettingKey = Key, PayloadJson = JsonSerializer.Serialize(config),
