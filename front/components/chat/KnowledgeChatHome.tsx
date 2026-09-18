@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
+import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
@@ -267,7 +268,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const wasSendingRef = useRef(false);
   const attachmentPreviewUrlsRef = useRef(new Set<string>());
-  const { streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
+  const { streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
 
   useEffect(() => {
     if (embedded && embeddedProjectId !== undefined) setSelectedProjectId(embeddedProjectId ?? null);
@@ -301,6 +302,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
   const sending = sessionStreams.some((stream) => stream.status === "streaming");
+  const latestSessionStream = sessionStreams.reduce<ChatStreamRecord | undefined>((latest, stream) => !latest || stream.startedAt >= latest.startedAt ? stream : latest, undefined);
+  const failedStream = !sending && latestSessionStream?.status === "error" ? latestSessionStream : undefined;
   const prototypeReferenceOptions = useMemo(
     () => embeddedPrototypeFiles.filter((file) => file.name.toLocaleLowerCase().includes((slashProjectCommand?.query ?? "").toLocaleLowerCase())),
     [embeddedPrototypeFiles, slashProjectCommand?.query],
@@ -1083,6 +1086,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     onRetry={
                       message.role === "assistant"
                         ? () => {
+                            const failed = sessionStreams.find((stream) => `stream:${stream.id}` === message.id && stream.status === "error");
+                            if (failed) {
+                              retryStream(failed.id);
+                              return;
+                            }
                             const userMessage = findPreviousUserMessage(displayMessages, index);
                             if (userMessage)
                               void sendMessage(userMessage.content, {
@@ -1110,6 +1118,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 )}
               </div>
             )}
+
+            {failedStream && <ChatRetryNotice stream={failedStream} onRetry={() => retryStream(failedStream.id)} onCancel={() => cancelRetry(failedStream.id)} />}
 
             <form
               onSubmit={handleSubmit}

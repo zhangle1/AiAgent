@@ -63,6 +63,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 聊天失败的 20 秒自动重试由 `ChatStreamProvider` 管理，复用同一 stream ID 和原始请求快照；底部 `ChatRetryNotice` 仅显示倒计时及立即重试／取消入口。重试必须先结束旧请求，取消倒计时与手动重试须互斥，停止与成功不能安排重试；错误事件不能广播成功完成事件。
 - 原型 PSD 导出逻辑位于 `front/lib/prototype-psd.ts`。导出 iframe 禁止脚本，仅允许同源 DOM 读取，不得同时开启 `allow-scripts`；PSD 缓存必须随 HTML 变化失效。图层为区域像素图层，不得标为原生可编辑文字。
 
 - Next.js App Router，默认开发端口 `3782`，监听 `0.0.0.0`。
