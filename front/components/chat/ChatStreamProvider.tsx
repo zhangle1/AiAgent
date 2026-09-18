@@ -18,6 +18,7 @@ export type ChatStreamRecord = {
   lastEventType?: ChatStreamEvent["type"];
   terminalReason?: ChatStreamTerminalReason;
   errorMessage?: string;
+  retryAt?: number;
   unread: boolean;
   agent?: "codex" | "deepseek-harness" | "codebuddy";
 };
@@ -26,6 +27,8 @@ type ChatStreamContextValue = {
   streams: Record<string, ChatStreamRecord>;
   startStream: (request: ChatCompleteRequest) => string;
   cancelStream: (streamId: string) => void;
+  retryStream: (streamId: string) => void;
+  cancelRetry: (streamId: string) => void;
   markSessionViewed: (sessionId: string) => void;
   clearFinishedStreams: (sessionId: string) => void;
   activateCodexRuntime: (projectId: number, codexModelId?: string, codexReasoningEffort?: string, codexSandboxMode?: CodexSandboxMode) => void;
@@ -43,6 +46,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const pendingUpdatesRef = useRef(new Map<string, Array<(stream: ChatStreamRecord) => ChatStreamRecord>>());
   const flushTimerRef = useRef<number | null>(null);
   const controllersRef = useRef(new Map<string, AbortController>());
+  const requestsRef = useRef(new Map<string, ChatCompleteRequest>());
   const codexProjectIdRef = useRef<number | null>(null);
   const codexModelIdRef = useRef<string | undefined>(undefined);
   const codexReasoningEffortRef = useRef<string | undefined>(undefined);
@@ -52,6 +56,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   // WebSocket frames often arrive faster than the browser can comfortably render
   // Markdown. Commit a short batch together so typing remains stable.
   const flushUpdates = useCallback(() => {
+    if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
     flushTimerRef.current = null;
     if (pendingUpdatesRef.current.size === 0) return;
     const pending = pendingUpdatesRef.current;
@@ -74,15 +79,18 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     if (flushTimerRef.current === null) flushTimerRef.current = window.setTimeout(flushUpdates, 60);
   }, [flushUpdates]);
 
-  const startStream = useCallback((request: ChatCompleteRequest) => {
+  const startStream = useCallback((request: ChatCompleteRequest, retryId?: string) => {
+    flushUpdates();
     const sessionId = request.session_id?.trim();
     if (!sessionId) throw new Error("Chat session is required.");
-    if (Object.values(streamsRef.current).some((stream) => stream.sessionId === sessionId && stream.status === "streaming"))
+    if (Object.values(streamsRef.current).some((stream) => stream.sessionId === sessionId && (stream.status === "streaming" || controllersRef.current.has(stream.id))))
       throw new Error("This session already has an active stream.");
     if (Object.values(streamsRef.current).filter((stream) => stream.status === "streaming").length >= 10)
       throw new Error("A user can run at most 10 chat sessions at the same time.");
 
-    const streamId = createStreamId();
+    const streamId = retryId ?? createStreamId();
+    if (controllersRef.current.has(streamId)) return streamId;
+    requestsRef.current.set(streamId, request);
     const controller = new AbortController();
     controllersRef.current.set(streamId, controller);
     const streamRequest = { ...request, client_runtime_id: getChatRuntimeId() };
@@ -91,7 +99,9 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       : [];
     const startedAt = Date.now();
     const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", events: initialEvents, startedAt, lastEventAt: startedAt, observedAt: startedAt, health: "connecting", unread: false, agent: request.agent };
-    const next = { ...streamsRef.current, [streamId]: record };
+    const next = { ...Object.fromEntries(Object.entries(streamsRef.current).map(([id, stream]) => [id,
+      stream.sessionId === sessionId ? { ...stream, retryAt: undefined } : stream,
+    ])), [streamId]: record };
     streamsRef.current = next;
     setStreams(next);
 
@@ -120,8 +130,15 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         observedAt: Date.now(),
         terminalReason: current.status === "error" ? current.terminalReason : current.events.some((event) => event.type === "completed") ? "completed" : "legacy_done",
         unread: true,
+        retryAt: current.status === "error" ? Date.now() + 20_000 : undefined,
       }));
+      flushUpdates();
       const completed = streamsRef.current[streamId];
+      if (completed?.status === "error") {
+        window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped: false, error: completed.errorMessage } }));
+        window.dispatchEvent(new Event("aiagent:sessions-updated"));
+        return;
+      }
       const contentEvents = completed?.events ?? [];
       // "done" 携带服务端聚合后的完整回答；流式 content 仅用于界面实时展示，不能作为原型文件的主来源。
       const content = [...contentEvents].reverse().find((event) => (event.type === "done" || event.type === "completed") && event.content?.trim())?.content
@@ -133,13 +150,15 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       const stopped = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
       const message = error instanceof Error ? error.message : "Chat stream failed.";
       const idleTimeout = !stopped && message.includes("6 分钟没有收到服务端事件");
+      const failedAt = Date.now();
       update(streamId, (current) => ({
         ...current,
         status: stopped ? "stopped" : "error",
         observedAt: Date.now(),
         terminalReason: stopped ? "user_stopped" : idleTimeout ? "idle_timeout" : "transport_error",
-        errorMessage: stopped ? current.errorMessage : message,
+        errorMessage: current.errorMessage ?? (stopped ? undefined : message),
         unread: !stopped,
+        retryAt: stopped ? undefined : failedAt + 20_000,
         events: stopped || current.events.some((event) => event.type === "error") ? current.events : [...current.events, { type: "error", content: message }],
       }));
       window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped, error: message } }));
@@ -147,6 +166,33 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     }).finally(() => controllersRef.current.delete(streamId));
     return streamId;
   }, [flushUpdates, update]);
+
+  const cancelRetry = useCallback((streamId: string) => {
+    update(streamId, (current) => ({ ...current, retryAt: undefined }));
+    flushUpdates();
+  }, [flushUpdates, update]);
+
+  const retryStream = useCallback((streamId: string) => {
+    const stream = streamsRef.current[streamId];
+    const request = requestsRef.current.get(streamId);
+    if (!stream || stream.status !== "error" || !request || controllersRef.current.has(streamId)) return;
+    cancelRetry(streamId);
+    try {
+      startStream(request, streamId);
+    } catch {
+      // Another turn or the global concurrency limit can prevent a retry.
+      // Keep the failed turn available for an explicit retry, without a busy loop.
+    }
+  }, [cancelRetry, startStream]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      Object.values(streamsRef.current).forEach((stream) => {
+        if (stream.status === "error" && stream.retryAt !== undefined && stream.retryAt <= Date.now()) retryStream(stream.id);
+      });
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [retryStream]);
 
   const cancelStream = useCallback((streamId: string) => controllersRef.current.get(streamId)?.abort(), []);
   const markSessionViewed = useCallback((sessionId: string) => {
@@ -166,6 +212,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     const remaining = entries.filter(([, stream]) => stream.sessionId !== sessionId || stream.status !== "done");
     if (remaining.length === entries.length) return;
     const next = Object.fromEntries(remaining);
+    entries.forEach(([id]) => { if (!next[id]) requestsRef.current.delete(id); });
     streamsRef.current = next;
     setStreams(next);
   }, []);
@@ -215,7 +262,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     controllersRef.current.forEach((controller) => controller.abort());
     if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
   }, []);
-  const value = useMemo(() => ({ streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, cancelStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
+  const value = useMemo(() => ({ streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
 
