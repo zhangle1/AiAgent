@@ -113,6 +113,13 @@ IF COL_LENGTH(N'dbo.ai_code_repository', N'GitAccountId') IS NULL
 IF COL_LENGTH(N'dbo.ai_project_markdown_document', N'DirectoryPath') IS NULL
     ALTER TABLE dbo.ai_project_markdown_document ADD DirectoryPath NVARCHAR(512) NULL;
 
+-- Knowledge compilation jobs existed before UpdatedAt was added to the
+-- entity. Keep existing installations compatible with the current worker,
+-- which reads and writes this column while polling the task queue.
+IF OBJECT_ID(N'dbo.ai_knowledge_job', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.ai_knowledge_job', N'UpdatedAt') IS NULL
+    ALTER TABLE dbo.ai_knowledge_job ADD UpdatedAt DATETIME2 NULL;
+
 IF OBJECT_ID(N'dbo.ai_project_task', N'U') IS NOT NULL
 BEGIN
     IF COL_LENGTH(N'dbo.ai_project_task', N'WorkItemId') IS NULL
