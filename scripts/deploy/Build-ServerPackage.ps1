@@ -87,12 +87,35 @@ Remove-Item -LiteralPath $frontendBuildRoot -Recurse -Force -ErrorAction Silentl
 Write-Host "[3/4] Adding the server run script..." -ForegroundColor Cyan
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "Run-AiAgent.ps1") -Destination (Join-Path $stageRoot "Run-AiAgent.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "DEPLOYMENT.md") -Destination (Join-Path $stageRoot "DEPLOYMENT.md") -Force
+$gitCommit = "unknown"
+try {
+    $gitCommit = (& git -C $projectRoot rev-parse HEAD 2>$null).Trim()
+    if ([string]::IsNullOrWhiteSpace($gitCommit)) { $gitCommit = "unknown" }
+}
+catch {
+    Write-Warning "Could not determine the Git commit for this package."
+}
+$backendAssemblyPath = Join-Path $stageRoot "backend\AiAgent.Backend.dll"
+if (-not (Test-Path -LiteralPath $backendAssemblyPath)) {
+    throw "Published backend assembly was not found: $backendAssemblyPath"
+}
+$packageManifest = [ordered]@{
+    schema_version = 1
+    built_at_utc = [DateTime]::UtcNow.ToString("O")
+    git_commit = $gitCommit
+    backend_assembly_sha256 = (Get-FileHash -LiteralPath $backendAssemblyPath -Algorithm SHA256).Hash
+    required_api_routes = @(
+        "/api/v1/code-repositories/projects/0/documents/preview"
+    )
+}
+$packageManifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stageRoot "package-manifest.json") -Encoding utf8
 @"
 FrontendPort=$FrontendPort
 BackendApiUrl=$BackendApiUrl
 RuntimeIdentifier=$RuntimeIdentifier
 IncludePythonWorkers=$($IncludePythonWorkers.IsPresent)
 SelfContained=$($SelfContained.IsPresent)
+GitCommit=$gitCommit
 "@ | Set-Content -LiteralPath (Join-Path $stageRoot "package-info.txt") -Encoding utf8
 
 Write-Host "[4/4] Creating zip package..." -ForegroundColor Cyan

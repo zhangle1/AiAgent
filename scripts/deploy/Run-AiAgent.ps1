@@ -14,6 +14,83 @@ $frontRoot = Join-Path $packageRoot "front"
 $runtimeRoot = Join-Path $packageRoot "runtime"
 $backendPidPath = Join-Path $runtimeRoot "backend.pid"
 $frontPidPath = Join-Path $runtimeRoot "front.pid"
+$packageManifestPath = Join-Path $packageRoot "package-manifest.json"
+
+function Get-PackageManifest {
+    if (-not (Test-Path -LiteralPath $packageManifestPath)) {
+        Write-Warning "package-manifest.json was not found. This is an older package; API version compatibility cannot be verified before startup."
+        return $null
+    }
+    try {
+        return Get-Content -LiteralPath $packageManifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "Invalid package-manifest.json. Recreate the deployment package with Build-ServerPackage.ps1. $($_.Exception.Message)"
+    }
+}
+
+function Assert-PackageBackendIntegrity($manifest) {
+    if ($null -eq $manifest -or [string]::IsNullOrWhiteSpace($manifest.backend_assembly_sha256)) { return }
+    $backendAssemblyPath = Join-Path $backendRoot "AiAgent.Backend.dll"
+    if (-not (Test-Path -LiteralPath $backendAssemblyPath)) {
+        throw "Package manifest requires backend\\AiAgent.Backend.dll, but it is missing. Deploy the complete package."
+    }
+    $actualHash = (Get-FileHash -LiteralPath $backendAssemblyPath -Algorithm SHA256).Hash
+    if (-not $actualHash.Equals([string]$manifest.backend_assembly_sha256, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The backend assembly does not match package-manifest.json. Do not deploy only front or backend; replace both folders from the same ZIP package."
+    }
+}
+
+function Get-RequiredApiRoutes($manifest) {
+    $routes = @()
+    if ($null -ne $manifest -and $null -ne $manifest.required_api_routes) {
+        foreach ($route in @($manifest.required_api_routes)) {
+            if ($route -is [string] -and $route.StartsWith("/api/")) { $routes += $route }
+        }
+    }
+    if ($routes.Count -eq 0) {
+        $routes = @("/api/v1/code-repositories/projects/0/documents/preview")
+    }
+    return $routes
+}
+
+function Get-HttpStatusCode([string]$url) {
+    try {
+        return [int](Invoke-WebRequest -Uri $url -Method Get -UseBasicParsing -TimeoutSec 5 -MaximumRedirection 0 -ErrorAction Stop).StatusCode
+    }
+    catch {
+        $response = $_.Exception.Response
+        if ($null -ne $response) { return [int]$response.StatusCode }
+        throw "Could not reach backend API at $url. $($_.Exception.Message)"
+    }
+}
+
+function Assert-BackendApiContract([string]$apiUrl, [string[]]$routes) {
+    foreach ($route in $routes) {
+        $probeUrl = "$apiUrl$route"
+        $status = Get-HttpStatusCode $probeUrl
+        if ($status -eq 404) {
+            throw "Backend API route is unavailable: $route. The frontend proxy targets $apiUrl, but that backend is older than this package or points to the wrong service."
+        }
+        Write-Host "Backend API compatibility probe: $route returned HTTP $status." -ForegroundColor DarkGray
+    }
+}
+
+function Wait-ForBackendApiContract([string]$apiUrl, [string[]]$routes) {
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 12; $attempt++) {
+        try {
+            Assert-BackendApiContract $apiUrl $routes
+            return
+        }
+        catch {
+            $lastError = $_
+            if ($_.Exception.Message -like "*route is unavailable*") { throw }
+            Start-Sleep -Seconds 1
+        }
+    }
+    throw "Backend API did not become reachable within 12 seconds. $($lastError.Exception.Message)"
+}
 
 function Resolve-FrontendApiUrl {
     $configuredUrl = $BackendApiUrl
@@ -83,6 +160,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $backendRoot "appsettings.Production
 if (-not (Test-Path -LiteralPath (Join-Path $frontRoot "server.js"))) {
     throw "Missing front\server.js. Use the zip package produced by Build-ServerPackage.ps1."
 }
+$packageManifest = Get-PackageManifest
+Assert-PackageBackendIntegrity $packageManifest
+$requiredApiRoutes = Get-RequiredApiRoutes $packageManifest
 $frontendApiUrl = Resolve-FrontendApiUrl
 Set-FrontendApiProxyTarget $frontendApiUrl
 $bundledNode = Join-Path $frontRoot "node.exe"
@@ -108,16 +188,16 @@ elseif ((Test-Path -LiteralPath $backendPidPath) -or (Test-Path -LiteralPath $fr
 $env:ASPNETCORE_ENVIRONMENT = "Production"
 $env:ASPNETCORE_URLS = "http://0.0.0.0:$BackendPort"
 $backendExe = Join-Path $backendRoot "AiAgent.Backend.exe"
-if (Test-Path -LiteralPath $backendExe) {
-    $backend = Start-Process -FilePath $backendExe -WorkingDirectory $backendRoot -RedirectStandardOutput (Join-Path $runtimeRoot "backend.out.log") -RedirectStandardError (Join-Path $runtimeRoot "backend.err.log") -PassThru
-}
-else {
-    $backendDll = Join-Path $backendRoot "AiAgent.Backend.dll"
-    if (-not (Test-Path -LiteralPath $backendDll)) { throw "Backend executable was not found." }
-    $backend = Start-Process -FilePath "dotnet" -ArgumentList @($backendDll) -WorkingDirectory $backendRoot -RedirectStandardOutput (Join-Path $runtimeRoot "backend.out.log") -RedirectStandardError (Join-Path $runtimeRoot "backend.err.log") -PassThru
-}
-
 try {
+    if (Test-Path -LiteralPath $backendExe) {
+        $backend = Start-Process -FilePath $backendExe -WorkingDirectory $backendRoot -RedirectStandardOutput (Join-Path $runtimeRoot "backend.out.log") -RedirectStandardError (Join-Path $runtimeRoot "backend.err.log") -PassThru
+    }
+    else {
+        $backendDll = Join-Path $backendRoot "AiAgent.Backend.dll"
+        if (-not (Test-Path -LiteralPath $backendDll)) { throw "Backend executable was not found." }
+        $backend = Start-Process -FilePath "dotnet" -ArgumentList @($backendDll) -WorkingDirectory $backendRoot -RedirectStandardOutput (Join-Path $runtimeRoot "backend.out.log") -RedirectStandardError (Join-Path $runtimeRoot "backend.err.log") -PassThru
+    }
+    Wait-ForBackendApiContract $frontendApiUrl $requiredApiRoutes
     $env:PORT = "$FrontendPort"
     $env:HOSTNAME = "0.0.0.0"
     $front = Start-Process -FilePath $nodeExe -ArgumentList @("server.js") -WorkingDirectory $frontRoot -RedirectStandardOutput (Join-Path $runtimeRoot "front.out.log") -RedirectStandardError (Join-Path $runtimeRoot "front.err.log") -PassThru

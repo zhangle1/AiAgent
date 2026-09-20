@@ -19,6 +19,7 @@ AiAgent-server/
 ├─ backend/                 # 已发布的 .NET 后端
 ├─ front/                   # 已构建的 Next.js standalone 前端
 ├─ Run-AiAgent.ps1          # 服务器唯一运行/停止/重启脚本
+├─ package-manifest.json    # 构建提交、后端校验值与关键 API 契约
 └─ DEPLOYMENT.md
 ```
 
@@ -56,6 +57,12 @@ cd D:\AiAgent
   "backendApiUrl": "http://192.168.1.20:5000"
 }
 ```
+
+## 升级发布校验
+
+升级时必须从同一个 ZIP 包同时替换 `backend\`、`front\`、`Run-AiAgent.ps1` 和 `package-manifest.json`；不要只覆盖前端或后端。保留服务器私有的 `backend\appsettings.Production.json`、`front\api-proxy.json`（如跨机器代理）及 `runtime\` 日志即可。
+
+新的运行脚本会在启动前校验后端程序集与 `package-manifest.json` 是否一致，并在启动后探测关键 API。若提示 `Backend API route is unavailable`，说明 `front\api-proxy.json` 指向了旧后端或端口错误；先核对代理地址，再部署与前端来自同一 ZIP 的后端目录。
 
 留空则继续自动跟随 `-BackendPort`。也可以不改文件，启动时临时指定：
 
