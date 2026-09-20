@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getSettings } from "@/lib/api";
+import { getCodexModelPolicy } from "@/lib/agent-provider-api";
 import { checkKnowledgeCompilerChain, checkKnowledgeEnvironment, getKnowledgeCompilerSettings, getKnowledgeProviderConfig, getKnowledgeProviders, saveKnowledgeCompilerSettings, saveKnowledgeProviderConfig } from "@/lib/knowledge-api";
 import type { KnowledgeChainCheckResult, KnowledgeCompilerSettings, KnowledgeProvider, KnowledgeProviderConfig } from "@/lib/knowledge-types";
 import { SettingsPageHeader } from "./layout/SettingsShell";
 
 const inputClass = "mt-2 block w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm";
+type CompilerModelOption = { id: string; label: string };
 
 export function KnowledgeSettingsPage() {
   const [compiler, setCompiler] = useState<KnowledgeCompilerSettings | null>(null);
@@ -17,12 +20,32 @@ export function KnowledgeSettingsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [chainCheck, setChainCheck] = useState<KnowledgeChainCheckResult | null>(null);
+  const [apiModels, setApiModels] = useState<CompilerModelOption[]>([]);
+  const [codexModels, setCodexModels] = useState<CompilerModelOption[]>([]);
   useEffect(() => {
     let disposed = false;
     getKnowledgeCompilerSettings().then((settings) => {
       if (disposed) return;
       setCompiler(settings);
     }).catch((ex) => { if (!disposed) setError(String(ex)); });
+    return () => { disposed = true; };
+  }, []);
+  useEffect(() => {
+    let disposed = false;
+    Promise.allSettled([getSettings(), getCodexModelPolicy()]).then(([settingsResult, codexResult]) => {
+      if (disposed) return;
+      if (settingsResult.status === "fulfilled") {
+        const service = settingsResult.value.catalog.services.llm;
+        setApiModels(service.profiles.flatMap((profile) => profile.models.map((model) => ({
+          id: model.id,
+          label: `${profile.name} · ${model.name || model.model}`,
+        }))));
+      }
+      if (codexResult.status === "fulfilled") {
+        const allowed = new Set(codexResult.value.allowed_model_ids);
+        setCodexModels(codexResult.value.models.filter((model) => allowed.has(model.id)).map((model) => ({ id: model.id, label: model.name || model.id })));
+      }
+    });
     return () => { disposed = true; };
   }, []);
   useEffect(() => {
@@ -53,11 +76,11 @@ export function KnowledgeSettingsPage() {
     {!compiler && !error && <p role="status">正在加载设置…</p>}
     {compiler && <form className="mb-6 rounded-xl border p-6" onSubmit={(e) => { e.preventDefault(); void perform(async () => { setCompiler(await saveKnowledgeCompilerSettings(compiler)); setMessage("知识设置已保存，下次提炼和检索生效。"); }); }}>
       <h2 className="text-lg font-semibold">知识表示层与模型检索</h2><p className="mt-2 text-sm leading-6 text-zinc-500">上传仅保存原始文件到 raw，不自动提炼或建立索引。按需将原文整理为主题、概念和关系等 Markdown 知识草稿，保留来源证据。模型检索先浏览知识目录、读取页面，再返回引用。</p>
-      <p className="mt-2 text-sm leading-6 text-zinc-500">提炼与模型检索共用以下模型配置。Codex CLI 使用后端机器上的登录态；LLM API 使用平台模型服务。仅有原始文件时，请先点击「提炼知识」。</p>
+      <p className="mt-2 text-sm leading-6 text-zinc-500">提炼与模型检索共用以下模型配置。默认使用平台已保存的 LLM API（例如 DeepSeek）；也可切换到后端机器已登录的 Codex CLI。仅有原始文件时，请先点击「提炼知识」。</p>
       <fieldset disabled={busy} className="mt-5 grid gap-5 md:grid-cols-2 disabled:opacity-60">
         <label className="text-sm md:col-span-2">检索方式<select className={inputClass} value={compiler.retrieval_mode} onChange={(e) => setCompiler({ ...compiler, retrieval_mode: e.target.value as KnowledgeCompilerSettings["retrieval_mode"] })}><option value="wiki">模型检索知识表示层（默认，无需索引）</option><option value="rag">RAG 索引检索（需手动创建索引）</option></select></label>
         <label className="text-sm">执行方式<select className={inputClass} value={compiler.generator} onChange={(e) => setCompiler({ ...compiler, generator: e.target.value as KnowledgeCompilerSettings["generator"], model_id: null })}><option value="codex">本地 Codex CLI</option><option value="llm_api">LLM API</option></select></label>
-        <label className="text-sm">模型 ID（留空使用{compiler.generator === "codex" ? " CLI " : "平台"}默认）<input maxLength={256} className={inputClass} value={compiler.model_id || ""} onChange={(e) => setCompiler({ ...compiler, model_id: e.target.value || null })} /></label>
+        <label className="text-sm">提炼模型<select className={inputClass} value={compiler.model_id || ""} onChange={(e) => setCompiler({ ...compiler, model_id: e.target.value || null })}><option value="">使用{compiler.generator === "codex" ? " Codex CLI" : "平台 LLM API"}默认模型</option>{(compiler.generator === "codex" ? codexModels : apiModels).map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select><span className="mt-1 block text-xs text-zinc-500">{compiler.generator === "llm_api" ? "来自「模型服务 → LLM」中已保存的配置，选择模型时会同时使用其所属 API 配置档。" : "来自 Agent 提供方中已启用的 Codex 模型与 CLI Profile。"}</span></label>
         <label className="text-sm">推理强度<select className={inputClass} value={compiler.reasoning_effort || ""} onChange={(e) => setCompiler({ ...compiler, reasoning_effort: e.target.value || null })}><option value="">默认</option>{["low", "medium", "high", "xhigh"].map((v) => <option key={v}>{v}</option>)}</select></label>
         <label className="text-sm">最大执行步数<input type="number" min={8} max={96} required className={inputClass} value={compiler.max_steps} onChange={(e) => setCompiler({ ...compiler, max_steps: Number(e.target.value) })} /></label>
         <label className="text-sm">超时（分钟）<input type="number" min={1} max={60} required className={inputClass} value={compiler.timeout_minutes} onChange={(e) => setCompiler({ ...compiler, timeout_minutes: Number(e.target.value) })} /></label>

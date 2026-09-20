@@ -16,7 +16,7 @@ public sealed class KnowledgeOfficePreviewSectionDto
 public sealed class KnowledgeCompilerSettingsDto
 {
     [JsonPropertyName("retrieval_mode")] public string RetrievalMode { get; set; } = "wiki";
-    [JsonPropertyName("generator")] public string Generator { get; set; } = "codex";
+    [JsonPropertyName("generator")] public string Generator { get; set; } = "llm_api";
     [JsonPropertyName("model_id")] public string? ModelId { get; set; }
     [JsonPropertyName("reasoning_effort")] public string? ReasoningEffort { get; set; }
     [JsonPropertyName("max_steps")] public int MaxSteps { get; set; } = 48;

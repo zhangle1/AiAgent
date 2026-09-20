@@ -340,25 +340,37 @@ public sealed class LlmChatClient : ILlmChatClient
     private LlmSelection ResolveLlm(string? modelId)
     {
         var catalog = _catalogService.Load(redactSecrets: false);
+        var selection = ResolveLlm(catalog, modelId);
+        return new LlmSelection(selection.Profile, selection.Model);
+    }
+
+    internal static (CatalogProfile Profile, CatalogModel Model) ResolveLlm(ModelCatalog catalog, string? modelId)
+    {
         var service = catalog.Services.Llm;
-        var profile = service.Profiles.FirstOrDefault(x => x.Id == service.ActiveProfileId)
+        var activeProfile = service.Profiles.FirstOrDefault(x => x.Id == service.ActiveProfileId)
             ?? service.Profiles.FirstOrDefault();
-        if (profile is null)
+        if (activeProfile is null)
         {
             throw new InvalidOperationException("LLM profile is not configured.");
         }
 
-        var model = !string.IsNullOrWhiteSpace(modelId)
-            ? profile.Models.FirstOrDefault(x => x.Id == modelId)
-            : null;
-        model ??= profile.Models.FirstOrDefault(x => x.Id == service.ActiveModelId)
-            ?? profile.Models.FirstOrDefault();
+        CatalogProfile profile = activeProfile;
+        CatalogModel? model = null;
+        if (!string.IsNullOrWhiteSpace(modelId))
+        {
+            profile = service.Profiles.FirstOrDefault(candidate => candidate.Models.Any(model => model.Id == modelId))
+                ?? activeProfile;
+            model = profile.Models.FirstOrDefault(candidate => candidate.Id == modelId);
+        }
+        model ??= activeProfile.Models.FirstOrDefault(x => x.Id == service.ActiveModelId)
+            ?? activeProfile.Models.FirstOrDefault();
+        profile = model is not null && activeProfile.Models.Contains(model) ? activeProfile : profile;
         if (model is null)
         {
             throw new InvalidOperationException("LLM model is not configured.");
         }
 
-        return new LlmSelection(profile, model);
+        return (profile, model);
     }
 
     private static string BuildChatCompletionsEndpoint(string baseUrl)

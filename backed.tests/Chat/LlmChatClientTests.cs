@@ -1,9 +1,46 @@
 using AiAgent.Backend.Services.Chat.Llm;
+using AiAgent.Backend.Models.Settings;
 
 namespace AiAgent.Backend.Tests.Chat;
 
 public sealed class LlmChatClientTests
 {
+    [Fact]
+    public void ResolveLlm_UsesProfileThatOwnsExplicitModel()
+    {
+        var catalog = new ModelCatalog
+        {
+            Services = new ModelCatalogServices
+            {
+                Llm = new CatalogService
+                {
+                    ActiveProfileId = "openai-profile",
+                    ActiveModelId = "openai-model",
+                    Profiles =
+                    [
+                        new CatalogProfile
+                        {
+                            Id = "openai-profile",
+                            Binding = "openai",
+                            Models = [new CatalogModel { Id = "openai-model", Model = "gpt-test" }]
+                        },
+                        new CatalogProfile
+                        {
+                            Id = "deepseek-profile",
+                            Binding = "deepseek",
+                            Models = [new CatalogModel { Id = "deepseek-model", Model = "deepseek-chat" }]
+                        }
+                    ]
+                }
+            }
+        };
+
+        var selection = LlmChatClient.ResolveLlm(catalog, "deepseek-model");
+
+        Assert.Equal("deepseek-profile", selection.Profile.Id);
+        Assert.Equal("deepseek-model", selection.Model.Id);
+    }
+
     [Fact]
     public void NormalizeToolMessageSequence_KeepsOnlyCompleteToolCallGroups()
     {
