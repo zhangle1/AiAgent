@@ -30,7 +30,18 @@ public sealed class KnowledgeChainDiagnosticsService(
                 ModelId = config.ModelId,
                 ReasoningEffort = config.ReasoningEffort
             }, runtime);
-            return await ExecuteAsync(config, model, timeout.Token);
+            try
+            {
+                return await ExecuteAsync(config, model, timeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return Failed(config, "模型调用超时", "在设定时限内没有完成模型响应；请检查模型服务，或提高超时分钟数。");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Failed(config, "模型连接失败", DescribeModelFailure(config, ex));
+            }
         }
         finally
         {
@@ -70,4 +81,29 @@ public sealed class KnowledgeChainDiagnosticsService(
         Label = label,
         Detail = detail
     };
+
+    private static KnowledgeChainCheckResultDto Failed(KnowledgeCompilerSettingsDto config, string label, string detail) => new()
+    {
+        Ok = false,
+        Provider = config.Generator,
+        Model = config.ModelId,
+        Steps = [new KnowledgeChainCheckStepDto { Key = "model", Label = label, Status = "error", Detail = detail }]
+    };
+
+    private static string DescribeModelFailure(KnowledgeCompilerSettingsDto config, InvalidOperationException exception)
+    {
+        if (exception.Message.Contains("LLM API key is missing", StringComparison.OrdinalIgnoreCase))
+        {
+            return "LLM API 未配置可用密钥。请到“模型服务 → LLM”保存 API Key，或将执行方式切换为“本地 Codex CLI”。";
+        }
+
+        if (exception.Message.Contains("empty response", StringComparison.OrdinalIgnoreCase))
+        {
+            return "所选模型没有返回可用于提炼的正文。请确认模型支持 OpenAI 兼容的流式 chat/completions，并尝试选择其他模型或“本地 Codex CLI”。";
+        }
+
+        return config.Generator == "codex"
+            ? "Codex CLI 调用失败。请确认后端机器已完成登录，并在聊天中验证该 Codex 模型可用。"
+            : "LLM API 调用失败。请在“模型服务 → LLM”检查该模型所属配置档、地址和密钥。";
+    }
 }

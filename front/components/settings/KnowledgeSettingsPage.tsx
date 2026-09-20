@@ -22,6 +22,8 @@ export function KnowledgeSettingsPage() {
   const [chainCheck, setChainCheck] = useState<KnowledgeChainCheckResult | null>(null);
   const [apiModels, setApiModels] = useState<CompilerModelOption[]>([]);
   const [codexModels, setCodexModels] = useState<CompilerModelOption[]>([]);
+  const [apiDefaultModel, setApiDefaultModel] = useState<CompilerModelOption | null>(null);
+  const [codexDefaultModel, setCodexDefaultModel] = useState<CompilerModelOption | null>(null);
   useEffect(() => {
     let disposed = false;
     getKnowledgeCompilerSettings().then((settings) => {
@@ -36,14 +38,18 @@ export function KnowledgeSettingsPage() {
       if (disposed) return;
       if (settingsResult.status === "fulfilled") {
         const service = settingsResult.value.catalog.services.llm;
-        setApiModels(service.profiles.flatMap((profile) => profile.models.map((model) => ({
+        const models = service.profiles.flatMap((profile) => profile.models.map((model) => ({
           id: model.id,
           label: `${profile.name} · ${model.name || model.model}`,
-        }))));
+        })));
+        setApiModels(models);
+        setApiDefaultModel(models.find((model) => model.id === service.active_model_id) ?? null);
       }
       if (codexResult.status === "fulfilled") {
         const allowed = new Set(codexResult.value.allowed_model_ids);
-        setCodexModels(codexResult.value.models.filter((model) => allowed.has(model.id)).map((model) => ({ id: model.id, label: model.name || model.id })));
+        const models = codexResult.value.models.filter((model) => allowed.has(model.id)).map((model) => ({ id: model.id, label: model.name || model.id }));
+        setCodexModels(models);
+        setCodexDefaultModel(models.find((model) => model.id === codexResult.value.default_model_id) ?? null);
       }
     });
     return () => { disposed = true; };
@@ -80,16 +86,16 @@ export function KnowledgeSettingsPage() {
       <fieldset disabled={busy} className="mt-5 grid gap-5 md:grid-cols-2 disabled:opacity-60">
         <label className="text-sm md:col-span-2">检索方式<select className={inputClass} value={compiler.retrieval_mode} onChange={(e) => setCompiler({ ...compiler, retrieval_mode: e.target.value as KnowledgeCompilerSettings["retrieval_mode"] })}><option value="wiki">模型检索知识表示层（默认，无需索引）</option><option value="rag">RAG 索引检索（需手动创建索引）</option></select></label>
         <label className="text-sm">执行方式<select className={inputClass} value={compiler.generator} onChange={(e) => setCompiler({ ...compiler, generator: e.target.value as KnowledgeCompilerSettings["generator"], model_id: null })}><option value="codex">本地 Codex CLI</option><option value="llm_api">LLM API</option></select></label>
-        <label className="text-sm">提炼模型<select className={inputClass} value={compiler.model_id || ""} onChange={(e) => setCompiler({ ...compiler, model_id: e.target.value || null })}><option value="">使用{compiler.generator === "codex" ? " Codex CLI" : "平台 LLM API"}默认模型</option>{(compiler.generator === "codex" ? codexModels : apiModels).map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select><span className="mt-1 block text-xs text-zinc-500">{compiler.generator === "llm_api" ? "来自「模型服务 → LLM」中已保存的配置，选择模型时会同时使用其所属 API 配置档。" : "来自 Agent 提供方中已启用的 Codex 模型与 CLI Profile。"}</span></label>
+        <div className="text-sm"><label>提炼模型<select className={inputClass} value={compiler.model_id || ""} onChange={(e) => setCompiler({ ...compiler, model_id: e.target.value || null })}><option value="">使用{compiler.generator === "codex" ? " Codex CLI" : "平台 LLM API"}默认模型</option>{(compiler.generator === "codex" ? codexModels : apiModels).map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select><span className="mt-1 block text-xs text-zinc-500">{compiler.generator === "llm_api" ? `来自“模型服务 → LLM”中已保存的配置${apiDefaultModel ? `；当前平台默认：${apiDefaultModel.label}` : "；尚未找到平台默认模型"}。` : `来自 Agent 提供方中已启用的 Codex 模型与 CLI Profile${codexDefaultModel ? `；当前 CLI 默认：${codexDefaultModel.label}` : ""}。`}</span></label>{compiler.generator === "llm_api" && codexDefaultModel && <button type="button" className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-700" onClick={() => setCompiler({ ...compiler, generator: "codex", model_id: codexDefaultModel.id })}>改用 Codex 本地默认模型：{codexDefaultModel.label}</button>}</div>
         <label className="text-sm">推理强度<select className={inputClass} value={compiler.reasoning_effort || ""} onChange={(e) => setCompiler({ ...compiler, reasoning_effort: e.target.value || null })}><option value="">默认</option>{["low", "medium", "high", "xhigh"].map((v) => <option key={v}>{v}</option>)}</select></label>
         <label className="text-sm">最大执行步数<input type="number" min={8} max={96} required className={inputClass} value={compiler.max_steps} onChange={(e) => setCompiler({ ...compiler, max_steps: Number(e.target.value) })} /></label>
         <label className="text-sm">超时（分钟）<input type="number" min={1} max={60} required className={inputClass} value={compiler.timeout_minutes} onChange={(e) => setCompiler({ ...compiler, timeout_minutes: Number(e.target.value) })} /></label>
         <div className="flex items-end gap-3"><button className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">{busy ? "处理中…" : "保存知识设置"}</button><button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={() => void perform(async () => { setChainCheck(null); const result = await checkKnowledgeCompilerChain(compiler); setChainCheck(result); setMessage(result.ok ? "模拟检测通过：提炼、校验证据和模型检索链路通顺。" : "模拟检测未通过。"); })}>{busy ? "检测中…" : "模拟检测"}</button></div>
       </fieldset>
-      {chainCheck && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-emerald-800">链路检测通过</strong><span className="text-xs text-emerald-700">{chainCheck.provider || "model"}{chainCheck.model ? ` · ${chainCheck.model}` : ""}</span></div>
-        <ol className="mt-3 grid gap-2 md:grid-cols-2">{chainCheck.steps.map((step, index) => <li key={step.key} className="rounded-md bg-white px-3 py-2 text-xs text-zinc-600"><span className="font-semibold text-emerald-700">{index + 1}. {step.label}</span><p className="mt-1 leading-5">{step.detail}</p></li>)}</ol>
-        <p className="mt-3 text-xs text-emerald-700">检测仅使用内置测试文本和内存知识页，不保存草稿、不修改知识库、不创建索引。</p>
+      {chainCheck && <div className={`mt-5 rounded-lg border p-4 ${chainCheck.ok ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2"><strong className={`text-sm ${chainCheck.ok ? "text-emerald-800" : "text-amber-900"}`}>{chainCheck.ok ? "链路检测通过" : "链路检测未通过"}</strong><span className={`text-xs ${chainCheck.ok ? "text-emerald-700" : "text-amber-800"}`}>{chainCheck.provider || "model"}{chainCheck.model ? ` · ${chainCheck.model}` : ""}</span></div>
+        <ol className="mt-3 grid gap-2 md:grid-cols-2">{chainCheck.steps.map((step, index) => <li key={step.key} className="rounded-md bg-white px-3 py-2 text-xs text-zinc-600"><span className={`font-semibold ${step.status === "error" ? "text-rose-700" : chainCheck.ok ? "text-emerald-700" : "text-amber-800"}`}>{index + 1}. {step.label}</span><p className="mt-1 leading-5">{step.detail}</p></li>)}</ol>
+        <p className={`mt-3 text-xs ${chainCheck.ok ? "text-emerald-700" : "text-amber-800"}`}>检测仅使用内置测试文本和内存知识页，不保存草稿、不修改知识库、不创建索引。</p>
       </div>}
     </form>}
     {compiler?.retrieval_mode === "rag" ? <form className="rounded-xl border p-6" onSubmit={(e) => { e.preventDefault(); if (config) void perform(async () => { setConfig(await saveKnowledgeProviderConfig(provider, config)); setMessage("检索配置已保存，分块调整在下次重建索引时生效。"); }); }}>
