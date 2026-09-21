@@ -1194,7 +1194,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                   <ChevronDown size={13} className="shrink-0" />
                 </button>
                 <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint、HTML 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
                   {uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20} />}
                 </button>
                 {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} mobile />}
@@ -1233,7 +1233,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.md,.markdown,.txt,.csv"
+                    accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv"
                     multiple
                     className="hidden"
                     onChange={(event) => {
@@ -1245,7 +1245,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       fileInputRef.current = element;
                     }}
                   />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint 或文本文件">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint、HTML 或文本文件">
                     {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                   </button>
                   {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}
