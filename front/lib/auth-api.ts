@@ -1,4 +1,4 @@
-export type AuthStatus = { authenticated: boolean; user_id?: string; username?: string; is_admin?: boolean; registration_enabled?: boolean };
+export type AuthStatus = { authenticated: boolean; user_id?: string; username?: string; alias?: string | null; is_admin?: boolean; registration_enabled?: boolean };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   let response: Response;

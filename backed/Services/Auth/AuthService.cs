@@ -6,7 +6,7 @@ using System.Text;
 
 namespace AiAgent.Backend.Services.Auth;
 
-public sealed record AuthenticatedUser(string Id, string Username, string Role = "user", bool CodeCommitGranted = false)
+public sealed record AuthenticatedUser(string Id, string Username, string Role = "user", bool CodeCommitGranted = false, string? Alias = null)
 {
     public bool IsAdministrator => string.Equals(Role, "admin", StringComparison.OrdinalIgnoreCase);
     public bool CanCommitCode => IsAdministrator || CodeCommitGranted;
@@ -114,7 +114,7 @@ public sealed class AuthService : IAuthService
             Purpose = purpose,
             ExpiresAt = DateTime.UtcNow.Add(lifetime)
         }).ExecuteCommand();
-        return Task.FromResult<(AuthenticatedUser?, string?)>((new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode), token));
+        return Task.FromResult<(AuthenticatedUser?, string?)>((new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode, user.Alias), token));
     }
 
     public Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken)
@@ -135,7 +135,7 @@ public sealed class AuthService : IAuthService
             : _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.Purpose == null && x.RevokedAt == null && x.ExpiresAt > now);
         if (session == null) return Task.FromResult<AuthenticatedUser?>(null);
         var user = _db.Queryable<AiUser>().First(x => x.Id == session.UserId && !x.IsDisabled);
-        return Task.FromResult(user == null ? null : new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode));
+        return Task.FromResult(user == null ? null : new AuthenticatedUser(user.Id, user.Username, user.Role, user.CanCommitCode, user.Alias));
     }
 
     public Task LogoutAsync(HttpContext context, CancellationToken cancellationToken)
