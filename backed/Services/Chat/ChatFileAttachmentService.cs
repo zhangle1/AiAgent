@@ -1,12 +1,15 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Knowledge;
 using AiAgent.Backend.Services.Parsing;
 using Microsoft.AspNetCore.Http;
 using System.Collections.Concurrent;
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -55,7 +58,7 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         if (file.Length > MaxFileBytes) throw new InvalidOperationException($"Attachment exceeds the {MaxFileBytes / 1024 / 1024} MB limit.");
 
         var extension = Path.GetExtension(file.FileName ?? string.Empty).ToLowerInvariant();
-        var definition = GetDefinition(extension) ?? throw new InvalidOperationException("Only PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, Markdown, TXT, and CSV files are supported.");
+        var definition = GetDefinition(extension) ?? throw new InvalidOperationException("Only PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, HTML, Markdown, TXT, and CSV files are supported.");
         Directory.CreateDirectory(RootPath);
         var id = Guid.NewGuid().ToString("N");
         var targetPath = Path.Combine(RootPath, $"{id}{definition.Extension}");
@@ -215,7 +218,13 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
     private async Task<string> ExtractTextAsync(string path, CancellationToken cancellationToken)
     {
         var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".doc" or ".xls")
+        {
+            using var converted = await KnowledgeOfficePreviewService.ConvertLegacyAsync(path, _configuration["Knowledge:LibreOfficePath"], cancellationToken);
+            return await ExtractTextAsync(converted.Path, cancellationToken);
+        }
         if (TextExtensions.Contains(extension)) return await ReadUtf8Async(path, cancellationToken);
+        if (extension is ".html" or ".htm") return HtmlToText(await ReadUtf8Async(path, cancellationToken));
         if (extension == ".docx") return ReadOfficeXml(path, "word/document.xml", document => string.Join("\n", document.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value)));
         if (extension == ".pptx") return ReadPowerPointText(path);
         if (extension == ".xlsx") return ReadSpreadsheetText(path);
@@ -287,6 +296,16 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
         using var reader = new StreamReader(stream, StrictUtf8, detectEncodingFromByteOrderMarks: true, bufferSize: 81920, leaveOpen: false);
         return await reader.ReadToEndAsync(cancellationToken);
+    }
+
+    private static string HtmlToText(string html)
+    {
+        var withoutHiddenContent = Regex.Replace(html, @"<(script|style|noscript|template)\b[^>]*>[\s\S]*?</\1\s*>", " ", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var withLineBreaks = Regex.Replace(withoutHiddenContent, @"</?(?:address|article|aside|blockquote|br|div|footer|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|td|th|tr|ul)\b[^>]*>", "\n", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var withoutTags = Regex.Replace(withLineBreaks, @"<[^>]+>", " ", RegexOptions.CultureInvariant);
+        var decoded = WebUtility.HtmlDecode(withoutTags).Replace('\u00a0', ' ');
+        var compactLines = decoded.Split('\n').Select(line => Regex.Replace(line, @"[\t\f\v ]+", " ").Trim()).Where(line => line.Length > 0);
+        return string.Join("\n", compactLines);
     }
 
     private static async Task CopyWithLimitAsync(Stream source, Stream target, long limit, CancellationToken cancellationToken)
@@ -373,8 +392,10 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         ".docx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "ready", false, true, false, false),
         ".xlsx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "ready", false, true, false, false),
         ".pptx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.presentationml.presentation", "ready", false, true, false, false),
-        ".doc" or ".xls" or ".ppt" => new FileDefinition(extension, "application/vnd.ms-office", "unsupported", false, false, true, false),
+        ".doc" or ".xls" => new FileDefinition(extension, "application/vnd.ms-office", "ready", false, false, true, false),
+        ".ppt" => new FileDefinition(extension, "application/vnd.ms-office", "unsupported", false, false, true, false),
         ".md" or ".markdown" => new FileDefinition(extension, "text/markdown", "ready", false, false, false, true),
+        ".html" or ".htm" => new FileDefinition(extension, "text/html", "ready", false, false, false, true),
         ".txt" => new FileDefinition(extension, "text/plain", "ready", false, false, false, true),
         ".csv" => new FileDefinition(extension, "text/csv", "ready", false, false, false, true),
         _ => null
