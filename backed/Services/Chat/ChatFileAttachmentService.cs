@@ -1,5 +1,6 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Knowledge;
 using AiAgent.Backend.Services.Parsing;
 using Microsoft.AspNetCore.Http;
 using System.Collections.Concurrent;
@@ -217,6 +218,11 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
     private async Task<string> ExtractTextAsync(string path, CancellationToken cancellationToken)
     {
         var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".doc" or ".xls")
+        {
+            using var converted = await KnowledgeOfficePreviewService.ConvertLegacyAsync(path, _configuration["Knowledge:LibreOfficePath"], cancellationToken);
+            return await ExtractTextAsync(converted.Path, cancellationToken);
+        }
         if (TextExtensions.Contains(extension)) return await ReadUtf8Async(path, cancellationToken);
         if (extension is ".html" or ".htm") return HtmlToText(await ReadUtf8Async(path, cancellationToken));
         if (extension == ".docx") return ReadOfficeXml(path, "word/document.xml", document => string.Join("\n", document.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value)));
@@ -386,7 +392,8 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         ".docx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "ready", false, true, false, false),
         ".xlsx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "ready", false, true, false, false),
         ".pptx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.presentationml.presentation", "ready", false, true, false, false),
-        ".doc" or ".xls" or ".ppt" => new FileDefinition(extension, "application/vnd.ms-office", "unsupported", false, false, true, false),
+        ".doc" or ".xls" => new FileDefinition(extension, "application/vnd.ms-office", "ready", false, false, true, false),
+        ".ppt" => new FileDefinition(extension, "application/vnd.ms-office", "unsupported", false, false, true, false),
         ".md" or ".markdown" => new FileDefinition(extension, "text/markdown", "ready", false, false, false, true),
         ".html" or ".htm" => new FileDefinition(extension, "text/html", "ready", false, false, false, true),
         ".txt" => new FileDefinition(extension, "text/plain", "ready", false, false, false, true),

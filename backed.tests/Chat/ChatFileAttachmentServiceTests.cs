@@ -13,6 +13,37 @@ namespace AiAgent.Backend.Tests.Chat;
 public sealed class ChatFileAttachmentServiceTests
 {
     [Theory]
+    [InlineData("legacy.xls")]
+    [InlineData("legacy.doc")]
+    public async Task LegacyExcelAndWordAttachmentsAreAcceptedForServerSideExtraction(string fileName)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"aiagent-chat-files-{Guid.NewGuid():N}");
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ChatAttachments:RootPath"] = root
+            }).Build();
+            var service = new ChatFileAttachmentService(configuration, new UnusedDocumentParser(), NullLogger<ChatFileAttachmentService>.Instance);
+            var oleHeader = new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0, 0, 0, 0, 0 };
+            await using var stream = new MemoryStream(oleHeader);
+            var formFile = new FormFile(stream, 0, stream.Length, "file", fileName)
+            {
+                Headers = new HeaderDictionary(),
+                ContentType = "application/vnd.ms-office"
+            };
+
+            var uploaded = await service.SaveAsync(new AuthenticatedUser("user-1", "tester"), formFile, default);
+
+            Assert.Equal("ready", uploaded.ExtractionStatus);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
     [InlineData("page.html", "text/html")]
     [InlineData("page.htm", "text/html")]
     public async Task HtmlAttachmentUploadsAndExtractsVisibleText(string fileName, string contentType)
