@@ -1959,6 +1959,7 @@ function codexReasoningEffortLabel(effort: string) {
     (
       {
         minimal: "极轻",
+        none: "无",
         low: "轻度",
         medium: "中",
         high: "高",

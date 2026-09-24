@@ -39,16 +39,20 @@ public interface ICodexModelPolicyService
 public sealed class CodexModelPolicyService : ICodexModelPolicyService
 {
     private const string SettingKey = "codex_model_policy";
-    private const int BuiltinModelsVersion = 2;
+    private const int BuiltinModelsVersion = 3;
     private static readonly Regex ProfileNamePattern = new("^[A-Za-z0-9_-]{1,64}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly IReadOnlyList<string> SupportedReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh", "max"];
+    private static readonly IReadOnlyList<string> SupportedReasoningEfforts = ["minimal", "none", "low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<string> AstraReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
+    private static readonly IReadOnlyList<string> SolLunaReasoningEfforts = ["none", "low", "medium", "high", "xhigh", "max"];
+    private static readonly IReadOnlyList<string> Gpt56ReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<CodexModelDefinition> BuiltinModels =
     [
         new("gpt-6-astra", "GPT-6 Astra", "适合高难度端到端编码、推理与复杂工作流。", "gpt-6-astra", null, true, true, true, AstraReasoningEfforts),
-        new("gpt-5.6-sol", "GPT-5.6 Sol", "适合复杂、开放式的编码与分析任务。", "gpt-5.6-sol", null, true, true),
-        new("gpt-5.6-terra", "GPT-5.6 Terra", "适合日常开发任务，兼顾速度与质量。", "gpt-5.6-terra", null, true, true),
-        new("gpt-5.6-luna", "GPT-5.6 Luna", "适合清晰、重复或高频的小型任务。", "gpt-5.6-luna", null, true, true)
+        new("gpt-6-sol", "GPT-6 Sol", "适合复杂编码与 Agent 工作流。", "gpt-6-sol", null, true, true, true, SolLunaReasoningEfforts),
+        new("gpt-6-luna", "GPT-6 Luna", "适合高频、范围明确的任务。", "gpt-6-luna", null, true, true, true, SolLunaReasoningEfforts),
+        new("gpt-5.6-sol", "GPT-5.6 Sol", "适合复杂、开放式的编码与分析任务。", "gpt-5.6-sol", null, true, true, false, Gpt56ReasoningEfforts),
+        new("gpt-5.6-terra", "GPT-5.6 Terra", "适合日常开发任务，兼顾速度与质量。", "gpt-5.6-terra", null, true, true, false, Gpt56ReasoningEfforts),
+        new("gpt-5.6-luna", "GPT-5.6 Luna", "适合清晰、重复或高频的小型任务。", "gpt-5.6-luna", null, true, true, false, Gpt56ReasoningEfforts)
     ];
 
     private readonly ISqlSugarClient _db;
@@ -168,8 +172,13 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
             var builtinModelsVersion = raw.BuiltinModelsVersion;
-            if (builtinModelsVersion < BuiltinModelsVersion && !allowed.Contains("gpt-6-astra", StringComparer.Ordinal))
-                allowed.Add("gpt-6-astra");
+            if (builtinModelsVersion < BuiltinModelsVersion)
+            {
+                foreach (var modelId in new[] { "gpt-6-astra", "gpt-6-sol", "gpt-6-luna" })
+                {
+                    if (!allowed.Contains(modelId, StringComparer.Ordinal)) allowed.Add(modelId);
+                }
+            }
             builtinModelsVersion = Math.Max(builtinModelsVersion, BuiltinModelsVersion);
             if (allowed.Count == 0) return fallback;
             var rawEfforts = raw.AllowedReasoningEfforts is { Count: > 0 } ? raw.AllowedReasoningEfforts : SupportedReasoningEfforts;

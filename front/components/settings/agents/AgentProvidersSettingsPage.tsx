@@ -97,6 +97,7 @@ export function AgentProvidersSettingsPage() {
 
 const CODEX_REASONING_EFFORTS = [
   { id: "minimal", label: "极轻" },
+  { id: "none", label: "无" },
   { id: "low", label: "轻度" },
   { id: "medium", label: "中" },
   { id: "high", label: "高" },
