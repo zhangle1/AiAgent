@@ -40,7 +40,23 @@ public sealed class KnowledgeChainDiagnosticsService(
             }
             catch (InvalidOperationException ex)
             {
-                return Failed(config, "模型连接失败", DescribeModelFailure(config, ex));
+                var responseFailure = ex.Message.Contains("empty response", StringComparison.OrdinalIgnoreCase) ||
+                    ex.Message.Contains("generation failed validation", StringComparison.OrdinalIgnoreCase) ||
+                    ex.Message.Contains("检索已达到执行步数上限", StringComparison.Ordinal);
+                return Failed(config, responseFailure ? "模型响应不符合提炼协议" : "模型连接失败", DescribeModelFailure(config, ex));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The browser cancelled the check (for example, when switching settings).
+                // Keep the request cancellation semantics instead of manufacturing a failure result.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // A model can be reachable but still return output that does not satisfy the
+                // compiler's JSON/evidence contract. Return that as a normal diagnostic result
+                // so the settings page receives JSON instead of an HTML 500 response.
+                return Failed(config, "知识链路执行失败", SafeError(ex));
             }
         }
         finally
@@ -99,11 +115,27 @@ public sealed class KnowledgeChainDiagnosticsService(
 
         if (exception.Message.Contains("empty response", StringComparison.OrdinalIgnoreCase))
         {
-            return "所选模型没有返回可用于提炼的正文。请确认模型支持 OpenAI 兼容的流式 chat/completions，并尝试选择其他模型或“本地 Codex CLI”。";
+            return "模型连接已建立，但没有返回可用于提炼的正文。请确认模型支持 OpenAI 兼容的 chat/completions，并尝试选择其他模型或“本地 Codex CLI”。";
+        }
+
+        if (exception.Message.Contains("generation failed validation", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"模型返回了内容，但没有满足知识页 JSON/原文证据约束：{SafeError(exception)}";
+        }
+
+        if (exception.Message.Contains("检索已达到执行步数上限", StringComparison.Ordinal))
+        {
+            return "模型连接成功，但没有按知识检索动作协议返回 finish/cite 结果；可降低问题复杂度或改用其他模型。";
         }
 
         return config.Generator == "codex"
-            ? "Codex CLI 调用失败。请确认后端机器已完成登录，并在聊天中验证该 Codex 模型可用。"
-            : "LLM API 调用失败。请在“模型服务 → LLM”检查该模型所属配置档、地址和密钥。";
+            ? $"Codex CLI 调用失败。请确认后端机器已完成登录，并在聊天中验证该 Codex 模型可用。{SafeError(exception)}"
+            : $"LLM API 调用失败。请在“模型服务 → LLM”检查该模型所属配置档、地址和密钥。{SafeError(exception)}";
+    }
+
+    private static string SafeError(Exception exception)
+    {
+        var message = exception.GetBaseException().Message.Trim();
+        return message.Length <= 500 ? message : message[..500] + "…";
     }
 }

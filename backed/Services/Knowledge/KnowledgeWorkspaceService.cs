@@ -7,7 +7,7 @@ using AiAgent.Backend.Services.Knowledge.Core;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
-public sealed class KnowledgeWorkspaceService(ISqlSugarClient db)
+public sealed class KnowledgeWorkspaceService(ISqlSugarClient database)
 {
     public static KnowledgeOrganizationDto ReadOrganization(string? metadata)
     {
@@ -18,13 +18,14 @@ public sealed class KnowledgeWorkspaceService(ISqlSugarClient db)
 
     public KnowledgeOrganizationDto SaveOrganization(string name, KnowledgeOrganizationDto value)
     {
+        using var db = database.CopyNew();
         value.Company = value.Company?.Trim();
         value.Project = value.Project?.Trim();
         if (value.Company?.Length > 180 || value.Project?.Length > 180)
             throw new ArgumentException("Company and project names must be at most 180 characters.");
         if (!string.IsNullOrEmpty(value.Project) && string.IsNullOrEmpty(value.Company))
             throw new ArgumentException("A project must belong to a company.");
-        var kb = Find(name);
+        var kb = Find(db, name);
         var metadata = string.IsNullOrWhiteSpace(kb.MetadataJson) ? new JsonObject() : JsonNode.Parse(kb.MetadataJson)!.AsObject();
         metadata["organization"] = JsonSerializer.SerializeToNode(value);
         kb.MetadataJson = metadata.ToJsonString();
@@ -35,14 +36,32 @@ public sealed class KnowledgeWorkspaceService(ISqlSugarClient db)
 
     public List<KnowledgePageDto> ListPages(string name)
     {
-        var kb = Find(name);
-        var documents = db.Queryable<AiKnowledgeDocument>().Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted)
-            .ToList().ToDictionary(x => x.Id);
-        var latestIds = db.Queryable<AiKnowledgeArtifact>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId != null)
-            .GroupBy(x => x.DocumentId).Select(x => SqlFunc.AggregateMax(x.Id)).ToList();
+        AiKnowledgeBase kb;
+        using (var db = database.CopyNew())
+            kb = Find(db, name);
+
+        Dictionary<long, AiKnowledgeDocument> documents;
+        using (var db = database.CopyNew())
+        {
+            documents = db.Queryable<AiKnowledgeDocument>().Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted)
+                .ToList().ToDictionary(x => x.Id);
+        }
+
+        var latestIds = Array.Empty<long>().ToList();
+        using (var db = database.CopyNew())
+        {
+            latestIds = db.Queryable<AiKnowledgeArtifact>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId != null)
+                .GroupBy(x => x.DocumentId).Select(x => SqlFunc.AggregateMax(x.Id)).ToList();
+        }
         if (latestIds.Count == 0) return [];
-        return db.Queryable<AiKnowledgeArtifact>().Where(x => latestIds.Contains(x.Id))
-            .OrderByDescending(x => x.Id).ToList()
+
+        List<AiKnowledgeArtifact> artifacts;
+        using (var db = database.CopyNew())
+        {
+            artifacts = db.Queryable<AiKnowledgeArtifact>().Where(x => latestIds.Contains(x.Id))
+                .OrderByDescending(x => x.Id).ToList();
+        }
+        return artifacts
             .Where(x => x.DocumentId.HasValue && documents.ContainsKey(x.DocumentId.Value))
             .GroupBy(x => x.DocumentId).Select(group => group.First())
             .SelectMany(x => ExpandPages(x, documents[x.DocumentId!.Value].OriginalFileName)).ToList();
@@ -68,7 +87,7 @@ public sealed class KnowledgeWorkspaceService(ISqlSugarClient db)
         };
     }
 
-    private AiKnowledgeBase Find(string name)
+    private static AiKnowledgeBase Find(ISqlSugarClient db, string name)
     {
         var normalized = name.Trim().ToLowerInvariant();
         return db.Queryable<AiKnowledgeBase>().Where(x => x.Name == normalized && !x.IsDeleted).First()

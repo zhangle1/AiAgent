@@ -18,6 +18,8 @@ public sealed class KnowledgeAppService : IDynamicApiController
     private readonly KnowledgeCompilerSettings _compilerSettings;
     private readonly KnowledgeWorkspaceService _workspace;
     private readonly KnowledgeWikiRetrievalService _wikiRetrieval;
+    private readonly KnowledgeSourceSearchService? _sourceSearch;
+    private readonly IKnowledgePathService? _paths;
     private readonly KnowledgeCompilationWorker _compiler;
     private readonly KnowledgeChainDiagnosticsService? _chainDiagnostics;
     private readonly IKnowledgeBaseManager _manager;
@@ -46,12 +48,16 @@ public sealed class KnowledgeAppService : IDynamicApiController
         IDocumentParsingService documentParsingService,
         IRagService ragService,
         ILogger<KnowledgeAppService> logger,
-        KnowledgeChainDiagnosticsService? chainDiagnostics = null)
+        KnowledgeChainDiagnosticsService? chainDiagnostics = null,
+        KnowledgeSourceSearchService? sourceSearch = null,
+        IKnowledgePathService? paths = null)
     {
         _db = db;
         _compilerSettings = compilerSettings;
         _workspace = workspace;
         _wikiRetrieval = wikiRetrieval;
+        _sourceSearch = sourceSearch;
+        _paths = paths;
         _compiler = compiler;
         _manager = manager;
         _providerConfigService = providerConfigService;
@@ -235,14 +241,21 @@ public sealed class KnowledgeAppService : IDynamicApiController
         var document = _db.Queryable<AiKnowledgeDocument>()
             .Where(x => x.Id == documentId && x.KnowledgeBaseId == kb.Id && !x.IsDeleted)
             .First();
-        if (document is null || string.IsNullOrWhiteSpace(document.StoragePath) || !System.IO.File.Exists(document.StoragePath))
+        var path = string.IsNullOrWhiteSpace(document?.StoragePath) ? null : Path.GetFullPath(document.StoragePath);
+        if (path is not null && _paths is not null)
+        {
+            var root = Path.GetFullPath(_paths.GetKnowledgeBasePath(kb.Name)).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!path.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                return new NotFoundObjectResult(new { message = "Document file is outside the knowledge base directory." });
+        }
+        if (document is null || path is null || !System.IO.File.Exists(path))
         {
             return new NotFoundObjectResult(new { message = "Document file does not exist." });
         }
 
         var contentType = string.IsNullOrWhiteSpace(document.ContentType) ? "application/octet-stream" : document.ContentType;
         var downloadName = string.IsNullOrWhiteSpace(document.OriginalFileName) ? document.FileName : document.OriginalFileName;
-        var result = new PhysicalFileResult(document.StoragePath, contentType)
+        var result = new PhysicalFileResult(path, contentType)
         {
             EnableRangeProcessing = true
         };
@@ -256,11 +269,19 @@ public sealed class KnowledgeAppService : IDynamicApiController
 
     /// <summary>Parse an immutable source and compile it into a reviewable Markdown knowledge artifact.</summary>
     [HttpGet("{kbName}/documents/{documentId:long}/office-preview")]
-    public Task<KnowledgeOfficePreviewDto> GetOfficePreview([FromRoute] string kbName, [FromRoute] long documentId,
+    public async Task<IActionResult> GetOfficePreview([FromRoute] string kbName, [FromRoute] long documentId,
         [FromServices] KnowledgeOfficePreviewService preview, CancellationToken cancellationToken)
     {
-        var kb = FindKnowledgeBase(kbName);
-        return preview.PreviewAsync(kb, FindDocument(kb.Id, documentId), cancellationToken);
+        try
+        {
+            var kb = FindKnowledgeBase(kbName);
+            return new OkObjectResult(await preview.PreviewAsync(kb, FindDocument(kb.Id, documentId), cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Switching documents intentionally aborts the previous preview request. Do not turn that into a 500.
+            return new StatusCodeResult(499);
+        }
     }
 
     [HttpPost("{kbName}/documents/{documentId:long}/process")]
@@ -428,7 +449,9 @@ public sealed class KnowledgeAppService : IDynamicApiController
             return await _wikiRetrieval.SearchAsync(kb.Name, request.Query, request.TopK, cancellationToken);
         if (!kb.ActiveVersionId.HasValue)
         {
-            throw new InvalidOperationException("Knowledge base has no active index version.");
+            // A newly uploaded source should still be searchable before a vector index is built.
+            return await (_sourceSearch ?? throw new InvalidOperationException("Knowledge source search is unavailable."))
+                .SearchAsync(kb.Name, request.Query, request.TopK, cancellationToken);
         }
 
         var version = _db.Queryable<AiKnowledgeIndexVersion>()
@@ -466,6 +489,15 @@ public sealed class KnowledgeAppService : IDynamicApiController
             }).ToList()
         };
     }
+
+    /// <summary>
+    /// 在来源层直接检索已入库的原始文件，不要求先提炼知识或创建向量索引。
+    /// </summary>
+    [HttpPost("{kbName}/sources/search")]
+    public Task<KnowledgeSearchResponse> SearchSources([FromRoute] string kbName, [FromBody] KnowledgeSourceSearchRequest request,
+        CancellationToken cancellationToken)
+        => (_sourceSearch ?? throw new InvalidOperationException("Knowledge source search is unavailable."))
+            .SearchAsync(kbName, request.Query, request.TopK, cancellationToken);
 
     /// <summary>
     /// 删除知识库及其本地索引目录。

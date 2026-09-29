@@ -147,18 +147,29 @@ public sealed class KnowledgePathService : IKnowledgePathService
             targetPath = Path.Combine(rawPath, $"{stem}-{DateTime.UtcNow:yyyyMMddHHmmssfff}{extension}");
         }
 
-        using var sha = SHA256.Create();
-        await using (var source = file.OpenReadStream())
-        await using (var target = File.Create(targetPath))
-        await using (var crypto = new CryptoStream(target, sha, CryptoStreamMode.Write))
+        var temporaryPath = targetPath + "." + Guid.NewGuid().ToString("N") + ".uploading";
+        try
         {
-            await source.CopyToAsync(crypto, cancellationToken);
-            await crypto.FlushAsync(cancellationToken);
-        }
+            using var sha = SHA256.Create();
+            await using (var source = file.OpenReadStream())
+            await using (var target = File.Create(temporaryPath))
+            await using (var crypto = new CryptoStream(target, sha, CryptoStreamMode.Write))
+            {
+                await source.CopyToAsync(crypto, cancellationToken);
+                await crypto.FlushAsync(cancellationToken);
+            }
 
-        var hash = ToHex(sha.Hash);
-        _logger.LogInformation("Knowledge file saved. Kb={KbName}, File={FileName}, Bytes={Bytes}, ElapsedMs={ElapsedMs}", kbName, file.FileName, file.Length, stopwatch.ElapsedMilliseconds);
-        return (targetPath, hash, file.Length);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporaryPath, targetPath, false);
+            var hash = ToHex(sha.Hash);
+            _logger.LogInformation("Knowledge file saved. Kb={KbName}, File={FileName}, Bytes={Bytes}, ElapsedMs={ElapsedMs}", kbName, file.FileName, file.Length, stopwatch.ElapsedMilliseconds);
+            return (targetPath, hash, file.Length);
+        }
+        catch
+        {
+            try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); } catch { }
+            throw;
+        }
     }
 
     /// <summary>

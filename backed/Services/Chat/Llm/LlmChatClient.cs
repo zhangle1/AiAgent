@@ -74,31 +74,45 @@ public sealed class LlmChatClient : ILlmChatClient
     /// </summary>
     public async Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken)
     {
-        var answer = new StringBuilder();
-        string? resolvedModelId = null;
-        string? resolvedModel = null;
-        string? provider = null;
-        await foreach (var chunk in StreamAsync(messages, modelId, cancellationToken))
+        var selection = ResolveLlm(modelId);
+        using var httpRequest = BuildRequest(selection, messages, null, stream: false);
+        var client = _httpClientFactory.CreateClient();
+        client.Timeout = Timeout.InfiniteTimeSpan;
+
+        HttpResponseMessage response;
+        try
         {
-            resolvedModelId ??= chunk.ModelId;
-            resolvedModel ??= chunk.Model;
-            provider ??= chunk.Provider;
-            answer.Append(chunk.Content);
+            response = await client.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"LLM provider request timed out. Endpoint={httpRequest.RequestUri}, Model={selection.Model.Model}.", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new InvalidOperationException(
+                $"LLM provider request failed. Endpoint={httpRequest.RequestUri}, Model={selection.Model.Model}, Provider={selection.Profile.Binding ?? "unknown"}. {ex.Message}",
+                ex);
         }
 
-        var text = answer.ToString();
-        if (string.IsNullOrWhiteSpace(text))
+        using (response)
         {
-            throw new InvalidOperationException("LLM provider returned an empty response.");
-        }
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"LLM provider returned HTTP {(int)response.StatusCode}: {TrimForLog(responseText)}");
 
-        return new LlmChatResult
-        {
-            Text = text,
-            ModelId = resolvedModelId,
-            Model = resolvedModel,
-            Provider = provider
-        };
+            var text = ExtractChatCompletionText(responseText);
+            if (string.IsNullOrWhiteSpace(text))
+                throw new InvalidOperationException("LLM provider returned an empty response.");
+
+            return new LlmChatResult
+            {
+                Text = text,
+                ModelId = selection.Model.Id,
+                Model = selection.Model.Model,
+                Provider = selection.Profile.Binding
+            };
+        }
     }
 
     /// <summary>

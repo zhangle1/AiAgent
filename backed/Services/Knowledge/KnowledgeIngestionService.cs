@@ -54,9 +54,9 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
 
     public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null)
     {
-        using var db = _db.CopyNew();
         var config = settings ?? _settings.Get();
         KnowledgeCompilerSettings.Validate(config);
+        var callerCancellationToken = cancellationToken;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes));
         cancellationToken = timeout.Token;
@@ -69,7 +69,8 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            UpdateDocument(db, document.Id, "parsing", null);
+            using (var db = _db.CopyNew())
+                UpdateDocument(db, document.Id, "parsing", null);
             progress?.Invoke(5, "正在解析原始文件");
             var parsed = await ParseAsync(knowledgeBase, document, sourcePath, cancellationToken);
             var parsedRow = new AiKnowledgeParsedDocument
@@ -84,15 +85,14 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
                 CharacterCount = parsed.Content.Length,
                 CreatedAt = DateTime.UtcNow
             };
-            parsedRow.Id = db.Insertable(parsedRow).ExecuteReturnBigIdentity();
+            using (var db = _db.CopyNew())
+                parsedRow.Id = db.Insertable(parsedRow).ExecuteReturnBigIdentity();
 
-            UpdateDocument(db, document.Id, "generating", null);
+            using (var db = _db.CopyNew())
+                UpdateDocument(db, document.Id, "generating", null);
             progress?.Invoke(15, "阶段 1/2：正在分析原文中的实体、概念与矛盾");
             var generated = await GenerateAsync(knowledgeBase, document, parsed.Content, request, config, cancellationToken, progress);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!db.Queryable<AiKnowledgeDocument>().Any(x => x.Id == document.Id && !x.IsDeleted) ||
-                !db.Queryable<AiKnowledgeBase>().Any(x => x.Id == knowledgeBase.Id && !x.IsDeleted))
-                throw new InvalidOperationException("The source was deleted during compilation.");
             progress?.Invoke(95, "证据校验完成，正在保存知识草稿");
             var artifact = new AiKnowledgeArtifact
             {
@@ -109,17 +109,23 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
                 EvidenceJson = JsonSerializer.Serialize(new { source_document_id = document.Id, parsed_document_id = parsedRow.Id, source_hash = document.FileHash, pages = generated.Compilation.Pages, steps = generated.Compilation.Steps }),
                 CreatedAt = DateTime.UtcNow
             };
-            db.Ado.BeginTran();
-            try
+            using (var db = _db.CopyNew())
             {
-                artifact.Id = db.Insertable(artifact).ExecuteReturnBigIdentity();
-                UpdateDocument(db, document.Id, "processed", null);
-                db.Ado.CommitTran();
-            }
-            catch
-            {
-                db.Ado.RollbackTran();
-                throw;
+                if (!db.Queryable<AiKnowledgeDocument>().Any(x => x.Id == document.Id && !x.IsDeleted) ||
+                    !db.Queryable<AiKnowledgeBase>().Any(x => x.Id == knowledgeBase.Id && !x.IsDeleted))
+                    throw new InvalidOperationException("The source was deleted during compilation.");
+                db.Ado.BeginTran();
+                try
+                {
+                    artifact.Id = db.Insertable(artifact).ExecuteReturnBigIdentity();
+                    UpdateDocument(db, document.Id, "processed", null);
+                    db.Ado.CommitTran();
+                }
+                catch
+                {
+                    db.Ado.RollbackTran();
+                    throw;
+                }
             }
 
             return new KnowledgeProcessingResultDto
@@ -134,10 +140,12 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         }
         catch (Exception ex)
         {
+            var cancelledByCaller = ex is OperationCanceledException && callerCancellationToken.IsCancellationRequested;
             try
             {
                 using var failureDb = _db.CopyNew();
-                UpdateDocument(failureDb, document.Id, ex is OperationCanceledException ? "cancelled" : "error", ex is OperationCanceledException ? "提炼已中断，可重试。" : "提炼失败，请检查文件或模型配置。");
+                UpdateDocument(failureDb, document.Id, cancelledByCaller ? "cancelled" : "error", cancelledByCaller ? "提炼已中断，可重试。" :
+                    ex is OperationCanceledException ? "提炼超时或服务停止，请检查模型连接或拆分资料后重试。" : $"提炼失败：{SafeError(ex)}");
             }
             catch (Exception statusError) { ex.Data["StatusPersistenceErrorType"] = statusError.GetType().Name; }
             throw;
@@ -230,10 +238,13 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         var workspace = Path.Combine(_paths.GetKnowledgeBasePath(kb.Name), "compiler-runtime");
         Directory.CreateDirectory(workspace);
         var model = new KnowledgeModelAdapter(_llm, _codex, request, workspace);
-        using var contextDb = _db.CopyNew();
-        var wikiContext = string.Join("\n", new KnowledgeWorkspaceService(contextDb).ListPages(kb.Name)
-            .Where(page => page.DocumentId != document.Id).Take(40)
-            .Select(page => $"{page.Title}（{page.ReviewStatus}）"));
+        string wikiContext;
+        using (var contextDb = _db.CopyNew())
+        {
+            wikiContext = string.Join("\n", new KnowledgeWorkspaceService(contextDb).ListPages(kb.Name)
+                .Where(page => page.DocumentId != document.Id).Take(40)
+                .Select(page => $"{page.Title}（{page.ReviewStatus}）"));
+        }
         var compilation = await new KnowledgeCompiler().CompileAsync(parsedContent, model, config.MaxSteps,
             progress: step => {
                 var analyzing = step.Action == "analyze_source";
@@ -305,6 +316,12 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
     private static void UpdateDocument(ISqlSugarClient db, long id, string status, string? error)
     {
         db.Updateable<AiKnowledgeDocument>().SetColumns(x => new AiKnowledgeDocument { Status = status, ErrorMessage = error, UpdatedAt = DateTime.UtcNow }).Where(x => x.Id == id).ExecuteCommand();
+    }
+
+    private static string SafeError(Exception exception)
+    {
+        var message = exception.GetBaseException().Message.Trim();
+        return message.Length <= 500 ? message : message[..500] + "…";
     }
 
     private sealed record ParsedContent(string Content, string ContentPath, string Parser, Dictionary<string, object?> Locators);

@@ -105,33 +105,32 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             var stage = "准备任务";
             try
             {
-                using var db = database.CopyNew();
                 lock (_sync)
                 {
                     _cancellations.TryGetValue(work.JobId, out source);
                     if (source is null || source.IsCancellationRequested) continue;
-                    db.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
+                    using var stateDb = database.CopyNew();
+                    stateDb.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
                         Status = "processing", Progress = 1, Message = "准备提炼", StartedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
                     }).Where(x => x.Id == work.JobId).ExecuteCommand();
                 }
                 using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, source.Token);
                 execution.CancelAfter(TimeSpan.FromMinutes(work.Config.TimeoutMinutes));
-                if (!db.Queryable<AiKnowledgeBase>().Any(x => x.Id == work.Base.Id && !x.IsDeleted) ||
-                    !db.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
-                    throw new InvalidOperationException("The source was deleted before compilation.");
+                using (var validationDb = database.CopyNew())
+                    if (!validationDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == work.Base.Id && !x.IsDeleted) ||
+                        !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
+                        throw new InvalidOperationException("The source was deleted before compilation.");
                 await ingestion.ProcessAsync(work.Base, work.Document, new KnowledgeProcessRequest {
                     Generator = work.Config.Generator, ModelId = work.Config.ModelId, ReasoningEffort = work.Config.ReasoningEffort
                 }, execution.Token, work.Config, (value, message) => {
                     stage = message;
-                    db.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
-                        Progress = value, Message = message, UpdatedAt = DateTime.UtcNow
-                    }).Where(x => x.Id == work.JobId && x.Status == "processing").ExecuteCommand();
+                    UpdateProgress(work.JobId, value, message);
                 });
                 Finish(work.JobId, "success", "提炼完成，可在知识标签中核对草稿。");
             }
             catch (Exception ex)
             {
-                logger.LogWarning("Knowledge compilation {JobId} failed ({ErrorType}).", work.JobId, ex.GetType().Name);
+                logger.LogWarning(ex, "Knowledge compilation {JobId} failed ({ErrorType}).", work.JobId, ex.GetType().Name);
                 var cancelled = source?.IsCancellationRequested == true;
                 try
                 {
@@ -141,12 +140,12 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         if (!_pendingFinishes.ContainsKey(work.JobId))
                             Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新提炼。" :
                                 ex is OperationCanceledException ? "提炼超时或服务停止，请检查模型连接或拆分资料后重试。" :
-                                $"提炼失败（{stage}），请检查数据库连接、模型配置或文件格式后重试。");
+                                $"提炼失败（{stage}）：{SafeError(ex)}");
                     }
                 }
                 catch (Exception persistenceError)
                 {
-                    logger.LogError("Cannot persist compilation {JobId} failure ({ErrorType}); status reads will retry persistence.",
+                    logger.LogError(persistenceError, "Cannot persist compilation {JobId} failure ({ErrorType}); status reads will retry persistence.",
                         work.JobId, persistenceError.GetType().Name);
                 }
             }
@@ -188,6 +187,14 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             }
     }
 
+    private void UpdateProgress(long jobId, int progress, string message)
+    {
+        using var db = database.CopyNew();
+        db.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
+            Progress = progress, Message = message, UpdatedAt = DateTime.UtcNow
+        }).Where(x => x.Id == jobId && x.Status == "processing").ExecuteCommand();
+    }
+
     private void ApplyPendingFinish(AiKnowledgeJob job)
     {
         lock (_sync)
@@ -206,6 +213,12 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         var normalized = name.Trim().ToLowerInvariant();
         return db.Queryable<AiKnowledgeBase>().Where(x => x.Name == normalized && !x.IsDeleted).First()
             ?? throw new InvalidOperationException("Knowledge base does not exist.");
+    }
+
+    private static string SafeError(Exception exception)
+    {
+        var message = exception.GetBaseException().Message.Trim();
+        return message.Length <= 500 ? message : message[..500] + "…";
     }
     private KnowledgeCompilationJobDto Map(AiKnowledgeJob job)
     {

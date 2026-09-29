@@ -569,6 +569,18 @@ public sealed class KnowledgeSearchRequest
 }
 
 /// <summary>
+/// 直接检索知识库原始文件及其已生成的解析文本。
+/// </summary>
+public sealed class KnowledgeSourceSearchRequest
+{
+    [JsonPropertyName("query")]
+    public string Query { get; set; } = string.Empty;
+
+    [JsonPropertyName("top_k")]
+    public int TopK { get; set; } = 5;
+}
+
+/// <summary>
 /// 知识库变更操作响应。
 /// </summary>
 public sealed class KnowledgeMutationResponse

@@ -212,6 +212,17 @@ export async function searchKnowledgeBase(name: string, query: string, topK = 5)
   );
 }
 
+/** Search the immutable source layer without requiring wiki compilation or a vector index. */
+export async function searchKnowledgeSources(name: string, query: string, topK = 5): Promise<KnowledgeSearchResponse> {
+  return parseJson<KnowledgeSearchResponse>(
+    await fetch(`/api/v1/knowledge/${encodeURIComponent(name)}/sources/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: topK }),
+    }),
+  );
+}
+
 export function knowledgeDocumentFileUrl(kbName: string, documentId: number, download = false): string {
   const url = directApi(`/api/v1/knowledge/${encodeURIComponent(kbName)}/documents/${documentId}/file`);
   return download ? `${url}?download=1` : url;
