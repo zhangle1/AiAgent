@@ -23,7 +23,7 @@ public sealed class AuthAppService : IDynamicApiController
     {
         var context = _httpContextAccessor.HttpContext!;
         var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken);
-        return new AuthStatusResponse { Authenticated = user != null, UserId = user?.Id, Username = user?.Username, IsAdmin = user?.IsAdministrator == true, RegistrationEnabled = false };
+        return new AuthStatusResponse { Authenticated = user != null, UserId = user?.Id, Username = user?.Username, Alias = user?.Alias, IsAdmin = user?.IsAdministrator == true, RegistrationEnabled = false };
     }
 
     [HttpPost("register")]

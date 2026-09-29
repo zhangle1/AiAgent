@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { Archive, Check, CheckSquare, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, FolderGit2, GitBranch, LayoutDashboard, Library, LogOut, MessageSquare, Palette, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
+import type { AuthStatus } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { archiveSession, getChatSidebarPreference, listProjectSessionPreferences, listSessions, renameSession, updateChatSidebarPreference, updateProjectSessionPreference, updateSessionMetadata, type ChatSidebarPreference, type ProjectListSortMode, type ProjectSessionPreference, type ProjectSessionSortMode, type SessionSummary } from "@/lib/session-api";
@@ -42,7 +43,7 @@ function newChatPath(projectId?: number) {
   return `/chat?${params.toString()}`;
 }
 
-export function AppSidebar({ compact = false }: { compact?: boolean }) {
+export function AppSidebar({ compact = false, authStatus }: { compact?: boolean; authStatus: AuthStatus | null }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -152,6 +153,9 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     return next;
   }, [streams]);
   const workbenchActive = workbenchItems.some((item) => isActive(pathname, item.href));
+  const userDisplayName = authStatus?.alias?.trim() || authStatus?.username || "当前用户";
+  const userSubtitle = `${authStatus?.username ? `@${authStatus.username} · ` : ""}${authStatus?.is_admin ? "管理员" : "普通用户"}`;
+  const userInitial = userDisplayName.slice(0, 1).toLocaleUpperCase();
 
   useEffect(() => {
     if (workbenchActive) setWorkbenchOpen(true);
@@ -273,6 +277,10 @@ export function AppSidebar({ compact = false }: { compact?: boolean }) {
     </section> : <div className="flex-1 border-t border-slate-200/80"/>}
 
     <div className={`border-t border-slate-200 bg-white/80 ${compact ? "flex flex-col items-center gap-1 px-2 py-3" : "px-3 py-3"}`}>
+      <div className={`mb-1 flex items-center rounded-xl bg-slate-50 ${compact ? "h-10 w-10 justify-center" : "gap-3 px-3 py-2"}`} title={`${userDisplayName}（${userSubtitle}）`} aria-label={`当前登录用户：${userDisplayName}，${userSubtitle}`}>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">{userInitial}</span>
+        {!compact && <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-800">{userDisplayName}</span><span className="block truncate text-[11px] text-slate-400">{userSubtitle}</span></span>}
+      </div>
       <button type="button" onClick={() => setToolsOpen(true)} className={`flex h-10 items-center rounded-xl text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 ${compact ? "w-10 justify-center" : "w-full gap-3 px-3"}`} title="工具与设置"><Wrench size={16}/>{!compact && <><span>工具与设置</span><span className="ml-auto text-xs text-slate-400">选择</span></>}</button>
       <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className={`text-slate-500 transition hover:bg-red-50 hover:text-red-600 ${compact ? "grid h-9 w-10 place-items-center rounded-lg" : "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13px]"}`} title="退出登录"><LogOut size={16}/>{!compact && "退出登录"}</button>
     </div>
