@@ -65,6 +65,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- AppSidebar 使用 56px 图标栏与独立模块内容面板，展开总宽 296px；AuthGate 的桌面内容缩进须同步。收起仅隐藏桌面内容面板，移动端抽屉保留完整内容；保留全局 Ctrl / ⌘ + K、sidebar-toggle 与 mobile-drawer 事件及项目/会话操作。
+
 - 聊天失败的 20 秒自动重试由 `ChatStreamProvider` 管理，复用同一 stream ID 和原始请求快照；底部 `ChatRetryNotice` 仅显示倒计时及立即重试／取消入口。重试必须先结束旧请求，取消倒计时与手动重试须互斥，停止与成功不能安排重试；错误事件不能广播成功完成事件。
 - 原型 PSD 导出逻辑位于 `front/lib/prototype-psd.ts`。导出 iframe 禁止脚本，仅允许同源 DOM 读取，不得同时开启 `allow-scripts`；PSD 缓存必须随 HTML 变化失效。图层为区域像素图层，不得标为原生可编辑文字。
 
