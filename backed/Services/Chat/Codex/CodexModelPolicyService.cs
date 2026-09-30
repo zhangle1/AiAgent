@@ -39,15 +39,17 @@ public interface ICodexModelPolicyService
 public sealed class CodexModelPolicyService : ICodexModelPolicyService
 {
     private const string SettingKey = "codex_model_policy";
-    private const int BuiltinModelsVersion = 3;
+    private const int BuiltinModelsVersion = 4;
     private static readonly Regex ProfileNamePattern = new("^[A-Za-z0-9_-]{1,64}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly IReadOnlyList<string> SupportedReasoningEfforts = ["minimal", "none", "low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<string> AstraReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
+    private static readonly IReadOnlyList<string> Sol61ReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<string> SolLunaReasoningEfforts = ["none", "low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<string> Gpt56ReasoningEfforts = ["minimal", "low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<CodexModelDefinition> BuiltinModels =
     [
         new("gpt-6-astra", "GPT-6 Astra", "适合高难度端到端编码、推理与复杂工作流。", "gpt-6-astra", null, true, true, true, AstraReasoningEfforts),
+        new("gpt-6.1-sol", "GPT-6.1 Sol", "适合复杂编码、长时间任务与 Agent 工作流。", "gpt-6.1-sol", null, true, true, true, Sol61ReasoningEfforts),
         new("gpt-6-sol", "GPT-6 Sol", "适合复杂编码与 Agent 工作流。", "gpt-6-sol", null, true, true, true, SolLunaReasoningEfforts),
         new("gpt-6-luna", "GPT-6 Luna", "适合高频、范围明确的任务。", "gpt-6-luna", null, true, true, true, SolLunaReasoningEfforts),
         new("gpt-5.6-sol", "GPT-5.6 Sol", "适合复杂、开放式的编码与分析任务。", "gpt-5.6-sol", null, true, true, false, Gpt56ReasoningEfforts),
@@ -172,13 +174,15 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
             var builtinModelsVersion = raw.BuiltinModelsVersion;
-            if (builtinModelsVersion < BuiltinModelsVersion)
+            if (builtinModelsVersion < 3)
             {
                 foreach (var modelId in new[] { "gpt-6-astra", "gpt-6-sol", "gpt-6-luna" })
                 {
                     if (!allowed.Contains(modelId, StringComparer.Ordinal)) allowed.Add(modelId);
                 }
             }
+            if (builtinModelsVersion < 4 && !allowed.Contains("gpt-6.1-sol", StringComparer.Ordinal))
+                allowed.Add("gpt-6.1-sol");
             builtinModelsVersion = Math.Max(builtinModelsVersion, BuiltinModelsVersion);
             if (allowed.Count == 0) return fallback;
             var rawEfforts = raw.AllowedReasoningEfforts is { Count: > 0 } ? raw.AllowedReasoningEfforts : SupportedReasoningEfforts;

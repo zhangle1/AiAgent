@@ -46,6 +46,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 第三方 `codex exec --profile` 不传递 `--image`。如管理员启用图片 OCR，只能把后端从受控图片路径提取、并明确标记为不可信附件数据的文本注入 prompt；OCR 失败必须继续文字聊天，且 Python Worker 只能读取 `PythonWorkers:AllowedRoots` 内的路径。
 - Codex 聊天的 `codex_sandbox_mode` 只能接受 `full-access`、`workspace-write`、`read-only` 三个服务端白名单值；`full-access` 才可映射为 `--dangerously-bypass-approvals-and-sandbox`，必须通过 `ProcessStartInfo.ArgumentList` 传参，不能由聊天文本或任意配置字符串拼接命令。
 
+- Codex 模型目录与分版本升级由 `CodexModelPolicyService` 管理。新增 `gpt-6.1-sol` 时保留默认模型及已禁用的旧模型；仅支持 `low/medium/high/xhigh/max`，前端从策略接口获取模型与推理等级。
+
 - Target framework：`.NET 9`。
 - 使用 Furion Dynamic API；领域入口通常位于 `backed/Services/<Domain>/*AppService.cs`。
 - SqlSugar 的 `Queryable` 排序不要使用 LINQ 的 `ThenBy`/`ThenByDescending`；多字段排序使用 `.OrderBy(x => new { x.Field1, x.Field2 })`，需要倒序时使用 SqlSugar 对应的 `OrderBy` 重载。
