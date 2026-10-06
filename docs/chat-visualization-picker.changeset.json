@@ -1,0 +1,78 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Visualization picker and local Git history selection",
+  "base_commit": "84a555a25627e28bd99a5139d8e761731368825f",
+  "platform_change_set_id": null,
+  "note": "Local review manifest only; no authenticated platform changeset context supplied. No commit or push performed.",
+  "checks": {
+    "typescript": "passed",
+    "frontend_regressions": "12 passed",
+    "backend_build": "passed (existing warnings)",
+    "git_history_integration": "1 passed; temporary repository only",
+    "browser": "passed: cancel/apply, pagination, cross-repository selection, Escape, clear, desktop/mobile; mocked history API",
+    "whitespace": "passed",
+    "live_model": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "fe8491a434a8b34d7af65a6ef6020b10b4c9c5bca61fb07323df407e5cfd92ef"
+    },
+    {
+      "path": "README.md",
+      "sha256": "af900caf831e6c99eaa62daa8e80a7ab2215eebddb6d1dfa119004fe9e0dd1af"
+    },
+    {
+      "path": "backed.tests/GitHistoryTests.cs",
+      "sha256": "64ef1135402e77c70dcb8ee868a7a0c64f107e0b7fa22bc9951a61984100eae4"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryAppService.cs",
+      "sha256": "a9ee2b7bd2e3fca31988db715b9374b8e6467287aba58c8ce24b9fec348803a5"
+    },
+    {
+      "path": "backed/Services/Git/CodeRepositoryGitService.cs",
+      "sha256": "197b0ab42adda3504c34723429c10f342cc60332f140c36e37091bcb2e164807"
+    },
+    {
+      "path": "backed/Services/Git/GitWorkspaceService.History.cs",
+      "sha256": "7651f203d96d1e21bbe3e69ed193a93f4b3ec22a45d280cf952a13c75997d968"
+    },
+    {
+      "path": "backed/Services/Git/GitWorkspaceService.cs",
+      "sha256": "e0f981fdf5cd62e2e5f09ac43394b8209c75d14c14219db12bd1ed1110ba160b"
+    },
+    {
+      "path": "docs/chat-visualization-v1.md",
+      "sha256": "65181efaeba58c80bb5fe72c8b7a5a437fa50e26cd4a0112621d555f7f58d993"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "b2d70cb148a91068f79ebf0c6011d536fb6620282f68b2ef6322ec7635c3e7c4"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationDialog.tsx",
+      "sha256": "edad956ef8da874f7f68498e40dae7d5624e25c57f4e7a919103c9cbff445d77"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationToolbar.tsx",
+      "sha256": "b133001423794f9b2adf5f84ef258e328cd95f945726b466afc53680133c3940"
+    },
+    {
+      "path": "front/lib/chat-visualization.ts",
+      "sha256": "4a46164d57676fbd535e2e9fee5853140cc67780bca84bb18cbfa37017bb1136"
+    },
+    {
+      "path": "front/lib/code-repository-api.ts",
+      "sha256": "0be94df1e31452bc3ae305a5b183f16cb8997422ccf58fc6fda402e174c9a865"
+    },
+    {
+      "path": "front/lib/code-repository-types.ts",
+      "sha256": "32fec4a9cc4335dbde1b7868c9b47d087d8c0095f35593a360069590d75d23b5"
+    },
+    {
+      "path": "front/tests/chat-visualization.test.mjs",
+      "sha256": "f0948fcadc35b037875ac42bb276045bd3eb1ca5b3fd2ea9bc6f6c5c6711e229"
+    }
+  ]
+}

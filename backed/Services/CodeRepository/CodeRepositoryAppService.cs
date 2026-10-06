@@ -269,6 +269,15 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         }
     }
 
+    [HttpGet("projects/{projectId:long}/git/history")]
+    public async Task<IActionResult> ProjectGitHistory([FromRoute] long projectId, [FromQuery(Name = "repository_name")] string repositoryName, [FromQuery] int skip, CancellationToken cancellationToken)
+    {
+        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
+        try { return new OkObjectResult(await _git.HistoryAsync(projectId, repositoryName, skip, cancellationToken)); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+    }
+
     [HttpGet("projects/{projectId:long}/git/status")]
     public async Task<IActionResult> ProjectGitStatus([FromRoute] long projectId, CancellationToken cancellationToken)
     {

@@ -11,6 +11,7 @@ namespace AiAgent.Backend.Services.Git;
 
 public interface ICodeRepositoryGitService
 {
+    Task<List<GitHistoryCommit>> HistoryAsync(long projectId, string repositoryName, int skip, CancellationToken cancellationToken);
     Task<GitWorkspaceStatus> StatusAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitWorkspaceBranches> BranchesAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitWorkspaceDiff> DiffAsync(string repositoryName, string? comparison, CancellationToken cancellationToken);
@@ -93,6 +94,13 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         _authService = authService;
         _protector = dataProtectionProvider.CreateProtector("AiAgent.GitAccounts.AccessToken.v1");
         _pushes = pushes;
+    }
+
+    public Task<List<GitHistoryCommit>> HistoryAsync(long projectId, string repositoryName, int skip, CancellationToken cancellationToken)
+    {
+        var repository = FindProjectRepositories(projectId).FirstOrDefault(item => item.Name == repositoryName)
+            ?? throw new InvalidOperationException("所选代码库不属于当前项目。");
+        return _git.HistoryAsync($"repository:{repository.Id}", repository.RootPath, skip, cancellationToken);
     }
 
     public async Task<GitWorkspaceStatus> StatusAsync(string repositoryName, CancellationToken cancellationToken)

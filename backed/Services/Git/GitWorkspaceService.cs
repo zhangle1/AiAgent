@@ -19,6 +19,7 @@ public sealed record GitWorkspaceCredential(string Username, string AccessToken)
 /// </summary>
 public interface IGitWorkspaceService
 {
+    Task<List<GitHistoryCommit>> HistoryAsync(string workspaceKey, string rootPath, int skip, CancellationToken cancellationToken);
     Task<string> PrepareMaintenanceAsync(string sourceRoot, string destination, string branch, CancellationToken token, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> PushMaintenanceAsync(string root, string branch, string baseHead, string snapshot, string message, CancellationToken token, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);

@@ -1,4 +1,5 @@
 import type {
+  GitHistoryCommit,
   CodeRepository,
   CodeRepositoryDirectoryBrowser,
   CodeRepositoryInspection,
@@ -49,6 +50,11 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 
   return payload as T;
+}
+
+export async function getProjectGitHistory(projectId: number, repositoryName: string, skip = 0): Promise<GitHistoryCommit[]> {
+  const params = new URLSearchParams({ repository_name: repositoryName, skip: String(skip) });
+  return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/history?${params}`, { cache: "no-store" }));
 }
 
 export async function getCodeRepositories(): Promise<CodeRepository[]> {

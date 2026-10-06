@@ -1,3 +1,6 @@
+export type GitHistoryCommit = { sha: string; parents: string[]; author: string; date: string; subject: string };
+export type SelectedGitCommit = GitHistoryCommit & { project_id: number; repository_name: string };
+
 export type CodeRepository = {
   id: number;
   project_id?: number | null;

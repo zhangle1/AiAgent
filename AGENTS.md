@@ -68,6 +68,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 ## 前端约定
 
 - 聊天可视化第一版是发送前的显式文本组合，位于 `front/lib/chat-visualization.ts` 与独立工具栏；只在普通聊天提交时应用，重试直接使用已保存消息，不重复包装或改变 `ChatStreamProvider` 协议。嵌入式编辑器不启用。Mermaid 使用现有 strict 渲染，Markdown 的 pre 组件身份须稳定。此模式的只读描述是模型提示，不是额外权限隔离。
+- 图形及 Git 来源在独立弹窗确认后生效；切换项目或会话清空提交选择。Git 历史接口先验证项目访问权及仓库归属，仅分页读取本地 HEAD（每页 50 条），不 fetch、不切换分支；最多 20 条提交元数据作为不可信来源文本随消息保存，不表示已审阅代码差异。
 
 - AppSidebar 使用 56px 图标栏与独立模块内容面板，展开总宽 296px；AuthGate 的桌面内容缩进须同步。收起仅隐藏桌面内容面板，移动端抽屉保留完整内容；保留全局 Ctrl / ⌘ + K、sidebar-toggle 与 mobile-drawer 事件及项目/会话操作。
 
