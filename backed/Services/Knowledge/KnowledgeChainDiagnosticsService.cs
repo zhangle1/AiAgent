@@ -41,6 +41,7 @@ public sealed class KnowledgeChainDiagnosticsService(
             catch (InvalidOperationException ex)
             {
                 var responseFailure = ex.Message.Contains("empty response", StringComparison.OrdinalIgnoreCase) ||
+                    ex.Message.Contains("output token limit", StringComparison.OrdinalIgnoreCase) ||
                     ex.Message.Contains("generation failed validation", StringComparison.OrdinalIgnoreCase) ||
                     ex.Message.Contains("检索已达到执行步数上限", StringComparison.Ordinal);
                 return Failed(config, responseFailure ? "模型响应不符合提炼协议" : "模型连接失败", DescribeModelFailure(config, ex));
@@ -116,6 +117,11 @@ public sealed class KnowledgeChainDiagnosticsService(
         if (exception.Message.Contains("empty response", StringComparison.OrdinalIgnoreCase))
         {
             return "模型连接已建立，但没有返回可用于提炼的正文。请确认模型支持 OpenAI 兼容的 chat/completions，并尝试选择其他模型或“本地 Codex CLI”。";
+        }
+
+        if (exception.Message.Contains("output token limit", StringComparison.OrdinalIgnoreCase))
+        {
+            return "模型连接已建立，但输出达到 token 上限，尚未返回完整的提炼结果。请改用支持较大输出额度的模型。";
         }
 
         if (exception.Message.Contains("generation failed validation", StringComparison.OrdinalIgnoreCase))

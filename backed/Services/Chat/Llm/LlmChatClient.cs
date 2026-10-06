@@ -21,6 +21,10 @@ public interface ILlmChatClient
     /// </summary>
     Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken);
 
+    /// <summary>Use a larger output budget for callers whose protocol needs a complete response.</summary>
+    Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, int maxOutputTokens, CancellationToken cancellationToken)
+        => CompleteAsync(messages, modelId, cancellationToken);
+
     /// <summary>
     /// 流式调用当前配置的 LLM，逐块返回模型输出。
     /// </summary>
@@ -43,6 +47,7 @@ public interface ILlmChatClient
 /// </summary>
 public sealed class LlmChatClient : ILlmChatClient
 {
+    private const int DefaultMaxOutputTokens = 1600;
     private const string RedactedSecret = "********";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -72,10 +77,14 @@ public sealed class LlmChatClient : ILlmChatClient
     /// <summary>
     /// 执行一次非流式 OpenAI-compatible chat/completions 调用。
     /// </summary>
-    public async Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken)
+    public Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken)
+        => CompleteAsync(messages, modelId, DefaultMaxOutputTokens, cancellationToken);
+
+    public async Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, int maxOutputTokens, CancellationToken cancellationToken)
     {
+        if (maxOutputTokens is < 256 or > 16384) throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
         var selection = ResolveLlm(modelId);
-        using var httpRequest = BuildRequest(selection, messages, null, stream: false);
+        using var httpRequest = BuildRequest(selection, messages, null, stream: false, maxOutputTokens);
         var client = _httpClientFactory.CreateClient();
         client.Timeout = Timeout.InfiniteTimeSpan;
 
@@ -201,7 +210,7 @@ public sealed class LlmChatClient : ILlmChatClient
         }
     }
 
-    private HttpRequestMessage BuildRequest(LlmSelection selection, IReadOnlyList<LlmMessage> messages, IReadOnlyList<ToolDefinition>? tools, bool stream)
+    private HttpRequestMessage BuildRequest(LlmSelection selection, IReadOnlyList<LlmMessage> messages, IReadOnlyList<ToolDefinition>? tools, bool stream, int maxOutputTokens = DefaultMaxOutputTokens)
     {
         var endpoint = BuildChatCompletionsEndpoint(selection.Profile.BaseUrl);
         if (string.IsNullOrWhiteSpace(endpoint))
@@ -241,7 +250,7 @@ public sealed class LlmChatClient : ILlmChatClient
             // and a future persisted history format cannot poison the next step.
             ["messages"] = NormalizeToolMessageSequence(messages).Select(ToWireMessage).ToArray(),
             ["temperature"] = 0.2,
-            ["max_tokens"] = 1600,
+            ["max_tokens"] = maxOutputTokens,
             ["stream"] = stream
         };
         if (tools is { Count: > 0 })
@@ -430,6 +439,10 @@ public sealed class LlmChatClient : ILlmChatClient
             && choices.GetArrayLength() > 0)
         {
             var first = choices[0];
+            if (first.TryGetProperty("finish_reason", out var finishReason)
+                && finishReason.ValueKind == JsonValueKind.String
+                && finishReason.GetString() == "length")
+                throw new InvalidOperationException("LLM provider response reached the output token limit before completion.");
             if (first.TryGetProperty("message", out var message)
                 && message.TryGetProperty("content", out var content))
             {

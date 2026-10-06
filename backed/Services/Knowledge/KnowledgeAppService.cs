@@ -139,10 +139,43 @@ public sealed class KnowledgeAppService : IDynamicApiController
     public KnowledgeCompilerSettingsDto SaveCompilerSettings([FromBody] KnowledgeCompilerSettingsDto config) => _compilerSettings.Save(config);
 
     [HttpPost("compiler-settings/check")]
-    public Task<KnowledgeChainCheckResultDto> CheckCompilerChain(
+    public async Task<KnowledgeChainCheckResultDto> CheckCompilerChain(
         [FromBody] KnowledgeCompilerSettingsDto config,
-        CancellationToken cancellationToken) => (_chainDiagnostics ?? throw new InvalidOperationException("Knowledge chain diagnostics are unavailable."))
-            .CheckAsync(config, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await (_chainDiagnostics ?? throw new InvalidOperationException("Knowledge chain diagnostics are unavailable."))
+                .CheckAsync(config, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Knowledge compiler chain check failed before returning a diagnostic result.");
+            var detail = ex is ArgumentException
+                ? ex.Message
+                : "检测接口发生未处理异常，服务端已记录详细日志。";
+            return new KnowledgeChainCheckResultDto
+            {
+                Ok = false,
+                Provider = config?.Generator,
+                Model = config?.ModelId,
+                Steps =
+                [
+                    new KnowledgeChainCheckStepDto
+                    {
+                        Key = "request",
+                        Label = ex is ArgumentException ? "配置校验失败" : "检测服务异常",
+                        Status = "error",
+                        Detail = detail
+                    }
+                ]
+            };
+        }
+    }
 
     [HttpGet("{kbName}/pages")]
     public List<KnowledgePageDto> GetPages([FromRoute] string kbName) => _workspace.ListPages(kbName);

@@ -252,10 +252,16 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
     {
         public Queue<string> Replies { get; } = new();
         public string? ModelId { get; private set; }
+        public int? MaxOutputTokens { get; private set; }
         public Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken)
         {
             ModelId = modelId;
             return Task.FromResult(new LlmChatResult { Text = Replies.Count > 0 ? Replies.Dequeue() : "{}", Provider = "api", Model = "api-model" });
+        }
+        public Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, int maxOutputTokens, CancellationToken cancellationToken)
+        {
+            MaxOutputTokens = maxOutputTokens;
+            return CompleteAsync(messages, modelId, cancellationToken);
         }
         public IAsyncEnumerable<LlmStreamChunk> StreamAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
@@ -276,6 +282,7 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
         var result = await new KnowledgeModelAdapter(api, cli, new() { Generator = "llm_api", ModelId = "configured-api" }, "unused").CompleteAsync("api", CancellationToken.None);
         Assert.Equal("api", result.Provider);
         Assert.Equal("configured-api", api.ModelId);
+        Assert.Equal(8192, api.MaxOutputTokens);
         Assert.Equal(3, cli.Requests.Count);
     }
 
@@ -320,6 +327,56 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
         {
             var resolved = Path.GetFullPath(root);
             if (resolved.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Path.GetFileName(resolved).StartsWith("aiagent-knowledge-tests-", StringComparison.Ordinal))
+                Directory.Delete(resolved, true);
+        }
+    }
+
+    [Fact]
+    public async Task FullDocxIngestionParsesCompilesValidatesEvidenceAndPersistsDraft()
+    {
+        using var db = Database(); var kb = CreateBase(db);
+        var root = Path.Combine(Path.GetTempPath(), "aiagent-knowledge-tests-" + Guid.NewGuid().ToString("N"));
+        var paths = new KnowledgePathService(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DataPath"] = root }).Build(), NullLogger<KnowledgePathService>.Instance);
+        var sourcePath = Path.Combine(paths.GetRawPath(kb.Name), "source.docx");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        const string source = "星河项目每周三 20:00 发布，紧急修复必须先评审回滚方案。";
+        try
+        {
+            using (var archive = System.IO.Compression.ZipFile.Open(sourcePath, System.IO.Compression.ZipArchiveMode.Create))
+            using (var writer = new StreamWriter(archive.CreateEntry("word/document.xml").Open()))
+                writer.Write($"""<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{System.Security.SecurityElement.Escape(source)}</w:t></w:r></w:p></w:body></w:document>""");
+
+            var doc = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id, StoragePath = sourcePath, OriginalFileName = "source.docx" };
+            doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+            var settings = new KnowledgeCompilerSettings(db);
+            settings.Save(new() { Generator = "llm_api", MaxSteps = 8 });
+            var api = new Llm();
+            api.Replies.Enqueue("识别到项目发布时间和紧急修复评审要求。");
+            api.Replies.Enqueue(JsonSerializer.Serialize(new { pages = new[] { new {
+                title = "星河项目发布要求",
+                markdown = "项目每周三晚发布；紧急修复前评审回滚方案。",
+                evidence = new[] { new { part = 1, quote = source } }
+            } } }));
+            var ingestion = new KnowledgeIngestionService(db, paths, null!, api, new Codex(), settings);
+
+            var result = await ingestion.ProcessAsync(kb, doc, new() { Generator = "llm_api" }, CancellationToken.None);
+            var content = ingestion.GetContent(kb, doc);
+
+            Assert.Equal("processed", result.Status);
+            Assert.Equal("openxml", result.Parser);
+            Assert.True(result.ParsedDocumentId > 0);
+            Assert.True(result.ArtifactId > 0);
+            Assert.Contains(source, content.ParsedContent);
+            Assert.Contains(source, content.ArtifactContent);
+            Assert.Equal("draft", content.ReviewStatus);
+            Assert.Equal("processed", db.Queryable<AiKnowledgeDocument>().InSingle(doc.Id).Status);
+            Assert.Equal(8192, api.MaxOutputTokens);
+        }
+        finally
+        {
+            var resolved = Path.GetFullPath(root);
+            if (Directory.Exists(resolved) && resolved.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase)
+                && Path.GetFileName(resolved).StartsWith("aiagent-knowledge-tests-", StringComparison.Ordinal))
                 Directory.Delete(resolved, true);
         }
     }
@@ -371,6 +428,21 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
     {
         Assert.Equal("wiki", JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>("{\"generator\":\"llm_api\"}")!.RetrievalMode);
         Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { RetrievalMode = "unknown" }));
+    }
+
+    [Fact]
+    public async Task CompilerChainEndpointReturnsStructuredFailureWhenDiagnosticsAreUnavailable()
+    {
+        using var db = Database();
+        var app = new KnowledgeAppService(db, new(db), new(db), null!, null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<KnowledgeAppService>.Instance);
+
+        var result = await app.CheckCompilerChain(new(), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        var step = Assert.Single(result.Steps);
+        Assert.Equal("error", step.Status);
+        Assert.Equal("检测服务异常", step.Label);
+        Assert.Contains("服务端已记录", step.Detail);
     }
 
     [Fact]
