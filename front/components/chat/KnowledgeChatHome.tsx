@@ -8,12 +8,14 @@ import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImag
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
+import { VisualizationToolbar } from "@/components/chat/visualization/VisualizationToolbar";
+import { buildVisualizationMessage, type DiagramType } from "@/lib/chat-visualization";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
-import { getChatProjectReferences, getCodeProjects, getProjectMarkdownDocuments } from "@/lib/code-repository-api";
+import { getChatProjectReferences, getCodeProjects, getProjectMarkdownDocuments, resolveProjectCodeFileReference } from "@/lib/code-repository-api";
 import { getProjectTaskChatHandoff } from "@/lib/project-task-api";
 import { activeModel, activeProfile, type Catalog, type CatalogModel } from "@/lib/settings-types";
 import type { TranslationKey } from "@/i18n/dictionaries";
@@ -234,6 +236,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [visualizationType, setVisualizationType] = useState<DiagramType | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [mobilePicker, setMobilePicker] = useState<"model" | "project" | null>(null);
   const [slashProjectCommand, setSlashProjectCommand] = useState<SlashProjectCommand | null>(null);
@@ -400,6 +403,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       setSelectedKbNames(defaultKnowledgeBase ? [defaultKnowledgeBase.name] : []);
       setMessages([]);
       setInput("");
+      setVisualizationType(null);
       setImageAttachments([]);
       setDocumentAttachments([]);
       setPendingMarkdownDocuments([]);
@@ -411,6 +415,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       pendingSessionIdRef.current = null;
       return;
     }
+    setVisualizationType(null);
     void getSession(requestedSessionId)
       .then((session) => {
         if (cancelled) return;
@@ -905,7 +910,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await sendMessage(input.trim());
+    const query = input.trim();
+    // Keep empty submissions and embedded editors on their existing path.
+    const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0;
+    await sendMessage(buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType));
   }
 
   async function addImages(files: File[]) {
@@ -1017,7 +1025,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     try {
       const items = await getProjectMarkdownDocuments(selectedProjectId);
       const normalizedReference = normalizeMarkdownDocumentReference(reference);
-      const document = items.find((item) => item.path.toLowerCase() === normalizedReference) ?? items.find((item) => `${item.repository_name}/${item.path}`.toLowerCase() === normalizedReference) ?? items.find((item) => item.path.toLowerCase().endsWith(`/${normalizedReference}`)) ?? items.find((item) => item.name.toLowerCase() === normalizedReference.split("/").pop());
+      let document: CodeProjectMarkdownDocument | undefined;
+      if (/^(?:[a-z]:\/|\/)/i.test(normalizedReference)) {
+        const resolved = await resolveProjectCodeFileReference(selectedProjectId, reference);
+        document = items.find((item) => item.repository_name === resolved.repository_name && item.path.toLowerCase() === resolved.file_path.toLowerCase());
+      } else {
+        const exact = items.filter((item) => item.path.toLowerCase() === normalizedReference || `${item.repository_name}/${item.path}`.toLowerCase() === normalizedReference);
+        const matches = exact.length ? exact : items.filter((item) => item.path.toLowerCase().endsWith(`/${normalizedReference}`) || item.name.toLowerCase() === normalizedReference);
+        if (matches.length === 1) document = matches[0];
+      }
       if (!document) {
         setError(`当前项目中找不到 ${reference}。`);
         return;
@@ -1154,6 +1170,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
+              {!embedded && <VisualizationToolbar value={visualizationType} onChange={setVisualizationType} disabled={sending || uploadingImages || uploadingFiles} />}
               {imageAttachments.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
                   {imageAttachments.map((attachment) => (

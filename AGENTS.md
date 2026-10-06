@@ -67,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 聊天可视化第一版是发送前的显式文本组合，位于 `front/lib/chat-visualization.ts` 与独立工具栏；只在普通聊天提交时应用，重试直接使用已保存消息，不重复包装或改变 `ChatStreamProvider` 协议。嵌入式编辑器不启用。Mermaid 使用现有 strict 渲染，Markdown 的 pre 组件身份须稳定。此模式的只读描述是模型提示，不是额外权限隔离。
+
 - AppSidebar 使用 56px 图标栏与独立模块内容面板，展开总宽 296px；AuthGate 的桌面内容缩进须同步。收起仅隐藏桌面内容面板，移动端抽屉保留完整内容；保留全局 Ctrl / ⌘ + K、sidebar-toggle 与 mobile-drawer 事件及项目/会话操作。
 
 - 聊天失败的 20 秒自动重试由 `ChatStreamProvider` 管理，复用同一 stream ID 和原始请求快照；底部 `ChatRetryNotice` 仅显示倒计时及立即重试／取消入口。重试必须先结束旧请求，取消倒计时与手动重试须互斥，停止与成功不能安排重试；错误事件不能广播成功完成事件。

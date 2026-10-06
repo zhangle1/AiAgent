@@ -2,7 +2,7 @@
 
 import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, ChevronRight, Download, FileText, Folder, FolderOpen, FolderPlus, Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, Trash2, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
 import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeFile, getProjectMarkdownDirectories, getProjectMarkdownDocuments, importProjectDocuments, previewProjectDocument, projectDocumentFileUrl, projectMarkdownDocumentDownloadUrl } from "@/lib/code-repository-api";
@@ -477,6 +477,29 @@ function buildMarkdownDocumentTree(documents: CodeProjectMarkdownDocument[], dir
   return root;
 }
 
+// Keep renderer identities stable across runtime polling and panel resizing.
+// Recreating them remounts Mermaid diagrams and discards their open preview state.
+const projectDocumentMarkdownComponents: Components = {
+          h1: ({ className, ...props }) => <h1 className={`mb-5 border-b border-slate-200 pb-3 text-2xl font-bold tracking-tight text-slate-950 ${className ?? ""}`} {...props}/>,
+          h2: ({ className, ...props }) => <h2 className={`mb-3 mt-8 border-b border-slate-100 pb-2 text-xl font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
+          h3: ({ className, ...props }) => <h3 className={`mb-2 mt-6 text-base font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
+          h4: ({ className, ...props }) => <h4 className={`mb-2 mt-5 text-sm font-bold text-slate-800 ${className ?? ""}`} {...props}/>,
+          p: ({ className, ...props }) => <p className={`my-3 text-[14px] leading-7 text-slate-700 ${className ?? ""}`} {...props}/>,
+          a: ({ className, ...props }) => <a className={`font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900 ${className ?? ""}`} target="_blank" rel="noreferrer" {...props}/>,
+          ul: ({ className, ...props }) => <ul className={`my-3 list-disc space-y-1 pl-6 marker:text-slate-400 ${className ?? ""}`} {...props}/>,
+          ol: ({ className, ...props }) => <ol className={`my-3 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500 ${className ?? ""}`} {...props}/>,
+          li: ({ className, ...props }) => <li className={`pl-1 ${className ?? ""}`} {...props}/>,
+          blockquote: ({ className, ...props }) => <blockquote className={`my-4 border-l-4 border-blue-300 bg-blue-50 px-4 py-2 text-slate-700 ${className ?? ""}`} {...props}/>,
+          hr: ({ className, ...props }) => <hr className={`my-7 border-slate-200 ${className ?? ""}`} {...props}/>,
+          table: ({ className, ...props }) => <table className={`my-4 min-w-full border-collapse text-left text-[13px] leading-6 ${className ?? ""}`} {...props}/>,
+          thead: ({ className, ...props }) => <thead className={`bg-slate-100 text-slate-800 ${className ?? ""}`} {...props}/>,
+          th: ({ className, ...props }) => <th className={`border border-slate-200 px-3 py-2 font-semibold ${className ?? ""}`} {...props}/>,
+          td: ({ className, ...props }) => <td className={`border border-slate-200 px-3 py-2 align-top ${className ?? ""}`} {...props}/>,
+          pre: ({ className, children, ...props }) => { const chart = mermaidSourceFromPre(children); return chart ? <MermaidDiagram chart={chart}/> : <pre className={`my-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-[12px] leading-6 text-slate-100 shadow-sm ${className ?? ""}`} {...props}>{children}</pre>; },
+          code: ({ className, ...props }) => <code className={`${className ? "font-mono" : "rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-rose-700"} ${className ?? ""}`} {...props}/>,
+          img: ({ className, alt, ...props }) => <img className={`my-4 max-w-full rounded-lg border border-slate-200 shadow-sm ${className ?? ""}`} alt={alt ?? "文档图片"} {...props}/>,
+        };
+
 function ProjectDocumentsTab({ projectId, documents, directories, loadingDocuments, selectedDocument, selectedDirectory, content, loadingContent, onSelect, onSelectDirectory, onInsert, uploadInputRef, onUpload, importing, importSummary, onCreateDirectory, onDownload, onDelete, onPrepareAgentMarkdown, onRefresh }: {
   projectId: number | null;
   documents: CodeProjectMarkdownDocument[];
@@ -518,26 +541,7 @@ function ProjectDocumentsTab({ projectId, documents, directories, loadingDocumen
       {selectedDocument && projectId && selectedDocument.preview_kind === "pdf" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} className="min-h-0 flex-1 border-0 bg-slate-100"/>
         : selectedDocument && projectId && selectedDocument.preview_kind === "html" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} sandbox="" className="min-h-0 flex-1 border-0 bg-white"/>
         : loadingContent ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>正在预览文档…</div>
-        : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><article className="markdown-document-preview mx-auto max-w-4xl"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-          h1: ({ className, ...props }) => <h1 className={`mb-5 border-b border-slate-200 pb-3 text-2xl font-bold tracking-tight text-slate-950 ${className ?? ""}`} {...props}/>,
-          h2: ({ className, ...props }) => <h2 className={`mb-3 mt-8 border-b border-slate-100 pb-2 text-xl font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
-          h3: ({ className, ...props }) => <h3 className={`mb-2 mt-6 text-base font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
-          h4: ({ className, ...props }) => <h4 className={`mb-2 mt-5 text-sm font-bold text-slate-800 ${className ?? ""}`} {...props}/>,
-          p: ({ className, ...props }) => <p className={`my-3 text-[14px] leading-7 text-slate-700 ${className ?? ""}`} {...props}/>,
-          a: ({ className, ...props }) => <a className={`font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900 ${className ?? ""}`} target="_blank" rel="noreferrer" {...props}/>,
-          ul: ({ className, ...props }) => <ul className={`my-3 list-disc space-y-1 pl-6 marker:text-slate-400 ${className ?? ""}`} {...props}/>,
-          ol: ({ className, ...props }) => <ol className={`my-3 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500 ${className ?? ""}`} {...props}/>,
-          li: ({ className, ...props }) => <li className={`pl-1 ${className ?? ""}`} {...props}/>,
-          blockquote: ({ className, ...props }) => <blockquote className={`my-4 border-l-4 border-blue-300 bg-blue-50 px-4 py-2 text-slate-700 ${className ?? ""}`} {...props}/>,
-          hr: ({ className, ...props }) => <hr className={`my-7 border-slate-200 ${className ?? ""}`} {...props}/>,
-          table: ({ className, ...props }) => <table className={`my-4 min-w-full border-collapse text-left text-[13px] leading-6 ${className ?? ""}`} {...props}/>,
-          thead: ({ className, ...props }) => <thead className={`bg-slate-100 text-slate-800 ${className ?? ""}`} {...props}/>,
-          th: ({ className, ...props }) => <th className={`border border-slate-200 px-3 py-2 font-semibold ${className ?? ""}`} {...props}/>,
-          td: ({ className, ...props }) => <td className={`border border-slate-200 px-3 py-2 align-top ${className ?? ""}`} {...props}/>,
-          pre: ({ className, children, ...props }) => { const chart = mermaidSourceFromPre(children); return chart ? <MermaidDiagram chart={chart}/> : <pre className={`my-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-[12px] leading-6 text-slate-100 shadow-sm ${className ?? ""}`} {...props}>{children}</pre>; },
-          code: ({ className, ...props }) => <code className={`${className ? "font-mono" : "rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-rose-700"} ${className ?? ""}`} {...props}/>,
-          img: ({ className, alt, ...props }) => <img className={`my-4 max-w-full rounded-lg border border-slate-200 shadow-sm ${className ?? ""}`} alt={alt ?? "文档图片"} {...props}/>,
-        }}>{content.content}</ReactMarkdown></article>{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>
+        : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><article className="markdown-document-preview mx-auto max-w-4xl"><ReactMarkdown remarkPlugins={[remarkGfm]} components={projectDocumentMarkdownComponents}>{content.content}</ReactMarkdown></article>{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>
           : <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm leading-6 text-slate-500">从左侧树状目录选择文档后即可预览，文档内容不会作为代码文件暴露。</div>}
     </div>
   </div>;

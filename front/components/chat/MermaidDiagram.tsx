@@ -1,6 +1,7 @@
 "use client";
 
 import { Children, isValidElement, useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Maximize2, X } from "lucide-react";
 
 function readChildrenText(children: ReactNode): string {
@@ -67,11 +68,11 @@ export function MermaidDiagram({ chart }: { chart: string }) {
       <div role="img" aria-label="Mermaid 图表" className="[&_svg]:h-auto [&_svg]:min-w-max [&_svg]:max-w-none" dangerouslySetInnerHTML={{ __html: svg }} />
       <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1 rounded-md bg-slate-900/75 px-2 py-1 text-[11px] text-white opacity-0 shadow-sm transition group-hover:opacity-100 group-focus-visible:opacity-100"><Maximize2 size={13}/>点击放大</span>
     </div>
-    {expanded && <div role="dialog" aria-modal="true" aria-label="Mermaid 图表全屏预览" onMouseDown={() => setExpanded(false)} className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
+    {expanded && createPortal(<div role="dialog" aria-modal="true" aria-label="Mermaid 图表全屏预览" onMouseDown={() => setExpanded(false)} className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
       <div onMouseDown={(event) => event.stopPropagation()} className="flex h-full w-full max-w-[96vw] flex-col overflow-hidden rounded-2xl border border-white/15 bg-white shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3"><span className="text-sm font-semibold text-zinc-800">Mermaid 图表</span><button type="button" onClick={() => setExpanded(false)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900" aria-label="关闭全屏预览"><X size={17}/></button></div>
         <div role="img" aria-label="Mermaid 图表全屏预览" className="workspace-scroll min-h-0 flex-1 overflow-auto bg-zinc-50 p-6 [&_svg]:h-auto [&_svg]:min-w-max [&_svg]:max-w-none" dangerouslySetInnerHTML={{ __html: svg }} />
       </div>
-    </div>}
+    </div>, document.body)}
   </>;
 }

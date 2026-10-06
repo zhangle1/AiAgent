@@ -1,0 +1,47 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Chat visualization v1",
+  "base_commit": "bf33aeb4614953bb42857c92388e282b6354e61a",
+  "platform_change_set_id": null,
+  "note": "Local review manifest, not a server-side approval change set. No authenticated project context was supplied. KnowledgeChatHome.tsx and MarkdownMessage.tsx include pre-existing file-link fixes. No commit or push performed.",
+  "checks": {
+    "typescript": "passed: tsc --noEmit --incremental false",
+    "regressions": "11 passed",
+    "whitespace": "git diff --check passed",
+    "live_model_and_browser": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "adc86029d2f2bf86c6dae2db3ad15b24edc25ccce6f940749c6a9cf4787289d1"
+    },
+    {
+      "path": "README.md",
+      "sha256": "b613fa55dcc6d80558dbb11e8e46f81fcf68d26c74019df7b1156087973cc09d"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "39717d1bd4367b66fd32022953856f191a5286881c8bcdadc6a1fb043ba0cde0"
+    },
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "64f1e9390219edfac0450a6879f07907142f0e33cf5fdca855c842b226b6ce79"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationToolbar.tsx",
+      "sha256": "8487c25cf3c4af42520471f5dc0be9f6b3c1c587bfcc55d8d8b3a8cbbfbdfc14"
+    },
+    {
+      "path": "front/lib/chat-visualization.ts",
+      "sha256": "5440b551ca5a6a710fa476186d4dd49078a6b1d671c221ad2474c5bf8f2c5005"
+    },
+    {
+      "path": "front/tests/chat-visualization.test.mjs",
+      "sha256": "1d52d487e2e32cd78e772d4c925a07dfad8011a8eb8c5ef6bb102d89f81e578b"
+    },
+    {
+      "path": "docs/chat-visualization-v1.md",
+      "sha256": "18222a7e03521122ceb6557ef8daaebc402dfb4525a8519d994c8b57fcb07d33"
+    }
+  ]
+}

@@ -74,6 +74,12 @@ function CodeBlock({ children, ...props }: { children: ReactNode } & React.HTMLA
   );
 }
 
+// Stable identity keeps diagrams mounted while the surrounding message updates.
+function MarkdownPre({ children, ...props }: { children?: ReactNode }) {
+  const chart = mermaidSourceFromPre(children);
+  return chart ? <MermaidDiagram chart={chart} /> : <CodeBlock {...domProps(props)}>{children}</CodeBlock>;
+}
+
 function decodeReference(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -95,10 +101,19 @@ function codeReferenceFromHref(href?: string): CodeReferenceCandidate | null {
       return null;
     }
   }
+  if (/^file:\/\//i.test(href)) {
+    try {
+      const url = new URL(href);
+      if (url.hostname) return null;
+      href = url.pathname.replace(/^\/([a-z]:\/)/i, "$1") + url.hash;
+    } catch {
+      return null;
+    }
+  }
   if (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return null;
 
   const reference = decodeReference(href).trim();
-  return sourceFilePattern.test(reference) ? { reference } : null;
+  return sourceFilePattern.test(reference) || markdownDocumentReferenceFromText(reference) ? { reference } : null;
 }
 
 function codeReferenceFromText(value: string): CodeReferenceCandidate | null {
@@ -163,7 +178,10 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      urlTransform={(url) => url.startsWith("aiagent://code-file?") ? url : defaultUrlTransform(url)}
+      urlTransform={(url) => {
+        const candidate = codeReferenceFromHref(url);
+        return candidate ? `aiagent://code-file?path=${encodeURIComponent(candidate.reference)}` : defaultUrlTransform(url);
+      }}
       components={{
         h1: (props) => <h1 className="mb-3 mt-5 text-2xl font-semibold leading-tight" {...domProps(props)} />,
         h2: (props) => <h2 className="mb-3 mt-5 text-xl font-semibold leading-tight" {...domProps(props)} />,
@@ -197,12 +215,7 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
             ? <OpenCodeReference candidate={sourceReference} projectId={projectId} onOpenCodeFile={onOpenCodeFile} className="cursor-pointer text-left text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">{code}</OpenCodeReference>
             : code;
         },
-        pre: ({ children, ...props }) => {
-          const chart = mermaidSourceFromPre(children);
-          return chart
-            ? <MermaidDiagram chart={chart} />
-            : <CodeBlock {...domProps(props)}>{children}</CodeBlock>;
-        },
+        pre: MarkdownPre,
         a: ({ href, children, ...props }) => {
           // Agents sometimes turn a source file name into an ordinary http link.
           // Prefer the displayed source-file reference so it opens in the right inspector.
