@@ -1,0 +1,70 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "Prompt-driven packaging and project ZIP download cards",
+    "base_commit":  "2f3a98dee8cb76efdd73b89fdf92f9ce38d52b32",
+    "platform_change_set_id":  null,
+    "note":  "Local review manifest; user requested commit and push. Revalidated original snapshot and added the document-link test dependency fix before delivery.",
+    "checks":  {
+                   "typescript":  "passed",
+                   "frontend_regressions":  "11 passed (including 4 packaging cases)",
+                   "backend_build":  "passed (existing warnings)",
+                   "package_document_tests":  "7 passed",
+                   "git_ignore":  "passed: artifacts/aiagent-packages/v1/app.zip",
+                   "live_model":  "not run",
+                   "browser":  "not run"
+               },
+    "files":  [
+                  {
+                      "path":  ".gitignore",
+                      "sha256":  "c4c11fd57795149a5f2e3f524c4763d577c1f969fd81f52419f46b65e16ee449"
+                  },
+                  {
+                      "path":  "AGENTS.md",
+                      "sha256":  "d5aa655026936fadf324a36f5fec93644202f257a711181abe4596939d433aa8"
+                  },
+                  {
+                      "path":  "README.md",
+                      "sha256":  "0a418c5cfdb032a51b675a81f2d375c8e6d1902c5833d27bff50b3a12e2e15a6"
+                  },
+                  {
+                      "path":  "backed.tests/ProjectPackageDocumentTests.cs",
+                      "sha256":  "94b0772de0bf03464931db9b300cb66346e370b0a4a5a2f43ff0574241ac9106"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/CodeRepositoryManager.cs",
+                      "sha256":  "af6c60932c563ea9947b216bf20661cc96fec7011c89c56d4a717dfe552babb5"
+                  },
+                  {
+                      "path":  "front/components/chat/ChatInspectorPanel.tsx",
+                      "sha256":  "47cd70502050f069a39bcafedc1643bb3623266edf0fcc3729b7e742c5b0038a"
+                  },
+                  {
+                      "path":  "front/components/chat/ChatRuntimeToolbar.tsx",
+                      "sha256":  "6840fe151500aa2c5db8b39d2db5dd3cf562665b91271fcf1e79a2ba3203d13b"
+                  },
+                  {
+                      "path":  "front/components/chat/KnowledgeChatHome.tsx",
+                      "sha256":  "f8f0ac720a6967b526104c05d1aeb0c7b3cb8343cd9864444297c4f9d371af6f"
+                  },
+                  {
+                      "path":  "front/components/chat/MarkdownMessage.tsx",
+                      "sha256":  "37b05a55f56710029fa0ba4d466f5dce24fcf2f50f008930f0314f242f7f079c"
+                  },
+                  {
+                      "path":  "front/lib/chat-packaging.ts",
+                      "sha256":  "01001923eb4f4fbd19a466087320f9b2d04898218a2fa21ec8dbe4ce9bad81c5"
+                  },
+                  {
+                      "path":  "front/lib/code-repository-types.ts",
+                      "sha256":  "bd5299c6e2b0ce29d63dbc574deff39c201441d01d7ffe80cd4fe676b20d60d4"
+                  },
+                  {
+                      "path":  "front/tests/chat-packaging.test.mjs",
+                      "sha256":  "26816a8d4f8efd090927ff71c2ae521afca3a8bc957fade81292f015c96c589c"
+                  },
+                  {
+                      "path":  "front/tests/chat-file-links.test.mjs",
+                      "sha256":  "249f741b581c206724fefa25cdadc361283d11620e632f89b68f13e646c09580"
+                  }
+              ]
+}

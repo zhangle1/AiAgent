@@ -76,7 +76,7 @@ export type CodeProjectMarkdownDocument = {
   directory_path?: string | null;
   updated_at?: string | null;
   extension: string;
-  preview_kind: "markdown" | "text" | "html" | "pdf" | "office";
+  preview_kind: "markdown" | "text" | "html" | "pdf" | "office" | "archive";
   has_original: boolean;
 };
 

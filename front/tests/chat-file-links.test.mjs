@@ -7,7 +7,12 @@ const source = ts.transpileModule(fs.readFileSync(new URL("../components/chat/Ma
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 const module = { exports: {} };
+const packaging = { exports: {} };
+new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-packaging.ts", import.meta.url), "utf8"), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText)(packaging.exports);
 new Function("require", "module", "exports", source)((name) => {
+  if (name === "@/lib/chat-packaging") return packaging.exports;
   if (name === "react/jsx-runtime") return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
   if (name === "react-markdown") return { defaultUrlTransform: (url) => /^[a-z]:/i.test(url) ? "" : url };
   return {};

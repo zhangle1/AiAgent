@@ -67,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 聊天打包入口使用 `front/lib/chat-packaging.ts` 填充普通聊天提示词，由模型判断构建、验证与 ZIP 生成方式。产物统一放在目标仓库 `artifacts/aiagent-packages/` 并配置 Git 忽略；下载复用项目权限及仓库归属校验，仅该目录 ZIP 可作为交付包下载。ZIP 不做文本解析或解压预览。聊天卡片只识别当前项目的相对下载 API 链接，不信任任意外链或本机路径。
+
 - 聊天可视化第一版是发送前的显式文本组合，位于 `front/lib/chat-visualization.ts` 与独立工具栏；只在普通聊天提交时应用，重试直接使用已保存消息，不重复包装或改变 `ChatStreamProvider` 协议。嵌入式编辑器不启用。Mermaid 使用现有 strict 渲染，Markdown 的 pre 组件身份须稳定。此模式的只读描述是模型提示，不是额外权限隔离。
 - 图形及 Git 来源在独立弹窗确认后生效；切换项目或会话清空提交选择。Git 历史接口先验证项目访问权及仓库归属，仅分页读取本地 HEAD（每页 50 条），不 fetch、不切换分支；最多 20 条提交元数据作为不可信来源文本随消息保存，不表示已审阅代码差异。
 

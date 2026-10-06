@@ -201,7 +201,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 
   useEffect(() => {
     if (!project || !selectedMarkdownDocument) { setMarkdownDocumentContent(null); return; }
-    if (selectedMarkdownDocument.preview_kind === "pdf" || selectedMarkdownDocument.preview_kind === "html") {
+    if (selectedMarkdownDocument.preview_kind === "pdf" || selectedMarkdownDocument.preview_kind === "html" || selectedMarkdownDocument.preview_kind === "archive") {
       setMarkdownDocumentContent(null);
       setLoadingMarkdownDocument(false);
       return;
@@ -538,7 +538,8 @@ function ProjectDocumentsTab({ projectId, documents, directories, loadingDocumen
         <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{selectedDocument?.path || "选择一份项目资料"}</p>{selectedDocument && <p className="mt-0.5 truncate text-[10px] text-slate-400">{selectedDocument.repository_name}</p>}</div>
         {selectedDocument && <button type="button" onClick={() => onDownload(selectedDocument)} title="下载原文件" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Download size={14}/></button>}{selectedDocument && selectedDocument.source !== "agent_index" && <button type="button" onClick={() => onDelete(selectedDocument)} title="删除资料" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 size={14}/></button>}{selectedDocument && onInsert && <button type="button" onClick={() => onInsert(selectedDocument)} className="shrink-0 rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-700">引用到聊天</button>}
       </div>
-      {selectedDocument && projectId && selectedDocument.preview_kind === "pdf" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} className="min-h-0 flex-1 border-0 bg-slate-100"/>
+      {selectedDocument && projectId && selectedDocument.preview_kind === "archive" ? <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center"><p className="break-all font-medium">{selectedDocument.name}</p><p className="text-sm text-slate-500">ZIP 交付包，下载后查看内容。</p><a className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white" download href={projectMarkdownDocumentDownloadUrl(projectId, selectedDocument.repository_name, selectedDocument.path)}>下载 ZIP</a></div>
+        : selectedDocument && projectId && selectedDocument.preview_kind === "pdf" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} className="min-h-0 flex-1 border-0 bg-slate-100"/>
         : selectedDocument && projectId && selectedDocument.preview_kind === "html" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} sandbox="" className="min-h-0 flex-1 border-0 bg-white"/>
         : loadingContent ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>正在预览文档…</div>
         : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><article className="markdown-document-preview mx-auto max-w-4xl"><ReactMarkdown remarkPlugins={[remarkGfm]} components={projectDocumentMarkdownComponents}>{content.content}</ReactMarkdown></article>{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>

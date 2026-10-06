@@ -632,6 +632,8 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         if (!File.Exists(candidate)) throw new FileNotFoundException("The referenced project document is unavailable.");
         var resolved = GetResolvedPath(new FileInfo(candidate));
         if (!IsPathWithin(repositoryRoot, resolved) || !IsProjectDocumentFile(resolved)) throw new InvalidOperationException("The referenced project document is unavailable.");
+        if (Path.GetExtension(resolved).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            return new CodeProjectMarkdownDocumentContentDto { RepositoryName = repository.Name, Path = normalizedPath, Content = "ZIP 交付包，请使用下载入口获取原文件。", IsTruncated = false };
         var bytes = await File.ReadAllBytesAsync(resolved, cancellationToken);
         var markdown = await ConvertProjectDocumentToMarkdownAsync(projectId, Path.GetFileName(resolved), bytes, cancellationToken);
         var truncated = markdown.Length > MaxMarkdownDocumentPreviewCharacters;
@@ -988,6 +990,18 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             ?? throw new FileNotFoundException("The referenced project document is unavailable.");
         var root = GetResolvedPath(new DirectoryInfo(repository.RootPath));
         var normalizedPath = NormalizeProjectDocumentPath(path);
+        if (Path.GetExtension(normalizedPath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!normalizedPath.StartsWith("artifacts/aiagent-packages/", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The package must be inside artifacts/aiagent-packages.");
+            var current = root;
+            foreach (var segment in normalizedPath.Split('/'))
+            {
+                current = Path.Combine(current, segment);
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("Package links are not allowed.");
+            }
+        }
         var candidate = GetResolvedPath(new FileInfo(Path.GetFullPath(Path.Combine(root, normalizedPath.Replace('/', Path.DirectorySeparatorChar)))));
         if (!File.Exists(candidate) || !IsPathWithin(root, candidate) || !IsProjectDocumentFile(candidate)) throw new FileNotFoundException("The referenced project document is unavailable.");
         return (candidate, Path.GetFileName(candidate), GetProjectDocumentContentType(candidate));
@@ -1464,10 +1478,13 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         => Path.GetExtension(path) is var extension
             && (extension.Equals(".md", StringComparison.OrdinalIgnoreCase) || extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase));
 
-    private static bool IsProjectDocumentFile(string path) => ProjectDocumentExtensions.Contains(Path.GetExtension(path));
+    private static bool IsProjectDocumentFile(string path) => ProjectDocumentExtensions.Contains(Path.GetExtension(path))
+        || (Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase)
+            && ("/" + path.Replace('\\', '/')).Contains("/artifacts/aiagent-packages/", StringComparison.OrdinalIgnoreCase));
 
     private static string GetProjectDocumentPreviewKind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
+        ".zip" => "archive",
         ".pdf" => "pdf",
         ".html" or ".htm" => "html",
         ".docx" or ".xlsx" or ".pptx" => "office",
@@ -1477,6 +1494,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
 
     private static string GetProjectDocumentContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
+        ".zip" => "application/zip",
         ".pdf" => "application/pdf",
         ".html" or ".htm" => "text/html; charset=utf-8",
         ".txt" => "text/plain; charset=utf-8",

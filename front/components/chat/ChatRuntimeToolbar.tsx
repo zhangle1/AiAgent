@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, Download, File, FileDiff, FilePenLine, Folder, FolderOpen, GitBranch, Info, Loader2, PackageOpen, PanelLeftOpen, PanelRightOpen, Play, RefreshCw, RotateCcw, Save, Square, Terminal, Upload, X } from "lucide-react";
 import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
-import { discardCodeRepositoryChangesAndPull, discardProjectGitChangesAndPull, getCodeRepositoryGitDiff, getProjectGitStatus, packageCodeRepositoryViaWebSocket, pushCodeRepositoryGit, pushProjectGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
+import { discardCodeRepositoryChangesAndPull, discardProjectGitChangesAndPull, getCodeRepositoryGitDiff, getProjectGitStatus, pushCodeRepositoryGit, pushProjectGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus, ProjectGitBatchOperationResult, ProjectGitRepositoryStatus, ProjectGitStatus } from "@/lib/code-repository-types";
+import { buildPackagePrompt } from "@/lib/chat-packaging";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
 type ProjectGitBatchAction = "discard-and-pull" | "commit-and-push";
 
-export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel, onOpenRuntimePanel }: { project: CodeProject | null; rightPanelOpen: boolean; onToggleRightPanel: () => void; onOpenRuntimePanel: () => void }) {
+export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel, onOpenRuntimePanel, onPackagePrompt }: { project: CodeProject | null; rightPanelOpen: boolean; onToggleRightPanel: () => void; onOpenRuntimePanel: () => void; onPackagePrompt: (prompt: string) => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [runtime, setRuntime] = useState<CodeProjectRuntime | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -19,7 +20,6 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   const [error, setError] = useState<string | null>(null);
   const [gitStatuses, setGitStatuses] = useState<Record<number, GitWorkspaceStatus>>({});
   const [projectGitStatus, setProjectGitStatus] = useState<ProjectGitStatus | null>(null);
-  const [packageStatus, setPackageStatus] = useState<Record<string, string>>({});
   const [configDraft, setConfigDraft] = useState<ChatConfigDraft | null>(null);
   const [pushTarget, setPushTarget] = useState<CodeRepository | null>(null);
   const [diffTarget, setDiffTarget] = useState<CodeRepository | null>(null);
@@ -153,21 +153,10 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     }
   }
 
-  async function packageRepository(repositoryName: string) {
-    setBusy(true);
-    setError(null);
-    setPackageStatus((current) => ({ ...current, [repositoryName]: "正在打包…" }));
-    try {
-      const completed = await packageCodeRepositoryViaWebSocket(repositoryName, (event) => {
-        if (event.line) setPackageStatus((current) => ({ ...current, [repositoryName]: event.line! }));
-      });
-      setPackageStatus((current) => ({ ...current, [repositoryName]: completed.success ? "打包完成" : completed.message || "打包失败" }));
-    } catch (ex) {
-      const message = ex instanceof Error ? ex.message : "打包失败。";
-      setPackageStatus((current) => ({ ...current, [repositoryName]: message }));
-    } finally {
-      setBusy(false);
-    }
+  function packageRepository(repositoryName: string) {
+    if (!project) return;
+    onPackagePrompt(buildPackagePrompt(project.id, repositoryName));
+    setMenuOpen(false);
   }
 
   async function discardRepositoryChangesAndPull(repository: CodeRepository) {
@@ -249,7 +238,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
           {project?.repositories.length ? <div className="mb-3 space-y-2">
             <p className="px-0.5 text-[11px] font-semibold text-slate-500">代码库</p>
-            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} packageStatus={packageStatus[repository.name]} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onOpenDiff={() => setDiffTarget(repository)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
+            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onOpenDiff={() => setDiffTarget(repository)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
           </div> : null}
 
           {runtime && runtime.profiles.length ? <div className="mb-2 space-y-1.5">
@@ -277,7 +266,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   </>;
 }
 
-function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, onStart, onPackage, onOpenDiff, onDiscardAndPull, onCommitPush, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; packageStatus?: string; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onOpenDiff: () => void; onDiscardAndPull: () => void; onCommitPush: () => void; onOpenConfiguration: (path: string) => void }) {
+function RepositoryCard({ repository, gitStatus, profiles, busy, onStart, onPackage, onOpenDiff, onDiscardAndPull, onCommitPush, onOpenConfiguration }: { repository: CodeRepository; gitStatus?: GitWorkspaceStatus; profiles: CodeRuntimeProfile[]; busy: boolean; onStart: (profiles: CodeRuntimeProfile[]) => void; onPackage: () => void; onOpenDiff: () => void; onDiscardAndPull: () => void; onCommitPush: () => void; onOpenConfiguration: (path: string) => void }) {
   const repositoryProfiles = profiles.filter((profile) => profile.repository_id === repository.id && profile.is_enabled);
   return <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
     <p className="mb-2 break-words text-xs font-semibold leading-5 text-slate-800" title={repository.display_name}>{repository.display_name}</p>
@@ -288,7 +277,6 @@ function RepositoryCard({ repository, gitStatus, profiles, busy, packageStatus, 
     </div>
     {gitStatus?.is_repository ? <GitSyncSummary status={gitStatus}/> : repository.is_git_repository ? <p className="mt-1.5 text-[10px] text-slate-400">Git 状态暂时不可用，点击面板刷新重试。</p> : null}
     {(repository.chat_editable_configuration_files ?? []).length ? <div className="mt-2 flex flex-wrap gap-1.5">{repository.chat_editable_configuration_files.map((path) => <button type="button" key={path} disabled={busy} onClick={() => onOpenConfiguration(path)} className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50" title={`在聊天中编辑 ${path}`}><FilePenLine size={12}/><span className="truncate">{path}</span></button>)}</div> : <p className="mt-1.5 text-[10px] text-slate-400">未开放聊天可修改的配置文件</p>}
-    {packageStatus && <p className="mt-1.5 truncate text-[10px] text-slate-500" title={packageStatus}>{packageStatus}</p>}
   </section>;
 }
 
@@ -304,7 +292,7 @@ function GitSyncSummary({ status }: { status: GitWorkspaceStatus }) {
 function RuntimeActionHelp({ onClose }: { onClose: () => void }) {
   return <section className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.18)]" role="dialog" aria-label="代码库操作说明">
     <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-slate-800">代码库操作说明</p><button type="button" onClick={onClose} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭说明"><X size={13}/></button></div>
-    <div className="mt-2.5 space-y-2 text-[11px] leading-5 text-slate-600"><p><strong className="text-slate-800">运行：</strong>只启动当前代码库已启用的运行配置。</p><p><strong className="text-slate-800">打包：</strong>按该代码库的发布配置构建并输出交付文件。</p><p><strong className="text-slate-800">差异：</strong>按文件查看本地工作区或远程分支差异。</p><p><strong className="text-amber-800">重置更新：</strong>撤回已跟踪文件的未提交修改，再拉取远程最新代码；额外新建的文件不会删除。</p><p><strong className="text-emerald-800">提交推送：</strong>填写提交说明后，提交并推送当前代码库。</p></div>
+    <div className="mt-2.5 space-y-2 text-[11px] leading-5 text-slate-600"><p><strong className="text-slate-800">运行：</strong>只启动当前代码库已启用的运行配置。</p><p><strong className="text-slate-800">打包：</strong>填入可编辑提示词，发送后由 AI 判断构建方式并生成 ZIP 下载链接。</p><p><strong className="text-slate-800">差异：</strong>按文件查看本地工作区或远程分支差异。</p><p><strong className="text-amber-800">重置更新：</strong>撤回已跟踪文件的未提交修改，再拉取远程最新代码；额外新建的文件不会删除。</p><p><strong className="text-emerald-800">提交推送：</strong>填写提交说明后，提交并推送当前代码库。</p></div>
   </section>;
 }
 

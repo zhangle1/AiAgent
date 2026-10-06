@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Download, PackageOpen } from "lucide-react";
+import { packageDownloadFromHref } from "@/lib/chat-packaging";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { resolveProjectCodeFileReference } from "@/lib/code-repository-api";
@@ -217,6 +218,8 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
         },
         pre: MarkdownPre,
         a: ({ href, children, ...props }) => {
+          const packageDownload = packageDownloadFromHref(href, projectId);
+          if (packageDownload) return <a href={packageDownload.href} download className="my-2 inline-flex max-w-full items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 hover:bg-blue-100"><PackageOpen size={24} className="shrink-0"/><span className="min-w-0"><span className="block truncate font-semibold">{packageDownload.name}</span><span className="block text-xs">ZIP 交付包 · 点击下载</span></span><Download size={18} className="shrink-0"/></a>;
           // Agents sometimes turn a source file name into an ordinary http link.
           // Prefer the displayed source-file reference so it opens in the right inspector.
           const linkText = readChildrenText(children).trim();
