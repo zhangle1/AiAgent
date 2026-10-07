@@ -6,7 +6,6 @@ import { Check, GitCommitHorizontal, X } from "lucide-react";
 import { DiagramPreview } from "./DiagramPreview";
 import { ArchitectureScopePicker } from "./ArchitectureScopePicker";
 import type { ArchitectureScope } from "@/lib/chat-architecture";
-import { ArchifyDemo } from "./ArchifyDemo";
 import { diagramTypes, type DiagramType } from "@/lib/chat-visualization";
 import { getProjectGitHistory } from "@/lib/code-repository-api";
 import type { CodeProject, GitHistoryCommit, SelectedGitCommit } from "@/lib/code-repository-types";
@@ -30,7 +29,6 @@ export function VisualizationDialog({ project, value, commits, scope = null, onC
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(commits.length > 0);
-  const [demoOpen, setDemoOpen] = useState(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -57,14 +55,13 @@ export function VisualizationDialog({ project, value, commits, scope = null, onC
       : current.length < 20 ? [...current, { ...commit, project_id: project.id, repository_name: repository }] : current);
   }
 
-  return createPortal(<dialog ref={dialogRef} aria-labelledby="visualization-title" onCancel={(event) => { event.preventDefault(); if (demoOpen) setDemoOpen(false); else onClose(); }} className={`m-auto ${demoOpen ? "w-[calc(100vw-24px)] max-w-[1440px]" : "w-[min(760px,calc(100vw-24px))]"} max-h-[88dvh] overflow-hidden rounded-2xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/40`}>
-    <div className={`flex max-h-[88dvh] flex-col ${demoOpen ? "h-[88dvh]" : ""}`}>
+  return createPortal(<dialog ref={dialogRef} aria-labelledby="visualization-title" onCancel={(event) => { event.preventDefault(); onClose(); }} className={`m-auto w-[min(760px,calc(100vw-24px))] max-h-[88dvh] overflow-hidden rounded-2xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/40`}>
+    <div className="flex max-h-[88dvh] flex-col">
       <header className="flex shrink-0 items-center justify-between border-b px-5 py-4">
-        <div><h2 id="visualization-title" className="text-lg font-semibold">{demoOpen ? "Archify 交互示例" : "选择图形与来源"}</h2><p className="mt-1 text-xs text-slate-500">{demoOpen ? "探索 AI 工作台的概念架构。" : "选好后，在输入框描述你想梳理的内容。"}</p></div>
+        <div><h2 id="visualization-title" className="text-lg font-semibold">选择图形与来源</h2><p className="mt-1 text-xs text-slate-500">根据你的对话、资料或代码生成图形，直接显示在 AI 回复中。</p></div>
         <button type="button" aria-label="关闭图形选择" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button>
       </header>
-      {demoOpen ? <ArchifyDemo /> : <div className="min-h-0 overflow-y-auto px-5 py-4">
-        <button type="button" onClick={() => setDemoOpen(true)} className="mb-4 flex w-full items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-3 text-left text-sm text-blue-800"><span><strong className="block">体验 Archify 交互示例</strong><span className="mt-1 block text-xs text-blue-600">点击节点、追踪路径、缩放和导出 · 固定示例</span></span><span aria-hidden="true">→</span></button>
+      <div className="min-h-0 overflow-y-auto px-5 py-4">
         <div role="group" aria-label="图形类型" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {diagramTypes.map((item) => <button key={item.id} type="button" aria-pressed={type === item.id} onClick={() => setType(item.id)} className={`relative rounded-xl border p-3 text-left transition-colors ${type === item.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500" : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"}`}>
             <DiagramPreview type={item.id} />
@@ -95,8 +92,8 @@ export function VisualizationDialog({ project, value, commits, scope = null, onC
           </>}
         </section>}
         {selected.length > 0 && <div className="mt-3 rounded-lg bg-slate-50 p-3"><div className="flex justify-between text-xs"><span>已选 {selected.length} 条提交（可跨仓库）</span><button type="button" onClick={() => setSelected([])} className="text-blue-600">清空</button></div><div className="mt-2 flex max-h-24 flex-wrap gap-1 overflow-y-auto">{selected.map((item) => <button type="button" key={`${item.repository_name}:${item.sha}`} title={item.subject} aria-label={`移除 ${item.repository_name} ${item.sha.slice(0, 8)}`} onClick={() => setSelected((current) => current.filter((c) => c.repository_name !== item.repository_name || c.sha !== item.sha))} className="rounded border bg-white px-2 py-1 text-xs">{item.repository_name} · {item.sha.slice(0, 8)} ×</button>)}</div></div>}
-      </div>}
-      <footer className="flex shrink-0 justify-end gap-2 border-t px-5 py-3">{demoOpen ? <button type="button" autoFocus onClick={() => setDemoOpen(false)} className="rounded-lg border px-4 py-2 text-sm">返回图形选择</button> : <><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">取消</button><button type="button" onClick={() => onApply(type, selected, type === "interactive" ? selectedScope : null)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">使用此配置</button></>}</footer>
+      </div>
+      <footer className="flex shrink-0 justify-end gap-2 border-t px-5 py-3"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">取消</button><button type="button" onClick={() => onApply(type, selected, type === "interactive" ? selectedScope : null)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">使用此配置</button></footer>
     </div>
   </dialog>, document.body);
 }

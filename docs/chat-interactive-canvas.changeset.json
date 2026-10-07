@@ -1,0 +1,48 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "聊天内交互图入口与画布体验修正",
+  "base_commit": "7f08ef7071f14230695cb258a7832422a5746488",
+  "platform_change_set_id": null,
+  "note": "Local review manifest only; no server-side approval, commit, push or deployment.",
+  "checks": {
+    "typescript": "passed: tsc --noEmit --incremental false",
+    "regressions": "15 passed",
+    "browser": "passed: default interactive request, no demo entry, themes, search, node drag/reset, canvas pan, graph paths, exports, scope selection, invalid data and mobile dialog",
+    "whitespace": "git diff --check passed",
+    "live_model": "not run; browser uses controlled response and mocked directory API"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "82e9490d440226d43c6af7e8da76c2c5d773202d8c91f19b372e3bdc93166353"
+    },
+    {
+      "path": "README.md",
+      "sha256": "2df031b436a8d7466a796d90da18f82baa445084033f22d50a15a36f2af86982"
+    },
+    {
+      "path": "docs/archify-local-demo.md",
+      "sha256": "a9df99da2634d57469b30507530765efe9745ccfb5dde7d28f8b52bb563f03fc"
+    },
+    {
+      "path": "docs/chat-interactive-architecture.md",
+      "sha256": "e7d195584a49887e20a9d562be21210ca3bb783483d1ce8a868d6fb1ede7a4af"
+    },
+    {
+      "path": "front/components/chat/visualization/ArchitectureDiagram.tsx",
+      "sha256": "1684ba716a902609367e817bb6774714ebdfc79c369b92ed329decc213dcf06c"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationDialog.tsx",
+      "sha256": "241cb25c4f97a1fae601a469797e9bb9cdf1fba691635d966ba23371067980d3"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationToolbar.tsx",
+      "sha256": "461661bde2c99331a71b95892f4203d45936e4060bb2c8b6f7995eefc05d7cc0"
+    },
+    {
+      "path": "front/tests/chat-architecture.browser.mjs",
+      "sha256": "2a988a73388d8015d23673dc9d93fe14bad873aac4d0c5490c16a50cfe3f6b05"
+    }
+  ]
+}

@@ -35,6 +35,15 @@ function ArchitectureCanvas({ graph }: { graph: Architecture }) {
   const [zoom, setZoom] = useState(1), [expanded, setExpanded] = useState(false);
   const [exportError, setExportError] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [dark, setDark] = useState(true);
+  const [search, setSearch] = useState("");
+  const [offsets, setOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const drag = useRef<{ id: string | null; x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const colors = ["#60a5fa", "#a78bfa", "#34d399", "#fbbf24", "#fb7185", "#22d3ee"];
+  const background = dark ? "#0b1220" : "#f8fafc";
+  const foreground = dark ? "#e2e8f0" : "#0f172a";
   // Group columns are deterministic, including cycles and isolated nodes.
   const groups = [...new Set(graph.nodes.map((node) => node.group || "未分组"))];
   const columns = groups.length === 1 ? Math.min(4, Math.ceil(Math.sqrt(graph.nodes.length))) : groups.length;
@@ -42,14 +51,15 @@ function ArchitectureCanvas({ graph }: { graph: Architecture }) {
     const group = node.group || "未分组";
     const col = groups.length === 1 ? index % columns : groups.indexOf(group);
     const row = groups.length === 1 ? Math.floor(index / columns) : graph.nodes.filter((n) => (n.group || "未分组") === group).findIndex((n) => n.id === node.id);
-    return [node.id, { x: 50 + col * 270, y: 75 + row * 140 }];
+    return [node.id, offsets[node.id] ?? { x: 50 + col * 270, y: 75 + row * 140 }];
   }));
-  const width = columns * 270 + 50, height = Math.max(...[...positions.values()].map((p) => p.y)) + 140;
+  const width = Math.max(columns * 270 + 50, ...[...positions.values()].map((p) => p.x + 280)), height = Math.max(...[...positions.values()].map((p) => p.y)) + 140;
   const path = selected && destination ? architecturePath(graph, selected, destination) : [];
   const highlighted = selected ? mode === "upstream" || mode === "downstream" ? relatedNodes(graph, selected, mode) : mode === "path" && destination ? new Set(path) : new Set([selected, ...graph.edges.filter((e) => e.from === selected || e.to === selected).flatMap((e) => [e.from, e.to])]) : null;
   const node = graph.nodes.find((item) => item.id === selected);
   const buttonClass = "rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-40";
   function choose(id: string) {
+    if (suppressClick.current) { suppressClick.current = false; return; }
     if (mode === "path" && selected && !destination) setDestination(id);
     else { setSelected(id); setDestination(""); }
   }
@@ -79,6 +89,9 @@ function ArchitectureCanvas({ graph }: { graph: Architecture }) {
   const content = <>
     <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
       <strong className="mr-auto text-sm">{graph.title}</strong>
+      <span className="text-xs text-slate-500">{graph.nodes.length} 个节点 · {graph.edges.length} 条关系</span>
+      <button type="button" className={buttonClass} onClick={() => setDark(!dark)}>{dark ? "浅色画布" : "深色画布"}</button>
+      <button type="button" className={buttonClass} onClick={() => { setOffsets({}); setZoom(1); viewportRef.current?.scrollTo(0, 0); }}>重置布局</button>
       <button type="button" className={buttonClass} onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}>缩小</button>
       <button type="button" className={buttonClass} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}% · 重置</button>
       <button type="button" className={buttonClass} onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>放大</button>
@@ -90,24 +103,47 @@ function ArchitectureCanvas({ graph }: { graph: Architecture }) {
     <div className="flex flex-wrap gap-2 p-3">
       {([['detail', '节点详情'], ['upstream', '上游'], ['downstream', '下游'], ['path', '路径追踪']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={mode === value} className={`${buttonClass} ${mode === value ? "ring-2 ring-blue-400" : ""}`} onClick={() => { setMode(value); setDestination(""); }}>{label}</button>)}
       <button type="button" className={buttonClass} onClick={() => { setSelected(""); setDestination(""); }}>清除选择</button>
+      <input aria-label="搜索节点" placeholder="搜索节点名称或说明" value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 rounded border border-slate-200 px-2 py-1 text-xs text-slate-900" />
     </div>
-    <p className="px-3 pb-2 text-xs text-slate-500" aria-live="polite">{mode === "path" ? destination ? path.length ? `路径：${path.map((id) => graph.nodes.find((n) => n.id === id)?.label).join(" → ")}` : "两个节点间没有有向路径" : selected ? "请选择终点" : "请选择起点，再选择终点" : "点击节点查看说明和来源；可用滚动条浏览画布。"}</p>
-    <div className={`overflow-auto bg-slate-50 ${expanded ? "max-h-[58dvh]" : "max-h-[460px]"}`}>
-      <svg ref={svgRef} xmlns="http://www.w3.org/2000/svg" role="img" aria-label={graph.title} width={width * zoom} height={height * zoom} viewBox={`0 0 ${width} ${height}`} style={{ maxWidth: "none", fontFamily: "sans-serif" }}>
-        <title>{graph.title}</title><rect width={width} height={height} fill="#f8fafc" />
+    {search.trim() && <div className="flex max-h-24 flex-wrap gap-2 overflow-auto px-3 pb-2" aria-label="搜索结果">{graph.nodes.filter((n) => `${n.label} ${n.description} ${n.group}`.toLowerCase().includes(search.trim().toLowerCase())).map((n) => <button key={n.id} type="button" className={buttonClass} onClick={() => { choose(n.id); const p = positions.get(n.id)!; viewportRef.current?.scrollTo({ left: Math.max(0, p.x * zoom - 100), top: Math.max(0, p.y * zoom - 80), behavior: "smooth" }); }}>{n.label}</button>)}{!graph.nodes.some((n) => `${n.label} ${n.description} ${n.group}`.toLowerCase().includes(search.trim().toLowerCase())) && <span className="text-xs text-slate-500">没有匹配的节点</span>}</div>}
+    <p className="px-3 pb-2 text-xs text-slate-500" aria-live="polite">{mode === "path" ? destination ? path.length ? `路径：${path.map((id) => graph.nodes.find((n) => n.id === id)?.label).join(" → ")}` : "两个节点间没有有向路径" : selected ? "请选择终点" : "请选择起点，再选择终点" : "点击节点查看说明和来源；拖动节点调整布局，拖动画布浏览。"}</p>
+    <div ref={viewportRef} style={{ background }} className={`overflow-auto ${expanded ? "max-h-[58dvh]" : "max-h-[460px]"}`}>
+      <svg ref={svgRef} xmlns="http://www.w3.org/2000/svg" role="img" aria-label={graph.title} width={width * zoom} height={height * zoom} viewBox={`0 0 ${width} ${height}`} style={{ maxWidth: "none", fontFamily: "sans-serif", touchAction: "none", userSelect: "none", cursor: "grab" }}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || !event.isPrimary) return;
+          const id = (event.target as Element).closest("[data-node-id]")?.getAttribute("data-node-id") ?? null;
+          const p = id ? positions.get(id)! : { x: viewportRef.current?.scrollLeft ?? 0, y: viewportRef.current?.scrollTop ?? 0 };
+          suppressClick.current = false;
+          drag.current = { id, x: event.clientX, y: event.clientY, left: p.x, top: p.y, moved: false };
+        }}
+        onPointerMove={(event) => {
+          const current = drag.current;
+          if (!current) return;
+          const dx = event.clientX - current.x, dy = event.clientY - current.y;
+          if (!current.moved && Math.hypot(dx, dy) < 5) return;
+          current.moved = true; suppressClick.current = true;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          if (current.id) setOffsets((previous) => ({ ...previous, [current.id!]: { x: Math.min(12000, Math.max(20, current.left + dx / zoom)), y: Math.min(12000, Math.max(55, current.top + dy / zoom)) } }));
+          else viewportRef.current?.scrollTo(current.left - dx, current.top - dy);
+        }}
+        onPointerLeave={() => { if (!drag.current?.moved) drag.current = null; }}
+        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}>
+        <title>{graph.title}</title><rect width={width} height={height} fill={background} />
+        <defs><pattern id={`${marker}-grid`} width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill={dark ? "#243247" : "#cbd5e1"} /></pattern></defs>
+        <rect width={width} height={height} fill={`url(#${marker}-grid)`} />
         <defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#64748b" /></marker></defs>
-        {groups.length > 1 && groups.map((group, i) => <text key={group} x={50 + i * 270} y={35} fontSize="14" fill="#475569">{group.slice(0, 22)}</text>)}
+        {groups.length > 1 && groups.map((group, i) => <g key={group}><rect x={35 + i * 270} y="14" width="220" height="32" rx="8" fill={dark ? "#172236" : "#e2e8f0"} /><text x={50 + i * 270} y={35} fontSize="14" fill={colors[i % colors.length]}>{group.slice(0, 22)}</text></g>)}
         {graph.edges.map((edge, i) => {
           const a = positions.get(edge.from)!, b = positions.get(edge.to)!;
           const active = !highlighted || (mode === "path" && destination ? path.some((id, j) => id === edge.from && path[j + 1] === edge.to) : highlighted.has(edge.from) && highlighted.has(edge.to));
           const self = edge.from === edge.to;
           return <g key={i} opacity={active ? 1 : 0.15}><path d={self ? `M${a.x + 175},${a.y + 20} C${a.x + 260},${a.y - 55} ${a.x + 260},${a.y + 115} ${a.x + 175},${a.y + 60}` : `M${a.x + 190},${a.y + 40} C${a.x + 240},${a.y + 40} ${b.x - 50},${b.y + 40} ${b.x},${b.y + 40}`} fill="none" stroke="#64748b" strokeWidth="2" markerEnd={`url(#${marker})`} />
-            <text x={self ? a.x + 205 : (a.x + 190 + b.x) / 2} y={self ? a.y - 5 : (a.y + b.y) / 2 + 30} textAnchor="middle" fontSize="11" fill="#334155" stroke="#f8fafc" strokeWidth="4" paintOrder="stroke">{edge.label.slice(0, 24)}<title>{edge.label}</title></text></g>;
+            <text x={self ? a.x + 205 : (a.x + 190 + b.x) / 2} y={self ? a.y - 5 : (a.y + b.y) / 2 + 30} textAnchor="middle" fontSize="11" fill={foreground} stroke={background} strokeWidth="4" paintOrder="stroke">{edge.label.slice(0, 24)}<title>{edge.label}</title></text></g>;
         })}
         {graph.nodes.map((item) => { const p = positions.get(item.id)!; return <g key={item.id} data-node-id={item.id} role="button" tabIndex={0} aria-label={`节点：${item.label}`} aria-pressed={selected === item.id} onClick={() => choose(item.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(item.id); } }} style={{ cursor: "pointer" }} opacity={!highlighted || highlighted.has(item.id) ? 1 : 0.25}>
-          <rect x={p.x} y={p.y} width="190" height="80" rx="12" fill={selected === item.id ? "#dbeafe" : "white"} stroke={selected === item.id ? "#2563eb" : "#94a3b8"} strokeWidth="2" />
-          <text x={p.x + 95} y={p.y + 34} textAnchor="middle" fontSize="14" fill="#0f172a">{item.label.slice(0, 12)}</text>
-          <text x={p.x + 95} y={p.y + 58} textAnchor="middle" fontSize="11" fill="#64748b">{item.group.slice(0, 18) || item.id.slice(0, 18)}</text><title>{item.label}</title>
+          <rect x={p.x} y={p.y} width="190" height="80" rx="12" fill={dark ? selected === item.id ? "#1e3a5f" : "#152238" : selected === item.id ? "#dbeafe" : "white"} stroke={colors[groups.indexOf(item.group || "未分组") % colors.length]} strokeWidth={selected === item.id ? "3" : "1.5"} />
+          <text x={p.x + 95} y={p.y + 34} textAnchor="middle" fontSize="14" fill={foreground}>{item.label.slice(0, 12)}</text>
+          <text x={p.x + 95} y={p.y + 58} textAnchor="middle" fontSize="11" fill={dark ? "#94a3b8" : "#64748b"}>{item.group.slice(0, 18) || item.id.slice(0, 18)}</text><title>{item.label}</title>
         </g>; })}
       </svg>
     </div>

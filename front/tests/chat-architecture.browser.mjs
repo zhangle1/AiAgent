@@ -19,8 +19,12 @@ const bundle = await build({
   stdin: { contents: `import React,{useState} from 'react'; import {createRoot} from 'react-dom/client';
     import {MarkdownMessage} from './components/chat/MarkdownMessage';
     import {VisualizationDialog} from './components/chat/visualization/VisualizationDialog';
+    import {VisualizationToolbar} from './components/chat/visualization/VisualizationToolbar';
+    import {buildVisualizationMessage} from './lib/chat-visualization';
     function App(){const [open,setOpen]=useState(false),[bad,setBad]=useState(false),[scope,setScope]=useState(null);
     return <><button onClick={()=>setOpen(true)}>配置</button><button onClick={()=>setBad(!bad)}>切换无效数据</button>
+    <VisualizationToolbar value={null} onChange={(type)=>{document.getElementById('request').textContent=buildVisualizationMessage('分析订单系统',type)}} disabled={false} project={null} commits={[]} onCommitsChange={()=>{}} />
+    <pre id="request" hidden />
     <output>{JSON.stringify(scope)}</output>
     <MarkdownMessage content={'\u0060\u0060\u0060aiagent-architecture\\n'+(bad ? '{"version":1' : ${JSON.stringify(JSON.stringify(graph))})+'\\n\u0060\u0060\u0060'}/>
     {open && <VisualizationDialog project={{id:1,repositories:[{name:'repo',display_name:'测试仓库'}]}} value="interactive" commits={[]} scope={scope} onClose={()=>setOpen(false)} onApply={(type,commits,next)=>{setScope(next);setOpen(false)}}/>}</>}
@@ -47,6 +51,31 @@ try {
   page.on("request", (request) => { if (!request.url().startsWith("http://127.0.0.1:") && /^https?:/.test(request.url())) external.push(request.url()); });
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   assert.equal(await page.locator("[data-node-id]").count(), 4);
+  await page.getByRole("button", { name: "可视化", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: /交互架构图/ }).getAttribute("aria-pressed"), "true");
+  assert.equal(await page.getByText("体验 Archify 交互示例").count(), 0);
+  await page.getByRole("button", { name: "使用此配置" }).click();
+  assert.match(await page.locator("#request").textContent(), /aiagent-architecture/);
+  await page.getByRole("button", { name: "浅色画布", exact: true }).click();
+  assert.ok(await page.getByRole("button", { name: "深色画布", exact: true }).isVisible());
+  await page.getByRole("button", { name: "深色画布", exact: true }).click();
+  await page.getByRole("textbox", { name: "搜索节点" }).fill("独立");
+  await page.getByRole("button", { name: "独立模块", exact: true }).click();
+  assert.match(await page.locator("aside").innerText(), /独立模块/);
+  await page.getByRole("textbox", { name: "搜索节点" }).fill("没有这个节点");
+  assert.ok(await page.getByText("没有匹配的节点").isVisible());
+  await page.getByRole("textbox", { name: "搜索节点" }).fill("");
+  const rect = page.locator('[data-node-id="web"] rect');
+  const originalX = Number(await rect.getAttribute("x"));
+  const nodeBox = await rect.boundingBox();
+  await page.mouse.move(nodeBox.x + 50, nodeBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(nodeBox.x + 105, nodeBox.y + 60, { steps: 6 });
+  await page.mouse.up();
+  assert.ok(Number(await rect.getAttribute("x")) > originalX + 40);
+  await page.getByRole("button", { name: "重置布局", exact: true }).click();
+  assert.equal(Number(await rect.getAttribute("x")), originalX);
+  await page.getByRole("button", { name: "清除选择", exact: true }).click();
   if (process.env.ARCHITECTURE_SCREENSHOT) await page.screenshot({ path: process.env.ARCHITECTURE_SCREENSHOT });
   await page.getByRole("button", { name: "节点：前端", exact: true }).click();
   assert.match(await page.locator("aside").innerText(), /src\/App.tsx:10/);
@@ -87,10 +116,17 @@ try {
   assert.match(await page.locator('p[role="status"]').innerText(), /JSON/);
   await page.getByRole("button", { name: "切换无效数据" }).click();
   await page.setViewportSize({ width: 390, height: 844 });
+  const viewport = page.getByRole("img", { name: "订单系统", exact: true }).locator("..");
+  const viewportBox = await viewport.boundingBox();
+  await page.mouse.move(viewportBox.x + 280, viewportBox.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(viewportBox.x + 140, viewportBox.y + 10, { steps: 6 });
+  await page.mouse.up();
+  assert.ok(await viewport.evaluate((element) => element.scrollLeft) > 100);
   await page.getByRole("button", { name: "展开大图" }).click();
   const box = await page.getByRole("dialog").boundingBox();
   assert.ok(box.x >= 0 && box.width <= 390 && box.y >= 0 && box.y + box.height <= 844);
   await page.getByRole("button", { name: "关闭大图" }).click();
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
-  console.log("PASS: markdown rendering, inert text, graph exploration, exports, scope selection/cancel, invalid streaming data, mobile dialog");
+  console.log("PASS: interactive default/request, no demo entry, themes, search, node drag/reset, canvas pan, markdown rendering, inert text, graph exploration, exports, scope selection/cancel, invalid streaming data, mobile dialog");
 } finally { await browser?.close(); await new Promise((resolve) => server.close(resolve)); }
