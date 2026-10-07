@@ -11,11 +11,14 @@ namespace AiAgent.Backend.Services.CodeRepository;
 [Route("api/v1/code-runtime/projects/{projectId:long}/chat-runs")]
 public sealed class ChatRuntimeAppService(ChatRuntimeService runtime, IAuthService auth, IProjectAccessService access, IHttpContextAccessor context) : IDynamicApiController
 {
-    [HttpGet]
+    // The controller route already contains {projectId}; an explicit empty action
+    // template prevents Furion from appending an automatic /list/{projectId} segment.
+    [HttpGet("")]
     public async Task<IActionResult> List([FromRoute] long projectId, CancellationToken token)
         => await Execute(projectId, () => runtime.List(projectId), token);
 
-    [HttpPost]
+    // Keep the prepare endpoint at the controller route for the same reason.
+    [HttpPost("")]
     public async Task<IActionResult> Prepare([FromRoute] long projectId, [FromBody] ChatRuntimePrepareRequest request, CancellationToken token)
         => await Execute(projectId, () => runtime.Prepare(projectId, request), token);
 

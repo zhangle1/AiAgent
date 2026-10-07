@@ -17,6 +17,17 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class KnowledgeWorkspaceTests : IDisposable
 {
+    [Fact]
+    public async Task HostCancellationCompletesCompilationWorkerWithoutFault()
+    {
+        using var db = Database();
+        using var worker = new KnowledgeCompilationWorker(db, new(db), null!, NullLogger<KnowledgeCompilationWorker>.Instance);
+        await worker.StartAsync(CancellationToken.None);
+        await worker.StopAsync(CancellationToken.None);
+        Assert.NotNull(worker.ExecuteTask);
+        Assert.True(worker.ExecuteTask!.IsCompletedSuccessfully);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

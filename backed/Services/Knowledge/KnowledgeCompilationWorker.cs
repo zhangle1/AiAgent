@@ -99,60 +99,69 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var work in _queue.Reader.ReadAllAsync(stoppingToken))
+        try
         {
-            CancellationTokenSource? source = null;
-            var stage = "准备任务";
-            try
+            await foreach (var work in _queue.Reader.ReadAllAsync(stoppingToken))
             {
-                lock (_sync)
-                {
-                    _cancellations.TryGetValue(work.JobId, out source);
-                    if (source is null || source.IsCancellationRequested) continue;
-                    using var stateDb = database.CopyNew();
-                    stateDb.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
-                        Status = "processing", Progress = 1, Message = "准备提炼", StartedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-                    }).Where(x => x.Id == work.JobId).ExecuteCommand();
-                }
-                using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, source.Token);
-                execution.CancelAfter(TimeSpan.FromMinutes(work.Config.TimeoutMinutes));
-                using (var validationDb = database.CopyNew())
-                    if (!validationDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == work.Base.Id && !x.IsDeleted) ||
-                        !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
-                        throw new InvalidOperationException("The source was deleted before compilation.");
-                await ingestion.ProcessAsync(work.Base, work.Document, new KnowledgeProcessRequest {
-                    Generator = work.Config.Generator, ModelId = work.Config.ModelId, VlmModelId = work.Config.VlmModelId, ReasoningEffort = work.Config.ReasoningEffort
-                }, execution.Token, work.Config, (value, message) => {
-                    stage = message;
-                    UpdateProgress(work.JobId, value, message);
-                });
-                Finish(work.JobId, "success", "提炼完成，可在知识标签中核对草稿。");
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Knowledge compilation {JobId} failed ({ErrorType}).", work.JobId, ex.GetType().Name);
-                var cancelled = source?.IsCancellationRequested == true;
+                CancellationTokenSource? source = null;
+                var stage = "准备任务";
                 try
                 {
-                    // A successful final save must stay successful even if its queue status write fails.
                     lock (_sync)
                     {
-                        if (!_pendingFinishes.ContainsKey(work.JobId))
-                            Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新提炼。" :
-                                ex is OperationCanceledException ? "提炼超时或服务停止，请检查模型连接或拆分资料后重试。" :
-                                $"提炼失败（{stage}）：{SafeError(ex)}");
+                        _cancellations.TryGetValue(work.JobId, out source);
+                        if (source is null || source.IsCancellationRequested) continue;
+                        using var stateDb = database.CopyNew();
+                        stateDb.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
+                            Status = "processing", Progress = 1, Message = "准备提炼", StartedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+                        }).Where(x => x.Id == work.JobId).ExecuteCommand();
+                    }
+                    using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, source.Token);
+                    execution.CancelAfter(TimeSpan.FromMinutes(work.Config.TimeoutMinutes));
+                    using (var validationDb = database.CopyNew())
+                        if (!validationDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == work.Base.Id && !x.IsDeleted) ||
+                            !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
+                            throw new InvalidOperationException("The source was deleted before compilation.");
+                    await ingestion.ProcessAsync(work.Base, work.Document, new KnowledgeProcessRequest {
+                        Generator = work.Config.Generator, ModelId = work.Config.ModelId, VlmModelId = work.Config.VlmModelId, ReasoningEffort = work.Config.ReasoningEffort
+                    }, execution.Token, work.Config, (value, message) => {
+                        stage = message;
+                        UpdateProgress(work.JobId, value, message);
+                    });
+                    Finish(work.JobId, "success", "提炼完成，可在知识标签中核对草稿。");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Knowledge compilation {JobId} failed ({ErrorType}).", work.JobId, ex.GetType().Name);
+                    var cancelled = source?.IsCancellationRequested == true || stoppingToken.IsCancellationRequested;
+                    try
+                    {
+                        // A successful final save must stay successful even if its queue status write fails.
+                        lock (_sync)
+                        {
+                            if (!_pendingFinishes.ContainsKey(work.JobId))
+                                Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新提炼。" :
+                                    ex is OperationCanceledException ? "提炼超时或服务停止，请检查模型连接或拆分资料后重试。" :
+                                    $"提炼失败（{stage}）：{SafeError(ex)}");
+                        }
+                    }
+                    catch (Exception persistenceError)
+                    {
+                        logger.LogError(persistenceError, "Cannot persist compilation {JobId} failure ({ErrorType}); status reads will retry persistence.",
+                            work.JobId, persistenceError.GetType().Name);
                     }
                 }
-                catch (Exception persistenceError)
+                finally
                 {
-                    logger.LogError(persistenceError, "Cannot persist compilation {JobId} failure ({ErrorType}); status reads will retry persistence.",
-                        work.JobId, persistenceError.GetType().Name);
+                    lock (_sync) { _cancellations.Remove(work.JobId); source?.Dispose(); }
                 }
             }
-            finally
-            {
-                lock (_sync) { _cancellations.Remove(work.JobId); source?.Dispose(); }
-            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Host shutdown is a normal lifecycle event. Do not let the queue
+            // reader cancellation fault BackgroundService and stop the app.
+            logger.LogInformation("Knowledge compilation worker stopped with the host.");
         }
     }
 
