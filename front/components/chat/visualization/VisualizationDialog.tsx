@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, GitCommitHorizontal, X } from "lucide-react";
+import { DiagramPreview } from "./DiagramPreview";
 import { diagramTypes, type DiagramType } from "@/lib/chat-visualization";
 import { getProjectGitHistory } from "@/lib/code-repository-api";
 import type { CodeProject, GitHistoryCommit, SelectedGitCommit } from "@/lib/code-repository-types";
@@ -52,13 +53,14 @@ export function VisualizationDialog({ project, value, commits, onClose, onApply 
 
   return createPortal(<dialog ref={dialogRef} aria-labelledby="visualization-title" onCancel={(event) => { event.preventDefault(); onClose(); }} className="m-auto w-[min(760px,calc(100vw-24px))] max-h-[88dvh] overflow-hidden rounded-2xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/40">
     <div className="flex max-h-[88dvh] flex-col">
-      <header className="flex items-center justify-between border-b px-5 py-4">
+      <header className="flex shrink-0 items-center justify-between border-b px-5 py-4">
         <div><h2 id="visualization-title" className="text-lg font-semibold">选择图形与来源</h2><p className="mt-1 text-xs text-slate-500">选好后，在输入框描述你想梳理的内容。</p></div>
         <button type="button" aria-label="关闭图形选择" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button>
       </header>
       <div className="min-h-0 overflow-y-auto px-5 py-4">
         <div role="group" aria-label="图形类型" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {diagramTypes.map((item) => <button key={item.id} type="button" aria-pressed={type === item.id} onClick={() => setType(item.id)} className={`relative rounded-xl border p-3 text-left transition-colors ${type === item.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500" : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"}`}>
+            <DiagramPreview type={item.id} />
             <span className="block pr-5 text-sm font-medium">{item.label}</span>{type === item.id && <Check size={16} className="absolute right-3 top-3 text-blue-600" />}
             <span className="mt-1 block text-[11px] leading-5 text-slate-500">{descriptions[item.id]}</span>
           </button>)}

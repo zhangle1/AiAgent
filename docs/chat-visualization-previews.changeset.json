@@ -1,0 +1,28 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "SVG examples in visualization picker",
+  "base_commit": "b4a9dbdb26e8ef5bcbb4ede178d8d668f29fc4b5",
+  "platform_change_set_id": null,
+  "note": "Local review manifest. No commit or push performed.",
+  "checks": {
+    "typescript": "passed",
+    "visualization_regressions": "5 passed",
+    "svg_server_render": "all 11 examples passed",
+    "whitespace": "passed",
+    "browser": "not run"
+  },
+  "files": [
+    {
+      "path": "docs/chat-visualization-v1.md",
+      "sha256": "7e4a3109e96cb9f0596f918aec3775ece68f14de8a88977485fe468174fa80a2"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationDialog.tsx",
+      "sha256": "883de4aa26dc33971ceb0f74fe3fbc1caba95521a741230fe154b2dd5fc2a480"
+    },
+    {
+      "path": "front/components/chat/visualization/DiagramPreview.tsx",
+      "sha256": "132e220ef68056120493a11e7b77fe55fcf10632f078e5843b82026c6ba0d7f2"
+    }
+  ]
+}
