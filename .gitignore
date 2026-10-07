@@ -1,5 +1,6 @@
 # Build and package output
 artifacts/aiagent-packages/
+artifacts/aiagent-runs/
 [Bb]in/
 [Oo]bj/
 !plugins/aiagent-remote/bin/

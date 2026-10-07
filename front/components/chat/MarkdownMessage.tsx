@@ -3,6 +3,7 @@
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Check, Copy, Download, PackageOpen } from "lucide-react";
 import { packageDownloadFromHref } from "@/lib/chat-packaging";
+import { runtimeTestFromHref } from "@/lib/chat-runtime";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { resolveProjectCodeFileReference } from "@/lib/code-repository-api";
@@ -221,6 +222,8 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
         },
         pre: MarkdownPre,
         a: ({ href, children, ...props }) => {
+          const runtimeTest = runtimeTestFromHref(href, projectId);
+          if (runtimeTest) return <a href={runtimeTest} target="_blank" rel="noopener noreferrer" className="my-2 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800 hover:bg-emerald-100">↗ 在新窗口测试功能</a>;
           const packageDownload = packageDownloadFromHref(href, projectId);
           if (packageDownload) return <a href={packageDownload.href} download className="my-2 inline-flex max-w-full items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 hover:bg-blue-100"><PackageOpen size={24} className="shrink-0"/><span className="min-w-0"><span className="block truncate font-semibold">{packageDownload.name}</span><span className="block text-xs">ZIP 交付包 · 点击下载</span></span><Download size={18} className="shrink-0"/></a>;
           // Agents sometimes turn a source file name into an ordinary http link.

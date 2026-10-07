@@ -436,6 +436,12 @@ public sealed class CodeRuntimeStartRequest
 
 public sealed class CodeRuntimeRunDto
 {
+    [JsonPropertyName("process_id")]
+    public int? ProcessId { get; set; }
+
+    [JsonPropertyName("entry_path")]
+    public string? EntryPath { get; set; }
+
     [JsonPropertyName("run_id")]
     public string RunId { get; set; } = string.Empty;
 

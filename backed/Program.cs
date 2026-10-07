@@ -166,6 +166,9 @@ builder.Services.AddSingleton<IUsageStatisticsService, UsageStatisticsService>()
 builder.Services.AddSingleton<ChatWebSocketHandler>();
 builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
 builder.Services.AddSingleton<ICodeRuntimeManager, CodeRuntimeManager>();
+builder.Services.AddSingleton<ChatRuntimeService>();
+builder.Services.AddTransient<CodeRuntimeAccessFilter>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<ChatRuntimeService>());
 builder.Services.AddSingleton<IGitWorkspaceService, GitWorkspaceService>();
 builder.Services.AddSingleton<ICodeRepositoryGitService, CodeRepositoryGitService>();
 builder.Services.AddSingleton<IProjectAutoGitUpdateService, ProjectAutoGitUpdateService>();

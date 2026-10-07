@@ -58,6 +58,7 @@ test("Markdown renderer preserves package URLs and emits a download card", () =>
   const exports = {};
   new Function("require", "exports", compiled)((name) => {
     if (name === "@/lib/chat-packaging") return module.exports;
+    if (name === "@/lib/chat-runtime") return { runtimeTestFromHref: () => null };
     if (name === "react" || name === "react/jsx-runtime") return require(name);
     if (name === "react-markdown") return { default: "markdown", defaultUrlTransform: (url) => url };
     return {};

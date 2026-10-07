@@ -9,6 +9,7 @@ namespace AiAgent.Backend.Services.CodeRepository;
 /// Project-scoped runtime configuration and development process controls.
 /// </summary>
 [DynamicApiController]
+[ServiceFilter(typeof(CodeRuntimeAccessFilter))]
 [ApiDescriptionSettings("v1", KeepName = true)]
 [Route("api/v1/code-runtime")]
 public sealed class CodeRuntimeAppService : IDynamicApiController

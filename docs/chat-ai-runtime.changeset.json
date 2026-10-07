@@ -1,0 +1,134 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Chat multi-project runtime, managed processes and test windows",
+  "base_commit": "3b3f380bd5ac62b993843531b0aee42442d7d1aa",
+  "platform_change_set_id": null,
+  "note": "Local review manifest only; not platform approval or delivery. No commit, push or deployment performed. Includes the pre-existing unfinished runtime changes completed for this request.",
+  "snapshot_sha256": "559d248d39fd4ab524437a72b134d3496044abc27772cb261321802a5fcf21cf",
+  "checks": {
+    "typescript": "passed: npx tsc --noEmit",
+    "backend": "passed: compilation and 15 ChatRuntimeTests, including temporary real .NET/Node processes; existing unrelated build warnings remain",
+    "frontend": "passed: 13 runtime and packaging regression tests",
+    "browser": "passed: real React components with fixture APIs; multi-repository selection, page configuration, float discovery, new test window, route editing, visit, stop, mobile and project switch",
+    "whitespace": "passed: git diff --check",
+    "live_model_and_public_network": "not run; no live model manifest generation or deployment public-port validation"
+  },
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "07b4f567ded33f171f6afa1cc78b6dbc9473e2eec6252bc5322146ece6ed68ab"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "0f7419c57ea1d2670086679545adc24cce9773bf81eaf9afb1295858d8d193a7"
+    },
+    {
+      "path": "README.md",
+      "sha256": "6b7b6c9ed1e26b388dbc5f768886dce87cac1dcbd16ca4432e4bc8be96777aa5"
+    },
+    {
+      "path": "backed.tests/ChatRuntimeTests.cs",
+      "sha256": "fe01194c0ff932c44aaffcc305175292493a9c4793de1141223bcf7cbd301c99"
+    },
+    {
+      "path": "backed/Dtos/CodeRepository/ChatRuntimeDtos.cs",
+      "sha256": "fe7eb0dbf2693b2a5db3d59cf7b4547ade64a1b11e9b9c91c31919fef8daee2d"
+    },
+    {
+      "path": "backed/Dtos/CodeRepository/CodeRepositoryDtos.cs",
+      "sha256": "41fffc5269fbc041824013af26a0852733ecbf046e6ade8a578d8a348fc9d1ad"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "84feb171f352bf6ebd4272b7ac84cc2a4a22a618e52775515a86f257995f9814"
+    },
+    {
+      "path": "backed/Services/CodeRepository/ChatRuntimeAppService.cs",
+      "sha256": "024fe361f79f3643e9372883592f8bff2cd04b1d907f8881287304f5ce03744f"
+    },
+    {
+      "path": "backed/Services/CodeRepository/ChatRuntimePolicy.cs",
+      "sha256": "1cafcb8eb149e2e8f3a2ecb29e41054fddb85bff7e23d74da562e59cd53eb0a5"
+    },
+    {
+      "path": "backed/Services/CodeRepository/ChatRuntimeService.cs",
+      "sha256": "4d9fda7c7218dfe5ad147a6617cce2eee56648d1966e1059ed56016455a6a8f9"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRuntimeAccessFilter.cs",
+      "sha256": "3e43288af8d88867c5d1a25d6a2e159d732a990d4ff3a4018a1b6547a4b8c8f0"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRuntimeAppService.cs",
+      "sha256": "560545f75e359a751fefee8770c756ebd1b5de83b4fc5993728dbaa1e8d5c696"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRuntimeManager.cs",
+      "sha256": "feece7009c7fec0347906645fff62368ac798cbbd000a69c6acdebb399b52ed5"
+    },
+    {
+      "path": "docs/chat-ai-runtime.md",
+      "sha256": "91de3ff8ce5b83d6512df24961d9e9fe2179e1345973ee00dec824d2a98eed94"
+    },
+    {
+      "path": "front/app/runtime-test/page.tsx",
+      "sha256": "030735895f6f581cfb90b47e8d6661c64936b72a1caa785a4ac74193a4d9b3d0"
+    },
+    {
+      "path": "front/components/auth/AuthGate.tsx",
+      "sha256": "858784febd45ac8f15366abd2adb8e001301fff04cbf12d305d454e1c59bbb21"
+    },
+    {
+      "path": "front/components/chat/ChatRunDialog.tsx",
+      "sha256": "c56dc298c1cefa54d95d5fc3695237f1f2d201002b39677bfbbd763017fab5f5"
+    },
+    {
+      "path": "front/components/chat/ChatRuntimeFloat.tsx",
+      "sha256": "b0fbc8691cf771e23bcd9ab0ba411c149a8cdcb269b3905be640fd09a2820dd5"
+    },
+    {
+      "path": "front/components/chat/ChatRuntimeToolbar.tsx",
+      "sha256": "f03dec8f65611cdbd1f762f6fd23f1d69871755d4b6e57f5ff5d17287117d55e"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "b3f7cccff66c3bff3ea043fe8274dcf84afc74c0f0fe30ec43ccbbc14ab769b3"
+    },
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "d842b51a1814e7badfddcc853960e4cc395f9d7d2dd105f586ad34507c53d99e"
+    },
+    {
+      "path": "front/components/chat/RuntimeTestWindow.tsx",
+      "sha256": "63096e775c9b070a9939cc3d690541864c602af3a6a3ce7f0aade30d95f9ed71"
+    },
+    {
+      "path": "front/lib/chat-runtime-api.ts",
+      "sha256": "efac88c78f05d9ff948e0e1e462b80e21cff9726111635acdb02519d26cb8c98"
+    },
+    {
+      "path": "front/lib/chat-runtime-types.ts",
+      "sha256": "584aac1f668f264d546e00e3f00f9b60e30dfdd1c57103b4b4c97a7e18499cb1"
+    },
+    {
+      "path": "front/lib/chat-runtime.ts",
+      "sha256": "ea2c442840ce3e3100793805a014171eb186acabbcd5aeb8e6214a54403a7ec5"
+    },
+    {
+      "path": "front/lib/code-runtime-types.ts",
+      "sha256": "22e1e0b8459b366337965cabec131d4d010f6f4d3074bb29d0de6c040c4b19ea"
+    },
+    {
+      "path": "front/tests/chat-packaging.test.mjs",
+      "sha256": "6f9594ab429f16fb54673b97acd1a8ea5ffb3dc17aa85b82e5e34f1792b8c7e7"
+    },
+    {
+      "path": "front/tests/chat-runtime.browser.mjs",
+      "sha256": "ae8945b6f9214539bbc2a27f6ca7195248328714604d80ff9fadfe4ee84280c1"
+    },
+    {
+      "path": "front/tests/chat-runtime.test.mjs",
+      "sha256": "84899002fa39d2f8c89b91290a7b82b58218e06601543108b35324e93c2f6f86"
+    }
+  ]
+}

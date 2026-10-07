@@ -16,6 +16,8 @@ export type CodeRuntimeProfile = {
 };
 
 export type CodeRuntimeRun = {
+  process_id?: number | null;
+  entry_path?: string | null;
   run_id: string;
   project_id: number;
   profile_id: number;

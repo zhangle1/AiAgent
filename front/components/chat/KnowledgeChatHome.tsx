@@ -1090,7 +1090,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             Debug
           </button>
           <ClientScanDialog />
-          <ChatRuntimeToolbar onPackagePrompt={(prompt) => { setVisualizationType(null); setVisualizationCommits([]); setVisualizationScope(null); prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${prompt}` : prompt); }} project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")} />
+          <ChatRuntimeToolbar key={`${selectedProject?.id}:${activeSessionId}`} onPackagePrompt={(prompt) => { setVisualizationType(null); setVisualizationCommits([]); setVisualizationScope(null); prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${prompt}` : prompt); }} project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")} />
           <span className="hidden lg:contents">
             <SidePanelTabLauncher onOpen={openInspector} />
           </span>

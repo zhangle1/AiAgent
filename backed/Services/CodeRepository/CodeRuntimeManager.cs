@@ -21,6 +21,8 @@ public interface ICodeRuntimeManager
     bool Stop(long projectId, string runId);
     List<CodeRuntimeLogDto> GetLogs(string runId, long afterSequence);
     CodeRuntimePreviewTarget GetPreviewTarget(string runId);
+    CodeRuntimeRunDto? FindRun(string runId);
+    Task<CodeRuntimeRunDto> StartTargetAsync(long projectId, ChatRuntimeTarget target, CancellationToken cancellationToken, Action<CodeRuntimeRunDto>? onStarting = null);
 }
 
 /// <summary>
@@ -35,6 +37,40 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
     private readonly ILogger<CodeRuntimeManager> _logger;
     private readonly ConcurrentDictionary<string, RunningProcess> _runs = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _portLock = new(1, 1);
+    private readonly SemaphoreSlim _startLock = new(1, 1);
+
+    public CodeRuntimeRunDto? FindRun(string runId) => _runs.TryGetValue(runId, out var run) ? ToRunDto(run) : null;
+
+    public async Task<CodeRuntimeRunDto> StartTargetAsync(long projectId, ChatRuntimeTarget target, CancellationToken cancellationToken, Action<CodeRuntimeRunDto>? onStarting = null)
+    {
+        await _startLock.WaitAsync(cancellationToken);
+        try
+        {
+            ChatRuntimePolicy.ValidateTarget(target);
+            var repository = _repositories.Get(target.RepositoryName);
+            if (repository.ProjectId != projectId) throw new InvalidOperationException("Repository does not belong to this project.");
+            var role = NormalizeRole(target.Role);
+            var entry = NormalizeRelativePath(target.EntryPath) ?? throw new ArgumentException("Runtime entry is required.");
+            var fullEntry = ChatRuntimePolicy.SafePath(repository.RootPath, entry);
+            if (!File.Exists(fullEntry)) throw new ArgumentException("Runtime entry does not exist.");
+            var isNpm = Path.GetFileName(entry).Equals("package.json", StringComparison.OrdinalIgnoreCase);
+            if (!isNpm && (role != "backend" || !entry.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || !IsRunnableDotnetProject(repository.RootPath, entry)))
+                throw new ArgumentException("Select package.json or a runnable backend .csproj.");
+            if (isNpm && !string.IsNullOrWhiteSpace(target.RunScript) && !PackageHasScript(fullEntry, target.RunScript))
+                throw new ArgumentException("The requested npm script does not exist.");
+            var port = NormalizePreferredPort(target.PreferredPort);
+            if (port.HasValue && (IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(x => x.Port == port) || _runs.Values.Any(x => x.IsActive && x.Port == port)))
+                throw new InvalidOperationException($"Port {port} is occupied. Choose another port and update dependent configuration.");
+            var profile = new AiCodeRepositoryRunProfile
+            {
+                ProjectId = projectId, RepositoryId = repository.Id, Role = role, EntryPath = entry,
+                RunScript = NormalizeRunScript(target.RunScript, isNpm ? "frontend" : role), PreferredPort = port,
+                HealthPath = NormalizeHealthPath(target.HealthPath), IsEnabled = true, IsPreviewEnabled = role == "frontend"
+            };
+            return await StartProfileAsync(profile, cancellationToken, target.Environment, onStarting);
+        }
+        finally { _startLock.Release(); }
+    }
 
     public CodeRuntimeManager(ISqlSugarClient db, ICodeRepositoryManager repositories, ILogger<CodeRuntimeManager> logger)
     {
@@ -69,8 +105,9 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             ProjectId = projectId,
             Profiles = profiles.Select(item => ToProfileDto(item, repositories.GetValueOrDefault(item.RepositoryId))).ToList(),
             Runs = _runs.Values
-                .Where(item => item.ProjectId == projectId && item.IsActive)
+                .Where(item => item.ProjectId == projectId && (item.IsActive || item.CompletedAt > DateTime.UtcNow.AddHours(-24)))
                 .OrderByDescending(item => item.StartedAt)
+                .Take(60)
                 .Select(ToRunDto)
                 .ToList()
         };
@@ -145,6 +182,13 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
     }
 
     public async Task<List<CodeRuntimeRunDto>> StartAsync(long projectId, CodeRuntimeStartRequest request, CancellationToken cancellationToken)
+    {
+        await _startLock.WaitAsync(cancellationToken);
+        try { return await StartProfilesCoreAsync(projectId, request, cancellationToken); }
+        finally { _startLock.Release(); }
+    }
+
+    private async Task<List<CodeRuntimeRunDto>> StartProfilesCoreAsync(long projectId, CodeRuntimeStartRequest request, CancellationToken cancellationToken)
     {
         _ = _repositories.GetProject(projectId);
         EnsureSuggestedProfiles(projectId);
@@ -235,6 +279,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             }
         }
         _portLock.Dispose();
+        _startLock.Dispose();
     }
 
     public List<CodeRuntimeLogDto> GetLogs(string runId, long afterSequence)
@@ -254,11 +299,11 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         return new CodeRuntimePreviewTarget(run.RunId, run.Port);
     }
 
-    private async Task<CodeRuntimeRunDto> StartProfileAsync(AiCodeRepositoryRunProfile profile, CancellationToken cancellationToken)
+    private async Task<CodeRuntimeRunDto> StartProfileAsync(AiCodeRepositoryRunProfile profile, CancellationToken cancellationToken, Dictionary<string, string>? environment = null, Action<CodeRuntimeRunDto>? onStarting = null)
     {
         var repository = _repositories.List().FirstOrDefault(item => item.Id == profile.RepositoryId)
             ?? throw new InvalidOperationException("The runtime profile repository is no longer available.");
-        var port = await AllocatePortAsync(profile.Role, profile.PreferredPort, cancellationToken);
+        var port = await AllocatePortAsync(profile.Role, profile.PreferredPort, cancellationToken, exactPort: environment is not null);
         var run = new RunningProcess
         {
             RunId = Guid.NewGuid().ToString("N"),
@@ -266,6 +311,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             ProfileId = profile.Id,
             RepositoryId = repository.Id,
             RepositoryName = repository.Name,
+            EntryPath = profile.EntryPath,
             Role = profile.Role,
             Port = port,
             AccessUrls = GetAccessUrls(port),
@@ -277,16 +323,23 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
 
         try
         {
-            run.ArtifactsDirectory = profile.Role == "backend" ? CreateRuntimeArtifactsDirectory(run.RunId) : null;
-            if (profile.Role == "frontend")
+            onStarting?.Invoke(ToRunDto(run));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (run.StoppedByUser) throw new OperationCanceledException("The runtime start was cancelled.");
+            var isNpm = string.Equals(Path.GetFileName(ResolveEntryPath(repository, profile)), "package.json", StringComparison.OrdinalIgnoreCase);
+            run.ArtifactsDirectory = !isNpm ? CreateRuntimeArtifactsDirectory(run.RunId) : null;
+            if (isNpm)
                 await EnsureFrontendDependenciesAsync(repository, profile, run, cancellationToken);
             var startInfo = BuildStartInfo(repository, profile, port, run.ArtifactsDirectory);
+            if (environment is not null)
+                foreach (var pair in environment) startInfo.Environment[pair.Key] = pair.Value;
             run.Command = $"{startInfo.FileName} {string.Join(' ', startInfo.ArgumentList)}";
+            cancellationToken.ThrowIfCancellationRequested();
             if (run.StoppedByUser) throw new OperationCanceledException("The runtime start was cancelled.");
             run.Process?.Dispose();
             run.Process = new Process { StartInfo = startInfo };
             if (!run.Process.Start()) throw new InvalidOperationException("The server process could not be started.");
-            if (run.StoppedByUser)
+            if (run.StoppedByUser || cancellationToken.IsCancellationRequested)
             {
                 TerminateProcessTree(run.Process);
                 throw new OperationCanceledException("The runtime start was cancelled.");
@@ -296,10 +349,12 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             _ = ObserveProcessAsync(run);
             return ToRunDto(run);
         }
-        catch
+        catch (Exception ex)
         {
-            run.Process?.Dispose();
-            _runs.TryRemove(run.RunId, out _);
+            if (run.Process is not null) TerminateProcessTree(run.Process);
+            run.Status = run.StoppedByUser ? "stopped" : "failed";
+            run.CompletedAt = DateTime.UtcNow;
+            AppendLog(run, "system", $"Start failed: {ex.Message}");
             CleanupRuntimeArtifacts(run.ArtifactsDirectory);
             throw;
         }
@@ -323,7 +378,6 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         AppendLog(run, "system", "node_modules was not found; running npm install before starting the front-end program.");
         var startInfo = new ProcessStartInfo
         {
-            FileName = ResolveNpmExecutable(),
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -332,12 +386,14 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             StandardErrorEncoding = new UTF8Encoding(false),
             CreateNoWindow = true
         };
+        ConfigureNpm(startInfo);
         startInfo.ArgumentList.Add("install");
         var process = new Process { StartInfo = startInfo };
         if (!process.Start()) throw new InvalidOperationException("Unable to start npm install.");
         run.Process = process;
         var stdout = PumpAsync(run, process.StandardOutput, "stdout");
         var stderr = PumpAsync(run, process.StandardError, "stderr");
+        using var registration = cancellationToken.Register(() => TerminateProcessTree(process));
         await Task.WhenAll(process.WaitForExitAsync(cancellationToken), stdout, stderr);
         if (run.StoppedByUser)
             throw new OperationCanceledException("The npm install process was stopped by the user.");
@@ -416,20 +472,28 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             StandardErrorEncoding = new UTF8Encoding(false),
             CreateNoWindow = true
         };
-        if (profile.Role == "frontend")
+        if (Path.GetFileName(fullEntryPath).Equals("package.json", StringComparison.OrdinalIgnoreCase))
         {
-            startInfo.FileName = ResolveNpmExecutable();
+            ConfigureNpm(startInfo);
             startInfo.WorkingDirectory = Path.GetDirectoryName(fullEntryPath)!;
             var runScript = !string.IsNullOrWhiteSpace(profile.RunScript) && PackageHasScript(fullEntryPath, profile.RunScript)
                 ? profile.RunScript
                 : ResolveFrontendRunScript(repository, entryPath);
             startInfo.ArgumentList.Add("run");
             startInfo.ArgumentList.Add(runScript);
-            startInfo.ArgumentList.Add("--");
-            startInfo.ArgumentList.Add("--host");
-            startInfo.ArgumentList.Add("0.0.0.0");
-            startInfo.ArgumentList.Add("--port");
-            startInfo.ArgumentList.Add(port.ToString());
+            using var package = JsonDocument.Parse(File.ReadAllText(fullEntryPath));
+            var script = package.RootElement.GetProperty("scripts").GetProperty(runScript).GetString() ?? "";
+            startInfo.Environment["PORT"] = port.ToString();
+            startInfo.Environment["HOST"] = "0.0.0.0";
+            var next = Regex.IsMatch(script, @"\bnext\s+(dev|start)\b");
+            if (next || Regex.IsMatch(script, @"\b(vite|vue-cli-service|ng)\b"))
+            {
+                startInfo.ArgumentList.Add("--");
+                startInfo.ArgumentList.Add(next ? "--hostname" : "--host");
+                startInfo.ArgumentList.Add("0.0.0.0");
+                startInfo.ArgumentList.Add("--port");
+                startInfo.ArgumentList.Add(port.ToString());
+            }
         }
         else
         {
@@ -555,7 +619,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         }
     }
 
-    private async Task<int> AllocatePortAsync(string role, int? preferredPort, CancellationToken cancellationToken)
+    private async Task<int> AllocatePortAsync(string role, int? preferredPort, CancellationToken cancellationToken, bool exactPort = false)
     {
         var (first, last) = role == "frontend" ? (4300, 4399) : (5100, 5199);
         await _portLock.WaitAsync(cancellationToken);
@@ -566,7 +630,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                 .ToHashSet();
             used.UnionWith(_runs.Values.Where(item => item.IsActive).Select(item => item.Port));
             var candidatePorts = preferredPort.HasValue
-                ? new[] { preferredPort.Value }.Concat(Enumerable.Range(first, last - first + 1).Where(port => port != preferredPort.Value))
+                ? new[] { preferredPort.Value }.Concat(exactPort ? [] : Enumerable.Range(first, last - first + 1).Where(port => port != preferredPort.Value))
                 : Enumerable.Range(first, last - first + 1);
             foreach (var port in candidatePorts)
             {
@@ -768,15 +832,20 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         return path;
     }
 
-    private static string ResolveNpmExecutable()
+    private static void ConfigureNpm(ProcessStartInfo info)
     {
-        if (!OperatingSystem.IsWindows()) return "npm";
+        if (!OperatingSystem.IsWindows()) { info.FileName = "npm"; return; }
         foreach (var pathEntry in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            var npmPath = Path.Combine(pathEntry.Trim('"'), "npm.cmd");
-            if (File.Exists(npmPath)) return npmPath;
+            var directory = pathEntry.Trim('"');
+            var nodePath = Path.Combine(directory, "node.exe");
+            var npmPath = Path.Combine(directory, "node_modules", "npm", "bin", "npm-cli.js");
+            if (!File.Exists(nodePath) || !File.Exists(npmPath)) continue;
+            info.FileName = nodePath;
+            info.ArgumentList.Add(npmPath);
+            return;
         }
-        throw new InvalidOperationException("Unable to locate npm.cmd. Install Node.js and include it in the server PATH.");
+        throw new InvalidOperationException("Unable to locate node.exe and npm-cli.js. Install Node.js and include it in the server PATH.");
     }
 
     private static bool IsPathWithin(string parentPath, string childPath)
@@ -807,6 +876,8 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
     private static CodeRuntimeRunDto ToRunDto(RunningProcess run) => new()
     {
         RunId = run.RunId,
+        ProcessId = GetProcessId(run.Process),
+        EntryPath = run.EntryPath,
         ProjectId = run.ProjectId,
         ProfileId = run.ProfileId,
         RepositoryId = run.RepositoryId,
@@ -822,6 +893,11 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         CompletedAt = run.CompletedAt
     };
 
+    private static int? GetProcessId(Process? process)
+    {
+        try { return process?.Id; } catch (InvalidOperationException) { return null; }
+    }
+
     private sealed class RunningProcess
     {
         public object Sync { get; } = new();
@@ -830,6 +906,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         public long ProfileId { get; init; }
         public long RepositoryId { get; init; }
         public required string RepositoryName { get; init; }
+        public string? EntryPath { get; init; }
         public required string Role { get; init; }
         public Process Process { get; set; } = null!;
         public int Port { get; init; }

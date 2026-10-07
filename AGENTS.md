@@ -67,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 聊天 AI 运行通过 `ChatRunDialog` 多选当前项目的仓库相对入口并组合普通聊天提示词；`ChatRuntimeService` 只消费显式准备请求对应的 `artifacts/aiagent-runs/<requestId>.json`，一次请求仅启动一次。服务端校验项目/仓库归属、路径及链接边界、显式端口和环境变量白名单；清单只描述现有 npm scripts 或可运行 .NET 工程，不接受任意 shell 命令。使用 `CodeRuntimeManager` 管理真实进程树，按后端→前端做 HTTP 就绪检查；端口冲突不能悄悄换端口，部分启动失败回收本组进程。状态、日志、停止接口必须验证项目访问权。浮窗不续期，`/runtime-test` 可见窗口才续期整组；独立端口访问无法计入，必须向用户明确说明。URL 主机来自浏览器当前地址，不声称已验证公网连通。切换项目或会话关闭配置弹窗；正常宿主关闭回收进程，重启不重放旧清单。验证使用临时测试工程，不启动用户真实仓库。
+
 - 正式交互架构图通过 `aiagent-architecture` fenced JSON 与普通聊天消息一起持久化，使用 `chat-architecture.ts` 投影和校验后由 React/SVG 渲染，不执行模型 HTML、不写 public、不增加后端渲染服务。限制 version 1、1–40 个节点、100 条边、100000 字符及字段长度；校验唯一 ID 和边引用。来源为模型标注，不能当作系统验证结论。代码分析范围复用 tree 接口选择仓库相对路径，随消息组成提示词；会话/项目切换清空范围，重试复用已存请求。路径选择和只读提示不是新的权限隔离，实际读取沿用现有项目与仓库授权。可视化弹窗默认选择 interactive，不能用固定示例代替生成入口；固定示例不出现在聊天弹窗。正式画布支持深浅主题、搜索、节点拖动及画布平移，拖动位置仅属于当前视图，JSON 导出保持原始语义数据。正式画布与 Archify 固定示例独立。
 
 - Archify 开发参考页面仅加载 `front/public/archify/` 的固定公开示例。iframe 使用 `allow-scripts allow-downloads`，不授予同源访问；CSP 禁止联网。不可把用户资料或任意生成 HTML 放入公开目录。更新使用固定上游版本和 `front/scripts/build-archify-demo.mjs`，保留许可证；AI 生成接入需另行设计数据校验与产物权限。

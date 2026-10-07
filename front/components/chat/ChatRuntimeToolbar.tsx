@@ -7,12 +7,15 @@ import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime 
 import { discardCodeRepositoryChangesAndPull, discardProjectGitChangesAndPull, getCodeRepositoryGitDiff, getProjectGitStatus, pushCodeRepositoryGit, pushProjectGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus, ProjectGitBatchOperationResult, ProjectGitRepositoryStatus, ProjectGitStatus } from "@/lib/code-repository-types";
 import { ChatPackageDialog } from "@/components/chat/ChatPackageDialog";
+import { ChatRunDialog } from "@/components/chat/ChatRunDialog";
+import { ChatRuntimeFloat } from "@/components/chat/ChatRuntimeFloat";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
 type ProjectGitBatchAction = "discard-and-pull" | "commit-and-push";
 
 export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel, onOpenRuntimePanel, onPackagePrompt }: { project: CodeProject | null; rightPanelOpen: boolean; onToggleRightPanel: () => void; onOpenRuntimePanel: () => void; onPackagePrompt: (prompt: string) => void }) {
+  const [runTarget, setRunTarget] = useState<{ projectId: number; repository?: string } | null>(null);
   const [packageTarget, setPackageTarget] = useState<{ projectId: number; repository: CodeRepository } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [runtime, setRuntime] = useState<CodeProjectRuntime | null>(null);
@@ -33,6 +36,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
   useEffect(() => {
     setPackageTarget(null);
+    setRunTarget(null);
     if (!project) {
       refreshSequenceRef.current += 1;
       setProjectGitStatus(null);
@@ -240,9 +244,11 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
           {project && <ProjectGitOverview state={topGitState} summary={projectGitStatus?.message} rows={projectGitStatus?.repositories ?? []} busy={busy} onDiscard={() => { setBatchResult(null); setBatchAction("discard-and-pull"); }} onPush={() => { setBatchResult(null); setBatchAction("commit-and-push"); }} />}
 
+          {!!project?.repositories.length && <button type="button" onClick={() => { setRunTarget({ projectId: project.id }); setMenuOpen(false); }} className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-semibold text-white"><Play size={16}/>配置 AI 运行 · 多选工程</button>}
+
           {project?.repositories.length ? <div className="mb-3 space-y-2">
             <p className="px-0.5 text-[11px] font-semibold text-slate-500">代码库</p>
-            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} onStart={(profiles) => void startProfiles(profiles, repository.display_name)} onPackage={() => void packageRepository(repository.name)} onOpenDiff={() => setDiffTarget(repository)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
+            {project.repositories.map((repository) => <RepositoryCard key={repository.id} repository={repository} gitStatus={gitStatuses[repository.id]} profiles={runtime?.profiles ?? []} busy={busy} onStart={() => { setRunTarget({ projectId: project.id, repository: repository.name }); setMenuOpen(false); }} onPackage={() => void packageRepository(repository.name)} onOpenDiff={() => setDiffTarget(repository)} onDiscardAndPull={() => void discardRepositoryChangesAndPull(repository)} onCommitPush={() => { setError(null); setPushTarget(repository); }} onOpenConfiguration={(path) => void openConfiguration(repository.name, repository.display_name, path)}/>) }
           </div> : null}
 
           {runtime && runtime.profiles.length ? <div className="mb-2 space-y-1.5">
@@ -251,19 +257,21 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
               <div className="flex items-center justify-between gap-2"><span className="truncate font-semibold text-slate-800">{profile.repository_name} · {profile.role === "frontend" ? "前端" : "C# 后端"}</span><span className="shrink-0 text-violet-700">默认 :{profile.preferred_port ?? (profile.role === "frontend" ? 4300 : 5100)}</span></div>
               <code className="block truncate text-slate-500">{profile.role === "frontend" ? `启动 npm run ${profile.run_script || "dev"}` : `启动 dotnet run --project ${profile.entry_path ?? ""}`}</code>
             </div>)}
-          </div> : <p className="mb-2 rounded-lg bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">尚未保存调试配置。请在“项目与代码库”的代码库详情中选择 `.csproj` 或 `package.json`，并填写启动脚本与默认端口。</p>}
+          </div> : <p className="mb-2 rounded-lg bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">可直接点击“配置 AI 运行”，多选前后端工程并填写要求，无需预先保存调试配置。</p>}
 
           {activeRuns.length ? <div className="space-y-1.5">
             <p className="px-0.5 text-[11px] font-semibold text-slate-500">正在运行的 Shell</p>
             {activeRuns.map((run) => <RunCard key={run.run_id} run={run} busy={busy} onForceStop={() => void forceStop(run.run_id)}/>) }
             <button type="button" onClick={onOpenRuntimePanel} className="mt-1 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100"><Terminal size={14}/>打开实时终端</button>
-          </div> : runtime && runtime.profiles.length ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">尚未启动；可点击代码库右侧的“运行”，只启动该代码库的配置。</p> : null}
+          </div> : runtime && runtime.profiles.length ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">尚未启动；点击“运行”选择工程并填写要求，发送聊天后由 AI 分析并启动。</p> : null}
           {error && <p className="mt-2 rounded-md bg-rose-50 px-2.5 py-2 text-[11px] leading-4 text-rose-700">{error}</p>}
         </div>, document.body)}
       </div>
       <button type="button" onClick={onToggleRightPanel} className={`hidden h-8 w-8 place-items-center rounded-lg border shadow-sm lg:grid ${rightPanelOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="打开或关闭右侧面板">{rightPanelOpen ? <PanelLeftOpen size={15}/> : <PanelRightOpen size={15}/>}</button>
     </div>
     {packageTarget && packageTarget.projectId === project?.id && <ChatPackageDialog key={`${packageTarget.projectId}:${packageTarget.repository.id}`} projectId={packageTarget.projectId} repository={packageTarget.repository} onClose={() => setPackageTarget(null)} onApply={(prompt) => { onPackagePrompt(prompt); setPackageTarget(null); }} />}
+    {project && runTarget?.projectId === project.id && <ChatRunDialog key={`${project.id}:${runTarget.repository}`} project={project} initialRepository={runTarget.repository} onClose={() => setRunTarget(null)} onApply={prompt => { onPackagePrompt(prompt); setRunTarget(null); }}/>}
+    {project && <ChatRuntimeFloat key={project.id} projectId={project.id} onLogs={onOpenRuntimePanel}/>}
     {configDraft && <ChatConfigurationEditor draft={configDraft} busy={busy} onChange={setConfigDraft} onClose={() => !busy && setConfigDraft(null)} onSave={() => void saveConfiguration()} />}
     {pushTarget && <CommitPushDialog repository={pushTarget} busy={busy} error={error} onClose={() => !busy && setPushTarget(null)} onSubmit={(message) => void pushRepository(pushTarget, message)} />}
     {batchAction && project && <ProjectGitBatchDialog action={batchAction} rows={visibleGitRows} busy={busy} error={error} result={batchResult} onClose={() => !busy && setBatchAction(null)} onSubmit={(message) => void runProjectGitBatch(batchAction, message)} />}
@@ -276,7 +284,7 @@ function RepositoryCard({ repository, gitStatus, profiles, busy, onStart, onPack
   return <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
     <p className="mb-2 break-words text-xs font-semibold leading-5 text-slate-800" title={repository.display_name}>{repository.display_name}</p>
     <div className="flex flex-wrap items-center gap-1.5">
-      <button type="button" disabled={busy || !repositoryProfiles.length} onClick={() => onStart(repositoryProfiles)} title={repositoryProfiles.length ? "只运行此代码库的已启用配置" : "请先为代码库保存运行配置"} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 text-[11px] font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"><Play size={13}/>运行</button>
+      <button type="button" disabled={busy} onClick={() => onStart(repositoryProfiles)} title="多选工程并交给 AI 配置运行" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 text-[11px] font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"><Play size={13}/>运行</button>
       <button type="button" disabled={busy} onClick={onPackage} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white px-2 text-[11px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"><PackageOpen size={13}/>打包</button>
       {(gitStatus?.is_repository || repository.is_git_repository) && <><button type="button" disabled={busy} onClick={onOpenDiff} title="按文件查看工作区、待推送或待拉取的代码差异" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"><FileDiff size={12}/>差异</button><button type="button" disabled={busy} onClick={onDiscardAndPull} title="重置已跟踪文件的本地修改并拉取服务器最新代码；不会删除额外新建的文件" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><RotateCcw size={12}/>重置更新</button><button type="button" disabled={busy} onClick={onCommitPush} title="填写 Conventional Commit 信息后提交并推送当前代码库" className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"><Upload size={12}/>提交推送</button></>}
     </div>
