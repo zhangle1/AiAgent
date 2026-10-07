@@ -1,0 +1,76 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Five diagram types and HTML visual refinement",
+  "base_commit": "dc720d7d16b05108b0128ec11271e7f9fb641b5c",
+  "platform_change_set_id": null,
+  "note": "Local review snapshot only; no authenticated platform change-set API context. No commit, push or deployment. Includes existing in-progress visualization changes.",
+  "checks": {
+    "typescript": "passed: tsc --noEmit --incremental false",
+    "regressions": "20 passed",
+    "browser": "passed: five types, 20-node fit, mobile, exploration, exports, offline HTML details and actual-size toggle, inert text",
+    "whitespace": "git diff --check passed",
+    "live_model": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "4f16e6db02ea2b31c7bc153978cafb640940636a2f78275a14802ea837cb78e5"
+    },
+    {
+      "path": "README.md",
+      "sha256": "59358d6f92e0335ee4811e13f66285e42457df867abde03731ff644869def139"
+    },
+    {
+      "path": "docs/chat-interactive-architecture.md",
+      "sha256": "c205f790891533a6593fb242df9941bac7da0cf86853ab10b4ada4523a844fa9"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "c783e7c30d3e4a7675d76f8e8ce90bfc29b1d7e71124aacee2873618ec3de075"
+    },
+    {
+      "path": "front/components/chat/visualization/ArchitectureDiagram.tsx",
+      "sha256": "75c7226438f6345b17dd3c03c2a3c0e225011ef093001b544e7e2b24aaf06822"
+    },
+    {
+      "path": "front/components/chat/visualization/DiagramPreview.tsx",
+      "sha256": "570c9bb69ecca43316de437219c5ccee86e28949885bc3ba93516c31af2af8f3"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationDialog.tsx",
+      "sha256": "e9e6ef7a69f043ab1378a19e8999c852b03d9ff0c14cfb4c31b5b49932860bbd"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationToolbar.tsx",
+      "sha256": "4827f289e4dc4c659bf2afe8a74e23b473654a5bb8d92ead4528bc1c56bfb4ab"
+    },
+    {
+      "path": "front/lib/chat-architecture.ts",
+      "sha256": "49385ef45e6f87c73539dc92ba88994698abd555491c029b4116a3f9b9aa87ba"
+    },
+    {
+      "path": "front/lib/chat-visualization.ts",
+      "sha256": "246423e50395f1f9a6270d66139b29012671acb508820536ee586e5a46680e58"
+    },
+    {
+      "path": "front/tests/chat-architecture.browser.mjs",
+      "sha256": "dcbbf58125caabf0e76c8a445e16ba2ca52d00b7cb4bb861fa76049a856c6955"
+    },
+    {
+      "path": "front/tests/chat-architecture.test.mjs",
+      "sha256": "e5bb4239d13470ddde39e629822c1ff5ed3717d9aa17340cd5fe111fd100ebba"
+    },
+    {
+      "path": "front/tests/chat-visualization.test.mjs",
+      "sha256": "91c7d85e6b49713b7ccf89f8cab15a3077b23f6dc29862622a83cb165f73f482"
+    },
+    {
+      "path": "front/lib/architecture-export.ts",
+      "sha256": "b3769d703d58cf5b5bc9f6bf4549f00d75016a8ce563b6c811fcb828868284b9"
+    },
+    {
+      "path": "front/lib/architecture-layout.ts",
+      "sha256": "279f2b32cc31b6766288d583be48400a07ff44ca459834c12bf8691576289af1"
+    }
+  ]
+}

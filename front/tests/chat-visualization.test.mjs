@@ -33,7 +33,8 @@ test("every diagram choice produces a self-contained persisted request", () => {
     assert.ok(message.startsWith(query + "\n\n"));
     assert.ok(message.includes(type.label));
     assert.ok(message.includes(type.syntax));
-    assert.match(message, /mermaid/);
+    assert.match(message, /aiagent-architecture/);
+    assert.match(message, new RegExp(`diagramType="${type.id === "interactive" ? "architecture" : type.id}"`));
     assert.match(message, /来源不足/);
     assert.match(message, /不修改项目文件/);
     assert.equal(visual.buildVisualizationMessage(message, null), message);

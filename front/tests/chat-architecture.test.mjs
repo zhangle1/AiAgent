@@ -10,8 +10,46 @@ function load(file, mocks = {}) {
   return module.exports;
 }
 const api = load("../lib/chat-architecture.ts");
+const layout = load("../lib/architecture-layout.ts");
 const visual = load("../lib/chat-visualization.ts", { "@/lib/chat-architecture": api });
 const graph = { version: 1, title: "架构", nodes: ["a", "b", "c", "isolated"].map((id) => ({ id, label: id })), edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "c", to: "a" }] };
+test("five diagram types preserve semantics and reject unsupported schema values", () => {
+  for (const diagramType of Object.keys(api.architectureTypes)) {
+    const parsed = api.parseArchitecture(JSON.stringify({ ...graph, diagramType }));
+    assert.equal(parsed.diagramType, diagramType);
+    const result = layout.layoutArchitecture(parsed);
+    assert.equal(result.positions.size, 4);
+    assert.ok(Number.isFinite(result.width) && Number.isFinite(result.height));
+    for (const [i] of parsed.edges.entries()) assert.doesNotMatch(layout.edgeRoute(parsed, result, i).d, /NaN|Infinity/);
+  }
+  for (const patch of [{ diagramType: "html" }, { diagramType: "__proto__" }, { nodes: [{ id: "x", label: "x", kind: "script" }] }, { edges: [{ from: "a", to: "b", style: "url(x)" }] }]) assert.throws(() => api.parseArchitecture(JSON.stringify({ ...graph, ...patch })));
+});
+test("sequence messages retain order, repeats and self calls; lifecycle cycles occupy two rows", () => {
+  const sequence = api.parseArchitecture(JSON.stringify({ ...graph, diagramType: "sequence", edges: [{ from: "a", to: "b" }, { from: "a", to: "b", style: "dashed" }, { from: "b", to: "b" }] }));
+  const result = layout.layoutArchitecture(sequence);
+  const routes = sequence.edges.map((_, i) => layout.edgeRoute(sequence, result, i));
+  assert.ok(routes[1].label.y > routes[0].label.y);
+  assert.match(routes[2].d, /h56 v30 h-56/);
+  assert.equal(sequence.edges[1].style, "dashed");
+  const lifecycle = layout.layoutArchitecture({ ...sequence, diagramType: "lifecycle" });
+  assert.equal(new Set([...lifecycle.positions.values()].map(p => p.y)).size, 2);
+});
+test("architecture packs many groups, fits viewport and routes around intervening cards", () => {
+  const many = api.parseArchitecture(JSON.stringify({ ...graph, nodes: Array.from({ length: 20 }, (_, i) => ({ id: `n${i}`, label: `节点${i}`, group: `group${i}` })), edges: [] }));
+  const packed = layout.layoutArchitecture(many);
+  assert.ok(packed.width < 1500);
+  const zoom = layout.fitDiagram(packed.width, packed.height, 1200, 600);
+  assert.ok(packed.width * zoom <= 1168 && packed.height * zoom <= 568);
+  const parsed = api.parseArchitecture(JSON.stringify(graph));
+  const positioned = layout.layoutArchitecture(parsed, { a: { x: 80, y: 100 }, b: { x: 380, y: 100 }, c: { x: 680, y: 100 }, isolated: { x: 80, y: 400 } });
+  const route = layout.edgeRoute({ ...parsed, edges: [{ from: "a", to: "c", label: "跨越" }] }, positioned, 0);
+  const points = [...route.d.matchAll(/[ML]([\d.]+),([\d.]+)/g)].map(m => ({ x: +m[1], y: +m[2] }));
+  assert.ok(points.some(p => p.y <= 100 || p.y >= 180));
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    if (a.y === b.y && a.y > 100 && a.y < 180) assert.ok(Math.max(a.x, b.x) <= 380 || Math.min(a.x, b.x) >= 564);
+  }
+});
 test("validates limits, duplicate ids and dangling references", () => {
   assert.equal(api.parseArchitecture(JSON.stringify(graph)).nodes.length, 4);
   for (const bad of [null, {}, { ...graph, version: 2 }, { ...graph, nodes: [] }, { ...graph, nodes: [graph.nodes[0], graph.nodes[0]] }, { ...graph, edges: [{ from: "missing", to: "a" }] }, { ...graph, title: "a".repeat(121) }, { ...graph, nodes: Array.from({ length: 41 }, (_, i) => ({ id: `a${i}`, label: "a" })) }, { ...graph, edges: Array(101).fill(graph.edges[0]) }]) {

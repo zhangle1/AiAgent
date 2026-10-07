@@ -10,7 +10,7 @@ import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { VisualizationToolbar } from "@/components/chat/visualization/VisualizationToolbar";
 import type { ArchitectureScope } from "@/lib/chat-architecture";
-import { buildVisualizationMessage, type DiagramType } from "@/lib/chat-visualization";
+import { buildVisualizationMessage, isInteractiveDiagram, type DiagramType } from "@/lib/chat-visualization";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
@@ -918,7 +918,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     event.preventDefault();
     const query = input.trim();
     // Keep empty submissions and embedded editors on their existing path.
-    const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0 || activeVisualizationCommits.length > 0 || (visualizationType === "interactive" && !!activeVisualizationScope);
+    const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0 || activeVisualizationCommits.length > 0 || (isInteractiveDiagram(visualizationType) && !!activeVisualizationScope);
     await sendMessage(buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType, activeVisualizationCommits, activeVisualizationScope));
   }
 
@@ -1227,7 +1227,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
-                    <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0 || (visualizationType === "interactive" && activeVisualizationScope)))} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}>
+                    <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0 || (isInteractiveDiagram(visualizationType) && activeVisualizationScope)))} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}>
                       <ArrowUp size={17} />
                     </button>
                   ))}
@@ -1361,7 +1361,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       <Square size={15} fill="currentColor" />
                     </button>
                   ) : (
-                    <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0 || (visualizationType === "interactive" && activeVisualizationScope)))} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
+                    <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0 || (isInteractiveDiagram(visualizationType) && activeVisualizationScope)))} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
                       <ArrowUp size={17} />
                     </button>
                   )}
