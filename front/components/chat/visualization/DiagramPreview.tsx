@@ -18,7 +18,7 @@ function Dot({ x, y, color = blue }: { x: number; y: number; color?: string }) {
 }
 
 // Fixed, local examples: no model requests or Mermaid runtime needed in the picker.
-const examples: Record<DiagramType, ReactNode> = {
+const examples: Record<Exclude<DiagramType, "interactive">, ReactNode> = {
   auto: <>
     <Line d="M 100 45 V 57 H 38 V 68 M 100 57 V 68 M 100 57 H 162 V 68" />
     <Box x={66} y={17} w={68} label="你的问题" />
@@ -89,5 +89,5 @@ const examples: Record<DiagramType, ReactNode> = {
 };
 
 export function DiagramPreview({ type }: { type: DiagramType }) {
-  return <svg viewBox="0 0 200 120" aria-hidden="true" focusable="false" className="mb-3 h-[96px] w-full rounded-lg bg-slate-50 sm:h-[112px]" style={{ fontFamily: "inherit" }}>{examples[type]}</svg>;
+  return <svg viewBox="0 0 200 120" aria-hidden="true" focusable="false" className="mb-3 h-[96px] w-full rounded-lg bg-slate-50 sm:h-[112px]" style={{ fontFamily: "inherit" }}>{examples[type === "interactive" ? "architecture" : type]}</svg>;
 }

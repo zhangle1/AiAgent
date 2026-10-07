@@ -67,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 正式交互架构图通过 `aiagent-architecture` fenced JSON 与普通聊天消息一起持久化，使用 `chat-architecture.ts` 投影和校验后由 React/SVG 渲染，不执行模型 HTML、不写 public、不增加后端渲染服务。限制 version 1、1–40 个节点、100 条边、100000 字符及字段长度；校验唯一 ID 和边引用。来源为模型标注，不能当作系统验证结论。代码分析范围复用 tree 接口选择仓库相对路径，随消息组成提示词；会话/项目切换清空范围，重试复用已存请求。路径选择和只读提示不是新的权限隔离，实际读取沿用现有项目与仓库授权。正式画布与 Archify 固定示例独立。
+
 - Archify 试验入口仅加载 `front/public/archify/` 的固定公开示例。iframe 使用 `allow-scripts allow-downloads`，不授予同源访问；CSP 禁止联网。不可把用户资料或任意生成 HTML 放入公开目录。更新使用固定上游版本和 `front/scripts/build-archify-demo.mjs`，保留许可证；AI 生成接入需另行设计数据校验与产物权限。
 
 - 聊天打包先通过 `ChatPackageDialog` 复用代码库 tree 接口浏览相对路径，只读取目录元数据；选择单个解决方案/工程/JSON 和额外要求后填入聊天，不直接执行命令。切换项目关闭弹窗，异步目录响应在离开后失效；目标路径仅作为提示数据，模型必须重新验证目标存在、根目录边界和构建用途，不得静默换用其他入口。

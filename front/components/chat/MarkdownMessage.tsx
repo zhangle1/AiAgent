@@ -6,6 +6,7 @@ import { packageDownloadFromHref } from "@/lib/chat-packaging";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { resolveProjectCodeFileReference } from "@/lib/code-repository-api";
+import { ArchitectureDiagram, architectureSourceFromPre } from "@/components/chat/visualization/ArchitectureDiagram";
 import { MermaidDiagram, mermaidSourceFromPre } from "@/components/chat/MermaidDiagram";
 
 type MarkdownMessageProps = {
@@ -77,6 +78,8 @@ function CodeBlock({ children, ...props }: { children: ReactNode } & React.HTMLA
 
 // Stable identity keeps diagrams mounted while the surrounding message updates.
 function MarkdownPre({ children, ...props }: { children?: ReactNode }) {
+  const architecture = architectureSourceFromPre(children);
+  if (architecture !== null) return <ArchitectureDiagram source={architecture} />;
   const chart = mermaidSourceFromPre(children);
   return chart ? <MermaidDiagram chart={chart} /> : <CodeBlock {...domProps(props)}>{children}</CodeBlock>;
 }

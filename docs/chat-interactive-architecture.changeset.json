@@ -1,0 +1,76 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "聊天交互架构图与代码分析范围",
+  "base_commit": "75b5ea34099c94150853e91685ca0d3cddc331f2",
+  "platform_change_set_id": null,
+  "note": "Local review manifest, not server-side approval. No authenticated project context supplied. No commit or push performed. Production viewer is React/SVG, not dynamic Archify CLI.",
+  "checks": {
+    "typescript": "passed: tsc --noEmit --incremental false",
+    "regressions": "15 passed",
+    "browser": "passed: actual MarkdownMessage/viewer/picker, mocked directory API, graph interactions, JSON/SVG/PNG downloads, invalid data, mobile dialog, no external requests",
+    "whitespace": "git diff --check passed",
+    "live_model": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "fc4162ef2605879caf58aac770a20deec37d18f9c8c138980ea0f5b8f04f6ef8"
+    },
+    {
+      "path": "README.md",
+      "sha256": "f1ccc85cc4c944eed1d81aff670b2b402ed5094417bf02c6e8418cdc785ba2b9"
+    },
+    {
+      "path": "docs/archify-local-demo.md",
+      "sha256": "32bd6c597c10bbb8bdcec52b3fea3723b66d02eeeb0cdedb2b8192567a676a76"
+    },
+    {
+      "path": "docs/chat-interactive-architecture.md",
+      "sha256": "8c1aaac8aa050b7f5faab29b5831eb58ce39bc9a098c6c15cbb4088e46b8c61d"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "5a7ca8e4d32309a29a2d492d206822ab623b414c0e6ccc685410dd4ac7f942a6"
+    },
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "f7915330209b2007dc13124047687bf5e938efdcf10e254807d75f7204ce67aa"
+    },
+    {
+      "path": "front/components/chat/visualization/ArchitectureDiagram.tsx",
+      "sha256": "d2502cbc88ec7d4017531ba3ccfb13051108098bf360995bf17289717109bdf2"
+    },
+    {
+      "path": "front/components/chat/visualization/ArchitectureScopePicker.tsx",
+      "sha256": "2f5477ce9f10c6e2681bf0fdcbc448a0aed11dfb2baec9047fea9494ff69d73d"
+    },
+    {
+      "path": "front/components/chat/visualization/DiagramPreview.tsx",
+      "sha256": "07f217f890a4cb92f516f9eb0a7986806507d373d9371eafed95fc2bdd1f83d4"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationDialog.tsx",
+      "sha256": "c94861c3ccec88aee78479f183759bd29fc55a7b7e372f0ca2cdcccc1e3e67c2"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationToolbar.tsx",
+      "sha256": "20b87d7fd92dd8d747da9a4590e79edf0c0c703ea2944a7d9357f8b232d8dc33"
+    },
+    {
+      "path": "front/lib/chat-architecture.ts",
+      "sha256": "7b268a1f3c943ae7109d59a29d2efa78d6d11c7867dc1d59e5957327f89f0b48"
+    },
+    {
+      "path": "front/lib/chat-visualization.ts",
+      "sha256": "acc545bd2aa378ce0e5c2ffcb39b844abc8f5fc8df3f6eb9ed1d497eede99418"
+    },
+    {
+      "path": "front/tests/chat-architecture.browser.mjs",
+      "sha256": "e4a29391dab51ab6796a0685e719d0628fed9a1bcceea848fa99faa792816947"
+    },
+    {
+      "path": "front/tests/chat-architecture.test.mjs",
+      "sha256": "53ee7cf1eb8fdbde17580d7b35bff4a82ad902392269cddb4c47d58331751617"
+    }
+  ]
+}
