@@ -1,0 +1,66 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "Archify local renderer integration demo",
+    "base_commit":  "f78b7ad3334ee477d4d9b41a6356bda2293ea8be",
+    "platform_change_set_id":  null,
+    "note":  "Local review only. No commit or push. Existing draft completed and verified.",
+    "upstream_commit":  "73aaa0696e8f72c232ea710e6fa94fd953f3e773",
+    "checks":  {
+                   "full_authenticated_app_e2e":  "not run",
+                   "browser":  "passed: actual dialog, nodes, reach, path, theme, zoom, SVG/PNG downloads, selection retention, mobile bounds, zero external requests or errors",
+                   "typescript":  "passed",
+                   "renderer_generation":  "passed with pinned clean upstream",
+                   "whitespace":  "passed",
+                   "visualization_regressions":  "5 passed"
+               },
+    "files":  [
+                  {
+                      "sha256":  "d14d208a395738bd62fab45de873539946c461a28c1865dbfd8746756c9fafee",
+                      "path":  "AGENTS.md"
+                  },
+                  {
+                      "sha256":  "aa20e92760f958b976fca5f48ea2d609f68de4b304acb18fe6c0ba09c32a4eab",
+                      "path":  "README.md"
+                  },
+                  {
+                      "sha256":  "af9001bc02b4bc310b2a61db73c9fabe7212c42efd74114b284936fa43c8b3c5",
+                      "path":  "docs/archify-local-demo.md"
+                  },
+                  {
+                      "sha256":  "f07eb50da81ed8cabc43b7fe7b19119e8d2ea0c0edafb05a2aabb3fbff9a6120",
+                      "path":  "front/components/chat/visualization/VisualizationDialog.tsx"
+                  },
+                  {
+                      "sha256":  "ab4b642d5ec81a2b5ef22c5365d9d0c2466f332bd57405ac620d2fca1a8eb64c",
+                      "path":  "front/components/chat/visualization/ArchifyDemo.tsx"
+                  },
+                  {
+                      "sha256":  "2912fe4114d4e0c4dcf828492ebaa0e3b029d7a3a4467cb4b49e7ca7b1b312b5",
+                      "path":  "front/scripts/build-archify-demo.mjs"
+                  },
+                  {
+                      "sha256":  "c02f8594d1ae51590bf60527a9c9dc4aaa426f72505f0e562df7631a19f0cede",
+                      "path":  "front/tests/archify-demo.browser.mjs"
+                  },
+                  {
+                      "sha256":  "63a06ffd9e0e5c11baec7a0f4c0b30bc5ce59f49b4200d6c0a6ed5e8969989c7",
+                      "path":  "front/public/archify/aiagent-demo.architecture.json"
+                  },
+                  {
+                      "sha256":  "2c143a76296fb7a0e0a0de9764807cea33749e45750d6156f5f04331e1bbcaf2",
+                      "path":  "front/public/archify/aiagent-demo.html"
+                  },
+                  {
+                      "sha256":  "c1ab7c666206842a02b35b30770dac0d7a10156ed401c9defc3f02a754d89e90",
+                      "path":  "front/public/archify/JetBrainsMono-OFL.txt"
+                  },
+                  {
+                      "sha256":  "b799ab081703e7821ae5096d2c1abdf14bbdc75e8ea1c4045998c36ed6db9706",
+                      "path":  "front/public/archify/LICENSE.txt"
+                  },
+                  {
+                      "sha256":  "0b7fb59365dc21c93b0f62526d74ee913aeec9ae532c112bc76afa7edcd56e14",
+                      "path":  "front/public/archify/THIRD_PARTY_NOTICES.md"
+                  }
+              ]
+}

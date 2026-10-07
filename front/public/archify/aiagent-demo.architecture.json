@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "AI 工作台 · 交互架构示例", "output": "aiagent-demo.html", "locale": "zh-CN", "quality_profile": "showcase" },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "提问 / 查看结果", "pos": [40, 240], "size": [150, 70] },
+    { "id": "web", "type": "frontend", "label": "聊天界面", "sublabel": "Next.js / React", "pos": [280, 240], "size": [150, 70] },
+    { "id": "api", "type": "backend", "label": "API 服务", "sublabel": ".NET / 权限校验", "pos": [520, 240], "size": [150, 70] },
+    { "id": "agent", "type": "backend", "label": "Agent 执行", "sublabel": "模型调用 / 工具编排", "pos": [760, 240], "size": [150, 70] },
+    { "id": "model", "type": "cloud", "label": "模型服务", "sublabel": "生成 / 推理", "pos": [1000, 240], "size": [150, 70] },
+    { "id": "knowledge", "type": "database", "label": "知识库", "sublabel": "文档 / 检索", "pos": [520, 440], "size": [150, 70] },
+    { "id": "tools", "type": "backend", "label": "项目工具", "sublabel": "读取代码 / 执行任务", "pos": [760, 440], "size": [150, 70] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "AI 工作台（概念示例）", "wraps": ["web", "api", "agent", "knowledge", "tools"] }
+  ],
+  "connections": [
+    { "id": "ask", "from": "user", "to": "web", "label": "提问", "variant": "emphasis" },
+    { "id": "request", "from": "web", "to": "api", "label": "请求", "variant": "emphasis" },
+    { "id": "run", "from": "api", "to": "agent", "label": "执行", "variant": "emphasis" },
+    { "id": "infer", "from": "agent", "to": "model", "label": "推理", "variant": "emphasis" },
+    { "id": "retrieve", "from": "api", "to": "knowledge", "label": "检索", "fromSide": "bottom", "toSide": "top" },
+    { "id": "call", "from": "agent", "to": "tools", "label": "工具调用", "variant": "dashed", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "试试交互", "items": ["点击节点查看关系；使用路径追踪探索调用链", "切换主题，缩放画布，导出 SVG 或 PNG"] },
+    { "dot": "emerald", "title": "示例范围", "items": ["固定概念数据，仅用于验证本地 Archify 渲染效果", "不是当前项目的自动分析结果，尚未接入 AI 生成"] }
+  ]
+}

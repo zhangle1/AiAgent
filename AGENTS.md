@@ -67,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- Archify 试验入口仅加载 `front/public/archify/` 的固定公开示例。iframe 使用 `allow-scripts allow-downloads`，不授予同源访问；CSP 禁止联网。不可把用户资料或任意生成 HTML 放入公开目录。更新使用固定上游版本和 `front/scripts/build-archify-demo.mjs`，保留许可证；AI 生成接入需另行设计数据校验与产物权限。
+
 - 聊天打包入口使用 `front/lib/chat-packaging.ts` 填充普通聊天提示词，由模型判断构建、验证与 ZIP 生成方式。产物统一放在目标仓库 `artifacts/aiagent-packages/` 并配置 Git 忽略；下载复用项目权限及仓库归属校验，仅该目录 ZIP 可作为交付包下载。ZIP 不做文本解析或解压预览。聊天卡片只识别当前项目的相对下载 API 链接，不信任任意外链或本机路径。
 
 - 聊天可视化第一版是发送前的显式文本组合，位于 `front/lib/chat-visualization.ts` 与独立工具栏；只在普通聊天提交时应用，重试直接使用已保存消息，不重复包装或改变 `ChatStreamProvider` 协议。嵌入式编辑器不启用。Mermaid 使用现有 strict 渲染，Markdown 的 pre 组件身份须稳定。此模式的只读描述是模型提示，不是额外权限隔离。
