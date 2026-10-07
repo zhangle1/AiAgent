@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { KnowledgePages } from "./KnowledgePages";
+import { KnowledgeContextTree } from "./KnowledgeContextTree";
 import { KnowledgeTaskQueue, knowledgeTasksChanged } from "./KnowledgeTaskQueue";
 import { OfficeDocumentPreview } from "./OfficeDocumentPreview";
 import { KnowledgeOrganizationEditor } from "./KnowledgeOrganizationEditor";
@@ -94,6 +95,12 @@ const supportedDocumentAccept = [
   ".xls",
   ".xlsx",
   ".pptx",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".bmp",
   ".zip",
   "application/zip",
 ].join(",");
@@ -495,7 +502,7 @@ function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, erro
         </nav>
       </div>
       <PageMessage error={error} notice={notice} />
-      {tab === "knowledge" && <KnowledgePages name={detail.name} onSource={(id) => { setSelectedDocId(id); onTabChange("files"); }} />}
+      {tab === "knowledge" && <><KnowledgeContextTree name={detail.name} /><KnowledgePages name={detail.name} onSource={(id) => { setSelectedDocId(id); onTabChange("files"); }} /></>}
       {tab === "files" && <FilesTab busy={busy} detail={detail} selectedDocument={selectedDocument} onDeleteDocument={onDeleteDocument} onSelect={setSelectedDocId} />}
       {tab === "add" && <AddDocumentsTab busy={busy} documents={detail.documents} onUpload={onUpload} />}
       {tab === "versions" && <IndexVersionsTab busy={busy} detail={detail} versions={versions} onRefresh={onRefresh} onReindex={onReindex} />}

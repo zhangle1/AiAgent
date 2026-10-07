@@ -55,6 +55,8 @@ public sealed class KnowledgeProviderDto
 /// </summary>
 public class KnowledgeBaseDto
 {
+    [JsonPropertyName("root_uri")]
+    public string RootUri { get; set; } = string.Empty;
     [JsonPropertyName("organization")]
     public KnowledgeOrganizationDto Organization { get; set; } = new();
     /// <summary>
@@ -135,6 +137,8 @@ public class KnowledgeBaseDto
 /// </summary>
 public sealed class KnowledgeDocumentDto
 {
+    [JsonPropertyName("uri")]
+    public string Uri { get; set; } = string.Empty;
     [JsonPropertyName("has_artifact")]
     public bool HasArtifact { get; set; }
     /// <summary>
@@ -348,6 +352,23 @@ public sealed class KnowledgeDetailDto : KnowledgeBaseDto
     public List<KnowledgeDocumentDto> Documents { get; set; } = [];
 }
 
+/// <summary>Node in the OpenViking-style knowledge context tree.</summary>
+public sealed class KnowledgeContextNodeDto
+{
+    [JsonPropertyName("id")] public long Id { get; set; }
+    [JsonPropertyName("parent_id")] public long? ParentId { get; set; }
+    [JsonPropertyName("uri")] public string Uri { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("node_type")] public string NodeType { get; set; } = string.Empty;
+    [JsonPropertyName("layer")] public int Layer { get; set; }
+    [JsonPropertyName("source_document_id")] public long? SourceDocumentId { get; set; }
+    [JsonPropertyName("artifact_id")] public long? ArtifactId { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("content_hash")] public string? ContentHash { get; set; }
+    [JsonPropertyName("created_at")] public DateTime CreatedAt { get; set; }
+    [JsonPropertyName("updated_at")] public DateTime? UpdatedAt { get; set; }
+}
+
 /// <summary>
 /// 新建知识库请求。
 /// </summary>
@@ -484,6 +505,10 @@ public sealed class KnowledgeProcessRequest
     /// <summary>Optional configured model identifier.</summary>
     [JsonPropertyName("model_id")]
     public string? ModelId { get; set; }
+
+    /// <summary>Optional vision-language model used for image and scanned-document parsing.</summary>
+    [JsonPropertyName("vlm_model_id")]
+    public string? VlmModelId { get; set; }
 
     /// <summary>Optional Codex reasoning effort.</summary>
     [JsonPropertyName("reasoning_effort")]

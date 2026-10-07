@@ -18,6 +18,7 @@ public sealed class KnowledgeCompilerSettingsDto
     [JsonPropertyName("retrieval_mode")] public string RetrievalMode { get; set; } = "wiki";
     [JsonPropertyName("generator")] public string Generator { get; set; } = "llm_api";
     [JsonPropertyName("model_id")] public string? ModelId { get; set; }
+    [JsonPropertyName("vlm_model_id")] public string? VlmModelId { get; set; }
     [JsonPropertyName("reasoning_effort")] public string? ReasoningEffort { get; set; }
     [JsonPropertyName("max_steps")] public int MaxSteps { get; set; } = 48;
     [JsonPropertyName("timeout_minutes")] public int TimeoutMinutes { get; set; } = 20;

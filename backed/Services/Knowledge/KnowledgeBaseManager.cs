@@ -92,21 +92,23 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     private const long MaxArchiveExpandedBytes = 100L * 1024 * 1024;
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".doc", ".xls", ".docx", ".xlsx", ".pptx"
+        ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".doc", ".xls", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"
     };
     private static readonly HashSet<string> LegacyOfficeExtensions = new(StringComparer.OrdinalIgnoreCase) { ".doc", ".xls", ".ppt" };
     private readonly ISqlSugarClient _db;
     private readonly IKnowledgePathService _paths;
+    private readonly KnowledgeContextService? _context;
     private readonly ILogger<KnowledgeBaseManager> _logger;
 
     /// <summary>
     /// 初始化知识库领域管理器，负责知识库、文档、版本和任务的数据库读写。
     /// </summary>
-    public KnowledgeBaseManager(ISqlSugarClient db, IKnowledgePathService paths, ILogger<KnowledgeBaseManager> logger)
+    public KnowledgeBaseManager(ISqlSugarClient db, IKnowledgePathService paths, ILogger<KnowledgeBaseManager> logger, KnowledgeContextService? context = null)
     {
         _db = db;
         _paths = paths;
         _logger = logger;
+        _context = context;
     }
 
     /// <summary>
@@ -132,6 +134,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         var dto = new KnowledgeDetailDto
         {
             Id = kb.Id,
+            RootUri = KnowledgeContextUri.Root(kb.Name),
             Name = kb.Name,
             DisplayName = kb.DisplayName,
             Description = kb.Description,
@@ -148,7 +151,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                 .Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted)
                 .OrderByDescending(x => x.CreatedAt)
                 .ToList()
-                .Select(ToDocumentDto)
+                .Select(document => ToDocumentDto(document, kb.Name))
                 .ToList()
         };
 
@@ -184,6 +187,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         };
 
         kb.Id = _db.Insertable(kb).ExecuteReturnBigIdentity();
+        _context?.EnsureKnowledgeBaseRoot(kb);
         return kb;
     }
 
@@ -214,6 +218,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                 UpdatedAt = DateTime.UtcNow
             };
             document.Id = _db.Insertable(document).ExecuteReturnBigIdentity();
+            _context?.EnsureDocumentNode(kb, document);
             _logger.LogInformation("Knowledge document row inserted. Kb={KbName}, File={FileName}, DocumentId={DocumentId}, ElapsedMs={ElapsedMs}", kb.Name, file.FileName, document.Id, fileStopwatch.ElapsedMilliseconds);
             result.Add(document);
         }
@@ -571,6 +576,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         return new KnowledgeBaseDto
         {
             Id = kb.Id,
+            RootUri = KnowledgeContextUri.Root(kb.Name),
             Name = kb.Name,
             DisplayName = kb.DisplayName,
             Description = kb.Description,
@@ -586,11 +592,12 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         };
     }
 
-    private static KnowledgeDocumentDto ToDocumentDto(AiKnowledgeDocument document)
+    private static KnowledgeDocumentDto ToDocumentDto(AiKnowledgeDocument document, string knowledgeBaseName)
     {
         return new KnowledgeDocumentDto
         {
             Id = document.Id,
+            Uri = KnowledgeContextUri.Document(document, knowledgeBaseName),
             FileName = document.FileName,
             OriginalFileName = document.OriginalFileName,
             FileSize = document.FileSize,

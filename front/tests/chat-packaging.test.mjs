@@ -9,16 +9,37 @@ new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText)(module.exports);
 const { buildPackagePrompt, packageDownloadFromHref } = module.exports;
-const { normalizePackageTarget } = module.exports;
+const { normalizePackageTarget, normalizePackageTargets, suggestPackageTargets } = module.exports;
 
 test("selected solution scopes packaging and preserves extra requirements", () => {
   const prompt = buildPackagePrompt(7, "repo name", { targetPath: "src\\生产 服务.slnx", instructions: "  Release，win-x64\n附部署说明  " });
   assert.ok(prompt.includes('"src/生产 服务.slnx"'));
-  assert.ok(prompt.includes("仅构建这个入口及其必要依赖"));
-  assert.ok(prompt.includes("不要自行换用其他入口"));
+  assert.ok(prompt.includes("仅围绕这些入口及其必要依赖构建"));
+  assert.ok(prompt.includes("不要静默改用其他入口"));
   assert.ok(prompt.includes("Release，win-x64\n附部署说明"));
   assert.ok(buildPackagePrompt(7, "repo", { targetPath: "web/package.json" }).includes("先确认其构建用途"));
   assert.ok(!buildPackagePrompt(7, "repo").includes("本次唯一打包入口"));
+});
+
+test("AI mode accepts multiple candidate entries without treating them as final truth", () => {
+  const prompt = buildPackagePrompt(7, "repo", { targetPaths: ["A.sln", "web/package.json", "A.sln"], automatic: true });
+  assert.deepEqual(normalizePackageTargets(["A.sln", "web\\package.json", "A.sln"]), ["A.sln", "web/package.json"]);
+  assert.match(prompt, /候选入口/);
+  assert.match(prompt, /"A\.sln"/);
+  assert.match(prompt, /"web\/package\.json"/);
+  assert.match(prompt, /自主决定使用一个或多个入口/);
+  assert.doesNotMatch(prompt, /不要改选其他解决方案/);
+});
+
+test("repository probe ranks the saved target and build entries first", () => {
+  assert.deepEqual(suggestPackageTargets([
+    "appsettings.json",
+    "Web/Web.csproj",
+    "Solution.sln",
+    "web/package.json",
+    "Solution.sln",
+    "Properties/PublishProfiles/FolderProfile.pubxml",
+  ], "Web/Web.csproj"), ["Web/Web.csproj", "Solution.sln", "web/package.json", "appsettings.json"]);
 });
 
 test("packaging rejects absolute paths, traversal and unsupported targets", () => {

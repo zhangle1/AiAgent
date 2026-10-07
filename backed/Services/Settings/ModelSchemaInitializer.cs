@@ -52,6 +52,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiKnowledgeIndexVersion),
             typeof(AiKnowledgeChunk),
             typeof(AiKnowledgeJob),
+            typeof(AiKnowledgeContextNode),
             typeof(AiCodeProject),
             typeof(AiProjectMarkdownDocument),
             typeof(AiCodeRepository),
@@ -378,6 +379,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_chunk_Ve
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_job_Kb_Status' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_job'))
     CREATE INDEX IX_ai_knowledge_job_Kb_Status ON dbo.ai_knowledge_job(KnowledgeBaseId, Status, CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_knowledge_context_node_Kb_Uri' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_context_node'))
+    CREATE UNIQUE INDEX UX_ai_knowledge_context_node_Kb_Uri ON dbo.ai_knowledge_context_node(KnowledgeBaseId, Uri);
 """);
         ExecuteIndexSql("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_repository_Name' AND object_id = OBJECT_ID(N'dbo.ai_code_repository'))

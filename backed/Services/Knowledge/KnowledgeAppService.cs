@@ -22,6 +22,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     private readonly IKnowledgePathService? _paths;
     private readonly KnowledgeCompilationWorker _compiler;
     private readonly KnowledgeChainDiagnosticsService? _chainDiagnostics;
+    private readonly KnowledgeContextService? _context;
     private readonly IKnowledgeBaseManager _manager;
     private readonly IKnowledgeProviderConfigService _providerConfigService;
     private readonly IKnowledgeProgressHub _progressHub;
@@ -50,7 +51,8 @@ public sealed class KnowledgeAppService : IDynamicApiController
         ILogger<KnowledgeAppService> logger,
         KnowledgeChainDiagnosticsService? chainDiagnostics = null,
         KnowledgeSourceSearchService? sourceSearch = null,
-        IKnowledgePathService? paths = null)
+        IKnowledgePathService? paths = null,
+        KnowledgeContextService? context = null)
     {
         _db = db;
         _compilerSettings = compilerSettings;
@@ -68,6 +70,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         _ragService = ragService;
         _logger = logger;
         _chainDiagnostics = chainDiagnostics;
+        _context = context;
     }
 
     /// <summary>
@@ -175,6 +178,17 @@ public sealed class KnowledgeAppService : IDynamicApiController
                 ]
             };
         }
+    }
+
+    [HttpGet("{kbName}/context-tree")]
+    public List<KnowledgeContextNodeDto> GetContextTree([FromRoute] string kbName)
+    {
+        var context = _context ?? throw new InvalidOperationException("Knowledge context tree is unavailable.");
+        var detail = _manager.GetKnowledgeBase(kbName);
+        var knowledgeBase = _db.Queryable<AiKnowledgeBase>()
+            .Where(x => x.Id == detail.Id && !x.IsDeleted).First()
+            ?? throw new InvalidOperationException("Knowledge base does not exist.");
+        return context.ListTree(knowledgeBase);
     }
 
     [HttpGet("{kbName}/pages")]
@@ -561,6 +575,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         return new KnowledgeBaseDto
         {
             Id = kb.Id,
+            RootUri = KnowledgeContextUri.Root(kb.Name),
             Name = kb.Name,
             DisplayName = kb.DisplayName,
             Description = kb.Description,

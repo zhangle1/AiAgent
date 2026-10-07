@@ -267,7 +267,9 @@ public sealed class LlmChatClient : ILlmChatClient
         var wire = new Dictionary<string, object?>
         {
             ["role"] = message.Role,
-            ["content"] = message.ToolCalls.Count > 0 && string.IsNullOrEmpty(message.Content) ? null : message.Content
+            ["content"] = message.ContentParts.Count > 0
+                ? message.ContentParts.Select(ToWireContentPart).ToArray()
+                : message.ToolCalls.Count > 0 && string.IsNullOrEmpty(message.Content) ? null : message.Content
         };
         if (!string.IsNullOrWhiteSpace(message.ToolCallId)) wire["tool_call_id"] = message.ToolCallId;
         if (message.ToolCalls.Count > 0)
@@ -280,6 +282,16 @@ public sealed class LlmChatClient : ILlmChatClient
             }).ToArray();
         }
         return wire;
+    }
+
+    private static object ToWireContentPart(LlmContentPart part)
+    {
+        if (string.Equals(part.Type, "image_url", StringComparison.OrdinalIgnoreCase))
+        {
+            return new { type = "image_url", image_url = new { url = part.ImageUrl } };
+        }
+
+        return new { type = "text", text = part.Text ?? string.Empty };
     }
 
     /// <summary>
@@ -557,11 +569,25 @@ public sealed class LlmMessage
     /// </summary>
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>Optional OpenAI-compatible multimodal content parts for VLM requests.</summary>
+    public List<LlmContentPart> ContentParts { get; set; } = [];
+
     /// <summary>Assistant tool calls to be paired with following tool-result messages.</summary>
     public List<LlmToolCall> ToolCalls { get; set; } = [];
 
     /// <summary>Required when Role is tool; references the provider call id.</summary>
     public string? ToolCallId { get; set; }
+}
+
+/// <summary>A text or image part in a VLM message.</summary>
+public sealed class LlmContentPart
+{
+    public string Type { get; set; } = "text";
+    public string? Text { get; set; }
+    public string? ImageUrl { get; set; }
+
+    public static LlmContentPart TextPart(string text) => new() { Type = "text", Text = text };
+    public static LlmContentPart ImagePart(string imageUrl) => new() { Type = "image_url", ImageUrl = imageUrl };
 }
 
 /// <summary>Model-window data that is safe to use for runtime budgeting.</summary>

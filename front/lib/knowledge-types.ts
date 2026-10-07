@@ -23,6 +23,7 @@ export type KnowledgeJob = {
 };
 
 export type KnowledgeBase = {
+  root_uri?: string;
   organization?: KnowledgeOrganization;
   id: number;
   name: string;
@@ -39,6 +40,7 @@ export type KnowledgeBase = {
 };
 
 export type KnowledgeDocument = {
+  uri?: string;
   id: number;
   has_artifact?: boolean;
   file_name: string;
@@ -62,9 +64,24 @@ export type KnowledgeCompilerSettings = {
   retrieval_mode: "wiki" | "rag";
   generator: "codex" | "llm_api";
   model_id?: string | null;
+  vlm_model_id?: string | null;
   reasoning_effort?: string | null;
   max_steps: number;
   timeout_minutes: number;
+};
+export type KnowledgeContextNode = {
+  id: number;
+  parent_id?: number | null;
+  uri: string;
+  name: string;
+  node_type: "directory" | "document" | "artifact" | string;
+  layer: 0 | 1 | 2 | number;
+  source_document_id?: number | null;
+  artifact_id?: number | null;
+  status: string;
+  content_hash?: string | null;
+  created_at: string;
+  updated_at?: string | null;
 };
 export type KnowledgeCompilationJob = {
   knowledge_base_name: string;

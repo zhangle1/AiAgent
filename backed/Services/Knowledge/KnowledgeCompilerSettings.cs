@@ -30,6 +30,6 @@ public sealed class KnowledgeCompilerSettings(ISqlSugarClient database)
         if (config.RetrievalMode is not ("wiki" or "rag")) throw new ArgumentException("Retrieval mode must be wiki or rag.");
         if (config.Generator is not ("codex" or "llm_api")) throw new ArgumentException("Generator must be codex or llm_api.");
         if (config.MaxSteps is < 8 or > 96 || config.TimeoutMinutes is < 1 or > 60) throw new ArgumentException("Invalid compiler action budget or timeout.");
-        if (config.ModelId?.Length > 256 || config.ReasoningEffort?.Length > 32) throw new ArgumentException("Model setting is too long.");
+        if (config.ModelId?.Length > 256 || config.VlmModelId?.Length > 256 || config.ReasoningEffort?.Length > 32) throw new ArgumentException("Model setting is too long.");
     }
 }

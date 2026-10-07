@@ -121,7 +121,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
                         throw new InvalidOperationException("The source was deleted before compilation.");
                 await ingestion.ProcessAsync(work.Base, work.Document, new KnowledgeProcessRequest {
-                    Generator = work.Config.Generator, ModelId = work.Config.ModelId, ReasoningEffort = work.Config.ReasoningEffort
+                    Generator = work.Config.Generator, ModelId = work.Config.ModelId, VlmModelId = work.Config.VlmModelId, ReasoningEffort = work.Config.ReasoningEffort
                 }, execution.Token, work.Config, (value, message) => {
                     stage = message;
                     UpdateProgress(work.JobId, value, message);

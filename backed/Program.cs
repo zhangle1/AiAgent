@@ -121,6 +121,7 @@ builder.Services.AddSingleton<IKnowledgeIngestionService, KnowledgeIngestionServ
 builder.Services.AddSingleton<KnowledgeOfficePreviewService>();
 builder.Services.AddSingleton<KnowledgeCompilerSettings>();
 builder.Services.AddSingleton<KnowledgeWorkspaceService>();
+builder.Services.AddSingleton<KnowledgeContextService>();
 builder.Services.AddSingleton<KnowledgeWikiRetrievalService>();
 builder.Services.AddSingleton<KnowledgeSourceSearchService>();
 builder.Services.AddSingleton<KnowledgeChainDiagnosticsService>();
