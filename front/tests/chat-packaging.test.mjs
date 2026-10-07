@@ -9,6 +9,24 @@ new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText)(module.exports);
 const { buildPackagePrompt, packageDownloadFromHref } = module.exports;
+const { normalizePackageTarget } = module.exports;
+
+test("selected solution scopes packaging and preserves extra requirements", () => {
+  const prompt = buildPackagePrompt(7, "repo name", { targetPath: "src\\生产 服务.slnx", instructions: "  Release，win-x64\n附部署说明  " });
+  assert.ok(prompt.includes('"src/生产 服务.slnx"'));
+  assert.ok(prompt.includes("仅构建这个入口及其必要依赖"));
+  assert.ok(prompt.includes("不要自行换用其他入口"));
+  assert.ok(prompt.includes("Release，win-x64\n附部署说明"));
+  assert.ok(buildPackagePrompt(7, "repo", { targetPath: "web/package.json" }).includes("先确认其构建用途"));
+  assert.ok(!buildPackagePrompt(7, "repo").includes("本次唯一打包入口"));
+});
+
+test("packaging rejects absolute paths, traversal and unsupported targets", () => {
+  for (const path of ["/a.sln", "C:\\a.sln", "../a.sln", "a/../b.json", "a//b.json", "a\n.json", "a.txt", "\\\\host\\a.json"]) {
+    assert.throws(() => normalizePackageTarget(path), undefined, path);
+  }
+  for (const path of ["App.sln", "App.slnx", "a/A.csproj", "A.fsproj", "A.vbproj", "web/package.json"]) assert.equal(normalizePackageTarget(path), path);
+});
 const url = (path, project = 7) => `/api/v1/code-repositories/projects/${project}/markdown-documents/download?${new URLSearchParams({ repository_name: "repo name", path })}`;
 
 test("Markdown renderer preserves package URLs and emits a download card", () => {

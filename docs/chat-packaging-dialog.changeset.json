@@ -1,0 +1,48 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Packaging dialog with repository-relative solution and JSON selection",
+  "base_commit": "ab2cac86f0e0381d649010a8355cb887385faa9f",
+  "platform_change_set_id": null,
+  "note": "Local review manifest only; not a platform approval or delivery. No commit or push performed.",
+  "checks": {
+    "typescript": "passed: npx tsc --noEmit",
+    "frontend_regressions": "16 passed",
+    "backend_build": "passed: 0 errors, 15 existing warnings",
+    "browser": "passed with fixture API: toolbar, nested solution/JSON selection, requirements, cancel, retry, project switch, mobile, automatic mode, Escape; GET only; no page errors",
+    "live_packaging": "not run; no user repository builds executed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "a34e11f56b6eda9ab57649fbd8e1a92555d6cc20c08fba20cc768b85fef01d27"
+    },
+    {
+      "path": "README.md",
+      "sha256": "ec9b6f697c17a71b7784557e191005f8bee99cb96d20282b75f6dbb2a1028957"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryIndexService.cs",
+      "sha256": "08c1827abd421e00c8247837d2346053c71391d973641b277e38294aa88b3421"
+    },
+    {
+      "path": "front/components/chat/ChatRuntimeToolbar.tsx",
+      "sha256": "d7ddbfaed35b91ef5329c07fc3c0e160d4c2d23a82bdbc95037648adfba835ee"
+    },
+    {
+      "path": "front/components/chat/ChatPackageDialog.tsx",
+      "sha256": "0f3e97589e075ce77f8622c5ff9ba6c141b226ff63bfbb442dc406f322a850cd"
+    },
+    {
+      "path": "front/lib/chat-packaging.ts",
+      "sha256": "93aa621269bb7a476acd7274aca6398c494e92fbce4dd8246835e303848b2ff4"
+    },
+    {
+      "path": "front/tests/chat-packaging.test.mjs",
+      "sha256": "50337344c434eef590f3e98d2cfb3d9953fe2ff600af913e736c97b348ef8633"
+    },
+    {
+      "path": "front/tests/chat-packaging.browser.mjs",
+      "sha256": "319155136ff16424e4aada1022bbd79f8a6e84c3e4cf460d0ef3192c22661c7d"
+    }
+  ]
+}

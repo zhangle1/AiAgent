@@ -35,6 +35,9 @@ public sealed class CodeRepositoryIndexService : ICodeRepositoryIndexService
     private static readonly HashSet<string> IndexedExtensions = new(StringComparer.OrdinalIgnoreCase)
     { ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".java", ".go", ".json", ".md", ".yml", ".yaml", ".csproj", ".sln" };
 
+    private static readonly HashSet<string> AdditionalBrowseExtensions = new(StringComparer.OrdinalIgnoreCase)
+    { ".slnx", ".fsproj", ".vbproj" };
+
     private static readonly Regex SymbolPattern = new(@"\b(?:class|interface|struct|enum|record|namespace|function|def|fn|public|private|protected|internal|export)\s+([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
     private readonly ISqlSugarClient _db;
     private readonly ICodeRepositoryIndexProgressStore _progressStore;
@@ -50,7 +53,7 @@ public sealed class CodeRepositoryIndexService : ICodeRepositoryIndexService
         {
             path = Path.GetRelativePath(repository.RootPath, directory),
             directories = Directory.EnumerateDirectories(directory).Where(path => !IgnoredDirectories.Contains(Path.GetFileName(path))).OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase).Take(300).Select(path => new { name = Path.GetFileName(path), path = Path.GetRelativePath(repository.RootPath, path) }),
-            files = Directory.EnumerateFiles(directory).Where(path => IndexedExtensions.Contains(Path.GetExtension(path))).OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase).Take(500).Select(path => new { name = Path.GetFileName(path), path = Path.GetRelativePath(repository.RootPath, path), extension = Path.GetExtension(path), size = new FileInfo(path).Length })
+            files = Directory.EnumerateFiles(directory).Where(path => IndexedExtensions.Contains(Path.GetExtension(path)) || AdditionalBrowseExtensions.Contains(Path.GetExtension(path))).OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase).Take(500).Select(path => new { name = Path.GetFileName(path), path = Path.GetRelativePath(repository.RootPath, path), extension = Path.GetExtension(path), size = new FileInfo(path).Length })
         };
     }
 

@@ -6,13 +6,14 @@ import { ChevronDown, ChevronRight, Download, File, FileDiff, FilePenLine, Folde
 import { getCodeProjectRuntime, startCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
 import { discardCodeRepositoryChangesAndPull, discardProjectGitChangesAndPull, getCodeRepositoryGitDiff, getProjectGitStatus, pushCodeRepositoryGit, pushProjectGit, readChatConfiguredCodeFile, writeChatConfiguredCodeFile } from "@/lib/code-repository-api";
 import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus, ProjectGitBatchOperationResult, ProjectGitRepositoryStatus, ProjectGitStatus } from "@/lib/code-repository-types";
-import { buildPackagePrompt } from "@/lib/chat-packaging";
+import { ChatPackageDialog } from "@/components/chat/ChatPackageDialog";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
 type ProjectGitBatchAction = "discard-and-pull" | "commit-and-push";
 
 export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel, onOpenRuntimePanel, onPackagePrompt }: { project: CodeProject | null; rightPanelOpen: boolean; onToggleRightPanel: () => void; onOpenRuntimePanel: () => void; onPackagePrompt: (prompt: string) => void }) {
+  const [packageTarget, setPackageTarget] = useState<{ projectId: number; repository: CodeRepository } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [runtime, setRuntime] = useState<CodeProjectRuntime | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,6 +32,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
   const refreshSequenceRef = useRef(0);
 
   useEffect(() => {
+    setPackageTarget(null);
     if (!project) {
       refreshSequenceRef.current += 1;
       setProjectGitStatus(null);
@@ -155,7 +157,9 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
 
   function packageRepository(repositoryName: string) {
     if (!project) return;
-    onPackagePrompt(buildPackagePrompt(project.id, repositoryName));
+    const repository = project.repositories.find((item) => item.name === repositoryName);
+    if (!repository) return;
+    setPackageTarget({ projectId: project.id, repository });
     setMenuOpen(false);
   }
 
@@ -259,6 +263,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
       </div>
       <button type="button" onClick={onToggleRightPanel} className={`hidden h-8 w-8 place-items-center rounded-lg border shadow-sm lg:grid ${rightPanelOpen ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="打开或关闭右侧面板">{rightPanelOpen ? <PanelLeftOpen size={15}/> : <PanelRightOpen size={15}/>}</button>
     </div>
+    {packageTarget && packageTarget.projectId === project?.id && <ChatPackageDialog key={`${packageTarget.projectId}:${packageTarget.repository.id}`} projectId={packageTarget.projectId} repository={packageTarget.repository} onClose={() => setPackageTarget(null)} onApply={(prompt) => { onPackagePrompt(prompt); setPackageTarget(null); }} />}
     {configDraft && <ChatConfigurationEditor draft={configDraft} busy={busy} onChange={setConfigDraft} onClose={() => !busy && setConfigDraft(null)} onSave={() => void saveConfiguration()} />}
     {pushTarget && <CommitPushDialog repository={pushTarget} busy={busy} error={error} onClose={() => !busy && setPushTarget(null)} onSubmit={(message) => void pushRepository(pushTarget, message)} />}
     {batchAction && project && <ProjectGitBatchDialog action={batchAction} rows={visibleGitRows} busy={busy} error={error} result={batchResult} onClose={() => !busy && setBatchAction(null)} onSubmit={(message) => void runProjectGitBatch(batchAction, message)} />}
