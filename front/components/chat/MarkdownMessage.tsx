@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { isValidElement, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Check, Copy, Download, PackageOpen } from "lucide-react";
 import { packageDownloadFromHref } from "@/lib/chat-packaging";
 import { runtimeTestFromHref } from "@/lib/chat-runtime";
@@ -33,25 +33,40 @@ function domProps(props: Record<string, any>) {
 function readChildrenText(children: ReactNode): string {
   if (typeof children === "string" || typeof children === "number") return String(children);
   if (Array.isArray(children)) return children.map(readChildrenText).join("");
+  if (isValidElement<{ children?: ReactNode }>(children)) return readChildrenText(children.props.children);
   return "";
 }
 
 function CodeBlock({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLPreElement>) {
   const [copied, setCopied] = useState(false);
-  const codeText = readChildrenText(children).replace(/^\n/, "").replace(/\n$/, "");
+  const [copyFailed, setCopyFailed] = useState(false);
+  const codeText = readChildrenText(children).replace(/\n$/, "");
 
   const copyCode = async () => {
+    setCopied(false);
+    setCopyFailed(false);
     try {
-      await navigator.clipboard.writeText(codeText);
+      try {
+        await navigator.clipboard.writeText(codeText);
+      } catch {
+        const textarea = document.createElement("textarea");
+        const activeElement = document.activeElement;
+        textarea.value = codeText;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        try {
+          textarea.focus();
+          textarea.select();
+          if (!document.execCommand("copy")) throw new Error("Copy failed");
+        } finally {
+          textarea.remove();
+          if (activeElement instanceof HTMLElement) activeElement.focus({ preventScroll: true });
+        }
+      }
     } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = codeText;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
+      setCopyFailed(true);
+      return;
     }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
@@ -68,11 +83,12 @@ function CodeBlock({ children, ...props }: { children: ReactNode } & React.HTMLA
         onClick={() => void copyCode()}
         className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-sm transition hover:bg-zinc-700 hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         aria-label="复制代码"
-        title="复制代码"
+        title={copyFailed ? "复制失败，请选择代码后手动复制" : "复制代码"}
       >
         {copied ? <Check size={13} /> : <Copy size={13} />}
-        {copied ? "已复制" : "复制"}
+        {copied ? "已复制" : copyFailed ? "复制失败" : "复制"}
       </button>
+      <span role="status" className="sr-only">{copyFailed ? "复制失败，请选择代码后手动复制" : copied ? "已复制代码" : ""}</span>
     </div>
   );
 }

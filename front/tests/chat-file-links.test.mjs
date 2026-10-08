@@ -13,6 +13,7 @@ new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-
 }).outputText)(packaging.exports);
 new Function("require", "module", "exports", source)((name) => {
   if (name === "@/lib/chat-packaging") return packaging.exports;
+  if (name === "@/lib/chat-runtime") return { runtimeTestFromHref: () => null };
   if (name === "react/jsx-runtime") return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
   if (name === "react-markdown") return { defaultUrlTransform: (url) => /^[a-z]:/i.test(url) ? "" : url };
   return {};

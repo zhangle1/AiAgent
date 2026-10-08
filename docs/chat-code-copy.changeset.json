@@ -1,0 +1,27 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Fix chat code block clipboard content and failure feedback",
+  "base_commit": "f42ef76020cf0f7da69c33c9d7d23b16977cf551",
+  "platform_change_set_id": null,
+  "note": "Local review manifest only; no authenticated platform changeset context supplied. No commit or push performed.",
+  "checks": {
+    "typescript": "passed",
+    "frontend_regressions": "16 passed; clipboard API and DOM mocked",
+    "whitespace": "passed",
+    "browser": "not run"
+  },
+  "files": [
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "384df6bdf01a66c2742a1ad3e7c371c81df04f4af712e3016af20126fd4e73bf"
+    },
+    {
+      "path": "front/tests/chat-code-copy.test.mjs",
+      "sha256": "1cf9271b145b1328129f8c0c8c005a5bece66e8c3cbfc7512f58aff71d732370"
+    },
+    {
+      "path": "front/tests/chat-file-links.test.mjs",
+      "sha256": "ce393481c3cc638d9f6c6cd86e37fccaf78c3523fd1a168ce27425397bef8d7d"
+    }
+  ]
+}
