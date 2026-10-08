@@ -1,0 +1,69 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Chat document cards with project preview and original download",
+  "base_commit": "f5933511a4c3b6b7b8884f9045a4e1b3f6e40bca",
+  "platform_change_set_id": null,
+  "note": "Local review snapshot only. No authenticated platform changeset tool is available. No commit, push or deployment performed. Existing untracked backed/doc is excluded.",
+  "checks": {
+    "typescript": "passed",
+    "frontend_regressions": "39 passed",
+    "backend_document_tests": "11 passed; existing unrelated compiler warnings",
+    "browser": "passed: isolated Chromium fixture with mocked project API; preview callback, original filename and bytes, error feedback, code fences, external links, mobile width",
+    "whitespace": "passed",
+    "production_session": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "8f069d23038ffe8ed73f8d0d38809b32b6266d5fd430202ccc42f46c1b74b33f"
+    },
+    {
+      "path": "README.md",
+      "sha256": "a9c19d10651d3c87e7adaab6d83d987101ce0cabf6ce7e07754a9f266f7425bb"
+    },
+    {
+      "path": "backed.tests/ProjectPackageDocumentTests.cs",
+      "sha256": "339ecbceab7ea313de6753cffdc8e6b763855b75286db170de561c78be388700"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryManager.cs",
+      "sha256": "df37f282cd2c0bd983e5b47563e4f07f872753e0cfe9d3eff55c3b1fc4ba888c"
+    },
+    {
+      "path": "front/components/chat/ChatInspectorPanel.tsx",
+      "sha256": "5a83439c6bf9547f75a0bcf2904d0ee74c9395d2ca9e282c4805517c3bd432e9"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "8e61a921a9352768ac86127aee19206e01ba12394881fd3341a4fa9c9a45e475"
+    },
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "f84a301432b7c55ff11bba9123d93f9d98cdb37d759b774864c7814d8f29b57f"
+    },
+    {
+      "path": "front/components/chat/ChatDocumentCard.tsx",
+      "sha256": "1ee27d584a8afa7ba329a8bc61c412b9dffd0306fe886f2eb3ff04bd4fd293de"
+    },
+    {
+      "path": "front/lib/code-repository-api.ts",
+      "sha256": "73b8891262b24c1472bef3ba8b3a32a65afffad7bff2a9f1558495ec3d9b548e"
+    },
+    {
+      "path": "front/tests/chat-file-links.test.mjs",
+      "sha256": "300b954a5ef992f6dde4af94f84d31d8b3ca134029fdaea3ca0530a6cbaeb5e6"
+    },
+    {
+      "path": "front/tests/chat-document-download.test.mjs",
+      "sha256": "18923cafa0b3b7261c2defd8d5041435346558b9e7b915b191d47a399ffd1b01"
+    },
+    {
+      "path": "front/tests/chat-document-cards.browser.mjs",
+      "sha256": "c0ce418339bf618d30dc7b2a7bc6f1ba47d2fc91cb45f9be2e679714ba98299c"
+    },
+    {
+      "path": "docs/chat-document-cards.md",
+      "sha256": "ecaae4e74f71387637599ffda40e13490e4cb83e61eb0fb15249c01a0190b2e6"
+    }
+  ]
+}

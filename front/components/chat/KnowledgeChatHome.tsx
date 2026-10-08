@@ -16,7 +16,7 @@ import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
 import { getSettings } from "@/lib/api";
 import { getKnowledgeBases } from "@/lib/knowledge-api";
-import { getChatProjectReferences, getCodeProjects, getProjectMarkdownDocuments, resolveProjectCodeFileReference } from "@/lib/code-repository-api";
+import { getChatProjectReferences, getCodeProjects, getProjectMarkdownDocuments, resolveProjectDocumentReference } from "@/lib/code-repository-api";
 import { getProjectTaskChatHandoff } from "@/lib/project-task-api";
 import { activeModel, activeProfile, type Catalog, type CatalogModel } from "@/lib/settings-types";
 import type { TranslationKey } from "@/i18n/dictionaries";
@@ -1024,28 +1024,21 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     openInspector("file");
   }
 
+  const documentOpenScope = useRef("");
+  const documentOpenSequence = useRef(0);
+  documentOpenScope.current = `${selectedProjectId}:${activeSessionId}`;
+
   async function openProjectMarkdownDocument(reference: string) {
     if (!selectedProjectId) return;
+    const scope = documentOpenScope.current;
+    const sequence = ++documentOpenSequence.current;
     try {
-      const items = await getProjectMarkdownDocuments(selectedProjectId);
-      const normalizedReference = normalizeMarkdownDocumentReference(reference);
-      let document: CodeProjectMarkdownDocument | undefined;
-      if (/^(?:[a-z]:\/|\/)/i.test(normalizedReference)) {
-        const resolved = await resolveProjectCodeFileReference(selectedProjectId, reference);
-        document = items.find((item) => item.repository_name === resolved.repository_name && item.path.toLowerCase() === resolved.file_path.toLowerCase());
-      } else {
-        const exact = items.filter((item) => item.path.toLowerCase() === normalizedReference || `${item.repository_name}/${item.path}`.toLowerCase() === normalizedReference);
-        const matches = exact.length ? exact : items.filter((item) => item.path.toLowerCase().endsWith(`/${normalizedReference}`) || item.name.toLowerCase() === normalizedReference);
-        if (matches.length === 1) document = matches[0];
-      }
-      if (!document) {
-        setError(`当前项目中找不到 ${reference}。`);
-        return;
-      }
+      const document = await resolveProjectDocumentReference(selectedProjectId, reference);
+      if (documentOpenScope.current !== scope || documentOpenSequence.current !== sequence) return;
       setRequestedMarkdownDocument(document);
       openInspector("documents");
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : `无法打开 ${reference}。`);
+      if (documentOpenScope.current === scope && documentOpenSequence.current === sequence) setError(ex instanceof Error ? ex.message : `无法打开 ${reference}。`);
     }
   }
 
@@ -1487,15 +1480,6 @@ function extractMarkdownDocumentReferences(value: string): Array<{ repository_na
 
 function markdownDocumentKey(document: Pick<CodeProjectMarkdownDocument, "repository_name" | "path">): string {
   return `${document.repository_name}\u0000${document.path}`;
-}
-
-function normalizeMarkdownDocumentReference(reference: string): string {
-  return reference
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/(?::|#L)[1-9]\d{0,8}$/i, "")
-    .replace(/^\.\//, "")
-    .toLowerCase();
 }
 
 function addMarkdownDocumentReference(items: CodeProjectMarkdownDocument[], document: CodeProjectMarkdownDocument): CodeProjectMarkdownDocument[] {

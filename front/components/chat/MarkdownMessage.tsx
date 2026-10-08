@@ -2,6 +2,7 @@
 
 import { isValidElement, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Check, Copy, Download, PackageOpen } from "lucide-react";
+import { ChatDocumentCard } from "@/components/chat/ChatDocumentCard";
 import { packageDownloadFromHref } from "@/lib/chat-packaging";
 import { runtimeTestFromHref } from "@/lib/chat-runtime";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
@@ -22,7 +23,7 @@ type CodeReferenceCandidate = {
 };
 
 const sourceFilePattern = /(?:^|[\\/])?[^\\/\s]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|xml|yml|yaml|md|markdown|html|htm|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?$/i;
-const fileReferenceInText = /(?:[a-z]:)?(?:[^\s`[\](),]+[\\/])*[^\s`[\](),]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|jsonl|xml|yml|yaml|md|markdown|html|htm|txt|csv|pdf|docx|xlsx|pptx|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?/gi;
+const fileReferenceInText = /(?:[a-z]:)?(?:[^\s`[\](),]+[\\/])*[^\s`[\](),]+\.(?:cs|csproj|sln|slnf|ts|tsx|js|jsx|mjs|cjs|vue|kt|kts|py|java|go|rs|php|sql|json|jsonl|xml|yml|yaml|md|markdown|html|htm|txt|csv|pdf|docx?|xlsx?|pptx?|rtf|cshtml|razor|config|env)(?:(?::|#L)[1-9]\d{0,8})?/gi;
 
 function domProps(props: Record<string, any>) {
   const { node, ...rest } = props;
@@ -98,7 +99,7 @@ function MarkdownPre({ children, ...props }: { children?: ReactNode }) {
   const architecture = architectureSourceFromPre(children);
   if (architecture !== null) return <ArchitectureDiagram source={architecture} />;
   const chart = mermaidSourceFromPre(children);
-  return chart ? <MermaidDiagram chart={chart} /> : <CodeBlock {...domProps(props)}>{children}</CodeBlock>;
+  return chart ? <MermaidDiagram chart={chart} /> : <CodeBlock {...domProps(props)}><code>{readChildrenText(children)}</code></CodeBlock>;
 }
 
 function decodeReference(value: string): string {
@@ -110,7 +111,7 @@ function decodeReference(value: string): string {
 }
 
 function codeReferenceFromHref(href?: string): CodeReferenceCandidate | null {
-  if (!href) return null;
+  if (!href || href.startsWith("/api/") || href.startsWith("//")) return null;
   if (href.startsWith("aiagent://code-file?")) {
     try {
       const url = new URL(href);
@@ -142,9 +143,18 @@ function codeReferenceFromText(value: string): CodeReferenceCandidate | null {
   return !reference.includes("\n") && sourceFilePattern.test(reference) ? { reference } : null;
 }
 
+function documentDownloadReference(href: string | undefined, projectId?: number | null): string | null {
+  if (!href || !projectId || !href.startsWith(`/api/v1/code-repositories/projects/${projectId}/markdown-documents/download?`)) return null;
+  const params = new URLSearchParams(href.slice(href.indexOf("?") + 1));
+  const repository = params.get("repository_name");
+  const path = params.get("path");
+  return repository && path && markdownDocumentReferenceFromText(path) ? `${repository}/${path}` : null;
+}
+
 function markdownDocumentReferenceFromText(value: string): string | null {
   const reference = value.trim();
-  return !reference.includes("\n") && /\.(?:md|markdown|txt|csv|json|jsonl|xml|ya?ml|html?|pdf|docx|xlsx|pptx)(?:(?::|#L)[1-9]\d{0,8})?$/i.test(reference) ? reference : null;
+  if (reference.startsWith("//") || (/^[a-z][a-z\d+.-]*:/i.test(reference) && !/^[a-z]:[\\/]/i.test(reference))) return null;
+  return !reference.includes("\n") && /\.(?:md|markdown|txt|csv|json|jsonl|xml|ya?ml|html?|pdf|docx?|xlsx?|pptx?|rtf)(?:(?::|#L)[1-9]\d{0,8})?$/i.test(reference) ? reference : null;
 }
 
 function linkifyAgentFileReferences(markdown: string): string {
@@ -200,6 +210,8 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       urlTransform={(url) => {
+        const documentReference = documentDownloadReference(url, projectId);
+        if (documentReference) return `aiagent://code-file?path=${encodeURIComponent(documentReference)}`;
         const candidate = codeReferenceFromHref(url);
         return candidate ? `aiagent://code-file?path=${encodeURIComponent(candidate.reference)}` : defaultUrlTransform(url);
       }}
@@ -229,6 +241,9 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
           const sourceReference = !className ? codeReferenceFromText(codeText) : null;
           const markdownDocumentReference = !className ? markdownDocumentReferenceFromText(codeText) : null;
           const code = <code className={`${className ?? ""} rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.92em]`} {...domProps(props)}>{children}</code>;
+          if (markdownDocumentReference && projectId && onOpenProjectMarkdownDocument) {
+            return <ChatDocumentCard key={`${projectId}:${markdownDocumentReference}`} reference={markdownDocumentReference} projectId={projectId} onOpen={onOpenProjectMarkdownDocument}/>;
+          }
           if (markdownDocumentReference && onOpenProjectMarkdownDocument) {
             return <button type="button" onClick={() => onOpenProjectMarkdownDocument(markdownDocumentReference)} className="cursor-pointer text-left text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900" title="在右侧项目文档中打开">{code}</button>;
           }
@@ -242,11 +257,13 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
           if (runtimeTest) return <a href={runtimeTest} target="_blank" rel="noopener noreferrer" className="my-2 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800 hover:bg-emerald-100">↗ 在新窗口测试功能</a>;
           const packageDownload = packageDownloadFromHref(href, projectId);
           if (packageDownload) return <a href={packageDownload.href} download className="my-2 inline-flex max-w-full items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 hover:bg-blue-100"><PackageOpen size={24} className="shrink-0"/><span className="min-w-0"><span className="block truncate font-semibold">{packageDownload.name}</span><span className="block text-xs">ZIP 交付包 · 点击下载</span></span><Download size={18} className="shrink-0"/></a>;
-          // Agents sometimes turn a source file name into an ordinary http link.
-          // Prefer the displayed source-file reference so it opens in the right inspector.
+          // Only local references become cards; external links retain their original destination.
           const linkText = readChildrenText(children).trim();
-          const sourceReference = codeReferenceFromHref(href) ?? codeReferenceFromText(linkText);
-          const markdownDocumentReference = markdownDocumentReferenceFromText(sourceReference?.reference ?? linkText);
+          const sourceReference = codeReferenceFromHref(href) ?? (!href ? codeReferenceFromText(linkText) : null);
+          const markdownDocumentReference = codeReferenceFromHref(href) ? markdownDocumentReferenceFromText(sourceReference?.reference ?? "") : null;
+          if (markdownDocumentReference && projectId && onOpenProjectMarkdownDocument) {
+            return <ChatDocumentCard key={`${projectId}:${markdownDocumentReference}`} reference={markdownDocumentReference} projectId={projectId} onOpen={onOpenProjectMarkdownDocument}/>;
+          }
           if (markdownDocumentReference && onOpenProjectMarkdownDocument) {
             return <button type="button" onClick={() => onOpenProjectMarkdownDocument(markdownDocumentReference)} className="text-blue-600 underline underline-offset-2 hover:text-blue-700" title="在右侧项目文档中打开">{children}</button>;
           }

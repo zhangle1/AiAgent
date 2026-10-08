@@ -208,6 +208,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     }
     let disposed = false;
     setLoadingMarkdownDocument(true);
+    setMarkdownDocumentContent(null);
     setError(null);
     void previewProjectDocument(project.id, selectedMarkdownDocument.repository_name, selectedMarkdownDocument.path)
       .then((value) => { if (!disposed) setMarkdownDocumentContent(value); })

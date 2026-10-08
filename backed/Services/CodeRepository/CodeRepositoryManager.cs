@@ -634,6 +634,8 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         if (!IsPathWithin(repositoryRoot, resolved) || !IsProjectDocumentFile(resolved)) throw new InvalidOperationException("The referenced project document is unavailable.");
         if (Path.GetExtension(resolved).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             return new CodeProjectMarkdownDocumentContentDto { RepositoryName = repository.Name, Path = normalizedPath, Content = "ZIP 交付包，请使用下载入口获取原文件。", IsTruncated = false };
+        if (IsLegacyProjectDocument(resolved))
+            return new CodeProjectMarkdownDocumentContentDto { RepositoryName = repository.Name, Path = normalizedPath, Content = "此格式暂不支持在线内容预览。请点击下载原文件，在本地 Office 中打开；需要在线预览时请生成 DOCX、XLSX 或 PPTX 格式。", IsTruncated = false };
         var bytes = await File.ReadAllBytesAsync(resolved, cancellationToken);
         var markdown = await ConvertProjectDocumentToMarkdownAsync(projectId, Path.GetFileName(resolved), bytes, cancellationToken);
         var truncated = markdown.Length > MaxMarkdownDocumentPreviewCharacters;
@@ -1479,8 +1481,11 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             && (extension.Equals(".md", StringComparison.OrdinalIgnoreCase) || extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsProjectDocumentFile(string path) => ProjectDocumentExtensions.Contains(Path.GetExtension(path))
+        || IsLegacyProjectDocument(path)
         || (Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase)
             && ("/" + path.Replace('\\', '/')).Contains("/artifacts/aiagent-packages/", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsLegacyProjectDocument(string path) => Path.GetExtension(path).ToLowerInvariant() is ".doc" or ".xls" or ".ppt" or ".rtf";
 
     private static string GetProjectDocumentPreviewKind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
@@ -1499,6 +1504,10 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         ".html" or ".htm" => "text/html; charset=utf-8",
         ".txt" => "text/plain; charset=utf-8",
         ".csv" => "text/csv; charset=utf-8",
+        ".doc" => "application/msword",
+        ".xls" => "application/vnd.ms-excel",
+        ".ppt" => "application/vnd.ms-powerpoint",
+        ".rtf" => "application/rtf",
         ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",

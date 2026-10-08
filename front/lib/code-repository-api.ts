@@ -118,6 +118,38 @@ export function projectMarkdownDocumentDownloadUrl(projectId: number, repository
   return `/api/v1/code-repositories/projects/${projectId}/markdown-documents/download?${new URLSearchParams({ repository_name: repositoryName, path })}`;
 }
 
+// Resolve against the authorized document catalog before constructing any download URL.
+export async function resolveProjectDocumentReference(projectId: number, reference: string): Promise<CodeProjectMarkdownDocument> {
+  const normalized = reference.trim().replace(/\\/g, "/").replace(/(?::|#L)[1-9]\d{0,8}$/i, "").replace(/^\.\//, "").toLowerCase();
+  if (/^[a-z][a-z\d+.-]*:/i.test(normalized) && !/^[a-z]:\//i.test(normalized)) throw new Error("请选择当前项目中的文档。");
+  const items = await getProjectMarkdownDocuments(projectId);
+  let matches: CodeProjectMarkdownDocument[];
+  if (/^(?:[a-z]:\/|\/)/i.test(normalized)) {
+    const resolved = await resolveProjectCodeFileReference(projectId, reference);
+    matches = items.filter((item) => item.repository_name === resolved.repository_name && item.path.toLowerCase() === resolved.file_path.toLowerCase());
+  } else {
+    const exact = items.filter((item) => item.path.toLowerCase() === normalized || `${item.repository_name}/${item.path}`.toLowerCase() === normalized);
+    matches = exact.length ? exact : items.filter((item) => item.path.toLowerCase().endsWith(`/${normalized}`) || item.name.toLowerCase() === normalized);
+  }
+  if (matches.length > 1) throw new Error("找到多个同名文档，请使用包含仓库和目录的完整相对路径。");
+  if (!matches.length) throw new Error("当前项目中找不到该文档，文件可能尚未生成或已被移动。");
+  return matches[0];
+}
+
+export async function downloadProjectDocumentReference(projectId: number, reference: string): Promise<void> {
+  const file = await resolveProjectDocumentReference(projectId, reference);
+  const response = await fetch(projectMarkdownDocumentDownloadUrl(projectId, file.repository_name, file.path), { cache: "no-store" });
+  if (!response.ok) throw new Error(`下载失败（${response.status}），请确认文件仍存在且有访问权限。`);
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export function projectDocumentFileUrl(projectId: number, repositoryName: string, path: string): string {
   return `/api/v1/code-repositories/projects/${projectId}/documents/file?${new URLSearchParams({ repository_name: repositoryName, path })}`;
 }

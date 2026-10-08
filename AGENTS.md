@@ -67,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 聊天文档链接与行内文件引用通过 `ChatDocumentCard` 显示，预览与下载共用 `resolveProjectDocumentReference`，仅从当前项目授权资料目录唯一匹配文件；绝对路径需额外经过服务端引用解析。下载获取原始 Blob 并显示请求失败，不将外部 URL 或代码块转换为文档卡片。打开预览时防止跨项目、跨会话及快速连续选择的旧响应覆盖当前选择。旧版 DOC/XLS/PPT/RTF 仅对仓库内文件开放下载与格式说明，不扩大上传转换白名单。
+
 - 聊天图形选择器分为交互图形与 Mermaid 图表；交互图形展示架构、工作流、时序图、数据流、生命周期，Mermaid 保留原有类型并以 mermaid-sequence 区分时序图输出。共用 `aiagent-architecture` version 1，新增可选 `diagramType`、节点 `kind`、边 `style` 均须白名单校验；缺失类型按旧架构图处理。布局与避让位于 `architecture-layout.ts`；时序图不得合并重复消息，edges 顺序即消息顺序。HTML 导出只序列化受控 SVG 和转义文本，禁脚本、禁外部资源，不执行模型 HTML。导出恢复全部节点及边的可见度；离线说明使用原生 details，尺寸开关只使用 CSS。
 
 - 聊天 AI 运行通过 `ChatRunDialog` 多选当前项目的仓库相对入口并组合普通聊天提示词；`ChatRuntimeService` 只消费显式准备请求对应的 `artifacts/aiagent-runs/<requestId>.json`，一次请求仅启动一次。服务端校验项目/仓库归属、路径及链接边界、显式端口和环境变量白名单；清单只描述现有 npm scripts 或可运行 .NET 工程，不接受任意 shell 命令。使用 `CodeRuntimeManager` 管理真实进程树，按后端→前端做 HTTP 就绪检查；端口冲突不能悄悄换端口，部分启动失败回收本组进程。状态、日志、停止接口必须验证项目访问权。浮窗合并 AI 请求与项目托管进程并按 run_id 去重；单进程停止复用项目级停止接口，分组进程使用整组停止，查询失败不能伪装为空列表。测试链接默认按实际运行结果跳转到前端优先的应用端口，未就绪不跳转；`/runtime-test?…&mode=manage` 保留测试管理页。浮窗不续期，测试管理页可见才续期整组；独立端口访问无法计入，必须向用户明确说明。URL 主机来自浏览器当前地址，不声称已验证公网连通。切换项目或会话关闭配置弹窗；正常宿主关闭回收进程，重启不重放旧清单。验证使用临时测试工程，不启动用户真实仓库。

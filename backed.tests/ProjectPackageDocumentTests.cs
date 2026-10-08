@@ -44,4 +44,17 @@ public sealed class ProjectPackageDocumentTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    [Theory]
+    [InlineData("report.doc", "application/msword")]
+    [InlineData("slides.PPT", "application/vnd.ms-powerpoint")]
+    [InlineData("sheet.xls", "application/vnd.ms-excel")]
+    [InlineData("notes.rtf", "application/rtf")]
+    public void LegacyDocumentsAreDownloadableWithExplicitPreviewFallback(string name, string mime)
+    {
+        Assert.Equal(name, Invoke("NormalizeProjectDocumentPath", name));
+        Assert.Equal(true, Invoke("IsLegacyProjectDocument", name));
+        Assert.Equal(mime, Invoke("GetProjectDocumentContentType", name));
+        Assert.Throws<TargetInvocationException>(() => Invoke("NormalizeProjectDocumentPath", "../" + name));
+    }
 }
