@@ -6,7 +6,7 @@
 
 ## 知识库工作区
 
-原始文件支持 DOCX 正文／表格／图片和 XLSX 工作表内容预览，无需先提炼，也不向在线 Office 服务发送文件。旧版 DOC/XLS 通过服务器 LibreOffice 转换后预览与提炼（需安装并设置 `Knowledge__LibreOfficePath`）。知识库顶部提供提炼任务队列，显示阶段、模型步数、原文覆盖进度与等待时长，支持取消、失败重试和刷新后恢复状态。详见 [Office 预览与提炼任务](docs/knowledge-preview-and-tasks.md)。
+原始文件支持 DOCX 正文／表格／图片和 XLSX 工作表内容预览，无需先提炼，也不向在线 Office 服务发送文件。旧版 DOC/XLS 通过服务器 LibreOffice 转换后预览与提炼（需安装并设置 `Knowledge__LibreOfficePath`）。后台提炼任务统一在 `/task-center` 任务中心查看，显示阶段、进度与状态，支持取消、失败重试和刷新后恢复状态；知识库页面保留入口链接。当前任务中心只展示 `wiki_compile` 提炼任务，RAG 索引任务仍由原有索引流程管理。详见 [Office 预览与提炼任务](docs/knowledge-preview-and-tasks.md)。
 
 `/knowledge` 按公司／项目展示知识库；进入后分别查看「知识」和「原始文件」，提炼主题可跳回来源文件。原始文件中点击「提炼知识」启动独立后台两阶段提炼：先分析实体、概念与矛盾，再生成带原文证据的知识草稿；支持本地 Codex CLI 和 LLM API，统一配置位于 `/settings/knowledge`。短文正常需要两次模型调用，长文按完整分段处理；单个任务失败不会终止后台队列。CLI 运行在后端所在机器，沿用该机器的 Codex 登录与模型配置。
 

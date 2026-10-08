@@ -7,6 +7,7 @@ using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Chat.Llm;
 using AiAgent.Backend.Services.Knowledge;
+using AiAgent.Backend.Services.TaskCenter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using SqlSugar;
@@ -17,6 +18,36 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class KnowledgeWorkspaceTests : IDisposable
 {
+    [Fact]
+    public void TaskCenterOnlyListsWikiCompilationJobs()
+    {
+        using var db = Database();
+        var kb = CreateBase(db);
+        var document = new AiKnowledgeDocument { KnowledgeBaseId = kb.Id, OriginalFileName = "source.md" };
+        document.Id = db.Insertable(document).ExecuteReturnBigIdentity();
+        db.Insertable(new AiKnowledgeJob
+        {
+            KnowledgeBaseId = kb.Id,
+            DocumentId = document.Id,
+            JobType = "wiki_compile",
+            Status = "queued",
+            CreatedAt = DateTime.UtcNow.AddMinutes(1)
+        }).ExecuteCommand();
+        db.Insertable(new AiKnowledgeJob
+        {
+            KnowledgeBaseId = kb.Id,
+            JobType = "reindex",
+            Status = "processing",
+            CreatedAt = DateTime.UtcNow
+        }).ExecuteCommand();
+
+        var result = new TaskCenterService(db, null!).List("knowledge");
+
+        var task = Assert.Single(result.Tasks);
+        Assert.Equal("wiki_compile", task.TaskType);
+        Assert.Equal(1, result.Summary.Total);
+    }
+
     [Fact]
     public async Task HostCancellationCompletesCompilationWorkerWithoutFault()
     {

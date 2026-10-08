@@ -1,0 +1,29 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "增加统一后台任务中心",
+  "base_commit": "252a0fb",
+  "platform_change_set_id": null,
+  "note": "用户明确要求拉取远端、合并本地改动并推送；当前运行环境没有平台变更集审批接口，因此此文件仅记录本地复核快照，不冒充平台审批。",
+  "checks": {
+    "whitespace": "passed: git diff --check",
+    "static_review": "passed: reviewed routes, DTO JSON names, service filtering, frontend API/type alignment",
+    "backend_regression": "not run: repository fast/CodeLimit policy skips compilation and tests",
+    "frontend_regression": "not run: repository fast/CodeLimit policy skips compilation and tests"
+  },
+  "files": [
+    { "path": "README.md", "sha256": "d213796159250fac4be335f404e448c40801d2816bc72b916ecd6c1445ec3f2b" },
+    { "path": "backed.tests/KnowledgeWorkspaceTests.cs", "sha256": "9e00b43741c0f2d5cf6ee806b81d75afb44d95038192c14fe14382f4600764de" },
+    { "path": "backed/Program.cs", "sha256": "91a8f5fe1ce107824725f5f11e0cd507aec6900674b4d39ca234e4f5de500442" },
+    { "path": "backed/Dtos/TaskCenter/TaskCenterDtos.cs", "sha256": "6457e39af5f2bc93320e051b5b83d028a39a1c58bccaaa924fbb69f16bdee624" },
+    { "path": "backed/Services/TaskCenter/TaskCenterAppService.cs", "sha256": "75765c14288022458bea7baf057d77d38453a8988cd6b9af24bb829e4c180024" },
+    { "path": "backed/Services/TaskCenter/TaskCenterService.cs", "sha256": "432a21d59cc9d608509140c8036b75986e05c5d8b56339147629520aba8e5c31" },
+    { "path": "docs/knowledge-openviking-refactor-plan.md", "sha256": "0e83a3725da692fdebbd1776596c0e292d9a05dc4f73acd9900cee9445c9d585" },
+    { "path": "front/components/knowledge/KnowledgeHome.tsx", "sha256": "b0db702822bd254d73c9f9b038342a51737282420da59cd827d251966f21db15" },
+    { "path": "front/components/knowledge/KnowledgeTaskQueue.tsx", "state": "deleted" },
+    { "path": "front/components/layout/AppSidebar.tsx", "sha256": "2f6583be26e34ae123897408088608aa6c6bd25d8746884765ad1a84e4cf1261" },
+    { "path": "front/app/task-center/page.tsx", "sha256": "3f4cd2425090ace5f8476dd131d0f4b1894d4f3ace8bbaca4e37a071a1cffa54" },
+    { "path": "front/components/task-center/TaskCenterPage.tsx", "sha256": "cae9170b761f4a17fe0645519fb87d7107a6865ec9e324a0fb874ab73ca7c5dc" },
+    { "path": "front/lib/task-center-api.ts", "sha256": "3e7e4ae7dc67abd486134a6639088367e29e2f2d96cd554eb69bdfbfed9eb3d7" },
+    { "path": "front/lib/task-center-types.ts", "sha256": "4157aca7659eb71b2d7bdfb255ab8ad3de91f6865225c6a07bdae1524b531935" }
+  ]
+}

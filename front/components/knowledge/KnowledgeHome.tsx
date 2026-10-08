@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { KnowledgePages } from "./KnowledgePages";
 import { KnowledgeContextTree } from "./KnowledgeContextTree";
-import { KnowledgeTaskQueue, knowledgeTasksChanged } from "./KnowledgeTaskQueue";
 import { OfficeDocumentPreview } from "./OfficeDocumentPreview";
 import { KnowledgeOrganizationEditor } from "./KnowledgeOrganizationEditor";
 import {
@@ -271,7 +270,7 @@ export function KnowledgeHome() {
   if (selectedKbName) {
     return (
       <main className="min-h-screen bg-white">
-        <KnowledgeTaskQueue onCompleted={() => { void reload(); void reloadDetail(selectedKbName, true); }} />
+        <KnowledgeTaskCenterLink />
         <KnowledgeDetailView
           busy={busy}
           detail={detail}
@@ -303,7 +302,7 @@ export function KnowledgeHome() {
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <KnowledgeTaskQueue onCompleted={() => void reload()} />
+      <KnowledgeTaskCenterLink />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-semibold leading-tight tracking-tight">知识库</h1>
@@ -549,6 +548,10 @@ function FilesTab({ busy, detail, selectedDocument, onDeleteDocument, onSelect }
   );
 }
 
+function KnowledgeTaskCenterLink() {
+  return <div className="border-b border-blue-100 bg-blue-50/40 px-6 py-3"><div className="flex flex-wrap items-center justify-between gap-2 text-sm"><span className="font-medium text-slate-700">知识处理任务已集中到任务中心</span><Link href="/task-center?domain=knowledge" className="text-xs font-semibold text-blue-700 hover:underline">查看知识任务队列 →</Link></div></div>;
+}
+
 function FilePreview({ kbName, document }: { kbName: string; document: KnowledgeDocument | null }) {
   const { t } = useI18n();
   const [textPreview, setTextPreview] = useState("");
@@ -558,15 +561,8 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
   const [contentMode, setContentMode] = useState<"source" | "parsed" | "artifact">("source");
   const [processing, setProcessing] = useState(false);
   const [compilationMessage, setCompilationMessage] = useState("");
-  const [jobRevision, setJobRevision] = useState(0);
   const [jobLoading, setJobLoading] = useState(true);
   const loadedJob = useRef<number | null>(null);
-
-  useEffect(() => {
-    const update = () => setJobRevision(value => value + 1);
-    window.addEventListener(knowledgeTasksChanged, update);
-    return () => window.removeEventListener(knowledgeTasksChanged, update);
-  }, []);
 
   useEffect(() => {
     if (!document) return;
@@ -591,7 +587,7 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
     }
     void poll();
     return () => { disposed = true; clearTimeout(timer); };
-  }, [kbName, document?.id, jobRevision]);
+  }, [kbName, document?.id]);
 
   useEffect(() => {
     if (!document || !isTextDocument(document)) {
@@ -635,8 +631,6 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
     try {
       const job = await compileKnowledgeDocument(kbName, document.id);
       setCompilationMessage(job.message || "等待提炼");
-      setJobRevision((value) => value + 1);
-      window.dispatchEvent(new Event(knowledgeTasksChanged));
     } catch (error) {
       setTextError(error instanceof Error ? error.message : String(error));
       setProcessing(false);

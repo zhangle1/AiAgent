@@ -155,6 +155,31 @@ find / tree / read / cite 轨迹 → 结果和引用
 
 当用户选择 vector/hybrid 时，向量候选只用于定位，最终仍读取 L1/L2 并执行证据校验。查询过程不得写入草稿、原文或索引；轨迹只保存必要的 URI 和统计信息。
 
+### 6.1 后台任务中心模块
+
+知识页面只负责提交资源处理请求和显示入口，后台任务由 `Services/TaskCenter` 统一提供查询、取消、重试和汇总接口。第一阶段通过 knowledge adapter 读取现有 `AiKnowledgeJob`，不复制任务记录，也不改变现有提炼 worker；后续新增任务域时增加 adapter 即可接入同一任务中心。
+
+```text
+TaskCenterAppService
+        ↓
+TaskCenterService（统一 DTO、状态、汇总、命令；当前内置 Knowledge adapter）
+        ├── Knowledge adapter → KnowledgeCompilationWorker / KnowledgeTaskRunner
+        ├── SemanticTaskAdapter  → 待实现
+        ├── EmbeddingTaskAdapter → 待实现
+        └── CodeIndexTaskAdapter → 待实现
+```
+
+任务中心与 `/tasks` 工作项页面分开：`/tasks` 管理 Gitee/本地业务工作项，`/task-center` 管理后台执行任务。知识页面保留入口链接，避免同一任务在多个页面重复轮询和操作。
+
+### 6.2 当前实现边界
+
+当前属于“兼容式第一阶段”，还不是 OpenViking 的完整替换：
+
+- 已有 `viking://resources/{knowledge-base}/` URI、上下文节点表和资源树展示；原始文件、解析文档、知识页仍复用现有存储。
+- 已有 L0/L1/L2 的节点字段和 VLM/LLM/Codex provider 入口，但目录摘要、文件概览和向量索引还没有按 OpenViking 的 bottom-up 流程真正生成。
+- 旧的 RAG `KnowledgeTaskRunner` 仍负责初始化/重建索引；本轮任务中心先统一呈现任务，提炼任务的取消/重试已接入，索引任务的可取消执行将在后续 adapter 中迁移。
+- 当前截图中的 `ExecuteReader` 连接错误发生在旧知识处理/数据库边界，不是 URI 树本身；需要结合服务器端完整堆栈和数据库连接配置继续定位。
+
 ## 7. 分阶段实施
 
 ### Phase 1：上下文模型与 provider 基础（本轮）
@@ -200,4 +225,3 @@ find / tree / read / cite 轨迹 → 结果和引用
 - [OpenViking Retrieval API](https://github.com/volcengine/OpenViking/blob/main/docs/en/api/06-retrieval.md)
 - [SiliconFlow Embeddings API](https://api-docs.siliconflow.cn/docs/api/embeddings-post)
 - [SiliconFlow Quickstart](https://docs.siliconflow.cn/docs/userguide/quickstart)
-
