@@ -1,0 +1,19 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Compact chat document cards to fit inline text",
+  "base_commit": "4566bd2ef4e8fac0ec2e67590bd355d7a3432e42",
+  "platform_change_set_id": null,
+  "note": "Local review manifest; no commit or push performed.",
+  "checks": {
+    "typescript": "passed",
+    "frontend_regressions": "26 passed",
+    "browser": "passed: preview, downloads, errors and mobile width",
+    "whitespace": "passed"
+  },
+  "files": [
+    {
+      "path": "front/components/chat/ChatDocumentCard.tsx",
+      "sha256": "d55e6292592e960bd59409c57869a2b2455614e35db5b098e5453a8b9a89529b"
+    }
+  ]
+}
