@@ -52,8 +52,9 @@ public sealed class ChatRuntimeService(ICodeRepositoryManager repositories, ICod
         {
             job.Cancellation.Cancel();
             foreach (var run in job.Runs) runtime.Stop(projectId, run);
-            job.Status = "stopped";
-            job.Message = "整组服务已关闭。";
+            var incomplete = HasActiveRuns(job);
+            job.Status = incomplete ? "failed" : "stopped";
+            job.Message = incomplete ? "关闭未完成：仍有进程或端口未释放，请重试关闭并查看日志。" : "整组服务已关闭。";
         }
     }
 
@@ -112,16 +113,16 @@ public sealed class ChatRuntimeService(ICodeRepositoryManager repositories, ICod
                                 if (job.Runs.Any(id => runtime.FindRun(id)?.Status is not ("running" or "starting")))
                                 {
                                     Stop(job.ProjectId, job.Id);
-                                    job.Status = "failed"; job.Message = "一项服务退出，已关闭关联服务，请查看终端日志。";
+                                    if (job.Status == "stopped") { job.Status = "failed"; job.Message = "一项服务退出，已关闭关联服务，请查看终端日志。"; }
                                 }
                                 else if (DateTime.UtcNow - job.LastVisit > TimeSpan.FromMinutes(job.IdleMinutes))
                                 {
                                     Stop(job.ProjectId, job.Id);
-                                    job.Message = $"测试窗口已空闲 {job.IdleMinutes} 分钟，整组服务已自动关闭。";
+                                    if (job.Status == "stopped") job.Message = $"测试窗口已空闲 {job.IdleMinutes} 分钟，整组服务已自动关闭。";
                                 }
                             }
                         }
-                        if (job.Status is not ("waiting" or "starting" or "running") && DateTime.UtcNow - job.CreatedAt > TimeSpan.FromHours(24))
+                        if (job.Status is not ("waiting" or "starting" or "running") && !HasActiveRuns(job) && DateTime.UtcNow - job.CreatedAt > TimeSpan.FromHours(24))
                             _jobs.TryRemove(job.Id, out _);
                     }
                     catch (Exception ex)
@@ -130,7 +131,7 @@ public sealed class ChatRuntimeService(ICodeRepositoryManager repositories, ICod
                         {
                             if (job.Status == "stopped") continue;
                             foreach (var id in job.Runs) runtime.Stop(job.ProjectId, id);
-                            job.Status = "failed"; job.Message = ex.Message;
+                            job.Status = "failed"; job.Message = HasActiveRuns(job) ? $"{ex.Message}；关闭未完成，请重试关闭并查看日志。" : ex.Message;
                         }
                         logger.LogWarning(ex, "Runtime manifest rejected for {RequestId}", job.Id);
                         try { WriteResult(job); } catch (Exception outputError) { logger.LogWarning(outputError, "Unable to write runtime rejection {RequestId}", job.Id); }
@@ -182,11 +183,18 @@ public sealed class ChatRuntimeService(ICodeRepositoryManager repositories, ICod
             lock (job.Sync)
             {
                 foreach (var id in job.Runs) runtime.Stop(job.ProjectId, id);
-                if (job.Status != "stopped") { job.Status = "failed"; job.Message = ex is OperationCanceledException ? "启动取消或超时，已回收进程。" : ex.Message; }
+                if (job.Status != "stopped")
+                {
+                    job.Status = "failed";
+                    job.Message = HasActiveRuns(job) ? "启动失败且关闭未完成，请重试关闭并查看日志。"
+                        : ex is OperationCanceledException ? "启动取消或超时，已回收进程。" : ex.Message;
+                }
             }
             try { WriteResult(job); } catch (Exception outputError) { logger.LogWarning(outputError, "Unable to write runtime result {RequestId}", job.Id); }
         }
     }
+
+    private bool HasActiveRuns(Job job) => job.Runs.Any(id => runtime.FindRun(id)?.Status is "starting" or "running" or "stopping");
 
     private async Task WaitReadyAsync(CodeRuntimeRunDto run, string healthPath, CancellationToken token)
     {

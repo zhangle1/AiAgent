@@ -53,12 +53,17 @@ export function RuntimeTestWindow() {
   const mixedContent = origin.startsWith("https:");
   async function stop() {
     if (!job) return; setBusy(true);
-    try { await stopChatRuntime(job.project_id, job.request_id); setJob({ ...job, status: "stopped" }); }
+    try {
+      await stopChatRuntime(job.project_id, job.request_id);
+      const next = (await listChatRuntimeJobs(job.project_id)).find(item => item.request_id === job.request_id);
+      if (!next) throw new Error("无法确认关闭结果，请刷新运行状态。");
+      setJob(next); setError("");
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "关闭失败"); }
     finally { setBusy(false); }
   }
   return <main className="flex h-[100dvh] min-h-0 flex-col bg-slate-50 text-slate-800">
-    <header className="space-y-2 border-b bg-white p-3"><div className="flex flex-wrap items-center gap-3"><strong className="text-sm">项目功能测试</strong><span className="flex-1 text-xs text-slate-500">{job?.message || "正在探测运行状态…"}</span>{job && <button disabled={busy || ["stopped", "failed", "expired"].includes(job.status)} onClick={() => void stop()} className="text-xs text-rose-600 disabled:opacity-40">关闭整组服务</button>}</div>
+    <header className="space-y-2 border-b bg-white p-3"><div className="flex flex-wrap items-center gap-3"><strong className="text-sm">项目功能测试</strong><span className="flex-1 text-xs text-slate-500">{job?.message || "正在探测运行状态…"}</span>{job && <button disabled={busy || (["stopped", "failed", "expired"].includes(job.status) && !job.runs.some(item => ["starting", "running", "stopping"].includes(item.status)))} onClick={() => void stop()} className="text-xs text-rose-600 disabled:opacity-40">关闭整组服务</button>}</div>
       {run && <div className="flex flex-wrap items-center gap-2 text-xs"><select aria-label="测试服务" value={run.run_id} onChange={event => setRunId(event.target.value)} className="max-w-full rounded border p-2">{job?.runs.map(item => <option key={item.run_id} value={item.run_id}>{item.repository_name} / {item.entry_path} · :{item.port}</option>)}</select><form className="flex min-w-0 flex-1 gap-2" onSubmit={event => { event.preventDefault(); try { runtimeAccessUrl(origin, run.port, pathDraft); setPagePath(pathDraft); setError(""); setReload(value => value + 1); } catch { setError("页面路径必须以 / 开头，不能使用外部地址。"); } }}><input aria-label="页面路径" className="min-w-20 flex-1 rounded border px-2" value={pathDraft} onChange={event => setPathDraft(event.target.value)}/><button className="rounded border px-3 py-2">打开页面</button></form><button onClick={() => setReload(value => value + 1)} className="rounded border p-2">刷新</button>{url && <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600">直接打开端口 ↗</a>}</div>}
       <p className="break-all text-[11px] text-slate-500">{url} · 此窗口可见时自动续期；关闭或隐藏后 {job?.idle_minutes ?? 30} 分钟自动关闭前后端。直接打开端口不续期。</p>
       {error && <p role="alert" className="text-xs text-rose-600">{error}</p>}

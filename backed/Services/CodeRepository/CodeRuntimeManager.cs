@@ -233,29 +233,22 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
                 AppendLog(run, "system", "Force stop requested before the command started.");
                 return true;
             }
-            try
-            {
-                if (run.Process.HasExited) return false;
-            }
-            catch (InvalidOperationException)
-            {
-                run.StoppedByUser = true;
-                run.Status = "stopped";
-                run.CompletedAt = DateTime.UtcNow;
-                AppendLog(run, "system", "Force stop requested while the command was starting.");
-                return true;
-            }
             run.StoppedByUser = true;
             run.Status = "stopping";
+            run.CompletedAt = null;
             AppendLog(run, "system", "Force stop requested.");
-            if (TerminateProcessTree(run.Process))
+            if (TerminateRun(run))
             {
                 run.ExitCode = run.Process.ExitCode;
                 run.CompletedAt = DateTime.UtcNow;
                 run.Status = "stopped";
                 AppendLog(run, "system", $"Process stopped with exit code {run.ExitCode}.");
             }
-            else AppendLog(run, "system", "Process is still stopping; its process tree did not exit in time.");
+            else
+            {
+                AppendLog(run, "system", "Stop incomplete: owned processes or the listening port remain. Retry stopping and check the runtime log.");
+                return false;
+            }
             return true;
         }
     }
@@ -266,8 +259,15 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         {
             try
             {
-                if (!run.Process.HasExited) run.Process.Kill(true);
-                run.Process.Dispose();
+                lock (run.Sync)
+                {
+                    run.Job?.Dispose();
+                    if (run.Process is not null)
+                    {
+                        TerminateProcessTree(run.Process);
+                        run.Process.Dispose();
+                    }
+                }
             }
             catch
             {
@@ -336,24 +336,28 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             run.Command = $"{startInfo.FileName} {string.Join(' ', startInfo.ArgumentList)}";
             cancellationToken.ThrowIfCancellationRequested();
             if (run.StoppedByUser) throw new OperationCanceledException("The runtime start was cancelled.");
-            run.Process?.Dispose();
-            run.Process = new Process { StartInfo = startInfo };
-            if (!run.Process.Start()) throw new InvalidOperationException("The server process could not be started.");
-            if (run.StoppedByUser || cancellationToken.IsCancellationRequested)
+            lock (run.Sync)
             {
-                TerminateProcessTree(run.Process);
-                throw new OperationCanceledException("The runtime start was cancelled.");
+                if (run.StoppedByUser) throw new OperationCanceledException("The runtime start was cancelled.");
+                run.Process?.Dispose();
+                run.Process = null!;
+                run.Process = StartOwnedProcess(run, startInfo);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    TerminateRun(run);
+                    throw new OperationCanceledException("The runtime start was cancelled.");
+                }
+                run.Status = "running";
+                AppendLog(run, "system", $"Started {profile.Role}. Available at: {string.Join(", ", run.AccessUrls)}.");
             }
-            run.Status = "running";
-            AppendLog(run, "system", $"Started {profile.Role}. Available at: {string.Join(", ", run.AccessUrls)}.");
             _ = ObserveProcessAsync(run);
             return ToRunDto(run);
         }
         catch (Exception ex)
         {
-            if (run.Process is not null) TerminateProcessTree(run.Process);
-            run.Status = run.StoppedByUser ? "stopped" : "failed";
-            run.CompletedAt = DateTime.UtcNow;
+            var terminated = run.Process is null || TerminateRun(run);
+            run.Status = !terminated ? "stopping" : run.StoppedByUser ? "stopped" : "failed";
+            run.CompletedAt = terminated ? DateTime.UtcNow : null;
             AppendLog(run, "system", $"Start failed: {ex.Message}");
             CleanupRuntimeArtifacts(run.ArtifactsDirectory);
             throw;
@@ -388,12 +392,15 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         };
         ConfigureNpm(startInfo);
         startInfo.ArgumentList.Add("install");
-        var process = new Process { StartInfo = startInfo };
-        if (!process.Start()) throw new InvalidOperationException("Unable to start npm install.");
-        run.Process = process;
+        Process process;
+        lock (run.Sync)
+        {
+            if (run.StoppedByUser) throw new OperationCanceledException("The runtime start was cancelled.");
+            process = run.Process = StartOwnedProcess(run, startInfo);
+        }
         var stdout = PumpAsync(run, process.StandardOutput, "stdout");
         var stderr = PumpAsync(run, process.StandardError, "stderr");
-        using var registration = cancellationToken.Register(() => TerminateProcessTree(process));
+        using var registration = cancellationToken.Register(() => TerminateRun(run));
         await Task.WhenAll(process.WaitForExitAsync(cancellationToken), stdout, stderr);
         if (run.StoppedByUser)
             throw new OperationCanceledException("The npm install process was stopped by the user.");
@@ -528,8 +535,12 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
             var stdout = PumpAsync(run, run.Process.StandardOutput, "stdout");
             var stderr = PumpAsync(run, run.Process.StandardError, "stderr");
             await Task.WhenAll(run.Process.WaitForExitAsync(), stdout, stderr);
+            // A detached server can outlive the launcher and close its inherited output.
+            // Keep the run controllable until every owned process has exited.
+            while (run.Job is not null && !run.Job.IsEmpty) await Task.Delay(100);
             lock (run.Sync)
             {
+                if (run.StoppedByUser && !TerminateRun(run)) return;
                 run.ExitCode = run.Process.ExitCode;
                 run.CompletedAt = DateTime.UtcNow;
                 run.Status = run.StoppedByUser ? "stopped" : run.ExitCode == 0 ? "exited" : "failed";
@@ -569,6 +580,42 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         try { Directory.Delete(fullDirectory, recursive: true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    private static Process StartOwnedProcess(RunningProcess run, ProcessStartInfo startInfo)
+    {
+        if (OperatingSystem.IsWindows()) run.Job ??= new RuntimeProcessJob();
+        var process = new Process { StartInfo = startInfo };
+        try
+        {
+            if (!process.Start()) throw new InvalidOperationException("The runtime process could not be started.");
+            run.Job?.Assign(process);
+            return process;
+        }
+        catch
+        {
+            run.Job?.Terminate();
+            TerminateProcessTree(process);
+            process.Dispose();
+            throw;
+        }
+    }
+
+    private static bool TerminateRun(RunningProcess run)
+    {
+        try
+        {
+            var exited = run.Job is not null ? run.Job.Terminate() : TerminateProcessTree(run.Process);
+            if (!exited || !run.Process.WaitForExit(2000)) return false;
+            // Never kill an arbitrary PID just because it has reused this port.
+            return SpinWait.SpinUntil(() => !IPGlobalProperties.GetIPGlobalProperties()
+                .GetActiveTcpListeners().Any(endpoint => endpoint.Port == run.Port), TimeSpan.FromSeconds(2));
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NetworkInformationException)
+        {
+            AppendLog(run, "system", $"Unable to verify runtime termination: {ex.Message}");
+            return false;
+        }
     }
 
     private static bool TerminateProcessTree(Process process)
@@ -909,6 +956,7 @@ public sealed class CodeRuntimeManager : ICodeRuntimeManager, IDisposable
         public string? EntryPath { get; init; }
         public required string Role { get; init; }
         public Process Process { get; set; } = null!;
+        public RuntimeProcessJob? Job { get; set; }
         public int Port { get; init; }
         public List<string> AccessUrls { get; init; } = [];
         public bool IsPreviewEnabled { get; init; }

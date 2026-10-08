@@ -76,7 +76,9 @@ public sealed class CodeRuntimeAppService : IDynamicApiController
     public IActionResult Stop([FromRoute] long projectId, [FromRoute] string runId)
         => _runtime.Stop(projectId, runId)
             ? new OkObjectResult(new { ok = true })
-            : new NotFoundObjectResult(new { message = "Runtime process was not found or is already stopped." });
+            : _runtime.FindRun(runId) is { } run && run.ProjectId == projectId
+                ? new ConflictObjectResult(new { message = $"停止未完成：端口 {run.Port} 或托管子进程仍在运行，请重试并查看日志。" })
+                : new NotFoundObjectResult(new { message = "Runtime process was not found." });
 
     [HttpGet("runs/{runId}/logs")]
     public IActionResult Logs([FromRoute] string runId, [FromQuery(Name = "after_sequence")] long? afterSequence)

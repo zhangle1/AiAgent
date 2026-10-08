@@ -49,12 +49,13 @@ export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onL
   const groupedIds = new Set(jobs.flatMap(job => job.runs.map(run => run.run_id)));
   const otherRuns = runs.filter(run => !groupedIds.has(run.run_id));
   const activeRuns = otherRuns.filter(run => ["starting", "running", "stopping"].includes(run.status));
-  const active = jobs.filter(job => ["waiting", "starting", "running"].includes(job.status));
+  const canStopJob = (job: ChatRuntimeJob) => ["waiting", "starting", "running"].includes(job.status) || job.runs.some(run => ["starting", "running", "stopping"].includes(run.status));
+  const active = jobs.filter(canStopJob);
   return createPortal(<div className="fixed bottom-24 right-4 z-[80] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2 sm:bottom-5">
     {open && <section aria-label="AI 运行进程" className="flex max-h-[65dvh] w-96 max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
       <header className="flex items-center gap-2 border-b p-3"><Activity size={17}/><strong className="flex-1 text-sm">AI 运行进程</strong><button aria-label="刷新运行进程" onClick={() => setRevision(value => value + 1)}><RefreshCw size={15}/></button><button aria-label="收起运行进程" onClick={() => setOpen(false)}><X size={17}/></button></header>
       <div className="space-y-3 overflow-y-auto p-3">{error && <p role="alert" className="text-xs text-rose-600">{error}</p>}{!error && !jobs.length && !otherRuns.length && <p className="text-xs text-slate-500">当前项目暂无托管运行进程。选择“配置 AI 运行”并发送聊天后，启动状态和对应进程会显示在这里。</p>}{jobs.map(job => <article key={job.request_id} className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-        <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{labels[job.status]}</span>{["waiting", "starting", "running"].includes(job.status) && <button disabled={busy === job.request_id} onClick={() => void stop(job.request_id)} className="inline-flex items-center gap-1 text-xs text-rose-600 disabled:opacity-50"><Square size={12}/>关闭整组</button>}</div>
+        <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{labels[job.status]}</span>{canStopJob(job) && <button disabled={busy === job.request_id} onClick={() => void stop(job.request_id)} className="inline-flex items-center gap-1 text-xs text-rose-600 disabled:opacity-50"><Square size={12}/>关闭整组</button>}</div>
         <p className="break-words text-xs text-slate-500">{job.message || "等待聊天 AI 生成启动清单"}</p>
         {job.runs.map(run => <div key={run.run_id} className="break-all rounded-lg bg-slate-50 p-2 text-[11px] dark:bg-slate-800"><strong>{run.repository_name} · {run.role === "frontend" ? "前端" : "后端"}</strong><p>{run.entry_path}</p><p>PID {run.process_id ?? "—"} · :{run.port} · {run.status}</p></div>)}
         <p className="text-[11px] text-slate-500">测试窗口停止续期 {job.idle_minutes} 分钟后关闭</p>
@@ -63,7 +64,7 @@ export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onL
       </article>)}{otherRuns.map(run => <article key={run.run_id} className="space-y-2 rounded-xl border p-3 text-xs">
         <strong>{run.repository_name} · {run.role === "frontend" ? "前端" : "后端"}</strong>
         <p className="break-all">{run.entry_path}</p><p>PID {run.process_id ?? "—"} · :{run.port} · {run.status}</p>
-        {["starting", "running", "stopping"].includes(run.status) && <button disabled={busy === run.run_id || run.status === "stopping"} onClick={() => void stop(run.run_id, true)} className="text-rose-600 disabled:opacity-50">结束对应进程</button>}
+        {["starting", "running", "stopping"].includes(run.status) && <button disabled={busy === run.run_id} onClick={() => void stop(run.run_id, true)} className="text-rose-600 disabled:opacity-50">结束对应进程</button>}
         {run.status === "running" && <a href={runtimeAccessUrl(window.location.origin, run.port)} target="_blank" rel="noopener noreferrer" className="ml-3 text-blue-600">打开应用 :{run.port} ↗</a>}
       </article>)}</div><footer className="border-t p-3"><button onClick={onLogs} className="text-xs text-blue-600">打开实时终端与日志</button><p className="mt-1 text-[10px] text-slate-500">每 3 秒探测。直接打开应用和查看浮窗均不续期；需要续期请打开“管理 / 续期”。</p></footer>
     </section>}

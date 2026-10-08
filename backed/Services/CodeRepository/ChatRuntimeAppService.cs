@@ -28,7 +28,13 @@ public sealed class ChatRuntimeAppService(ChatRuntimeService runtime, IAuthServi
 
     [HttpPost("{requestId}/stop")]
     public async Task<IActionResult> Stop([FromRoute] long projectId, [FromRoute] string requestId, CancellationToken token)
-        => await Execute(projectId, () => { runtime.Stop(projectId, requestId); return new { ok = true }; }, token);
+        => await Execute(projectId, () =>
+        {
+            runtime.Stop(projectId, requestId);
+            var job = runtime.List(projectId).Single(item => item.RequestId == requestId);
+            if (job.Status != "stopped") throw new InvalidOperationException(job.Message);
+            return new { ok = true };
+        }, token);
 
     private async Task<IActionResult> Execute<T>(long projectId, Func<T> action, CancellationToken token)
     {

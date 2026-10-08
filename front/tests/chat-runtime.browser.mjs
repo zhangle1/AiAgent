@@ -24,7 +24,7 @@ const bundle = await build({
 const preview = http.createServer((q,r) => { r.setHeader("Content-Type", "text/html"); r.end("<h1>Fixture application</h1>"); });
 await new Promise(resolve => preview.listen(0, "127.0.0.1", resolve));
 let standaloneRuns = [], invalidJobs = false, stoppedRunPath;
-let jobs = [], visits = 0, stops = 0, prepared;
+let jobs = [], visits = 0, stops = 0, prepared, failStop = false;
 const id = "a".repeat(32);
 const server = http.createServer(async (q,r) => {
   const url = new URL(q.url, "http://localhost");
@@ -41,7 +41,11 @@ const server = http.createServer(async (q,r) => {
       } else value=invalidJobs ? {unexpected:true} : jobs;
     } else if (url.pathname.endsWith("/visit")) { visits++; value={ok:true}; }
     else if (url.pathname.includes("/runs/") && url.pathname.endsWith("/stop")) { stoppedRunPath=url.pathname; standaloneRuns=standaloneRuns.map(run=>({...run,status:"stopped"})); value={ok:true}; }
-    else if (url.pathname.endsWith("/stop")) { stops++; jobs=jobs.map(job=>({...job,status:"stopped"})); value={ok:true}; }
+    else if (url.pathname.endsWith("/stop")) {
+      stops++;
+      jobs=jobs.map(job=>({...job,status:failStop?"failed":"stopped",message:failStop?"关闭未完成：端口仍在运行，请重试。":"整组服务已关闭。",runs:job.runs.map(run=>({...run,status:failStop?"stopping":"stopped"}))}));
+      if(failStop) { r.statusCode=409; value={message:jobs[0].message}; } else value={ok:true};
+    }
     else if (url.pathname.includes("code-runtime")) value={profiles:[],runs:[...standaloneRuns,...jobs.flatMap(job=>job.runs)]};
     else value={state:"synced",message:"synced",repositories:[]};
     r.end(JSON.stringify(value)); return;
@@ -95,17 +99,24 @@ try {
   await manager.getByLabel("页面路径").fill("/settings");
   await manager.getByRole("button",{name:"打开页面"}).click();
   assert.ok((await manager.locator("iframe").getAttribute("src")).endsWith("/settings"));
+  failStop=true;
+  await manager.getByRole("button",{name:"关闭整组服务",exact:true}).click();
+  await manager.getByRole("alert").filter({hasText:"关闭未完成"}).waitFor();
+  assert.ok(await manager.getByRole("button",{name:"关闭整组服务",exact:true}).isEnabled());
   await manager.close();
+  await page.getByRole("button",{name:"刷新运行进程"}).click();
+  await page.getByText("运行失败",{exact:true}).waitFor();
+  failStop=false;
   await page.getByRole("button",{name:"关闭整组",exact:true}).click();
   await page.getByText("已关闭",{exact:true}).waitFor();
-  assert.equal(stops,1);
-  standaloneRuns=[{run_id:"other",repository_name:"other-app",entry_path:"package.json",role:"frontend",port:preview.address().port,process_id:54321,status:"running"}];
+  assert.equal(stops,2);
+  standaloneRuns=[{run_id:"other",repository_name:"other-app",entry_path:"package.json",role:"frontend",port:preview.address().port,process_id:54321,status:"stopping"}];
   jobs=[];
   await page.getByRole("button",{name:"刷新运行进程"}).click();
   await page.getByText(/PID 54321/).waitFor();
   await page.getByRole("button",{name:"结束对应进程"}).click();
   await page.getByText(/PID 54321.*stopped/).waitFor();
-  assert.equal(stops,1,"individual stop must not call group stop");
+  assert.equal(stops,2,"individual stop must not call group stop");
   assert.equal(stoppedRunPath,"/api/v1/code-runtime/projects/7/runs/other/stop");
   invalidJobs=true; standaloneRuns=[];
   await page.getByRole("button",{name:"刷新运行进程"}).click();

@@ -1,0 +1,65 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "Fix runtime descendant cleanup and verified stop status",
+    "base_commit":  "00b88c78e452e0235f5f34b20b53b9dbd380ac17",
+    "platform_change_set_id":  null,
+    "note":  "User explicitly requested pull and push. Local review snapshot refreshed after fast-forward and README merge; does not represent platform approval.",
+    "snapshot_sha256":  "c6a9a73b87cbfab18f44dd5a3f6bd160d5b9734c2ba788982934cab428863f2f",
+    "checks":  {
+                   "backend":  "passed after pull: 39 ChatRuntime and KnowledgeWorkspace tests on Windows",
+                   "frontend":  "passed: 14 runtime and packaging tests; TypeScript tsc --noEmit; browser runtime scenarios",
+                   "browser":  "passed: existing runtime scenarios plus incomplete group stop, retry and stopping individual run",
+                   "whitespace":  "passed: git diff --check",
+                   "encoding":  "verified UTF-8 and original BOM preservation"
+               },
+    "files":  [
+                  {
+                      "path":  "AGENTS.md",
+                      "sha256":  "95344634319c424e4072c4cfc0189a224f94a243e04ea5e5e7f469bc806d6eaf"
+                  },
+                  {
+                      "path":  "README.md",
+                      "sha256":  "be7480ea877cc899e2f98b4c918e67be568ed56c63377d89aa027fbc9aa5e735"
+                  },
+                  {
+                      "path":  "backed.tests/ChatRuntimeTests.cs",
+                      "sha256":  "689e78bcf413d00df6efe8cd8f8aaae8cb74408a7c7888d671edf1f1de25a24a"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/ChatRuntimeAppService.cs",
+                      "sha256":  "8794f87cfb927ac2f19d37d11dfefcd9de76b8b6f534e483da7656584588894e"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/ChatRuntimeService.cs",
+                      "sha256":  "7b78d5b78869e35cc0cae7bd1642ffe58882448dce0ce5a618e37448e3ffcc18"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/CodeRuntimeAppService.cs",
+                      "sha256":  "4da1e71cda781d6adba5e01393b797fdaa3f462c000a712ed2e6ccd9e492b970"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/CodeRuntimeManager.cs",
+                      "sha256":  "a78f085dcd4ecd55c7c8d209877cec7396bc27499a1a508e68921e93ecc8045d"
+                  },
+                  {
+                      "path":  "backed/Services/CodeRepository/RuntimeProcessJob.cs",
+                      "sha256":  "d4af883e778c35a9cc621ab10a0babe5f7aeb8123f705b5f9c158d8f4fa36622"
+                  },
+                  {
+                      "path":  "docs/chat-ai-runtime.md",
+                      "sha256":  "df875e3fe607798fe74bd8eb8ba69e25818e4bf261d9b4db1ba7d8d87868f7db"
+                  },
+                  {
+                      "path":  "front/components/chat/ChatRuntimeFloat.tsx",
+                      "sha256":  "b94cdfca2be61fe4f4f2835f83d1a70c2973829b3b68ee02e480044acca6268d"
+                  },
+                  {
+                      "path":  "front/components/chat/RuntimeTestWindow.tsx",
+                      "sha256":  "dc2b57476b59971938f3cff7e6146aa588ddb99933329b4fa81887503bfaa7fb"
+                  },
+                  {
+                      "path":  "front/tests/chat-runtime.browser.mjs",
+                      "sha256":  "dc54449c48339d224d4393bd342d76f96a0b551dc2dc8897889c044190fe7fef"
+                  }
+              ]
+}

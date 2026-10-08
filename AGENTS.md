@@ -95,7 +95,10 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 代码库养护入口为 `components/code-repositories/RepositoryMaintenancePage.tsx`；HTTP 契约位于 `lib/repository-maintenance-{api,types}.ts`。后台调度与编译分别位于 `RepositoryMaintenanceService`、`RepositoryMaintenanceBuildService`，测试使用临时本地 Git 远端，不能连接用户仓库。
 
 
+- Windows 项目运行由 `RuntimeProcessJob` 保持 npm/dotnet 子进程归属，不能以启动器退出代替整组退出。停止成功必须校验 Job 活跃进程及配置端口；不得按端口盲杀其他 PID。关闭不完整时单进程/整组 API 返回 409，界面保留重试入口；测试管理页读取服务端结果，禁止乐观标记 stopped。运行与取消之间的进程发布须持有运行锁。
+
 ## Git 规则
+
 
 - 提交信息使用简洁中文或 Conventional Commit，例如 `feat: 增加看板工作区快照`。
 - 推送前检查暂存列表，确认不存在本地配置、运行时数据、知识库原文、依赖目录和构建输出。
