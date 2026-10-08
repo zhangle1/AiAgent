@@ -23,6 +23,7 @@ const bundle = await build({
 });
 const preview = http.createServer((q,r) => { r.setHeader("Content-Type", "text/html"); r.end("<h1>Fixture application</h1>"); });
 await new Promise(resolve => preview.listen(0, "127.0.0.1", resolve));
+let standaloneRuns = [], invalidJobs = false, stoppedRunPath;
 let jobs = [], visits = 0, stops = 0, prepared;
 const id = "a".repeat(32);
 const server = http.createServer(async (q,r) => {
@@ -37,10 +38,11 @@ const server = http.createServer(async (q,r) => {
         let body=""; for await (const part of q) body+=part; prepared=JSON.parse(body);
         const job={request_id:id,project_id:7,manifest_repository:"api",manifest_path:`artifacts/aiagent-runs/${id}.json`,status:"waiting",idle_minutes:prepared.idle_minutes,runs:[],targets:[]};
         jobs=[job]; value=job;
-      } else value=jobs;
+      } else value=invalidJobs ? {unexpected:true} : jobs;
     } else if (url.pathname.endsWith("/visit")) { visits++; value={ok:true}; }
+    else if (url.pathname.includes("/runs/") && url.pathname.endsWith("/stop")) { stoppedRunPath=url.pathname; standaloneRuns=standaloneRuns.map(run=>({...run,status:"stopped"})); value={ok:true}; }
     else if (url.pathname.endsWith("/stop")) { stops++; jobs=jobs.map(job=>({...job,status:"stopped"})); value={ok:true}; }
-    else if (url.pathname.includes("code-runtime")) value={profiles:[],runs:[]};
+    else if (url.pathname.includes("code-runtime")) value={profiles:[],runs:[...standaloneRuns,...jobs.flatMap(job=>job.runs)]};
     else value={state:"synced",message:"synced",repositories:[]};
     r.end(JSON.stringify(value)); return;
   }
@@ -72,18 +74,44 @@ try {
   jobs=[{...jobs[0],status:"running",message:"ready",runs:[{run_id:"run1",project_id:7,repository_name:"web",entry_path:"src/package.json",role:"frontend",port:preview.address().port,process_id:12345,status:"running"}],targets:[{repository_name:"web",entry_path:"src/package.json",page_path:"/login"}]}];
   await page.getByRole("button",{name:"刷新运行进程"}).click();
   await page.getByText(/PID 12345/).waitFor();
+  assert.equal(await page.getByText(/PID 12345/).count(),1,"grouped processes must not be duplicated");
   const popupPromise=page.waitForEvent("popup");
   await page.getByRole("link",{name:"新窗口测试"}).click();
   const popup=await popupPromise; popup.on("pageerror",e=>errors.push(e.message));
-  await popup.frameLocator('iframe[title="项目测试页面"]').getByText("Fixture application").waitFor();
-  assert.ok(visits>0);
-  await popup.getByLabel("页面路径").fill("/settings");
-  await popup.getByRole("button",{name:"打开页面"}).click();
-  assert.ok((await popup.locator("iframe").getAttribute("src")).endsWith("/settings"));
+  await popup.getByText("Fixture application").waitFor();
+  assert.equal(popup.url(),`http://127.0.0.1:${preview.address().port}/login`);
   await popup.close();
+  const redirect=await browser.newPage();
+  await redirect.goto(`http://127.0.0.1:${server.address().port}/runtime-test?project_id=7&request_id=${id}`);
+  await redirect.getByText("Fixture application").waitFor();
+  assert.equal(redirect.url(),`http://127.0.0.1:${preview.address().port}/login`);
+  await redirect.close();
+  const managerPromise=page.waitForEvent("popup");
+  await page.getByRole("link",{name:"管理 / 续期"}).click();
+  const manager=await managerPromise;
+  manager.on("pageerror",e=>errors.push(e.message));
+  await manager.frameLocator('iframe[title="项目测试页面"]').getByText("Fixture application").waitFor();
+  assert.ok(visits>0);
+  await manager.getByLabel("页面路径").fill("/settings");
+  await manager.getByRole("button",{name:"打开页面"}).click();
+  assert.ok((await manager.locator("iframe").getAttribute("src")).endsWith("/settings"));
+  await manager.close();
   await page.getByRole("button",{name:"关闭整组",exact:true}).click();
   await page.getByText("已关闭",{exact:true}).waitFor();
   assert.equal(stops,1);
+  standaloneRuns=[{run_id:"other",repository_name:"other-app",entry_path:"package.json",role:"frontend",port:preview.address().port,process_id:54321,status:"running"}];
+  jobs=[];
+  await page.getByRole("button",{name:"刷新运行进程"}).click();
+  await page.getByText(/PID 54321/).waitFor();
+  await page.getByRole("button",{name:"结束对应进程"}).click();
+  await page.getByText(/PID 54321.*stopped/).waitFor();
+  assert.equal(stops,1,"individual stop must not call group stop");
+  assert.equal(stoppedRunPath,"/api/v1/code-runtime/projects/7/runs/other/stop");
+  invalidJobs=true; standaloneRuns=[];
+  await page.getByRole("button",{name:"刷新运行进程"}).click();
+  await page.getByRole("alert").filter({hasText:"无效的进程列表"}).waitFor();
+  assert.equal(await page.getByText(/当前项目暂无托管运行进程/).count(),0);
+  invalidJobs=false;
   await page.getByRole("button",{name:"收起运行进程"}).click();
   await page.setViewportSize({width:390,height:844});
   await open();
@@ -92,5 +120,5 @@ try {
   await page.evaluate(()=>window.switchProject());
   await page.getByRole("dialog").waitFor({state:"hidden"});
   assert.deepEqual(errors,[]);
-  console.log("Browser passed: multi-repository selection, page configuration, prompt, float discovery, new test window, route change, visit, stop, mobile, project switch.");
+  console.log("Browser passed: selection, direct application port, legacy link redirect, management renewal, deduplication, group and individual stop, invalid response, mobile, project switch.");
 } finally { await browser?.close(); await Promise.all([new Promise(resolve=>server.close(resolve)),new Promise(resolve=>preview.close(resolve))]); }

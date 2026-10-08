@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { listChatRuntimeJobs, stopChatRuntime, visitChatRuntime } from "@/lib/chat-runtime-api";
-import { runtimeAccessUrl } from "@/lib/chat-runtime";
+import { runtimeAccessUrl, runtimeJobAccessUrl } from "@/lib/chat-runtime";
 import type { ChatRuntimeJob } from "@/lib/chat-runtime-types";
 
 export function RuntimeTestWindow() {
@@ -27,6 +27,10 @@ export function RuntimeTestWindow() {
         if (!next) throw new Error("运行请求不存在、已过期或服务器已重启，请重新运行。");
         if (!active) return;
         setJob(next);
+        if (params.get("mode") !== "manage") {
+          const destination = runtimeJobAccessUrl(window.location.origin, next);
+          if (destination) { window.location.replace(destination); return; }
+        }
         if (document.visibilityState === "visible" && ["starting", "running"].includes(next.status)) await visitChatRuntime(projectId, requestId);
         if (active) setError("");
       } catch (reason) { if (active) setError(reason instanceof Error ? reason.message : "无法连接运行服务"); }

@@ -8,7 +8,7 @@ const exports = {};
 new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-runtime.ts", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText)(exports);
-const { runtimeAccessUrl, runtimeTestFromHref, buildRuntimePrompt } = exports;
+const { runtimeAccessUrl, runtimeTestFromHref, runtimeJobAccessUrl, buildRuntimePrompt } = exports;
 const id = "a".repeat(32);
 
 test("Markdown preserves runtime URL and renders a new-window test card", () => {
@@ -50,4 +50,15 @@ test("multi-entry prompt includes selected scope, external host, managed manifes
   const selections = [{ repository_name: "api", entry_paths: ["src/Api.csproj"] }, { repository_name: "web", entry_paths: ["package.json", "config.json"] }];
   const prompt = buildRuntimePrompt(7, selections, "open /login", "http://124.70.221.213:3782", { request_id: id, manifest_repository: "api", manifest_path: `artifacts/aiagent-runs/${id}.json`, idle_minutes: 15 });
   for (const value of ["src/Api.csproj", "config.json", "http://124.70.221.213:3782", "open /login", `${id}.result.json`, "preferred_port", "CORS", "15", "后端健康检查通过后才启动前端"]) assert.ok(prompt.includes(value), value);
+});
+
+
+test("application links use the ready frontend port and configured route, never an unstarted target", () => {
+  const api = {run_id:"api", repository_name:"repo", entry_path:"Api.csproj", role:"backend", status:"running", port:5101};
+  const web = {run_id:"web", repository_name:"repo", entry_path:"web/package.json", role:"frontend", status:"running", port:4301};
+  const job = {status:"running", runs:[api,web], targets:[{repository_name:"repo",entry_path:"web/package.json",page_path:"/login?from=test"},{repository_name:"repo",entry_path:"Api.csproj",page_path:"/help"}]};
+  assert.equal(runtimeJobAccessUrl("http://192.168.3.199:3782",job),"http://192.168.3.199:4301/login?from=test");
+  assert.equal(runtimeJobAccessUrl("http://192.168.3.199:3782",{...job,runs:[api]}),"http://192.168.3.199:5101/help");
+  for (const status of ["waiting","starting","failed","stopped","expired"]) assert.equal(runtimeJobAccessUrl("http://host:3782",{...job,status}),null);
+  assert.equal(runtimeJobAccessUrl("http://host:3782",{...job,runs:[]}),null);
 });

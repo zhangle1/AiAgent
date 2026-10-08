@@ -10,7 +10,11 @@ async function request<T>(projectId: number, suffix = "", body?: unknown): Promi
   if (payload === null) throw new Error("运行服务返回了无效响应");
   return payload;
 }
-export const listChatRuntimeJobs = (projectId: number) => request<ChatRuntimeJob[]>(projectId);
+export async function listChatRuntimeJobs(projectId: number): Promise<ChatRuntimeJob[]> {
+  const jobs = await request<ChatRuntimeJob[]>(projectId);
+  if (!Array.isArray(jobs)) throw new Error("运行服务返回了无效的进程列表，请检查服务状态。");
+  return jobs;
+}
 export const prepareChatRuntime = (projectId: number, selections: RuntimeSelection[], idleMinutes: number) => request<ChatRuntimeJob>(projectId, "", { selections, idle_minutes: idleMinutes });
 export const stopChatRuntime = (projectId: number, id: string) => request(projectId, `/${encodeURIComponent(id)}/stop`, {});
 export const visitChatRuntime = (projectId: number, id: string) => request(projectId, `/${encodeURIComponent(id)}/visit`, {});

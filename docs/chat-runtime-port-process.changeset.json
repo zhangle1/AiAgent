@@ -1,0 +1,56 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Fix application port links and project process management",
+  "base_commit": "fbf9adc742ab702bb2346155a27df0ae0df27691",
+  "platform_change_set_id": null,
+  "note": "Local review snapshot. User explicitly requested commit and push in this session; no platform approval claimed.",
+  "snapshot_sha256": "6ee097f24e6318ff836c734d5f8c4f2b6e6203a599fda82e63766da4a8054399",
+  "checks": {
+    "typescript": "passed: tsc --noEmit",
+    "frontend": "passed: 14 runtime and packaging regression tests",
+    "browser": "passed: fixture APIs; direct port, legacy redirect, management renewal, deduplication, group and individual stop, invalid response, mobile and project switch",
+    "whitespace": "passed: git diff --check"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "0d381365ed2a852c1660ef9ee8ae911ad297a13dea5bf4051d233b3e2c295d67"
+    },
+    {
+      "path": "README.md",
+      "sha256": "579c407932bcfa411150dff8809b216ae1585919c15c84ef27af84dff70de979"
+    },
+    {
+      "path": "docs/chat-ai-runtime.md",
+      "sha256": "44c65b737dbe2d10e94da955e145c7d9b702f5247e3a3dfd126ac692c3b00680"
+    },
+    {
+      "path": "front/components/chat/ChatRunDialog.tsx",
+      "sha256": "1e339c0e19946d7d7efa6ee55e65fcc1cb758f2158efe931393fb0b731e4cdf8"
+    },
+    {
+      "path": "front/components/chat/ChatRuntimeFloat.tsx",
+      "sha256": "9885b4dc273f6948f097c2c14db83c5214c61f0dfa179ee42c56a470b50933e1"
+    },
+    {
+      "path": "front/components/chat/RuntimeTestWindow.tsx",
+      "sha256": "5e1c257d6ec7f9767afd7d04f7ee7b5933f4081f32a0f8deee272a422ed657cf"
+    },
+    {
+      "path": "front/lib/chat-runtime-api.ts",
+      "sha256": "4bfebd32b827b68f38d59bd3e3c9a0b2f329a0344e6c324ce1f9c014ce180e5c"
+    },
+    {
+      "path": "front/lib/chat-runtime.ts",
+      "sha256": "a3af0ffb75d6208a9008a48b1ca5e3cc6069edc0ffc0b57713f5a5668fa44cdb"
+    },
+    {
+      "path": "front/tests/chat-runtime.browser.mjs",
+      "sha256": "563a5a15e69bff4b6d976a5c4a6fccd095297891b989e1cc7877580c198caddf"
+    },
+    {
+      "path": "front/tests/chat-runtime.test.mjs",
+      "sha256": "b583bd1eca79f3c20ba86fababe47f8fafa560e5a66ab1755080adf68dbeed1f"
+    }
+  ]
+}
