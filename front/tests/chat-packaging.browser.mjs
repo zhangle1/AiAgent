@@ -48,6 +48,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   async function open() { await page.getByRole("button", { name: /项目程序运行：|代码已同步：/ }).click(); await page.getByRole("button", { name: "打包", exact: true }).click(); }
   await open();
+  assert.equal(await page.getByRole("checkbox", { name: "优先复用已验证流程", exact: true }).isChecked(), true);
   const apply = page.getByRole("button", { name: "填入聊天", exact: true });
   assert.equal(await apply.isDisabled(), false);
   await page.getByRole("checkbox", { name: "B.sln", exact: true }).check();
@@ -60,6 +61,7 @@ try {
   await page.getByRole("checkbox", { name: "A.sln", exact: true }).waitFor();
   await apply.click();
   const prompt = await page.getByRole("textbox", { name: "聊天输入" }).inputValue();
+  assert.match(prompt, /本次优先复用/);
   assert.match(prompt, /src\/服务.slnx/); assert.match(prompt, /"B\.sln"/); assert.match(prompt, /Release，win-x64/); assert.match(prompt, /候选入口/);
   await open();
   assert.equal(await apply.isDisabled(), false);
@@ -69,7 +71,7 @@ try {
   failNext = true; await open();
   await page.getByRole("alert").waitFor();
   await page.getByRole("button", { name: "重试", exact: true }).click();
-  await page.getByRole("radio", { name: "A.sln", exact: true }).waitFor();
+  await page.getByRole("checkbox", { name: "A.sln", exact: true }).waitFor();
   await page.evaluate(() => window.switchProject());
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.setViewportSize({ width: 390, height: 844 }); await open();
@@ -79,7 +81,8 @@ try {
   assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390 && bounds.height <= 844);
   await apply.click();
   assert.match(await page.getByRole("textbox", { name: "聊天输入" }).inputValue(), /src\/package.json/);
-  await open(); await page.getByRole("checkbox", { name: /让 AI 自动探测/ }).uncheck(); await apply.click();
+  await open(); await page.getByRole("checkbox", { name: /让 AI 自动探测/ }).uncheck(); await page.getByRole("checkbox", { name: "优先复用已验证流程", exact: true }).uncheck(); await apply.click();
+  assert.match(await page.getByRole("textbox", { name: "聊天输入" }).inputValue(), /本次用户选择重新分析/);
   assert.ok((await page.getByRole("textbox", { name: "聊天输入" }).inputValue()).includes("本次用户明确选择以下打包入口"));
   await open(); await page.keyboard.press("Escape"); await page.getByRole("dialog").waitFor({ state: "detached" });
   assert.ok(requests.every(request => request.method === "GET"));

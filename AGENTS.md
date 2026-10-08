@@ -99,6 +99,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - Windows 项目运行由 `RuntimeProcessJob` 保持 npm/dotnet 子进程归属，不能以启动器退出代替整组退出。停止成功必须校验 Job 活跃进程及配置端口；不得按端口盲杀其他 PID。关闭不完整时单进程/整组 API 返回 409，界面保留重试入口；测试管理页读取服务端结果，禁止乐观标记 stopped。运行与取消之间的进程发布须持有运行锁。
 
+- 打包/预览的成功流程约定位于 `front/lib/chat-workflow.ts`，两个入口默认复用，可取消勾选重新分析。配方按项目、仓库、入口、要求、模式及浏览器 origin 隔离，保存在目标仓库被忽略的 `artifacts/aiagent-workflows/`；由聊天 AI 校验配置/脚本 SHA-256、环境和本次成功证据后原子发布独立版本。失败不发布成功配方，不重放旧 ZIP 或运行请求，不把脚本交给前端或新增任意 shell API。该约定是 Agent 执行协议，不是服务端已验证的自动缓存；文案不得宣称免模型执行或未经测量的提速。
+
 ## Git 规则
 
 

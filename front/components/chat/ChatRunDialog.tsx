@@ -17,6 +17,7 @@ export function ChatRunDialog({ project, initialRepository, onClose, onApply }: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [reuseWorkflow, setReuseWorkflow] = useState(true);
   const [pagePath, setPagePath] = useState("/");
   const [idleMinutes, setIdleMinutes] = useState(30);
   const alive = useRef(true);
@@ -35,7 +36,7 @@ export function ChatRunDialog({ project, initialRepository, onClose, onApply }: 
       const selections = Object.entries(selected).map(([repository_name, entry_paths]) => ({ repository_name, entry_paths }));
       const job = await prepareChatRuntime(project.id, selections, idleMinutes);
       if (!alive.current) { await stopChatRuntime(project.id, job.request_id); return; }
-      onApply(buildRuntimePrompt(project.id, selections, `期望测试页面路径：${pagePath}\n${instructions}`, window.location.origin, job));
+      onApply(buildRuntimePrompt(project.id, selections, `期望测试页面路径：${pagePath}\n${instructions}`, window.location.origin, job, reuseWorkflow));
       window.dispatchEvent(new Event("aiagent:runtime-refresh"));
     } catch (reason) { if (alive.current) setError(reason instanceof Error ? reason.message : "创建运行请求失败"); }
     finally { if (alive.current) setBusy(false); }
@@ -60,6 +61,7 @@ export function ChatRunDialog({ project, initialRepository, onClose, onApply }: 
         </div>
         {Object.entries(selected).map(([name, paths]) => <p key={name} className="break-all text-xs text-blue-700">{name}：{paths.length ? paths.join("、") : "AI 自动探测入口"}</p>)}
         <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-xs">测试页面路径<input aria-label="测试页面路径" value={pagePath} maxLength={512} onChange={event => setPagePath(event.target.value)} className="rounded-lg border p-2" placeholder="/ 或 /login"/></label><label className="grid gap-1 text-xs">无测试窗口访问时自动关闭<select value={idleMinutes} onChange={event => setIdleMinutes(Number(event.target.value))} className="rounded-lg border p-2">{[5, 15, 30, 60, 120, 240].map(n => <option key={n} value={n}>{n} 分钟</option>)}</select></label></div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-xs text-slate-600"><label className="flex items-center gap-2"><input type="checkbox" checked={reuseWorkflow} onChange={event => setReuseWorkflow(event.target.checked)}/>优先复用已验证流程</label><p className="mt-1 leading-5">AI 会核对配置并复用成功的启动模板，仍由后台启动和检查服务。取消勾选可重新分析；本次就绪后保存流程。</p></div>
         <label className="block text-sm">补充运行与页面配置要求<textarea value={instructions} onChange={event => setInstructions(event.target.value)} maxLength={8000} rows={4} className="mt-2 w-full rounded-xl border p-3 text-sm" placeholder="例如：先启动 API，再启动前端；调整 API 地址和代理；打开 /login 测试登录。不要填密码或密钥。"/></label>
         <p className="text-xs leading-5 text-slate-500">访问 IP/域名取自当前 AiAgent 地址，端口由 AI 判断。填写完成后将请求放入聊天，发送后 AI 才开始工作。“新窗口测试”将打开应用实际端口；如需延长运行时间，请在进程浮窗打开“管理 / 续期”。</p>
         {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{error}</p>}

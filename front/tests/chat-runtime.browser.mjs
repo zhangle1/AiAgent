@@ -61,6 +61,8 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   const open = async () => { await page.getByRole("button",{name:/项目程序运行：|代码已同步：/}).click(); await page.getByRole("button",{name:"配置 AI 运行 · 多选工程"}).click(); };
   await open();
+  assert.equal(await page.getByRole("checkbox", { name: "优先复用已验证流程", exact: true }).isChecked(), true);
+  await page.getByRole("checkbox", { name: "优先复用已验证流程", exact: true }).uncheck();
   await page.getByRole("checkbox",{name:"web",exact:true}).check();
   await page.getByRole("checkbox",{name:"Api.csproj",exact:true}).check();
   await page.getByLabel("浏览代码库").selectOption("web");
@@ -71,6 +73,7 @@ try {
   await page.getByRole("dialog").waitFor({state:"hidden"});
   assert.deepEqual(prepared.selections,[{repository_name:"api",entry_paths:["src/Api.csproj"]},{repository_name:"web",entry_paths:["src/package.json"]}]);
   const prompt=await page.getByLabel("prompt").inputValue();
+  assert.match(prompt, /本次用户选择重新分析/);
   assert.ok(prompt.includes("/login")&&prompt.includes("connect API before frontend")&&prompt.includes(`${server.address().port}`));
   await page.getByRole("button",{name:"AI 进程浮窗"}).click();
   await page.getByText("等待 AI 清单",{exact:true}).waitFor();

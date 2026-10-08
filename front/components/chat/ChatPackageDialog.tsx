@@ -23,6 +23,7 @@ export function ChatPackageDialog({ projectId, repository, onClose, onApply }: {
   const [reload, setReload] = useState(0);
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [automatic, setAutomatic] = useState(true);
+  const [reuseWorkflow, setReuseWorkflow] = useState(true);
   const [instructions, setInstructions] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const [detectedTargets, setDetectedTargets] = useState<string[]>([]);
@@ -38,6 +39,7 @@ export function ChatPackageDialog({ projectId, repository, onClose, onApply }: {
     setDirectory("");
     setSelectedTargets([]);
     setAutomatic(true);
+    setReuseWorkflow(true);
     setInstructions("");
     setDetectedTargets([]);
     setDetectedProfiles([]);
@@ -86,7 +88,7 @@ export function ChatPackageDialog({ projectId, repository, onClose, onApply }: {
   }, []);
 
   const files = tree?.files.filter((file) => isTarget(file.path)) ?? [];
-  const prompt = buildPackagePrompt(projectId, repository.name, { targetPaths: selectedTargets, automatic, instructions });
+  const prompt = buildPackagePrompt(projectId, repository.name, { targetPaths: selectedTargets, automatic, instructions, reuseWorkflow });
   const toggleTarget = (path: string) => setSelectedTargets((items) => items.includes(path) ? items.filter((item) => item !== path) : [...items, path]);
   const detectCandidates = () => {
     setDetecting(true);
@@ -157,6 +159,7 @@ export function ChatPackageDialog({ projectId, repository, onClose, onApply }: {
           <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={automatic} onChange={(event) => setAutomatic(event.target.checked)}/>让 AI 自动探测并判断入口（推荐）</label>
           <p className="text-[11px] text-slate-400">选择、模式和补充要求会自动保存，下次打开此代码库时恢复。</p>
         </div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-xs text-slate-600"><label className="flex items-center gap-2"><input type="checkbox" checked={reuseWorkflow} onChange={event => setReuseWorkflow(event.target.checked)}/>优先复用已验证流程</label><p className="mt-1 leading-5">AI 会先检查已保存流程，配置未变时复用构建脚本，成功后保存新版本。取消勾选可重新分析；每次都会重新构建并验证交付包。</p></div>
         <label className="block text-sm font-medium text-slate-800">额外打包要求（可选）
           <textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} rows={3} maxLength={8000} placeholder="例如：Release 模式，部署到 Windows x64；前端使用 build:prod，附上部署说明。" className="mt-2 w-full resize-y rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"/>
         </label>

@@ -2,15 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import ts from "typescript";
+import { workflow } from "./helpers/chat-workflow.mjs";
 
 const source = ts.transpileModule(fs.readFileSync(new URL("../components/chat/MarkdownMessage.tsx", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 const module = { exports: {} };
 const packaging = { exports: {} };
-new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-packaging.ts", import.meta.url), "utf8"), {
+new Function("require", "exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-packaging.ts", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-}).outputText)(packaging.exports);
+}).outputText)((name) => { if (name === "./chat-workflow") return workflow; throw new Error(`Unexpected import ${name}`); }, packaging.exports);
 new Function("require", "module", "exports", source)((name) => {
   if (name === "@/lib/chat-packaging") return packaging.exports;
   if (name === "@/lib/chat-runtime") return { runtimeTestFromHref: () => null };

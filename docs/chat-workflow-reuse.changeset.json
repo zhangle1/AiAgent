@@ -1,0 +1,78 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "AI 打包和预览的已验证流程复用",
+  "base_commit": "4640eed35edfa982fda9648160fe359b5073a586",
+  "authorization": "User explicitly requested implementation and push in this session.",
+  "platform_change_set_id": null,
+  "note": "Local checked snapshot; not a platform approval record. Existing backed/doc is excluded.",
+  "snapshot_sha256": "f1b70ed2dd06fa02efe2ec62e720d0c72408ae629f1018c816c2be0c40315f1e",
+  "checks": {
+    "frontend": "41 tests passed (19 workflow/packaging/runtime + 22 document links)",
+    "typescript": "npx tsc --noEmit passed",
+    "browser": "packaging and runtime fixture browser suites passed, including reuse/reanalysis controls",
+    "live_model": "not run; actual recipe persistence and speed depend on chat agent execution",
+    "whitespace": "git diff --check passed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "085ffd5bc142f5747ca2ca8d2fc8292f01ce8c7f913d7e974108ac8109dc12bb"
+    },
+    {
+      "path": "README.md",
+      "sha256": "2217683f72a943728923aa0895ea8c7842803b3a97d600239742d43006652ba3"
+    },
+    {
+      "path": "docs/chat-workflow-reuse.md",
+      "sha256": "364b997a7489b4e2575beee1bac0da76218fbd15d762b79dbc7e0ce907a0c5b2"
+    },
+    {
+      "path": "front/components/chat/ChatPackageDialog.tsx",
+      "sha256": "b5bc261342bff9697f05e44e07bfa16c7f4f6743b3f15c62f13eeade742092a5"
+    },
+    {
+      "path": "front/components/chat/ChatRunDialog.tsx",
+      "sha256": "4677eda0497bdf43e0e2459e2b77d566450ec952d9e68c344b57e0e5f3d09ce8"
+    },
+    {
+      "path": "front/lib/chat-packaging.ts",
+      "sha256": "472a23c1f888d4df31a5737eb82adf3015d5670753568f4073895bd16133ede7"
+    },
+    {
+      "path": "front/lib/chat-runtime.ts",
+      "sha256": "73329c887bc9e7a6e591f63d1278d9ae66b386920470add73faec94699d4afab"
+    },
+    {
+      "path": "front/lib/chat-workflow.ts",
+      "sha256": "d5d200d3aa61588f2e59706dd224bce50736b938e751ca724d832615368e7f87"
+    },
+    {
+      "path": "front/tests/chat-packaging.browser.mjs",
+      "sha256": "f25271a6ae77fc4f0ae7a62ea3c020625f05c7edd19a919bedd9d09944ff388c"
+    },
+    {
+      "path": "front/tests/chat-packaging.test.mjs",
+      "sha256": "68dc288762944276f1b2352b81a758a8aed812a36e9de108cab5d4d074c93ac9"
+    },
+    {
+      "path": "front/tests/chat-runtime.browser.mjs",
+      "sha256": "60fbe6d9d9b3a99e1eb89300b0c2a479cf520ac74e1c24c7ef10e791e356c263"
+    },
+    {
+      "path": "front/tests/chat-runtime.test.mjs",
+      "sha256": "f49feb9908d0bbbb7c324e56a2bddf7459615c1477b4710ebfec184c9fb65746"
+    },
+    {
+      "path": "front/tests/chat-file-links.test.mjs",
+      "sha256": "0013c579102ac6b8a0f289ac8b10b96a30e6198e4ea06147904173f6665da9a9"
+    },
+    {
+      "path": "front/tests/chat-workflow.test.mjs",
+      "sha256": "5fc1a72e43d85184a4e265968fe51a5945ae83d83177547e9687f7f0b89e5106"
+    },
+    {
+      "path": "front/tests/helpers/chat-workflow.mjs",
+      "sha256": "df3e102f563c85a693edd52b57cdbfd7d4931ef8fd014b40c870d6902cdb4fab"
+    }
+  ]
+}

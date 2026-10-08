@@ -1,3 +1,4 @@
+import { workflow } from "./helpers/chat-workflow.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -5,9 +6,9 @@ import ts from "typescript";
 import { createRequire } from "node:module";
 
 const module = { exports: {} };
-new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-packaging.ts", import.meta.url), "utf8"), {
+new Function("require", "exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-packaging.ts", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-}).outputText)(module.exports);
+}).outputText)((name) => { if (name === "./chat-workflow") return workflow; throw new Error(`Unexpected import ${name}`); }, module.exports);
 const { buildPackagePrompt, packageDownloadFromHref } = module.exports;
 const { normalizePackageTarget, normalizePackageTargets, suggestPackageTargets } = module.exports;
 
