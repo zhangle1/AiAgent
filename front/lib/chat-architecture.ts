@@ -3,7 +3,6 @@ export type ArchitectureType = keyof typeof architectureTypes;
 export type ArchitectureNode = { id: string; label: string; group: string; description: string; source: string; kind?: "component" | "decision" | "store" | "start" | "end" };
 export type ArchitectureEdge = { from: string; to: string; label: string; style?: "solid" | "dashed" };
 export type Architecture = { version: 1; title: string; diagramType?: ArchitectureType; nodes: ArchitectureNode[]; edges: ArchitectureEdge[] };
-export type ArchitectureScope = { projectId: number; repository: string; path: string };
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("图形对象格式错误");
@@ -60,10 +59,4 @@ export function architecturePath(graph: Architecture, start: string, end: string
     }
   }
   return [];
-}
-
-export function normalizeArchitecturePath(value: string): string {
-  const path = value.replace(/\\/g, "/");
-  if (path.length > 1000 || path.startsWith("/") || /[:\x00-\x1f]/.test(path) || path.split("/").some((part) => part === ".." || part === ".")) throw new Error("请选择代码库内的相对路径");
-  return path;
 }

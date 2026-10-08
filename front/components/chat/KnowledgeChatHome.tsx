@@ -9,8 +9,8 @@ import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStr
 import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { VisualizationToolbar } from "@/components/chat/visualization/VisualizationToolbar";
-import type { ArchitectureScope } from "@/lib/chat-architecture";
-import { buildVisualizationMessage, isInteractiveDiagram, type DiagramType } from "@/lib/chat-visualization";
+
+import { buildVisualizationMessage, type DiagramType } from "@/lib/chat-visualization";
 import { ChatInspectorPanel, type ChatCodeFileReference } from "@/components/chat/ChatInspectorPanel";
 import { ChatRuntimeToolbar } from "@/components/chat/ChatRuntimeToolbar";
 import { ClientScanDialog } from "@/components/chat/ClientScanDialog";
@@ -237,7 +237,6 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [visualizationScope, setVisualizationScope] = useState<ArchitectureScope | null>(null);
   const [visualizationType, setVisualizationType] = useState<DiagramType | null>(null);
   const [visualizationCommits, setVisualizationCommits] = useState<SelectedGitCommit[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -290,9 +289,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   // 嵌入式场景由宿主页面统一选择项目，发送时不能依赖异步状态同步。
   const effectiveProjectId = embedded && embeddedProjectLocked ? embeddedProjectId ?? null : selectedProjectId;
   const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
-  const activeVisualizationScope = visualizationScope?.projectId === effectiveProjectId && selectedProject?.repositories.some((repo) => repo.name === visualizationScope.repository) ? visualizationScope : null;
   const activeVisualizationCommits = visualizationCommits.filter((commit) => commit.project_id === effectiveProjectId);
-  useEffect(() => { setVisualizationCommits([]); setVisualizationScope(null); }, [effectiveProjectId, requestedSessionId]);
+  useEffect(() => { setVisualizationCommits([]); }, [effectiveProjectId, requestedSessionId]);
   const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
@@ -918,8 +916,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     event.preventDefault();
     const query = input.trim();
     // Keep empty submissions and embedded editors on their existing path.
-    const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0 || activeVisualizationCommits.length > 0 || (isInteractiveDiagram(visualizationType) && !!activeVisualizationScope);
-    await sendMessage(buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType, activeVisualizationCommits, activeVisualizationScope));
+    const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0 || activeVisualizationCommits.length > 0;
+    await sendMessage(buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType, activeVisualizationCommits));
   }
 
   async function addImages(files: File[]) {
@@ -1090,7 +1088,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             Debug
           </button>
           <ClientScanDialog />
-          <ChatRuntimeToolbar key={`${selectedProject?.id}:${activeSessionId}`} onPackagePrompt={(prompt) => { setVisualizationType(null); setVisualizationCommits([]); setVisualizationScope(null); prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${prompt}` : prompt); }} project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")} />
+          <ChatRuntimeToolbar key={`${selectedProject?.id}:${activeSessionId}`} onPackagePrompt={(prompt) => { setVisualizationType(null); setVisualizationCommits([]); prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${prompt}` : prompt); }} project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")} />
           <span className="hidden lg:contents">
             <SidePanelTabLauncher onOpen={openInspector} />
           </span>
@@ -1176,7 +1174,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
-              {!embedded && <VisualizationToolbar scope={activeVisualizationScope} onScopeChange={setVisualizationScope} key={`${effectiveProjectId}:${requestedSessionId}`} value={visualizationType} onChange={setVisualizationType} disabled={sending || uploadingImages || uploadingFiles} project={selectedProject} commits={activeVisualizationCommits} onCommitsChange={setVisualizationCommits} />}
+              {!embedded && <VisualizationToolbar key={`${effectiveProjectId}:${requestedSessionId}`} value={visualizationType} onChange={setVisualizationType} disabled={sending || uploadingImages || uploadingFiles} project={selectedProject} commits={activeVisualizationCommits} onCommitsChange={setVisualizationCommits} />}
               {imageAttachments.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
                   {imageAttachments.map((attachment) => (
@@ -1227,7 +1225,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       <Square size={14} fill="currentColor" />
                     </button>
                   ) : (
-                    <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0 || (isInteractiveDiagram(visualizationType) && activeVisualizationScope)))} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}>
+                    <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0))} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}>
                       <ArrowUp size={17} />
                     </button>
                   ))}
@@ -1361,7 +1359,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       <Square size={15} fill="currentColor" />
                     </button>
                   ) : (
-                    <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0 || (isInteractiveDiagram(visualizationType) && activeVisualizationScope)))} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
+                    <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0))} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
                       <ArrowUp size={17} />
                     </button>
                   )}

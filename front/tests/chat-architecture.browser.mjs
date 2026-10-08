@@ -22,13 +22,13 @@ const bundle = await build({
     import {VisualizationDialog} from './components/chat/visualization/VisualizationDialog';
     import {VisualizationToolbar} from './components/chat/visualization/VisualizationToolbar';
     import {buildVisualizationMessage} from './lib/chat-visualization';
-    function App(){const [open,setOpen]=useState(false),[bad,setBad]=useState(false),[scope,setScope]=useState(null),[kind,setKind]=useState("architecture"),[dense,setDense]=useState(false);
+    function App(){const [open,setOpen]=useState(false),[bad,setBad]=useState(false),[selection,setSelection]=useState("interactive"),[kind,setKind]=useState("architecture"),[dense,setDense]=useState(false);
     return <><button onClick={()=>setOpen(true)}>配置</button><button onClick={()=>setBad(!bad)}>切换无效数据</button>
     <VisualizationToolbar value={null} onChange={(type)=>{document.getElementById('request').textContent=buildVisualizationMessage('分析订单系统',type)}} disabled={false} project={null} commits={[]} onCommitsChange={()=>{}} />
     <button onClick={()=>setDense(!dense)}>测试复杂图</button><select aria-label="测试图形类型" value={kind} onChange={e=>setKind(e.target.value)}>{["architecture","workflow","sequence","dataflow","lifecycle"].map(k=><option key={k}>{k}</option>)}</select><pre id="request" hidden />
-    <output>{JSON.stringify(scope)}</output>
+    <output>{JSON.stringify(selection)}</output>
     <MarkdownMessage content={'\u0060\u0060\u0060aiagent-architecture\\n'+(bad ? '{"version":1' : JSON.stringify({... (dense ? ${JSON.stringify(dense)} : ${JSON.stringify(graph)}),diagramType:kind}))+'\\n\u0060\u0060\u0060'}/>
-    {open && <VisualizationDialog project={{id:1,repositories:[{name:'repo',display_name:'测试仓库'}]}} value="interactive" commits={[]} scope={scope} onClose={()=>setOpen(false)} onApply={(type,commits,next)=>{setScope(next);setOpen(false)}}/>}</>}
+    {open && <VisualizationDialog project={{id:1,repositories:[{name:'repo',display_name:'测试仓库'}]}} value={selection} commits={[]} onClose={()=>setOpen(false)} onApply={(type)=>{setSelection(type);setOpen(false)}}/>}</>}
     createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: front, loader: "tsx" },
   bundle: true, write: false, jsx: "automatic", tsconfig: path.join(front, "tsconfig.json"), define: { "process.env.NODE_ENV": '"development"' },
   plugins: [{ name: "mock-directory-api", setup(build) {
@@ -127,14 +127,23 @@ try {
   await page.keyboard.press("Escape");
   assert.ok(await page.getByRole("button", { name: "展开大图" }).isVisible());
   await page.getByRole("button", { name: "配置", exact: true }).click();
-  await page.getByRole("button", { name: "📁 src" }).click();
-  await page.getByRole("button", { name: "选择 App.sln" }).click();
+  assert.equal(await page.getByText("代码分析范围（可选）").count(), 0);
+  await page.getByRole("button", { name: "Mermaid 图表", exact: true }).click();
+  assert.equal(await page.getByRole("group", { name: "图形类型" }).getByRole("button").count(), 11);
+  await page.getByRole("button", { name: /^时序图/ }).click();
   await page.getByRole("button", { name: "使用此配置" }).click();
-  assert.equal(JSON.parse(await page.locator("output").innerText()).path, "src/App.sln");
+  assert.equal(JSON.parse(await page.locator("output").innerText()), "mermaid-sequence");
   await page.getByRole("button", { name: "配置", exact: true }).click();
-  await page.getByRole("button", { name: "清除代码范围" }).click();
+  assert.equal(await page.getByRole("button", { name: "Mermaid 图表", exact: true }).getAttribute("aria-pressed"), "true");
+  await page.getByRole("button", { name: "交互图形", exact: true }).click();
   await page.getByRole("button", { name: "取消", exact: true }).click();
-  assert.equal(JSON.parse(await page.locator("output").innerText()).path, "src/App.sln");
+  assert.equal(JSON.parse(await page.locator("output").innerText()), "mermaid-sequence");
+  await page.getByRole("button", { name: "可视化", exact: true }).click();
+  await page.getByRole("button", { name: "Mermaid 图表", exact: true }).click();
+  await page.getByRole("button", { name: /^时序图/ }).click();
+  await page.getByRole("button", { name: "使用此配置" }).click();
+  assert.match(await page.locator("#request").textContent(), /sequenceDiagram/);
+  assert.doesNotMatch(await page.locator("#request").textContent(), /aiagent-architecture/);
   await page.getByRole("button", { name: "切换无效数据" }).click();
   assert.equal(await page.locator("[data-node-id]").count(), 0);
   assert.match(await page.locator('p[role="status"]').innerText(), /JSON/);
@@ -167,5 +176,5 @@ try {
   assert.ok(bounds, "all twenty nodes should be visible after fitting");
   if (process.env.ARCHITECTURE_SCREENSHOT) await page.screenshot({ path: process.env.ARCHITECTURE_SCREENSHOT.replace(/\.png$/, "-dense.png") });
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
-  console.log("PASS: interactive default/request, no demo entry, themes, search, node drag/reset, canvas pan, markdown rendering, inert text, graph exploration, exports, scope selection/cancel, invalid streaming data, mobile dialog");
+  console.log("PASS: interactive default/request, no demo entry, themes, search, node drag/reset, canvas pan, markdown rendering, inert text, graph exploration, exports, Mermaid categories/apply/cancel, invalid streaming data, mobile dialog");
 } finally { await browser?.close(); await new Promise((resolve) => server.close(resolve)); }

@@ -4,23 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, GitCommitHorizontal, X } from "lucide-react";
 import { DiagramPreview } from "./DiagramPreview";
-import { ArchitectureScopePicker } from "./ArchitectureScopePicker";
-import type { ArchitectureScope } from "@/lib/chat-architecture";
-import { diagramTypes, isInteractiveDiagram, type DiagramType } from "@/lib/chat-visualization";
+import { diagramTypes, mermaidDiagramTypes, isInteractiveDiagram, type DiagramType } from "@/lib/chat-visualization";
 import { getProjectGitHistory } from "@/lib/code-repository-api";
 import type { CodeProject, GitHistoryCommit, SelectedGitCommit } from "@/lib/code-repository-types";
 
-export function VisualizationDialog({ project, value, commits, scope = null, onClose, onApply }: {
+export function VisualizationDialog({ project, value, commits, onClose, onApply }: {
   project: CodeProject | null;
   value: DiagramType;
   commits: SelectedGitCommit[];
-  scope?: ArchitectureScope | null;
   onClose: () => void;
-  onApply: (value: DiagramType, commits: SelectedGitCommit[], scope: ArchitectureScope | null) => void;
+  onApply: (value: DiagramType, commits: SelectedGitCommit[]) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [selectedScope, setSelectedScope] = useState(scope);
   const [type, setType] = useState(value);
+  const [category, setCategory] = useState(isInteractiveDiagram(value) ? "interactive" : "mermaid");
   const [selected, setSelected] = useState(commits);
   const [repository, setRepository] = useState(project?.repositories[0]?.name ?? "");
   const [page, setPage] = useState(0);
@@ -62,15 +59,19 @@ export function VisualizationDialog({ project, value, commits, scope = null, onC
         <button type="button" aria-label="关闭图形选择" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button>
       </header>
       <div className="min-h-0 overflow-y-auto px-5 py-4">
+        <div role="group" aria-label="图形分类" className="mb-3 flex gap-2 rounded-xl bg-slate-100 p-1">
+          {[{ id: "interactive", label: "交互图形" }, { id: "mermaid", label: "Mermaid 图表" }].map((item) => <button key={item.id} type="button" aria-pressed={category === item.id} onClick={() => { setCategory(item.id); if ((item.id === "interactive") !== isInteractiveDiagram(type)) setType(item.id === "interactive" ? "interactive" : "auto"); }} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${category === item.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}>{item.label}</button>)}
+        </div>
+        <p className="mb-3 text-xs text-slate-500">{category === "interactive" ? "支持节点探索、路径高亮和 HTML 导出。" : "使用 Mermaid 生成图表，支持查看图形与源码。"}</p>
         <div role="group" aria-label="图形类型" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {diagramTypes.map((item) => <button key={item.id} type="button" aria-pressed={type === item.id} onClick={() => setType(item.id)} className={`relative rounded-xl border p-3 text-left transition-colors ${type === item.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500" : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"}`}>
+          {(category === "interactive" ? diagramTypes : mermaidDiagramTypes).map((item) => <button key={item.id} type="button" aria-pressed={type === item.id} onClick={() => setType(item.id)} className={`relative rounded-xl border p-3 text-left transition-colors ${type === item.id ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500" : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"}`}>
             <DiagramPreview type={item.id} />
             <span className="block pr-5 text-sm font-medium">{item.label}</span>{type === item.id && <Check size={16} className="absolute right-3 top-3 text-blue-600" />}
             <span className="mt-1 block text-[11px] leading-5 text-slate-500">{descriptions[item.id]}</span>
           </button>)}
         </div>
-        {isInteractiveDiagram(type) && <ArchitectureScopePicker project={project} value={selectedScope} onChange={setSelectedScope} />}
-        <p className="mt-4 text-xs text-slate-500">默认使用当前对话与已选项目资料。</p>
+
+        <p className="mt-4 text-xs text-slate-500">AI 根据问题、对话和已选资料，自动判断需要分析的代码与范围。</p>
         <button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)} className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 p-3 text-left text-sm font-medium"><GitCommitHorizontal size={18} />勾选 Git 历史<span className="ml-auto text-xs text-slate-500">已选 {selected.length}/20 · {historyOpen ? "收起" : "展开"}</span></button>
         {historyOpen && <section aria-label="Git 提交历史" className="mt-3 space-y-3">
           {!project ? <p className="text-sm text-slate-500">请先在聊天输入框下方选择项目，再选择 Git 历史。</p> : !project.repositories.length ? <p className="text-sm text-slate-500">当前项目没有代码库。</p> : <>
@@ -93,12 +94,12 @@ export function VisualizationDialog({ project, value, commits, scope = null, onC
         </section>}
         {selected.length > 0 && <div className="mt-3 rounded-lg bg-slate-50 p-3"><div className="flex justify-between text-xs"><span>已选 {selected.length} 条提交（可跨仓库）</span><button type="button" onClick={() => setSelected([])} className="text-blue-600">清空</button></div><div className="mt-2 flex max-h-24 flex-wrap gap-1 overflow-y-auto">{selected.map((item) => <button type="button" key={`${item.repository_name}:${item.sha}`} title={item.subject} aria-label={`移除 ${item.repository_name} ${item.sha.slice(0, 8)}`} onClick={() => setSelected((current) => current.filter((c) => c.repository_name !== item.repository_name || c.sha !== item.sha))} className="rounded border bg-white px-2 py-1 text-xs">{item.repository_name} · {item.sha.slice(0, 8)} ×</button>)}</div></div>}
       </div>
-      <footer className="flex shrink-0 justify-end gap-2 border-t px-5 py-3"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">取消</button><button type="button" onClick={() => onApply(type, selected, isInteractiveDiagram(type) ? selectedScope : null)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">使用此配置</button></footer>
+      <footer className="flex shrink-0 justify-end gap-2 border-t px-5 py-3"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">取消</button><button type="button" onClick={() => onApply(type, selected)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">使用此配置</button></footer>
     </div>
   </dialog>, document.body);
 }
 
 const descriptions: Record<DiagramType, string> = {
-  workflow: "业务步骤、判断条件与分支", dataflow: "数据来源、加工与存储去向", lifecycle: "对象状态、事件与转换条件",
+  "mermaid-sequence": "接口调用与交互顺序", workflow: "业务步骤、判断条件与分支", dataflow: "数据来源、加工与存储去向", lifecycle: "对象状态、事件与转换条件",
   interactive: "节点探索、上下游高亮、路径与导出", auto: "根据问题自动选择合适图形", architecture: "系统模块、层次与依赖", flowchart: "业务步骤、判断与分支", sequence: "接口调用与交互顺序", class: "类、接口与继承关系", er: "数据实体、字段与关联", state: "生命周期与状态变化", mindmap: "主题拆解与知识梳理", timeline: "事件与版本演进", gantt: "任务排期与依赖", git: "提交、分支与合并关系",
 };

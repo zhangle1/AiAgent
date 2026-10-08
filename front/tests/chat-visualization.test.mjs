@@ -77,3 +77,17 @@ test("chat diagram renderer stays mounted across message updates", () => {
   const updated = MarkdownMessage({ content: "```mermaid\ngraph LR; A-->B\n```\n来源：当前方案" });
   assert.equal(first.props.components.pre, updated.props.components.pre);
 });
+
+test("Mermaid categories use Mermaid syntax, including a separate sequence choice", () => {
+  assert.equal(visual.mermaidDiagramTypes.length, 11);
+  const ids = [...visual.diagramTypes, ...visual.mermaidDiagramTypes].map(item => item.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const type of visual.mermaidDiagramTypes) {
+    const request = visual.buildVisualizationMessage("画出关系", type.id);
+    assert.equal(visual.isInteractiveDiagram(type.id), false);
+    assert.match(request, /完整的 mermaid 代码块/);
+    assert.ok(request.includes(type.syntax));
+    assert.doesNotMatch(request, /aiagent-architecture/);
+  }
+  assert.match(visual.buildVisualizationMessage("调用顺序", "mermaid-sequence"), /sequenceDiagram/);
+});

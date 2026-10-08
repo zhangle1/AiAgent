@@ -72,15 +72,13 @@ test("reachability and shortest directed paths terminate on cycles and handle is
   assert.deepEqual(api.architecturePath(parsed, "a", "isolated"), []);
   assert.deepEqual(api.architecturePath(parsed, "a", "a"), ["a"]);
 });
-test("scope persists in the request and cannot escape repository; other modes ignore it", () => {
-  const scope = { projectId: 1, repository: "repo", path: "src\\App.sln" };
-  const request = visual.buildVisualizationMessage("分析", "interactive", [], scope);
-  assert.match(request, /aiagent-architecture/);
-  assert.match(request, /src\/App.sln/);
-  assert.match(request, /不得静默改用其他解决方案/);
-  assert.match(request, /不修改项目文件/);
-  assert.equal(visual.buildVisualizationMessage(request, null), request);
-  assert.doesNotMatch(visual.buildVisualizationMessage("分析", "architecture", [], scope), /App.sln/);
-  for (const path of ["../file", "C:\\file", "/tmp/file", "x/../../y", "x\u0000y"]) assert.throws(() => api.normalizeArchitecturePath(path));
-  assert.equal(api.normalizeArchitecturePath(""), "");
+test("AI chooses relevant authorized code without a manual scope", () => {
+  for (const type of [...visual.diagramTypes, ...visual.mermaidDiagramTypes]) {
+    const request = visual.buildVisualizationMessage("分析", type.id);
+    assert.match(request, /自行判断是否需要分析代码/);
+    assert.match(request, /当前项目已授权的仓库/);
+    assert.match(request, /尊重用户问题中明确指定的范围/);
+    assert.match(request, /不修改项目文件/);
+    assert.equal(visual.buildVisualizationMessage(request, null), request);
+  }
 });

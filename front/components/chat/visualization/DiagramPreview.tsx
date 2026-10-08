@@ -18,7 +18,7 @@ function Dot({ x, y, color = blue }: { x: number; y: number; color?: string }) {
 }
 
 // Fixed, local examples: no model requests or Mermaid runtime needed in the picker.
-const examples: Record<Exclude<DiagramType, "interactive" | "workflow" | "dataflow" | "lifecycle">, ReactNode> = {
+const examples: Record<Exclude<DiagramType, "mermaid-sequence" | "interactive" | "workflow" | "dataflow" | "lifecycle">, ReactNode> = {
   auto: <>
     <Line d="M 100 45 V 57 H 38 V 68 M 100 57 V 68 M 100 57 H 162 V 68" />
     <Box x={66} y={17} w={68} label="你的问题" />
@@ -94,5 +94,5 @@ export function DiagramPreview({ type }: { type: DiagramType }) {
     <circle cx={100} cy={38} r={22} fill="#ecfdf5" stroke={green} /><text x={100} y={42} textAnchor="middle" fontSize={10} fill="#334155">处理</text>
     <path d="M140 62 H192 M140 90 H192" stroke={purple} fill="none" /><text x={166} y={79} textAnchor="middle" fontSize={10} fill="#334155">存储</text>
   </svg>;
-  return <svg viewBox="0 0 200 120" aria-hidden="true" focusable="false" className="mb-3 h-[96px] w-full rounded-lg bg-slate-50 sm:h-[112px]" style={{ fontFamily: "inherit" }}>{examples[type === "interactive" ? "architecture" : type === "workflow" ? "flowchart" : type === "lifecycle" ? "state" : type]}</svg>;
+  return <svg viewBox="0 0 200 120" aria-hidden="true" focusable="false" className="mb-3 h-[96px] w-full rounded-lg bg-slate-50 sm:h-[112px]" style={{ fontFamily: "inherit" }}>{examples[type === "mermaid-sequence" ? "sequence" : type === "interactive" ? "architecture" : type === "workflow" ? "flowchart" : type === "lifecycle" ? "state" : type]}</svg>;
 }
