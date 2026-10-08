@@ -1,0 +1,18 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "Remove mandatory named tool from Agent document generation",
+    "base_commit":  "c54f16c629705c14203915dbe730215022af64b7",
+    "platform_change_set_id":  null,
+    "note":  "Local review manifest only; no authenticated platform changeset context supplied. No commit or push performed.",
+    "checks":  {
+                   "typescript":  "passed: tsc --noEmit --incremental false",
+                   "whitespace":  "passed: git diff --check",
+                   "browser":  "not run (prompt-only change)"
+               },
+    "files":  [
+                  {
+                      "path":  "front/components/chat/ChatInspectorPanel.tsx",
+                      "sha256":  "e03e7e2b28c5b47a0a576f2e650c5c919f2d5277f5691dcd0cbbebaa0f6d3315"
+                  }
+              ]
+}

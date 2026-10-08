@@ -302,7 +302,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   function prepareAgentMarkdown() {
     if (!project || !onPrepareAgentMarkdown) return;
     const repositories = project.repositories.map((repository) => `- ${repository.display_name}（repository_name: ${repository.name}）`).join("\n");
-    onPrepareAgentMarkdown(`请为当前项目生成可长期维护的 Agent 文档，不要只给出目录扫描摘要。\n\n先使用代码检索、项目概览和按需文件读取理解每个已选代码库的真实入口、模块边界、业务术语、运行/构建方式与跨仓库协作关系。随后必须调用 write_dashboard_file，在下列每个已选代码库的根目录创建或更新 UTF-8 的 AGENT.md（repository_name 必须与列表一致，path 固定为 AGENT.md）。不要只在聊天中输出文档内容。\n\n已选代码库：\n${repositories || "- 当前项目尚未注册代码库"}\n\n每份 AGENT.md 必须包含：\n1. 该仓库职责、技术栈和启动入口；\n2. 关键目录/模块与业务关键词映射；\n3. 与其他已选仓库的调用或数据边界；\n4. 构建、运行、测试及部署注意点（仅有代码证据时写入）；\n5. 给后续 AI 的检索顺序与禁止事项。\n\n安全要求：不得写入密钥、连接串、绝对服务器路径、.git、依赖或构建产物信息；不确定的内容要标为“待确认”。写入后读取并核对每个 AGENT.md，再在回复中列出实际写入的仓库和路径。`);
+    onPrepareAgentMarkdown(`请为当前项目生成可长期维护的 Agent 文档，不要只给出目录扫描摘要。\n\n先使用代码检索、项目概览和按需文件读取理解每个已选代码库的真实入口、模块边界、业务术语、运行/构建方式与跨仓库协作关系。随后使用当前环境实际可用的文件读写工具，在下列每个已选代码库的根目录创建或更新 UTF-8 的 AGENT.md。根据列表中的仓库标识确认目标，先读取已有文档并保留仍然有效的内容，仅更新 AGENT.md，不修改业务代码。不要只在聊天中输出文档内容；完成标准是文件实际写入并读取核对，不限定具体工具名称。若当前环境无法写入目标仓库，请如实说明未写入的仓库及原因。\n\n已选代码库：\n${repositories || "- 当前项目尚未注册代码库"}\n\n每份 AGENT.md 必须包含：\n1. 该仓库职责、技术栈和启动入口；\n2. 关键目录/模块与业务关键词映射；\n3. 与其他已选仓库的调用或数据边界；\n4. 构建、运行、测试及部署注意点（仅有代码证据时写入）；\n5. 给后续 AI 的检索顺序与禁止事项。\n\n安全要求：不得写入密钥、连接串、绝对服务器路径、.git、依赖或构建产物信息；不确定的内容要标为“待确认”。写入后读取并核对每个 AGENT.md，再在回复中列出实际写入的仓库和路径。`);
   }
 
   async function createMarkdownDirectory() {
