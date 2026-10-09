@@ -6,6 +6,8 @@
 
 ## 知识库工作区
 
+目录资源支持解析后生成语义 Markdown：先保存 L2 解析正文，再通过已配置的 Codex / LLM API 生成文件摘要和目录 L1 `.overview.md`，从概览提取 L0 `.abstract.md`。在目录页查看、切换和下载 L0/L1；已有资料点击「重新解析」补建。语义生成失败仍可查看正文，任务中心可重试；相同正文复用已完成结果。此阶段不需要向量索引，详见 [目录语义生成](docs/knowledge-resource-semantics.md)。
+
 原始文件支持 DOCX 正文／表格／图片和 XLSX 工作表内容预览，无需先知识整理，也不向在线 Office 服务发送文件。旧版 DOC/XLS 通过服务器 LibreOffice 转换后预览与知识整理（需安装并设置 `Knowledge__LibreOfficePath`）。后台知识整理任务统一在 `/task-center` 任务中心查看，显示阶段、进度与状态，支持取消、失败重试和刷新后恢复状态；知识库页面保留入口链接。当前任务中心只展示 `wiki_compile` 知识整理任务，RAG 索引任务仍由原有索引流程管理。详见 [Office 预览与知识整理任务](docs/knowledge-preview-and-tasks.md)。
 
 `/knowledge` 按公司／项目展示知识库；进入后分别查看「知识」和「原始文件」，知识整理主题可跳回来源文件。原始文件中点击「解析文档」启动独立后台两阶段知识整理：先分析实体、概念与矛盾，再生成带原文证据的知识草稿；支持本地 Codex CLI 和 LLM API，统一配置位于 `/settings/knowledge`。短文正常需要两次模型调用，长文按完整分段处理；单个任务失败不会终止后台队列。CLI 运行在后端所在机器，沿用该机器的 Codex 登录与模型配置。

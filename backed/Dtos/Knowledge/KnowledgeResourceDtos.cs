@@ -17,6 +17,10 @@ public sealed class KnowledgeResourceNodeDto
 
 public sealed class KnowledgeResourceReadDto
 {
+    [JsonPropertyName("abstract_content")] public string? AbstractContent { get; set; }
+    [JsonPropertyName("overview_content")] public string? OverviewContent { get; set; }
+    [JsonPropertyName("semantic_generated_at")] public DateTime? SemanticGeneratedAt { get; set; }
+    [JsonPropertyName("semantic_status")] public string SemanticStatus { get; set; } = "missing_or_stale";
     [JsonPropertyName("node")] public KnowledgeResourceNodeDto Node { get; set; } = new();
     [JsonPropertyName("source_text")] public string? SourceText { get; set; }
     [JsonPropertyName("parsed_content")] public string? ParsedContent { get; set; }

@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 目录资源解析在 `wiki_compile` 队列内先保存 L2，再由 `KnowledgeResourceSemanticService` 生成文件摘要并自底向上生成 L1，L0 从简介提取，不单独调用模型。`KnowledgeSemanticStore` 用不可变版本和原子 manifest 发布 `.overview.md` / `.abstract.md`；指纹覆盖原文、解析正文哈希和后代资源，缓存失效不得展示为最新。个人语义只汇总到本人根目录，不汇总到 `viking://user/`；不改 RAG 活动索引。`ContentHash` 为可空列；已有无哈希记录回退解析 ID。详情见 `docs/knowledge-resource-semantics.md`。
+
 - 聊天 Excel 附件 `.xls/.xlt/.xlsx/.xlsm/.xlsb/.xltx/.xltm` 使用 ExcelDataReader 在受控路径直接读取，不调用 LibreOffice、不执行宏；旧版支持 OLE 与原始 BIFF 流，现代格式校验工作簿包结构和解压大小。保留工作表名称、空列位置，支持代码页、取消和提取长度限制。前端粘贴单元格时若同时有表格文字与位图，优先原生文字粘贴；粘贴文件仍走附件上传。聊天 `.doc` 及知识库旧版 Office 预览仍沿用临时目录转换。
 
 - 知识提炼采用 Analysis → Generation 两阶段：宿主确定分段，先分析全部原文，再按段生成并校验证据；模型调用预算覆盖两阶段，校验修正每段最多三次生成调用。队列、提炼和设置操作使用独立 `CopyNew()` 客户端，不跨请求共享连接。任务开始、进度及终态异常均隔离在任务边界；终态写库失败暂存内存并在状态查询时补写，不重复模型调用。草稿插入与文档成功状态在同一短事务内提交。

@@ -7,7 +7,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 
 /// <summary>Serial compilation queue, independent from the existing RAG index worker.</summary>
 public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, KnowledgeCompilerSettings settings,
-    IKnowledgeIngestionService ingestion, ILogger<KnowledgeCompilationWorker> logger) : BackgroundService
+    IKnowledgeIngestionService ingestion, ILogger<KnowledgeCompilationWorker> logger, KnowledgeResourceSemanticService? semantic = null) : BackgroundService
 {
     private readonly object _sync = new();
     private readonly Dictionary<long, CancellationTokenSource> _cancellations = new();
@@ -129,9 +129,13 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         stage = message;
                         UpdateProgress(work.JobId, value, message);
                     }
-                    if (work.ParseOnly) await ingestion.ParseResourceAsync(work.Base, work.Document, request, execution.Token, Progress);
+                    if (work.ParseOnly)
+                    {
+                        await ingestion.ParseResourceAsync(work.Base, work.Document, request, execution.Token, (value, message) => Progress(value * 35 / 100, message));
+                        if (semantic is not null) await semantic.GenerateAsync(work.Base, work.Document, work.Config, Progress, execution.Token);
+                    }
                     else await ingestion.ProcessAsync(work.Base, work.Document, request, execution.Token, work.Config, Progress);
-                    Finish(work.JobId, "success", work.ParseOnly ? "文档解析完成，可预览正文并按目录问答。" : "知识整理完成。");
+                    Finish(work.JobId, "success", work.ParseOnly ? "正文解析与语义整理完成，可查看目录 L0/L1。" : "知识整理完成。");
                 }
                 catch (Exception ex)
                 {

@@ -8,6 +8,9 @@ export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<Kn
 export async function readKnowledgeResource(uri: string, signal?: AbortSignal): Promise<KnowledgeResourceRead> {
   return parseJson(await fetch(`/api/v1/knowledge-resources/read?uri=${encodeURIComponent(uri)}`, { cache: "no-store", signal }));
 }
+export async function getKnowledgeResourceTask(uri: string, signal?: AbortSignal): Promise<KnowledgeCompilationJob | null> {
+  return parseJson(await fetch(`/api/v1/knowledge-resources/task?uri=${encodeURIComponent(uri)}`, { cache: "no-store", signal }));
+}
 export async function createKnowledgeResourceDirectory(parentUri: string, name: string): Promise<KnowledgeResourceNode> {
   return parseJson(await fetch("/api/v1/knowledge-resources/directories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parent_uri: parentUri, name }) }));
 }

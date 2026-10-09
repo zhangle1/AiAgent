@@ -16,7 +16,7 @@ using System.Text.Json;
 
 namespace AiAgent.Backend.Tests;
 
-public sealed class KnowledgeWorkspaceTests : IDisposable
+public sealed partial class KnowledgeWorkspaceTests : IDisposable
 {
     [Fact]
     public void TaskCenterOnlyListsWikiCompilationJobs()
@@ -145,6 +145,8 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
 
     private sealed class FinishingIngestion : IKnowledgeIngestionService
     {
+        public Task<KnowledgeProcessingResultDto> ParseResourceAsync(AiKnowledgeBase kb, AiKnowledgeDocument doc, KnowledgeProcessRequest request,
+            CancellationToken token, Action<int, string>? progress = null) => ProcessAsync(kb, doc, request, token, progress: progress);
         public TaskCompletionSource Saving { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Saved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase kb, AiKnowledgeDocument doc, KnowledgeProcessRequest request,
@@ -192,6 +194,8 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
 
     private sealed class BlockingIngestion : IKnowledgeIngestionService
     {
+        public Task<KnowledgeProcessingResultDto> ParseResourceAsync(AiKnowledgeBase kb, AiKnowledgeDocument doc, KnowledgeProcessRequest request,
+            CancellationToken token, Action<int, string>? progress = null) => ProcessAsync(kb, doc, request, token, progress: progress);
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource NextCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Calls;
@@ -460,7 +464,7 @@ public sealed class KnowledgeWorkspaceTests : IDisposable
         db.Updateable<AiKnowledgeDocument>().SetColumns(x => x.IsDeleted == true).Where(x => x.Id == doc.Id).ExecuteCommand();
         var empty = await service.SearchAsync(kb.Name, "evidence", 5, default);
         Assert.Empty(empty.Citations);
-        Assert.Contains("提炼知识", empty.Content);
+        Assert.Contains("解析文档", empty.Content);
         config.Save(new() { RetrievalMode = "rag" });
         Assert.False(service.Enabled);
     }

@@ -82,6 +82,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
                 Parser = parsed.Parser,
                 ParserVersion = "1",
                 ContentPath = parsed.ContentPath,
+                ContentHash = KnowledgeSemanticStore.Hash(parsed.Content),
                 LocatorJson = JsonSerializer.Serialize(parsed.Locators),
                 CharacterCount = parsed.Content.Length,
                 CreatedAt = DateTime.UtcNow
@@ -173,7 +174,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
                 !saveDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == knowledgeBase.Id && !x.IsDeleted))
                 throw new InvalidOperationException("资料在解析期间已删除。");
             var row = new AiKnowledgeParsedDocument { KnowledgeBaseId = knowledgeBase.Id, DocumentId = document.Id,
-                SourceHash = document.FileHash, Parser = parsed.Parser, ParserVersion = "1", ContentPath = parsed.ContentPath,
+                SourceHash = document.FileHash, ContentHash = KnowledgeSemanticStore.Hash(parsed.Content), Parser = parsed.Parser, ParserVersion = "1", ContentPath = parsed.ContentPath,
                 LocatorJson = JsonSerializer.Serialize(parsed.Locators), CharacterCount = parsed.Content.Length, CreatedAt = DateTime.UtcNow };
             saveDb.Ado.BeginTran();
             try

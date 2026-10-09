@@ -96,6 +96,10 @@ export type KnowledgeResourceNode = {
   size?: number | null;
 };
 export type KnowledgeResourceRead = {
+  abstract_content?: string | null;
+  overview_content?: string | null;
+  semantic_generated_at?: string | null;
+  semantic_status: "ready" | "missing_or_stale";
   node: KnowledgeResourceNode;
   source_text?: string | null;
   parsed_content?: string | null;

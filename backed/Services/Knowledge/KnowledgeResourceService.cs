@@ -15,7 +15,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledgePathService paths,
     IKnowledgeIngestionService ingestion, KnowledgeCompilationWorker worker, KnowledgeCompilerSettings settings,
     ILlmChatClient llm, ICodexChatService codex, ILogger<KnowledgeBaseManager> managerLogger,
-    IHttpContextAccessor httpContextAccessor)
+    IHttpContextAccessor httpContextAccessor, KnowledgeResourceSemanticService semantic)
 {
     public static readonly string[] Roots = ["viking://resources/", "viking://projects/", "viking://user/"];
     private const string StoreName = "resource-store";
@@ -132,7 +132,10 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     public async Task<KnowledgeResourceReadDto> ReadAsync(string uri, CancellationToken ct)
     {
         var node = FindNode(uri);
-        if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList() };
+        var generated = semantic.Read(node.Uri);
+        if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList(),
+            AbstractContent = generated?.Abstract, OverviewContent = generated?.Overview, Model = generated?.Model,
+            SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
         var (kb, doc) = Resolve(node);
         var content = ingestion.GetContent(kb, doc);
         string? source = null;
@@ -149,7 +152,8 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             catch (DirectoryNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
         }
         return new() { Node = node, SourceText = source, ParsedContent = content.ParsedContent,
-            SemanticContent = content.ArtifactContent, Parser = content.Parser, Model = content.Model };
+            SemanticContent = generated?.Overview ?? content.ArtifactContent, Parser = content.Parser, Model = generated?.Model ?? content.Model,
+            SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
     }
 
     public KnowledgeCompilationJobDto Parse(string uri)
@@ -310,7 +314,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var root = string.IsNullOrWhiteSpace(org.Project) ? Roots[0] : Roots[1] + Uri.EscapeDataString(org.Project) + "/";
         return root + Uri.EscapeDataString(kb.DisplayName + "-" + kb.Id) + "/";
     }
-    private static string DocumentUri(AiKnowledgeBase kb, AiKnowledgeDocument doc)
+    internal static string DocumentUri(AiKnowledgeBase kb, AiKnowledgeDocument doc)
     {
         if (!string.IsNullOrWhiteSpace(doc.ResourceUri))
         {

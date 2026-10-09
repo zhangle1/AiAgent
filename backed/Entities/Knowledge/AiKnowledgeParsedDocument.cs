@@ -18,6 +18,9 @@ public sealed class AiKnowledgeParsedDocument
     public string? SourceHash { get; set; }
 
     [SugarColumn(Length = 64, IsNullable = true)]
+    public string? ContentHash { get; set; }
+
+    [SugarColumn(Length = 64, IsNullable = true)]
     public string? Parser { get; set; }
 
     [SugarColumn(Length = 32, IsNullable = true)]
