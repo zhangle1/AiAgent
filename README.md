@@ -226,3 +226,7 @@ Windows 运行服务使用 Job Object 托管子进程，npm/dotnet 启动器先�
 ## DeepSeek Harness 本地插件
 
 `plugins/aiagent-remote` 可通过账号密码换取 8 小时短期令牌，选择平台允许的远程 LLM 与 Codex 模型，同时由用户本机的 DeepSeek Harness 负责本地文件访问和最终修改。部署与安全边界见 [DeepSeek Harness 远程插件](docs/deepseek-harness-remote-plugin.md)。
+
+### 知识任务阶段与错误
+
+目录资料上传默认启用解析（可取消勾选），或点击重新解析后进入后台队列。任务中心显示配置校验、正文 L2 解析、L0/L1 语义生成阶段及失败原因；正文保存后语义失败仍可预览正文。失败任务可重试，已完成的历史任务可重新处理以补齐语义文件。旧记录没有阶段信息，不代表已生成 L0/L1。更新代码后需重新部署前后端；不会自动重新执行历史任务。

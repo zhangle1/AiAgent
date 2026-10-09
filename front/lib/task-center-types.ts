@@ -6,6 +6,7 @@ export type TaskCenterTask = {
   resource_id?: string | null;
   resource_uri?: string | null;
   status: string;
+  stage?: string | null;
   progress: number;
   message?: string | null;
   error_message?: string | null;

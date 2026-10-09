@@ -30,6 +30,9 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 知识任务队列位于 `Services/TaskQueue/KnowledgeCompilationWorker.cs`，领域处理位于 `Services/Knowledge/KnowledgeCompilationHandler.cs`。目录资料任务按 L2 → L0/L1 顺序执行，语义服务缺失必须失败，不得静默成功；任务 `Stage` 为可空列。任务中心须补写并覆盖内存终态，阶段缺失的历史任务不得声称已生成语义，可通过重新处理触发。
+
+
 - 目录资源解析在 `wiki_compile` 队列内先保存 L2，再由 `KnowledgeResourceSemanticService` 生成文件摘要并自底向上生成 L1，L0 从简介提取，不单独调用模型。`KnowledgeSemanticStore` 用不可变版本和原子 manifest 发布 `.overview.md` / `.abstract.md`；指纹覆盖原文、解析正文哈希和后代资源，缓存失效不得展示为最新。个人语义只汇总到本人根目录，不汇总到 `viking://user/`；不改 RAG 活动索引。`ContentHash` 为可空列；已有无哈希记录回退解析 ID。详情见 `docs/knowledge-resource-semantics.md`。
 
 - 聊天 Excel 附件 `.xls/.xlt/.xlsx/.xlsm/.xlsb/.xltx/.xltm` 使用 ExcelDataReader 在受控路径直接读取，不调用 LibreOffice、不执行宏；旧版支持 OLE 与原始 BIFF 流，现代格式校验工作簿包结构和解压大小。保留工作表名称、空列位置，支持代码页、取消和提取长度限制。前端粘贴单元格时若同时有表格文字与位图，优先原生文字粘贴；粘贴文件仍走附件上传。聊天 `.doc` 及知识库旧版 Office 预览仍沿用临时目录转换。

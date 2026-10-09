@@ -3,7 +3,9 @@ using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using SqlSugar;
 
-namespace AiAgent.Backend.Services.Knowledge;
+using AiAgent.Backend.Services.Knowledge;
+
+namespace AiAgent.Backend.Services.TaskQueue;
 
 /// <summary>Serial compilation queue, independent from the existing RAG index worker.</summary>
 public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, KnowledgeCompilerSettings settings,
@@ -22,7 +24,6 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         var document = db.Queryable<AiKnowledgeDocument>().Where(x => x.Id == documentId && x.KnowledgeBaseId == kb.Id && !x.IsDeleted).First()
             ?? throw new InvalidOperationException("Knowledge document does not exist.");
         var config = settings.Get();
-        KnowledgeCompilerSettings.Validate(config);
         lock (_sync)
         {
             var finishedIds = _pendingFinishes.Keys.ToArray();
@@ -30,7 +31,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                 x.JobType == "wiki_compile" && (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling"))
                 .WhereIF(finishedIds.Length > 0, x => !finishedIds.Contains(x.Id)).First();
             if (active is not null) return Map(active);
-            var job = new AiKnowledgeJob { KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Message = "等待文档解析" };
+            var job = new AiKnowledgeJob { KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Stage = "queued", Message = "等待正文解析与语义生成" };
             job.Id = db.Insertable(job).ExecuteReturnBigIdentity();
             _cancellations[job.Id] = new CancellationTokenSource();
             if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id, parseOnly || document.ResourceUri != null)))
@@ -122,19 +123,11 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         if (!validationDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == work.Base.Id && !x.IsDeleted) ||
                             !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
                             throw new InvalidOperationException("The source was deleted before compilation.");
-                    var request = new KnowledgeProcessRequest {
-                        Generator = work.Config.Generator, ModelId = work.Config.ModelId, VlmModelId = work.Config.VlmModelId, ReasoningEffort = work.Config.ReasoningEffort
-                    };
-                    void Progress(int value, string message) {
-                        stage = message;
-                        UpdateProgress(work.JobId, value, message);
-                    }
-                    if (work.ParseOnly)
-                    {
-                        await ingestion.ParseResourceAsync(work.Base, work.Document, request, execution.Token, (value, message) => Progress(value * 35 / 100, message));
-                        if (semantic is not null) await semantic.GenerateAsync(work.Base, work.Document, work.Config, Progress, execution.Token);
-                    }
-                    else await ingestion.ProcessAsync(work.Base, work.Document, request, execution.Token, work.Config, Progress);
+                    await KnowledgeCompilationHandler.ExecuteAsync(ingestion, semantic, work.Base, work.Document,
+                        work.Config, work.ParseOnly, (phase, value, message) => {
+                            stage = message;
+                            UpdateProgress(work.JobId, phase, value, message);
+                        }, execution.Token);
                     Finish(work.JobId, "success", work.ParseOnly ? "正文解析与语义整理完成，可查看目录 L0/L1。" : "知识整理完成。");
                 }
                 catch (Exception ex)
@@ -148,8 +141,8 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         {
                             if (!_pendingFinishes.ContainsKey(work.JobId))
                                 Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新解析。" :
-                                    ex is OperationCanceledException ? "知识整理超时或服务停止，请检查模型连接或拆分资料后重试。" :
-                                    $"文档解析失败（{stage}）：{SafeError(ex)}");
+                                    ex is OperationCanceledException ? $"知识任务超时（{stage}），请检查模型连接或拆分资料后重试。" :
+                                    $"知识任务失败（{stage}）：{SafeError(ex)}");
                         }
                     }
                     catch (Exception persistenceError)
@@ -187,14 +180,14 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
     {
         using var db = database.CopyNew();
         db.Updateable<AiKnowledgeJob>()
-            .SetColumns(x => new AiKnowledgeJob { Status = terminal.Status, Progress = terminal.Status == "success" ? 100 : x.Progress,
+            .SetColumns(x => new AiKnowledgeJob { Status = terminal.Status, Stage = terminal.Status == "success" ? "completed" : x.Stage, Progress = terminal.Status == "success" ? 100 : x.Progress,
                 Message = terminal.Message, ErrorMessage = terminal.Status == "error" ? terminal.Message : null,
                 FinishedAt = terminal.At, UpdatedAt = terminal.At })
             .Where(x => x.Id == id).ExecuteCommand();
         _pendingFinishes.Remove(id);
     }
 
-    private void RetryPendingFinishes()
+    public void RetryPendingFinishes()
     {
         lock (_sync)
             foreach (var (id, terminal) in _pendingFinishes.ToArray())
@@ -204,21 +197,23 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             }
     }
 
-    private void UpdateProgress(long jobId, int progress, string message)
+    private void UpdateProgress(long jobId, string stage, int progress, string message)
     {
         using var db = database.CopyNew();
         db.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
-            Progress = progress, Message = message, UpdatedAt = DateTime.UtcNow
+            Stage = stage, Progress = progress, Message = message, UpdatedAt = DateTime.UtcNow
         }).Where(x => x.Id == jobId && x.Status == "processing").ExecuteCommand();
     }
 
-    private void ApplyPendingFinish(AiKnowledgeJob job)
+    public void ApplyPendingFinish(AiKnowledgeJob job)
     {
         lock (_sync)
             if (_pendingFinishes.TryGetValue(job.Id, out var terminal))
             {
                 job.Status = terminal.Status;
                 job.Message = terminal.Message;
+                job.ErrorMessage = terminal.Status == "error" ? terminal.Message : null;
+                if (terminal.Status == "success") job.Stage = "completed";
                 job.FinishedAt = job.UpdatedAt = terminal.At;
                 if (terminal.Status == "success") job.Progress = 100;
             }

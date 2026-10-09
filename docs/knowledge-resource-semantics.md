@@ -47,3 +47,11 @@ npx tsc --noEmit --incremental false
 # KNOWLEDGE_TEST_TOOLS 指向已有 playwright/esbuild 的目录
 node tests/knowledge-semantic.browser.mjs
 ```
+
+## 队列与任务中心阶段
+
+队列调度、去重、取消、重启中断处理和终态补写集中在 `Services/TaskQueue/KnowledgeCompilationWorker.cs`；`KnowledgeCompilationHandler` 保留正文解析和语义生成的领域顺序。继续复用 `wiki_compile`，目录资料作为一个串行任务执行，只有语义文件发布完成才成功，不增加 RAG 索引任务。
+
+`AiKnowledgeJob.Stage` 为可空列，值包括 queued、validating、parsing、semantic、compiling、completed。失败保留阶段，并记录错误原因；语义依赖缺失也必须报错。任务中心读取时补写内存终态，数据库仍不可写时使用内存状态和错误覆盖；筛选不改变摘要统计（统计范围仍为最近 limit 条）。取消或重试旧任务按 ID 回读，不依赖列表窗口。
+
+上传 Process 默认 true；显式取消解析只保存原文。旧任务不会被自动重跑，任务中心允许已完成任务重新处理，重复点击复用同一活动任务。部署需要更新前后端，启动时按实体初始化可空 Stage 列。测试覆盖语义失败后正文可读、失败阶段与错误展示、重试成功、缺失语义服务报错及终态写库失败时的任务中心结果。

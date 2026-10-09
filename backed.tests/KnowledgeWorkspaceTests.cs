@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
@@ -41,7 +42,8 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
             CreatedAt = DateTime.UtcNow
         }).ExecuteCommand();
 
-        var result = new TaskCenterService(db, null!).List("knowledge");
+        using var worker = new KnowledgeCompilationWorker(db, new(db), null!, NullLogger<KnowledgeCompilationWorker>.Instance);
+        var result = new TaskCenterService(db, worker).List("knowledge");
 
         var task = Assert.Single(result.Tasks);
         Assert.Equal("wiki_compile", task.TaskType);
@@ -86,6 +88,8 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
             Assert.Equal(2, worker.List().Count);
             Assert.Equal(kb.Id, db.Queryable<AiKnowledgeBase>().InSingle(kb.Id).Id);
             Assert.Equal("error", worker.Latest(kb.Name, first.Id)!.Status);
+            var failed = new TaskCenterService(db, worker).List().Tasks.Single(x => x.Status == "failed");
+            Assert.False(string.IsNullOrWhiteSpace(failed.ErrorMessage));
             db.Ado.ExecuteCommand("DROP TRIGGER fail_start;");
             worker.List();
             Assert.Equal("error", db.Queryable<AiKnowledgeJob>().Where(x => x.DocumentId == first.Id).First().Status);
@@ -110,6 +114,10 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
             while (worker.Latest(kb.Name, doc.Id)!.Status != "success") await Task.Delay(10, deadline.Token);
             Assert.Equal("success", worker.Cancel(kb.Name, job.Id).Status);
             Assert.Equal("processing", db.Queryable<AiKnowledgeJob>().InSingle(job.Id).Status);
+            var task = Assert.Single(new TaskCenterService(db, worker).List().Tasks);
+            Assert.Equal("completed", task.Status);
+            Assert.Equal("completed", task.Stage);
+            Assert.Equal(100, task.Progress);
             db.Ado.ExecuteCommand("DROP TRIGGER fail_success;");
             Assert.Equal(100, worker.Latest(kb.Name, doc.Id)!.Progress);
             Assert.Equal("success", db.Queryable<AiKnowledgeJob>().InSingle(job.Id).Status);

@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Parsing;

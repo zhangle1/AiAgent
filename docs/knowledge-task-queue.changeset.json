@@ -1,0 +1,78 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "提取知识任务队列并展示语义阶段与错误",
+  "base_commit": "13d66a77002642152e341b0db48bb78371dc1e24",
+  "platform_change_set_id": null,
+  "note": "本地变更校验快照，未提交、未推送、未部署，不代表平台审批。",
+  "checks": {
+    "backend": "passed: dotnet test --filter FullyQualifiedName~Knowledge (54 tests)",
+    "frontend": "passed: npx tsc --noEmit --incremental false",
+    "whitespace": "passed: git diff --check"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "49e5d38bb438ccaba93e566767bce2ce04804c51234985d0aee95e8e35098c49"
+    },
+    {
+      "path": "README.md",
+      "sha256": "729b5af6f037b9677f9e23abe18fbb7aa476ae1277c021db2fd3da3304878097"
+    },
+    {
+      "path": "backed.tests/KnowledgeSemanticTests.cs",
+      "sha256": "08996d14d9f145ffcd37a67295f59bcb165deedd419f133672adf255ea13be05"
+    },
+    {
+      "path": "backed.tests/KnowledgeWorkspaceTests.cs",
+      "sha256": "9122086ce27df7c0b5e35e9935302086be41d511f2659e043fdf6a9d2b0cc2e7"
+    },
+    {
+      "path": "backed/Dtos/TaskCenter/TaskCenterDtos.cs",
+      "sha256": "fdfa80e55fd929d10cf871bd4d80aa5265956fc59d04638c4fd0ae00dfc7ca2a"
+    },
+    {
+      "path": "backed/Entities/Knowledge/AiKnowledgeJob.cs",
+      "sha256": "1d7f8a8003c841bf5fc29e4fb50200b3924669b606ffb27594e5c2144c4e5254"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "0f09e5a07a2a154d4de28060b37470260418ae27eb081df558c490a69885d677"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeAppService.cs",
+      "sha256": "de21648c4f771cda9c2308bd7d62ecd69d02b6c78075681741925adcaadf44ef"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilationHandler.cs",
+      "sha256": "3b0dd73dedc4807e38728e2d5de5d32969dfb4cf11b23e0afb965893b23b53f0"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilationWorker.cs",
+      "state": "deleted"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "dcfd3ebadb8ae1447e79ae81075e451e7209f28bda27aad504533d70ad8b03bd"
+    },
+    {
+      "path": "backed/Services/TaskCenter/TaskCenterService.cs",
+      "sha256": "38ac81b712d596fa72ee54b044c631feabd02fe4f5f6539942a3434297ce41e8"
+    },
+    {
+      "path": "backed/Services/TaskQueue/KnowledgeCompilationWorker.cs",
+      "sha256": "bc0f4bd378e9513036a76f44689d9b375364005f6e530abadb9bcc7edfb38a8e"
+    },
+    {
+      "path": "docs/knowledge-resource-semantics.md",
+      "sha256": "982bdd18312b63fee41d94e301de10158bf24b1efbeb3bc9fd1deec8e0c195fc"
+    },
+    {
+      "path": "front/components/task-center/TaskCenterPage.tsx",
+      "sha256": "91a35e5d7d500ca537242ebfb4b6a6051d6746a849a8a5c7d82830a7d41396d0"
+    },
+    {
+      "path": "front/lib/task-center-types.ts",
+      "sha256": "44de51167a14f23b63e8c37f8abe99db8c8e8f3e8d14734b851bebeed411165b"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Knowledge;
@@ -161,6 +162,22 @@ public sealed partial class KnowledgeWorkspaceTests
             Assert.Contains("每周三发布", ingestion.GetContent(kb, doc).ParsedContent);
             Assert.Equal("processed", db.Queryable<AiKnowledgeDocument>().InSingle(doc.Id).Status);
             Assert.Null(semantic.Read("viking://resources/docs/"));
+            var center = new AiAgent.Backend.Services.TaskCenter.TaskCenterService(db, worker);
+            var failed = Assert.Single(center.List().Tasks);
+            Assert.Equal("failed", failed.Status);
+            Assert.Equal("semantic", failed.Stage);
+            Assert.False(string.IsNullOrWhiteSpace(failed.ErrorMessage));
+            Assert.Contains("语义", failed.ErrorMessage);
+            foreach (var name in new[] { "文件", "目录", "根目录" }) api.Replies.Enqueue($"# {name}\n\n{name}简介。");
+            var retry = center.Retry("knowledge", failed.Id);
+            Assert.NotEqual(failed.Id, retry.Id);
+            while (worker.Latest(kb.Name, doc.Id)!.Status is "queued" or "processing") await Task.Delay(20, deadline.Token);
+            var completed = center.List().Tasks.Single(x => x.Id == retry.Id);
+            Assert.Equal("completed", completed.Status);
+            Assert.Equal("completed", completed.Stage);
+            Assert.NotNull(semantic.Read("viking://resources/docs/"));
+            Assert.Equal(2, center.List(status: "failed").Summary.Total);
+            Assert.Single(center.List(status: "failed").Tasks);
         }
         finally { await worker.StopAsync(default); }
     }
@@ -219,6 +236,30 @@ public sealed partial class KnowledgeWorkspaceTests
             Assert.Contains(doc.ResourceUri!, semantic.Read("viking://resources/docs/")!.Overview);
             Assert.NotNull(semantic.Read("viking://resources/"));
             Assert.Equal(99, db.Queryable<AiKnowledgeBase>().InSingle(kb.Id).ActiveVersionId);
+        }
+        finally { await worker.StopAsync(default); }
+    }
+
+    [Fact]
+    public async Task MissingSemanticServiceFailsVisiblyAfterSavingBody()
+    {
+        using var db = Database(); using var files = new SemanticFiles();
+        var kb = CreateBase(db); var doc = files.Document(kb, "viking://resources/manual.md");
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        var settings = new KnowledgeCompilerSettings(db);
+        var ingestion = new KnowledgeIngestionService(db, files.Paths, null!, new Llm(), new Codex(), settings);
+        using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        await worker.StartAsync(default);
+        try
+        {
+            worker.Enqueue(kb.Name, doc.Id);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (worker.Latest(kb.Name, doc.Id)!.Status is "queued" or "processing") await Task.Delay(20, deadline.Token);
+            var task = Assert.Single(new AiAgent.Backend.Services.TaskCenter.TaskCenterService(db, worker).List().Tasks);
+            Assert.Equal("failed", task.Status);
+            Assert.Equal("semantic", task.Stage);
+            Assert.Contains("语义生成服务未配置", task.ErrorMessage);
+            Assert.Contains("每周三发布", ingestion.GetContent(kb, doc).ParsedContent);
         }
         finally { await worker.StopAsync(default); }
     }

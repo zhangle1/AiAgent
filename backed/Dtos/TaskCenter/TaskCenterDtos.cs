@@ -11,6 +11,7 @@ public sealed class TaskCenterTaskDto
     [JsonPropertyName("resource_id")] public string? ResourceId { get; set; }
     [JsonPropertyName("resource_uri")] public string? ResourceUri { get; set; }
     [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("stage")] public string? Stage { get; set; }
     [JsonPropertyName("progress")] public int Progress { get; set; }
     [JsonPropertyName("message")] public string? Message { get; set; }
     [JsonPropertyName("error_message")] public string? ErrorMessage { get; set; }

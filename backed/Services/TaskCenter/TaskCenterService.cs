@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Dtos.TaskCenter;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Knowledge;
@@ -21,6 +22,7 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         if (normalizedDomain is not null && normalizedDomain != "knowledge")
             return new TaskCenterResponseDto();
 
+        knowledgeWorker.RetryPendingFinishes();
         using var db = database.CopyNew();
         var knowledgeBases = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).ToList();
         var visibleIds = knowledgeBases.Select(x => x.Id).ToList();
@@ -32,10 +34,11 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         var documentRows = documents.Count == 0
             ? new List<AiKnowledgeDocument>()
             : db.Queryable<AiKnowledgeDocument>().Where(x => documents.Contains(x.Id)).ToList();
+        foreach (var row in rows) knowledgeWorker.ApplyPendingFinish(row);
         var tasks = rows.Select(row => Map(row, knowledgeBases.FirstOrDefault(x => x.Id == row.KnowledgeBaseId), documentRows.FirstOrDefault(x => x.Id == row.DocumentId)))
-            .Where(row => string.IsNullOrWhiteSpace(status) || row.Status.Equals(status, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        return new TaskCenterResponseDto { Tasks = tasks, Summary = Summarize(tasks) };
+        return new TaskCenterResponseDto { Tasks = tasks.Where(row => string.IsNullOrWhiteSpace(status) ||
+            row.Status.Equals(status, StringComparison.OrdinalIgnoreCase) || (status == "processing" && row.Status == "cancelling")).ToList(), Summary = Summarize(tasks) };
     }
 
     public TaskCenterTaskDto Cancel(string domain, long id)
@@ -44,8 +47,7 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         var task = Find(id);
         if (task.JobType != "wiki_compile") throw new InvalidOperationException("该知识任务暂不支持取消。");
         knowledgeWorker.Cancel(task.KnowledgeBaseName, id);
-        return List("knowledge").Tasks.FirstOrDefault(x => x.Id == id)
-            ?? throw new InvalidOperationException("任务状态尚未刷新，请稍后重试。");
+        return ReadTask(id);
     }
 
     public TaskCenterTaskDto Retry(string domain, long id)
@@ -54,12 +56,21 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         var task = Find(id);
         if (task.JobType != "wiki_compile" || !task.DocumentId.HasValue) throw new InvalidOperationException("该知识任务暂不支持重试。");
         var retried = knowledgeWorker.Enqueue(task.KnowledgeBaseName, task.DocumentId.Value);
-        return List("knowledge").Tasks.FirstOrDefault(x => x.Id == retried.Id)
-            ?? throw new InvalidOperationException("任务已提交，但状态尚未刷新，请稍后刷新任务中心。");
+        return ReadTask(retried.Id);
+    }
+
+    private TaskCenterTaskDto ReadTask(long id)
+    {
+        var task = Find(id);
+        using var db = database.CopyNew();
+        knowledgeWorker.ApplyPendingFinish(task.Job);
+        return Map(task.Job, db.Queryable<AiKnowledgeBase>().InSingle(task.Job.KnowledgeBaseId),
+            task.DocumentId is {} documentId ? db.Queryable<AiKnowledgeDocument>().InSingle(documentId) : null);
     }
 
     private AiKnowledgeJobWithName Find(long id)
     {
+        knowledgeWorker.RetryPendingFinishes();
         using var db = database.CopyNew();
         var row = db.Queryable<AiKnowledgeJob>().Where(x => x.Id == id).First() ?? throw new KeyNotFoundException("后台任务不存在。");
         var kb = db.Queryable<AiKnowledgeBase>().Where(x => x.Id == row.KnowledgeBaseId && !x.IsDeleted).First() ?? throw new KeyNotFoundException("任务所属知识库不存在。");
@@ -75,6 +86,7 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         ResourceId = document is null ? kb?.Name : $"{kb?.Name}/{document.Id}",
         ResourceUri = kb is null ? null : document is null ? KnowledgeContextUri.Root(kb.Name) : KnowledgeContextUri.Document(document, kb.Name),
         Status = NormalizeStatus(row.Status),
+        Stage = row.Stage,
         Progress = row.Progress,
         Message = row.Message,
         ErrorMessage = row.ErrorMessage,
@@ -83,7 +95,7 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         UpdatedAt = row.UpdatedAt,
         FinishedAt = row.FinishedAt,
         Cancellable = row.Status is "queued" or "processing" or "cancelling",
-        Retryable = row.Status is "error" or "cancelled"
+        Retryable = document is { IsDeleted: false } && row.Status is ("error" or "cancelled" or "success")
     };
 
     private static string NormalizeStatus(string status) => status switch

@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
 using AiAgent.Backend.Services.Chat.Llm;

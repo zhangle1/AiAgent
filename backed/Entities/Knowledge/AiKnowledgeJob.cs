@@ -8,6 +8,9 @@ public sealed class AiKnowledgeJob
     [SugarColumn(IsNullable = true)]
     public DateTime? UpdatedAt { get; set; }
 
+    [SugarColumn(Length = 32, IsNullable = true)]
+    public string? Stage { get; set; }
+
     /// <summary>
     /// 任务自增主键。
     /// </summary>
