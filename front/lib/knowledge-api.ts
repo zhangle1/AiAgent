@@ -1,6 +1,30 @@
 import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 
-import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage } from "@/lib/knowledge-types";
+import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage, KnowledgeResourceAnswer, KnowledgeResourceImport, KnowledgeResourceNode, KnowledgeResourceRead } from "@/lib/knowledge-types";
+
+export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<KnowledgeResourceNode[]> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/tree", { cache: "no-store", signal }));
+}
+export async function readKnowledgeResource(uri: string, signal?: AbortSignal): Promise<KnowledgeResourceRead> {
+  return parseJson(await fetch(`/api/v1/knowledge-resources/read?uri=${encodeURIComponent(uri)}`, { cache: "no-store", signal }));
+}
+export async function createKnowledgeResourceDirectory(parentUri: string, name: string): Promise<KnowledgeResourceNode> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/directories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parent_uri: parentUri, name }) }));
+}
+export async function uploadKnowledgeResources(uri: string, files: File[], process = true): Promise<KnowledgeResourceImport> {
+  const body = new FormData(); body.set("Uri", uri); body.set("Process", String(process));
+  files.forEach(file => body.append("Files", file));
+  return parseJson(await fetch("/api/v1/knowledge-resources/upload", { method: "POST", body }));
+}
+export async function parseKnowledgeResource(uri: string): Promise<KnowledgeCompilationJob> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri }) }));
+}
+export async function askKnowledgeResources(uri: string, question: string): Promise<KnowledgeResourceAnswer> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri, question }) }));
+}
+export function knowledgeResourceFileUrl(uri: string, download = false): string {
+  return `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}${download ? "&download=1" : ""}`;
+}
 
 export async function getKnowledgeCompilations(signal?: AbortSignal): Promise<KnowledgeCompilationJob[]> {
   return parseJson(await fetch("/api/v1/knowledge/compilations", { cache: "no-store", signal }));

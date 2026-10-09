@@ -83,6 +83,38 @@ export type KnowledgeContextNode = {
   created_at: string;
   updated_at?: string | null;
 };
+
+export type KnowledgeResourceNode = {
+  uri: string;
+  parent_uri?: string | null;
+  name: string;
+  kind: "directory" | "file" | string;
+  status?: string | null;
+  document_id?: number | null;
+  knowledge_base_name?: string | null;
+  extension?: string | null;
+  size?: number | null;
+};
+export type KnowledgeResourceRead = {
+  node: KnowledgeResourceNode;
+  source_text?: string | null;
+  parsed_content?: string | null;
+  semantic_content?: string | null;
+  parser?: string | null;
+  model?: string | null;
+  children: KnowledgeResourceNode[];
+};
+export type KnowledgeResourceImport = {
+  items: KnowledgeDocumentImportItem[];
+  tasks: KnowledgeCompilationJob[];
+  warnings: string[];
+};
+export type KnowledgeResourceAnswer = {
+  answer: string;
+  sources: string[];
+  model?: string | null;
+  truncated: boolean;
+};
 export type KnowledgeCompilationJob = {
   knowledge_base_name: string;
   document_name?: string | null;

@@ -27,7 +27,7 @@ export function KnowledgePages({ name, onSource }: { name: string; onSource: (id
       <div className="mb-4 flex items-center justify-between text-sm font-semibold"><span>知识 · {pages.length}</span><button onClick={() => setRevision((v) => v + 1)} className="text-xs text-blue-600">刷新</button></div>
       {loading && <p role="status" className="text-sm text-zinc-500">正在读取知识…</p>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {!loading && !error && pages.length === 0 && <p className="text-sm leading-6 text-zinc-500">还没有提炼结果。请在「原始文件」中选择资料，点击「提炼知识」。</p>}
+      {!loading && !error && pages.length === 0 && <p className="text-sm leading-6 text-zinc-500">还没有知识整理结果。请在「原始文件」中选择资料，点击「知识整理」。</p>}
       {pages.map((p) => <button key={key(p)} onClick={() => setSelected(key(p))} className={`mb-1 block w-full rounded-lg p-3 text-left text-sm ${page === p ? "bg-blue-50 text-blue-700" : "hover:bg-zinc-50"}`}><span className="block font-medium">{p.title}</span><span className="mt-1 block truncate text-xs text-zinc-500">来源：{p.source_name}</span></button>)}
     </aside>
     <article className="min-w-0 overflow-auto p-6">

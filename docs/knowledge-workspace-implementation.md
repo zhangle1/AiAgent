@@ -67,3 +67,12 @@ KnowledgeAppService（HTTP）
 - 前端 TypeScript 检查、Next.js 生产构建通过；包含 `/knowledge` 与 `/settings/knowledge`。
 - 全量后端测试：55 项通过、2 项失败。两个 `UsageStatisticsServiceTests` 在原有 SQLite 建表阶段失败：`AUTOINCREMENT is only allowed on an INTEGER PRIMARY KEY`。与本次知识库无关的夹具和生产统计代码未修改。
 - 未使用真实模型账号或生产数据库做端到端调用，也未验证浏览器视觉与原参考截图的一致性。
+
+
+## 目录型工作区补充
+
+`/knowledge` 直接打开三栏工作区：左侧固定提供 `viking://resources/`（资料）、`viking://projects/`（项目）和 `viking://user/`（人员）三个逻辑根目录；中间读取原文、解析正文和已有知识摘要；右侧 Agent 终端支持 `/ls`、`/open`、`/parse` 和当前目录范围问答。
+
+目录 URI 是分类标识，不是服务器路径，也不改变现有项目权限模型。上传会把原文件写入受控 raw 存储，并自动排入文档解析任务；图片、扫描 PDF 和复杂图像由设置中的 VLM 处理。问答只读取当前目录下的受控资料，限制输入规模，并返回来源 URI。旧知识库和旧文档通过 `ResourceUri` 兼容投影到目录树；文案使用“文档解析”和“知识整理”描述实际处理阶段。
+
+“人员”根目录会按当前登录账号投影为 `viking://user/<username>/`，作为该用户的文件化工作区；后续可在其中挂载记忆、摘要、解析正文和模型转换产物。重新解析和上传产生的任务统一进入任务中心，失败任务会保留阶段说明和错误详情。

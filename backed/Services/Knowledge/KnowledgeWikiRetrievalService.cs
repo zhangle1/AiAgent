@@ -19,7 +19,7 @@ public sealed class KnowledgeWikiRetrievalService(KnowledgeWorkspaceService work
         var pages = workspace.ListPages(name).Where(p => !string.IsNullOrWhiteSpace(p.Content)).ToList();
         if (pages.Count == 0)
         {
-            const string message = "尚无知识表示层，请先在原始文件中点击「提炼知识」；无需创建索引。";
+            const string message = "尚无知识表示层，请先在原始文件中点击「解析文档」；无需创建索引。";
             return new() { Query = query, Provider = "wiki", Answer = message, Content = message };
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

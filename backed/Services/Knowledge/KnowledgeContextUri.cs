@@ -15,6 +15,7 @@ public static partial class KnowledgeContextUri
 
     public static string Document(AiKnowledgeDocument document, string knowledgeBaseName)
     {
+        if (!string.IsNullOrWhiteSpace(document.ResourceUri)) return document.ResourceUri;
         var extension = Path.GetExtension(document.OriginalFileName ?? document.FileName);
         var stem = Path.GetFileNameWithoutExtension(document.OriginalFileName ?? document.FileName);
         return $"{Root(knowledgeBaseName)}{Segment(stem)}-{document.Id}{extension.ToLowerInvariant()}";

@@ -32,7 +32,7 @@ public interface IKnowledgeBaseManager
     /// </summary>
     Task<List<AiKnowledgeDocument>> SaveDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default);
 
-    Task<(List<AiKnowledgeDocument> Documents, List<KnowledgeDocumentImportItemDto> Items)> ImportDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default);
+    Task<(List<AiKnowledgeDocument> Documents, List<KnowledgeDocumentImportItemDto> Items)> ImportDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default, string? resourceDirectory = null);
 
     /// <summary>
     /// 创建新的索引版本记录。
@@ -242,7 +242,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         return result;
     }
 
-    public async Task<(List<AiKnowledgeDocument> Documents, List<KnowledgeDocumentImportItemDto> Items)> ImportDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default)
+    public async Task<(List<AiKnowledgeDocument> Documents, List<KnowledgeDocumentImportItemDto> Items)> ImportDocumentsAsync(AiKnowledgeBase kb, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default, string? resourceDirectory = null)
     {
         if (files.Count is 0 or > MaxImportFiles)
             throw new ArgumentException($"Please select between 1 and {MaxImportFiles} files.", nameof(files));
@@ -280,10 +280,10 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
             candidates.RemoveRange(MaxImportFiles, candidates.Count - MaxImportFiles);
         }
 
-        var existingHashes = _db.Queryable<AiKnowledgeDocument>()
+        var existingDocuments = _db.Queryable<AiKnowledgeDocument>()
             .Where(x => x.KnowledgeBaseId == kb.Id && !x.IsDeleted)
-            .Select(x => x.FileHash)
-            .ToList()
+            .ToList();
+        var existingHashes = existingDocuments.Select(x => resourceDirectory is null ? x.FileHash : $"{x.ResourceUri}|{x.FileHash}")
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var documents = new List<AiKnowledgeDocument>();
@@ -291,7 +291,15 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
         {
             cancellationToken.ThrowIfCancellationRequested();
             var hash = Convert.ToHexString(SHA256.HashData(candidate.Content)).ToLowerInvariant();
-            if (!existingHashes.Add(hash))
+            string? resourceUri = null;
+            try
+            {
+                if (resourceDirectory is not null)
+                    resourceUri = KnowledgeResourceService.NormalizeUri(resourceDirectory + string.Join('/', candidate.Name.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString)));
+            }
+            catch (ArgumentException ex) { items.Add(ImportItem(candidate.Name, "failed", ex.Message)); continue; }
+            var duplicateKey = resourceDirectory is null ? hash : $"{resourceUri}|{hash}";
+            if (!existingHashes.Add(duplicateKey))
             {
                 items.Add(ImportItem(candidate.Name, "skipped", "An identical document already exists in this knowledge base."));
                 continue;
@@ -307,12 +315,21 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                 };
                 var saved = await SaveDocumentsAsync(kb, [formFile], cancellationToken);
                 var document = saved.Single();
+                if (resourceUri is not null)
+                {
+                    // Preserve names and nested ZIP paths; suffix conflicting files without overwriting raw.
+                    if (existingDocuments.Any(x => x.ResourceUri == resourceUri || x.ResourceUri?.StartsWith(resourceUri + "/", StringComparison.Ordinal) == true))
+                        resourceUri = KnowledgeResourceService.Parent(resourceUri) + Uri.EscapeDataString(Path.GetFileNameWithoutExtension(candidate.Name) + "-" + document.Id + document.Extension);
+                    document.ResourceUri = resourceUri;
+                    _db.Updateable(document).UpdateColumns(x => x.ResourceUri).ExecuteCommand();
+                    existingDocuments.Add(document);
+                }
                 documents.Add(document);
-                items.Add(new KnowledgeDocumentImportItemDto { FileName = candidate.Name, Status = "imported", Message = "Saved to raw; ready for optional knowledge compilation.", DocumentId = document.Id });
+                items.Add(new KnowledgeDocumentImportItemDto { FileName = candidate.Name, Status = "imported", Message = "原始文件已保存。", DocumentId = document.Id });
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
             {
-                existingHashes.Remove(hash);
+                existingHashes.Remove(duplicateKey);
                 items.Add(ImportItem(candidate.Name, "failed", ex.Message));
             }
         }
@@ -355,7 +372,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                 using var entryStream = entry.Open();
                 using var output = new MemoryStream();
                 entryStream.CopyTo(output);
-                archiveCandidates.Add((entry.Name, "application/octet-stream", output.ToArray()));
+                archiveCandidates.Add((normalized, "application/octet-stream", output.ToArray()));
             }
             candidates.AddRange(archiveCandidates);
         }

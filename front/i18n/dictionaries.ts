@@ -179,7 +179,7 @@ const zhCN = {
   "models.defaultProfile": "默认 {{name}}",
   "knowledge.title": "知识中心",
   "knowledge.description": "管理你的知识库和检索引擎。",
-  "knowledge.new": "新建知识库",
+  "knowledge.new": "添加资料",
   "knowledge.retrievalEngines": "检索引擎",
   "knowledge.knowledgeBases": "知识库",
   "knowledge.noKnowledgeBases": "还没有知识库",

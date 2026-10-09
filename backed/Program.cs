@@ -127,6 +127,7 @@ builder.Services.AddSingleton<KnowledgeWikiRetrievalService>();
 builder.Services.AddSingleton<KnowledgeSourceSearchService>();
 builder.Services.AddSingleton<KnowledgeChainDiagnosticsService>();
 builder.Services.AddSingleton<KnowledgeCompilationWorker>();
+builder.Services.AddSingleton<KnowledgeResourceService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KnowledgeCompilationWorker>());
 builder.Services.AddSingleton<ITaskCenterService, TaskCenterService>();
 builder.Services.AddSingleton<IPythonWorkerHost, PythonWorkerHost>();

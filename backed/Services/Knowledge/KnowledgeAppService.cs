@@ -394,7 +394,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     }
 
     /// <summary>
-    /// 上传文件到已有知识库的 raw 目录，不隐式启动索引或提炼。
+    /// 上传文件到已有知识库的 raw 目录，不隐式启动索引或知识整理。
     /// </summary>
     [HttpPost("{kbName}/upload")]
     public async Task<KnowledgeDocumentImportResultDto> UploadFiles([FromRoute(Name = "kbName")] string kbName, [FromForm(Name = "Files")] List<IFormFile>? files, CancellationToken cancellationToken)
@@ -538,7 +538,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     }
 
     /// <summary>
-    /// 在来源层直接检索已入库的原始文件，不要求先提炼知识或创建向量索引。
+    /// 在来源层直接检索已入库的原始文件，不要求先解析文档或创建向量索引。
     /// </summary>
     [HttpPost("{kbName}/sources/search")]
     public Task<KnowledgeSearchResponse> SearchSources([FromRoute] string kbName, [FromBody] KnowledgeSourceSearchRequest request,

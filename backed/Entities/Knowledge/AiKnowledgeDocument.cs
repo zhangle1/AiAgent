@@ -5,6 +5,10 @@ namespace AiAgent.Backend.Entities.Knowledge;
 [SugarTable("ai_knowledge_document")]
 public sealed class AiKnowledgeDocument
 {
+    /// <summary>Logical resource URI. Null preserves the legacy knowledge-base URI projection.</summary>
+    [SugarColumn(Length = 1024, IsNullable = true)]
+    public string? ResourceUri { get; set; }
+
     /// <summary>
     /// 文档自增主键。
     /// </summary>

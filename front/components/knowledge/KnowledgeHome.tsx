@@ -203,7 +203,7 @@ export function KnowledgeHome() {
       const skipped = result.items.filter((item) => item.status === "skipped").length;
       const failed = result.items.filter((item) => item.status === "failed").length;
       setDetailTab("files");
-      setNotice(`源文件已保存 (${imported} imported, ${skipped} skipped, ${failed} failed)。请选择文件后点击「提炼知识」，提炼方式可在知识库设置中选择。`);
+      setNotice(`源文件已保存 (${imported} imported, ${skipped} skipped, ${failed} failed)。请选择文件后点击「解析文档」，解析方式可在知识库设置中选择。`);
       return result;
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : t("knowledge.errorUpload"));
@@ -419,7 +419,7 @@ function CreateKnowledgeModal({ busy, providers, onClose, onCreate }: { busy: bo
 
           <details className="mt-5">
             <summary className="cursor-pointer text-sm font-semibold">可选索引引擎（创建知识库无需配置）</summary>
-            <p className="mt-2 text-xs text-[var(--muted-foreground)]">文件默认保存到 raw，按需通过 Codex CLI 或 LLM API 提炼知识。此引擎仅在手动创建 RAG 索引时使用。</p>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">文件默认保存到 raw，按需通过 Codex CLI 或 LLM API 解析文档。此引擎仅在手动创建 RAG 索引时使用。</p>
             <div className="mt-2 grid gap-2 md:grid-cols-2">
               {providers.filter((item) => item.id !== "obsidian").map((item) => {
                 const active = provider === item.id;
@@ -506,7 +506,7 @@ function KnowledgeDetailView({ busy, detail, detailLoading, embeddingLabel, erro
       {tab === "add" && <AddDocumentsTab busy={busy} documents={detail.documents} onUpload={onUpload} />}
       {tab === "versions" && <IndexVersionsTab busy={busy} detail={detail} versions={versions} onRefresh={onRefresh} onReindex={onReindex} />}
       {tab === "settings" && <KnowledgeOrganizationEditor key={detail.name} knowledgeBase={detail} onSaved={onRefresh} />}
-      {tab === "settings" && <div className="mx-6"><Link href="/settings/knowledge" className="text-sm text-blue-600">提炼与检索配置 → 设置</Link></div>}
+      {tab === "settings" && <div className="mx-6"><Link href="/settings/knowledge" className="text-sm text-blue-600">解析与检索配置 → 设置</Link></div>}
       {tab === "settings" && <SettingsTab busy={busy} detail={detail} embeddingLabel={embeddingLabel} onDelete={onDelete} onSetDefault={onSetDefault} />}
     </div>
   );
@@ -531,7 +531,7 @@ function FilesTab({ busy, detail, selectedDocument, onDeleteDocument, onSelect }
                     <FileText size={14} className="shrink-0" />
                     <span className="truncate">{doc.original_file_name || doc.file_name}</span>
                   </div>
-                  <div className="mt-1 text-[11px] text-[var(--muted-foreground)]">{formatBytes(doc.file_size)} · {doc.has_artifact ? "已有提炼" : "待提炼"}</div>
+                  <div className="mt-1 text-[11px] text-[var(--muted-foreground)]">{formatBytes(doc.file_size)} · {doc.has_artifact ? "已有知识整理" : "待知识整理"}</div>
                 </button>
                 <button type="button" disabled={busy} onClick={() => void onDeleteDocument(detail.name, doc.id)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 group-hover:opacity-100" title={t("common.delete")}>
                   <Trash2 size={14} />
@@ -630,7 +630,7 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
     setTextError(null);
     try {
       const job = await compileKnowledgeDocument(kbName, document.id);
-      setCompilationMessage(job.message || "等待提炼");
+      setCompilationMessage(job.message || "等待文档解析");
     } catch (error) {
       setTextError(error instanceof Error ? error.message : String(error));
       setProcessing(false);
@@ -653,21 +653,21 @@ function FilePreview({ kbName, document }: { kbName: string; document: Knowledge
           <div className="text-[11px] text-[var(--muted-foreground)]">{document.content_type || document.extension || t("common.notSet")} · {formatBytes(document.file_size)}</div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button type="button" disabled={processing || jobLoading} onClick={() => void process()} className="h-8 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white disabled:opacity-50">{processing ? "正在提炼知识…" : "提炼知识"}</button>
-          <Link href="/settings/knowledge" className="text-xs text-blue-600">提炼设置</Link>
+          <button type="button" disabled={processing || jobLoading} onClick={() => void process()} className="h-8 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white disabled:opacity-50">{processing ? "正在解析文档…" : "解析文档"}</button>
+          <Link href="/settings/knowledge" className="text-xs text-blue-600">解析设置</Link>
           <a href={downloadUrl} download className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border)] px-2.5 text-[12px] hover:border-blue-300"><Download size={14} />{t("knowledge.download")}</a>
         </div>
       </div>
       {compilationMessage && <p role="status" className="mb-3 text-sm text-zinc-600">{compilationMessage}</p>}
       <div className="mb-3 flex gap-1 rounded-md bg-zinc-100 p-1 text-[12px]">
-        {(["source", "parsed", "artifact"] as const).map((mode) => <button key={mode} type="button" onClick={() => setContentMode(mode)} className={`rounded px-3 py-1.5 ${contentMode === mode ? "bg-white font-medium shadow-sm" : "text-[var(--muted-foreground)]"}`}>{mode === "source" ? "原文件" : mode === "parsed" ? "解析正文" : "AI 提炼"}</button>)}
+        {(["source", "parsed", "artifact"] as const).map((mode) => <button key={mode} type="button" onClick={() => setContentMode(mode)} className={`rounded px-3 py-1.5 ${contentMode === mode ? "bg-white font-medium shadow-sm" : "text-[var(--muted-foreground)]"}`}>{mode === "source" ? "原文件" : mode === "parsed" ? "解析正文" : "知识摘要"}</button>)}
         {compiled?.provider && <span className="ml-auto self-center px-2 text-[11px] text-[var(--muted-foreground)]">{compiled.generator} · {compiled.provider} · {compiled.review_status}</span>}
       </div>
       {textError ? (
         <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-[12px] text-red-700">{textError}</div>
       ) : null}
       {contentMode !== "source" ? (
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-white"><pre className="min-h-full whitespace-pre-wrap break-words p-4 font-sans text-[13px] leading-6">{contentMode === "parsed" ? compiled?.parsed_content || "尚未生成解析正文，请先执行入库。" : compiled?.artifact_content || "尚未生成 AI 提炼内容，请先执行入库。"}</pre></div>
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--border)] bg-white"><pre className="min-h-full whitespace-pre-wrap break-words p-4 font-sans text-[13px] leading-6">{contentMode === "parsed" ? compiled?.parsed_content || "尚未生成解析正文，请先执行入库。" : compiled?.artifact_content || "尚未生成 AI 知识摘要，请先执行入库。"}</pre></div>
       ) : isPdf ? (
         <PdfDocumentPreview title={document.original_file_name || document.file_name} url={url} />
       ) : /\.(docx?|xlsx?)$/i.test(document.original_file_name || document.file_name) ? (
@@ -812,7 +812,7 @@ function AddDocumentsTab({ busy, documents, onUpload }: { busy: boolean; documen
       <div className="mt-4 flex justify-end">
         <button type="button" disabled={busy || files.length === 0} onClick={() => void submit()} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:bg-zinc-300">
           <Upload size={15} />
-          {busy ? t("common.saving") : "保存源文件，进入提炼确认"}
+          {busy ? t("common.saving") : "保存源文件，进入知识整理确认"}
         </button>
       </div>
       {result && (

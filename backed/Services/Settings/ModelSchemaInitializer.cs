@@ -53,6 +53,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiKnowledgeChunk),
             typeof(AiKnowledgeJob),
             typeof(AiKnowledgeContextNode),
+            typeof(AiKnowledgeDirectory),
             typeof(AiCodeProject),
             typeof(AiProjectMarkdownDocument),
             typeof(AiCodeRepository),

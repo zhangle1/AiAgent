@@ -1,5 +1,5 @@
-import { KnowledgeHome } from "@/components/knowledge/KnowledgeHome";
+import { KnowledgeWorkspace } from "@/components/knowledge/KnowledgeWorkspace";
 
 export default function KnowledgePage() {
-  return <KnowledgeHome />;
+  return <KnowledgeWorkspace />;
 }

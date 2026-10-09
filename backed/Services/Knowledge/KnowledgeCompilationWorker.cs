@@ -14,7 +14,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
     private readonly Dictionary<long, TerminalState> _pendingFinishes = new();
     private readonly Channel<Work> _queue = Channel.CreateBounded<Work>(new BoundedChannelOptions(32) { SingleReader = true });
 
-    public KnowledgeCompilationJobDto Enqueue(string name, long documentId)
+    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool parseOnly = false)
     {
         RetryPendingFinishes();
         using var db = database.CopyNew();
@@ -30,14 +30,14 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                 x.JobType == "wiki_compile" && (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling"))
                 .WhereIF(finishedIds.Length > 0, x => !finishedIds.Contains(x.Id)).First();
             if (active is not null) return Map(active);
-            var job = new AiKnowledgeJob { KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Message = "等待提炼" };
+            var job = new AiKnowledgeJob { KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Message = "等待文档解析" };
             job.Id = db.Insertable(job).ExecuteReturnBigIdentity();
             _cancellations[job.Id] = new CancellationTokenSource();
-            if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id)))
+            if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id, parseOnly || document.ResourceUri != null)))
             {
                 _cancellations.Remove(job.Id, out var rejected);
                 rejected?.Dispose();
-                Finish(job.Id, "error", "提炼队列已满，请稍后重试。");
+                Finish(job.Id, "error", "文档解析队列已满，请稍后重试。");
                 throw new InvalidOperationException("Compilation queue is full; retry later.");
             }
             return Map(job);
@@ -59,7 +59,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         using var db = database.CopyNew();
         // Startup schema initialization runs before hosted services. Interrupted work is explicit and retryable.
         db.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
-            Status = "error", Message = "服务重启中断了提炼，请重新提炼。", FinishedAt = DateTime.UtcNow
+            Status = "error", Message = "服务重启中断了知识整理，请重新解析。", ErrorMessage = "服务重启中断了知识整理，请重新解析。", FinishedAt = DateTime.UtcNow
         }).Where(x => x.JobType == "wiki_compile" && (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling")).ExecuteCommand();
         return base.StartAsync(cancellationToken);
     }
@@ -87,10 +87,10 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             ApplyPendingFinish(job);
             if (job.Status is not ("queued" or "processing" or "cancelling")) return Map(job);
             if (job.Status == "queued" || !_cancellations.TryGetValue(id, out _))
-                Finish(id, "cancelled", "已取消，可重新提炼。");
+                Finish(id, "cancelled", "已取消，可重新解析。");
             else
                 db.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
-                    Status = "cancelling", Message = "正在停止提炼…", UpdatedAt = DateTime.UtcNow
+                    Status = "cancelling", Message = "正在停止知识整理…", UpdatedAt = DateTime.UtcNow
                 }).Where(x => x.Id == id).ExecuteCommand();
             if (_cancellations.TryGetValue(id, out var source)) source.Cancel();
             return Map(db.Queryable<AiKnowledgeJob>().InSingle(id));
@@ -113,7 +113,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         if (source is null || source.IsCancellationRequested) continue;
                         using var stateDb = database.CopyNew();
                         stateDb.Updateable<AiKnowledgeJob>().SetColumns(x => new AiKnowledgeJob {
-                            Status = "processing", Progress = 1, Message = "准备提炼", StartedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+                            Status = "processing", Progress = 1, Message = "准备知识整理", StartedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
                         }).Where(x => x.Id == work.JobId).ExecuteCommand();
                     }
                     using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, source.Token);
@@ -122,13 +122,16 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         if (!validationDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == work.Base.Id && !x.IsDeleted) ||
                             !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
                             throw new InvalidOperationException("The source was deleted before compilation.");
-                    await ingestion.ProcessAsync(work.Base, work.Document, new KnowledgeProcessRequest {
+                    var request = new KnowledgeProcessRequest {
                         Generator = work.Config.Generator, ModelId = work.Config.ModelId, VlmModelId = work.Config.VlmModelId, ReasoningEffort = work.Config.ReasoningEffort
-                    }, execution.Token, work.Config, (value, message) => {
+                    };
+                    void Progress(int value, string message) {
                         stage = message;
                         UpdateProgress(work.JobId, value, message);
-                    });
-                    Finish(work.JobId, "success", "提炼完成，可在知识标签中核对草稿。");
+                    }
+                    if (work.ParseOnly) await ingestion.ParseResourceAsync(work.Base, work.Document, request, execution.Token, Progress);
+                    else await ingestion.ProcessAsync(work.Base, work.Document, request, execution.Token, work.Config, Progress);
+                    Finish(work.JobId, "success", work.ParseOnly ? "文档解析完成，可预览正文并按目录问答。" : "知识整理完成。");
                 }
                 catch (Exception ex)
                 {
@@ -140,9 +143,9 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         lock (_sync)
                         {
                             if (!_pendingFinishes.ContainsKey(work.JobId))
-                                Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新提炼。" :
-                                    ex is OperationCanceledException ? "提炼超时或服务停止，请检查模型连接或拆分资料后重试。" :
-                                    $"提炼失败（{stage}）：{SafeError(ex)}");
+                                Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新解析。" :
+                                    ex is OperationCanceledException ? "知识整理超时或服务停止，请检查模型连接或拆分资料后重试。" :
+                                    $"文档解析失败（{stage}）：{SafeError(ex)}");
                         }
                     }
                     catch (Exception persistenceError)
@@ -181,7 +184,8 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         using var db = database.CopyNew();
         db.Updateable<AiKnowledgeJob>()
             .SetColumns(x => new AiKnowledgeJob { Status = terminal.Status, Progress = terminal.Status == "success" ? 100 : x.Progress,
-                Message = terminal.Message, FinishedAt = terminal.At, UpdatedAt = terminal.At })
+                Message = terminal.Message, ErrorMessage = terminal.Status == "error" ? terminal.Message : null,
+                FinishedAt = terminal.At, UpdatedAt = terminal.At })
             .Where(x => x.Id == id).ExecuteCommand();
         _pendingFinishes.Remove(id);
     }
@@ -241,5 +245,5 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         };
     }
     private sealed record TerminalState(string Status, string Message, DateTime At);
-    private sealed record Work(AiKnowledgeBase Base, AiKnowledgeDocument Document, KnowledgeCompilerSettingsDto Config, long JobId);
+    private sealed record Work(AiKnowledgeBase Base, AiKnowledgeDocument Document, KnowledgeCompilerSettingsDto Config, long JobId, bool ParseOnly);
 }

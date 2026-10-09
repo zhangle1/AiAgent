@@ -16,6 +16,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 
 public interface IKnowledgeIngestionService
 {
+    Task<KnowledgeProcessingResultDto> ParseResourceAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, Action<int, string>? progress = null);
     Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null);
     KnowledgeDocumentContentDto GetContent(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document);
 }
@@ -144,10 +145,50 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
             try
             {
                 using var failureDb = _db.CopyNew();
-                UpdateDocument(failureDb, document.Id, cancelledByCaller ? "cancelled" : "error", cancelledByCaller ? "提炼已中断，可重试。" :
-                    ex is OperationCanceledException ? "提炼超时或服务停止，请检查模型连接或拆分资料后重试。" : $"提炼失败：{SafeError(ex)}");
+                UpdateDocument(failureDb, document.Id, cancelledByCaller ? "cancelled" : "error", cancelledByCaller ? "知识整理已中断，可重试。" :
+                    ex is OperationCanceledException ? "知识整理超时或服务停止，请检查模型连接或拆分资料后重试。" : $"文档解析失败：{SafeError(ex)}");
             }
             catch (Exception statusError) { ex.Data["StatusPersistenceErrorType"] = statusError.GetType().Name; }
+            throw;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<KnowledgeProcessingResultDto> ParseResourceAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document,
+        KnowledgeProcessRequest request, CancellationToken cancellationToken, Action<int, string>? progress = null)
+    {
+        var sourcePath = Path.GetFullPath(document.StoragePath);
+        EnsureInside(sourcePath, Path.GetFullPath(_paths.GetKnowledgeBasePath(knowledgeBase.Name)));
+        if (!File.Exists(sourcePath)) throw new FileNotFoundException("原始资料不存在。");
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            using (var db = _db.CopyNew()) UpdateDocument(db, document.Id, "parsing", null);
+            progress?.Invoke(5, "正在解析文档；图片由 VLM 理解");
+            var parsed = await ParseAsync(knowledgeBase, document, sourcePath, request, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Invoke(90, "正文解析完成，正在保存");
+            using var saveDb = _db.CopyNew();
+            if (!saveDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == document.Id && !x.IsDeleted) ||
+                !saveDb.Queryable<AiKnowledgeBase>().Any(x => x.Id == knowledgeBase.Id && !x.IsDeleted))
+                throw new InvalidOperationException("资料在解析期间已删除。");
+            var row = new AiKnowledgeParsedDocument { KnowledgeBaseId = knowledgeBase.Id, DocumentId = document.Id,
+                SourceHash = document.FileHash, Parser = parsed.Parser, ParserVersion = "1", ContentPath = parsed.ContentPath,
+                LocatorJson = JsonSerializer.Serialize(parsed.Locators), CharacterCount = parsed.Content.Length, CreatedAt = DateTime.UtcNow };
+            saveDb.Ado.BeginTran();
+            try
+            {
+                row.Id = saveDb.Insertable(row).ExecuteReturnBigIdentity();
+                UpdateDocument(saveDb, document.Id, "processed", null);
+                saveDb.Ado.CommitTran();
+            }
+            catch { saveDb.Ado.RollbackTran(); throw; }
+            return new() { DocumentId = document.Id, ParsedDocumentId = row.Id, Status = "processed", Parser = parsed.Parser };
+        }
+        catch (Exception ex)
+        {
+            try { using var db = _db.CopyNew(); UpdateDocument(db, document.Id, ex is OperationCanceledException ? "cancelled" : "error", "解析未完成，可重试。"); }
+            catch (Exception stateError) { ex.Data["StatusPersistenceErrorType"] = stateError.GetType().Name; }
             throw;
         }
         finally { _gate.Release(); }
