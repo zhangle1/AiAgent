@@ -13,6 +13,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+
+    <PackageReference Include="ExcelDataReader" Version="3.7.0" />
     <PackageReference Include="Furion" Version="4.9.6.17" />
     <PackageReference Include="SqlSugarCore" Version="5.1.4.200" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />

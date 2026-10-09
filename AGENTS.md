@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 聊天 Excel 附件 `.xls/.xlt/.xlsx/.xlsm/.xlsb/.xltx/.xltm` 使用 ExcelDataReader 在受控路径直接读取，不调用 LibreOffice、不执行宏；旧版支持 OLE 与原始 BIFF 流，现代格式校验工作簿包结构和解压大小。保留工作表名称、空列位置，支持代码页、取消和提取长度限制。前端粘贴单元格时若同时有表格文字与位图，优先原生文字粘贴；粘贴文件仍走附件上传。聊天 `.doc` 及知识库旧版 Office 预览仍沿用临时目录转换。
+
 - 知识提炼采用 Analysis → Generation 两阶段：宿主确定分段，先分析全部原文，再按段生成并校验证据；模型调用预算覆盖两阶段，校验修正每段最多三次生成调用。队列、提炼和设置操作使用独立 `CopyNew()` 客户端，不跨请求共享连接。任务开始、进度及终态异常均隔离在任务边界；终态写库失败暂存内存并在状态查询时补写，不重复模型调用。草稿插入与文档成功状态在同一短事务内提交。
 
 - Office 预览在 `KnowledgeOfficePreviewService` 中进行，与模型提炼无关；返回经过编码的受限 HTML，前端必须使用无权限 sandbox iframe，不得开放脚本或外链。DOC/XLS 仅在临时目录调用配置的 LibreOffice 转换，不修改 raw。提炼进度来自解析阶段和已校验证据覆盖率，不用计时器伪造百分比；取消必须传递到模型调用，`cancelling` 仍视为活动任务以防重复提交。队列列表只包含 `wiki_compile`，不混入 RAG 任务。

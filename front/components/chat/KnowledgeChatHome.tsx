@@ -1,5 +1,7 @@
 "use client";
 
+import { getChatClipboardFiles } from "@/lib/chat-clipboard";
+
 import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1148,11 +1150,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             <form
               onSubmit={handleSubmit}
               onPaste={(event) => {
-                const filesFromItems = Array.from(event.clipboardData.items)
-                  .filter((item) => item.kind === "file")
-                  .map((item) => item.getAsFile())
-                  .filter((file): file is File => file !== null);
-                const files = filesFromItems.length > 0 ? filesFromItems : Array.from(event.clipboardData.files);
+                const files = getChatClipboardFiles(event.clipboardData);
                 if (files.length > 0) {
                   event.preventDefault();
                   addAttachments(files);
@@ -1247,7 +1245,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv"
+                    accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv"
                     multiple
                     className="hidden"
                     onChange={(event) => {

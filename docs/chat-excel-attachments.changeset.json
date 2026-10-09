@@ -1,0 +1,83 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "修复新旧 Excel 附件识别、空列提取和单元格粘贴",
+  "base_commit": "b8fb4eea776aca744e9b71f5e8942050df92294a",
+  "platform_change_set_id": null,
+  "note": "本地变更快照；用户已明确授权检测通过后提交，未请求推送。",
+  "checks": {
+    "backend_attachment_tests": "20 passed",
+    "frontend_regressions": "31 passed",
+    "typescript": "passed",
+    "whitespace": "passed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "97eb9fbae92a6ecebcc10c9d29ce8b97f0f5213a08fd426c96e59cd2e060a1c2"
+    },
+    {
+      "path": "README.md",
+      "sha256": "cf9191416237ee45f177aa270b3b64086aac69d8f85f4bb03c3d195c0cff3dee"
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "43a4224c4daf0d9ee7109d3befda1969722fae74e8767dc3f62faec9915a13fd"
+    },
+    {
+      "path": "backed/Services/Chat/ChatFileAttachmentService.cs",
+      "sha256": "b21f446204888a51e89a7f554c6850e3c6d8af5cd2fce93d340e97a807de275a"
+    },
+    {
+      "path": "backed.tests/AiAgent.Backend.Tests.csproj",
+      "sha256": "3c6a2c3db51e056e947e9af2a69480df9f749a760eb59cdb8f4f9dfb64a4dea4"
+    },
+    {
+      "path": "backed.tests/Chat/ChatFileAttachmentServiceTests.cs",
+      "sha256": "73a1cae69f8a1944b324ff75df033ae4b8d3885466c685aad27887cf7173a1b0"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "60be3b12de566af3c524f9df0fc8e5c5f4ac920942b02a15f4a2bd194e749f89"
+    },
+    {
+      "path": "front/lib/chat-clipboard.ts",
+      "sha256": "15452fd8761cd221d31d5eaf18974fb4124561c36cd7a5a796523314b6e973f2"
+    },
+    {
+      "path": "front/tests/chat-clipboard.test.mjs",
+      "sha256": "abb2c07ebf8317d831a09a6313889ca9b99f1bfbcd709cb6034fc98a44b4626d"
+    },
+    {
+      "path": "backed.tests/Fixtures/README.md",
+      "sha256": "5b608afb20c7c7b012ff3a2d86e10abf55a02fb7c436ce06c51f3d7ea2288855"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-biff2.xls",
+      "sha256": "1470339206b47bfa72bcf96679f827df49f4d6286f7ca74d54b365099ce1ca67"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-legacy.xls",
+      "sha256": "8a7d26a093bf27c162378b842c3794c3fae759ae93b1e980adca5a3cfa6e906e"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-modern.xlsb",
+      "sha256": "ab93a0a1eea92c5d4eee341aece722e613983dff4306f474c80696cec8c8a78e"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-modern.xlsm",
+      "sha256": "0e2ddd75952cebc30c718588c0506d58056c3008cdc8f6868d2146a35bf0c7c9"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-modern.xlsx",
+      "sha256": "3601e6cb94bb07f5157915921c3909b5f39baf92f1ae17b742b03624e6e1f63f"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-modern.xltm",
+      "sha256": "d2e59ebf6eae1324d6dfa6bc6e6ab155b812bd38c5ea9e3e9797fdbac9a36ab3"
+    },
+    {
+      "path": "backed.tests/Fixtures/chat-modern.xltx",
+      "sha256": "b46032cded5023829e48b41ed5467e402da7d5a0ca250f06b5c115724c608e8f"
+    }
+  ]
+}

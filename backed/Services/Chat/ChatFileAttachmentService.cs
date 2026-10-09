@@ -12,6 +12,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using ExcelDataReader;
+using System.Globalization;
 
 namespace AiAgent.Backend.Services.Chat;
 
@@ -37,6 +39,7 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
     private const int HeaderLength = 16;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".csv" };
+    private static readonly HashSet<string> ExcelExtensions = new(StringComparer.OrdinalIgnoreCase) { ".xls", ".xlt", ".xlsx", ".xlsm", ".xlsb", ".xltx", ".xltm" };
     private readonly IConfiguration _configuration;
     private readonly IDocumentParsingService _documentParsing;
     private readonly ILogger<ChatFileAttachmentService> _logger;
@@ -58,7 +61,7 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         if (file.Length > MaxFileBytes) throw new InvalidOperationException($"Attachment exceeds the {MaxFileBytes / 1024 / 1024} MB limit.");
 
         var extension = Path.GetExtension(file.FileName ?? string.Empty).ToLowerInvariant();
-        var definition = GetDefinition(extension) ?? throw new InvalidOperationException("Only PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, HTML, Markdown, TXT, and CSV files are supported.");
+        var definition = GetDefinition(extension) ?? throw new InvalidOperationException("Only PDF, DOC/DOCX, Excel (XLS/XLT/XLSX/XLSM/XLSB/XLTX/XLTM), PPT/PPTX, HTML, Markdown, TXT, and CSV files are supported.");
         Directory.CreateDirectory(RootPath);
         var id = Guid.NewGuid().ToString("N");
         var targetPath = Path.Combine(RootPath, $"{id}{definition.Extension}");
@@ -218,7 +221,8 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
     private async Task<string> ExtractTextAsync(string path, CancellationToken cancellationToken)
     {
         var extension = Path.GetExtension(path).ToLowerInvariant();
-        if (extension is ".doc" or ".xls")
+        if (ExcelExtensions.Contains(extension)) return ReadSpreadsheetText(path, cancellationToken);
+        if (extension == ".doc")
         {
             using var converted = await KnowledgeOfficePreviewService.ConvertLegacyAsync(path, _configuration["Knowledge:LibreOfficePath"], cancellationToken);
             return await ExtractTextAsync(converted.Path, cancellationToken);
@@ -227,7 +231,6 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         if (extension is ".html" or ".htm") return HtmlToText(await ReadUtf8Async(path, cancellationToken));
         if (extension == ".docx") return ReadOfficeXml(path, "word/document.xml", document => string.Join("\n", document.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value)));
         if (extension == ".pptx") return ReadPowerPointText(path);
-        if (extension == ".xlsx") return ReadSpreadsheetText(path);
         if (extension == ".pdf") return await ReadPdfTextAsync(path, cancellationToken);
         throw new InvalidOperationException("This document format cannot be converted to text.");
     }
@@ -256,23 +259,35 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         return string.Join("\n\n", slides.Select(entry => $"# {Path.GetFileNameWithoutExtension(entry.Name)}\n{ReadXmlEntry(entry, document => string.Join("\n", document.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value)))}"));
     }
 
-    private static string ReadSpreadsheetText(string path)
+    private string ReadSpreadsheetText(string path, CancellationToken cancellationToken)
     {
-        using var archive = OpenOfficeArchive(path);
-        List<string> sharedStrings = archive.GetEntry("xl/sharedStrings.xml") is { } sharedEntry
-            ? ReadXmlEntry(sharedEntry, document => document.Descendants().Where(item => item.Name.LocalName == "si").Select(item => string.Concat(item.Descendants().Where(value => value.Name.LocalName == "t").Select(value => value.Value))).ToList())
-            : [];
-        var sheets = archive.Entries.Where(entry => entry.FullName.StartsWith("xl/worksheets/sheet", StringComparison.OrdinalIgnoreCase) && entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(entry => entry.FullName, StringComparer.OrdinalIgnoreCase);
-        return string.Join("\n\n", sheets.Select(entry => ReadXmlEntry(entry, document =>
+        cancellationToken.ThrowIfCancellationRequested();
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var stream = File.OpenRead(path);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+        var text = new StringBuilder();
+        do
         {
-            var rows = document.Descendants().Where(item => item.Name.LocalName == "row").Select(row => string.Join(" | ", row.Descendants().Where(item => item.Name.LocalName == "c").Select(cell =>
+            cancellationToken.ThrowIfCancellationRequested();
+            text.Append("# ").AppendLine(reader.Name);
+            while (reader.Read())
             {
-                var value = cell.Descendants().FirstOrDefault(item => item.Name.LocalName == "v")?.Value ?? string.Concat(cell.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value));
-                if (string.Equals((string?)cell.Attribute("t"), "s", StringComparison.Ordinal) && int.TryParse(value, out var index) && index >= 0 && index < sharedStrings.Count) return sharedStrings[index];
-                return value;
-            }).Where(value => !string.IsNullOrWhiteSpace(value))));
-            return $"# {Path.GetFileNameWithoutExtension(entry.Name)}\n{string.Join("\n", rows.Where(row => row.Length > 0))}";
-        })));
+                cancellationToken.ThrowIfCancellationRequested();
+                var cells = new List<string>();
+                for (var column = 0; column < reader.FieldCount; column++)
+                {
+                    var value = reader.GetValue(column);
+                    cells.Add(value is DateTime date ? date.ToString("O", CultureInfo.InvariantCulture)
+                        : Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty);
+                }
+                // Keep gaps inside a row so values retain their column positions.
+                while (cells.Count > 0 && string.IsNullOrWhiteSpace(cells[^1])) cells.RemoveAt(cells.Count - 1);
+                if (cells.Count > 0) text.AppendLine(string.Join(" | ", cells));
+                if (text.Length > MaxCharactersPerFile) return text.ToString();
+            }
+            text.AppendLine();
+        } while (reader.NextResult());
+        return text.ToString();
     }
 
     private static string ReadOfficeXml(string path, string entryName, Func<XDocument, string> extractor)
@@ -328,7 +343,10 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         Span<byte> header = stackalloc byte[HeaderLength];
         var count = stream.Read(header);
         if (definition.IsPdf && (count < 5 || !header[..5].SequenceEqual("%PDF-"u8))) throw new InvalidOperationException("The file is not a valid PDF.");
-        if (definition.IsLegacyOffice && (count < 8 || !header[..8].SequenceEqual(new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }))) throw new InvalidOperationException("The file is not a valid legacy Office document.");
+        // BIFF2/3/4 are raw streams; BIFF5/8 use an OLE container.
+        var rawBiff = definition.Extension is ".xls" or ".xlt" && count >= 4
+            && header[0] == 0x09 && header[1] is 0x00 or 0x02 or 0x04;
+        if (definition.IsLegacyOffice && !rawBiff && (count < 8 || !header[..8].SequenceEqual(new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }))) throw new InvalidOperationException("The file is not a valid legacy Office document.");
         if (definition.IsModernOffice) ValidateOfficePackage(path, definition.Extension);
         if (definition.IsText) _ = ReadUtf8Async(path, CancellationToken.None).GetAwaiter().GetResult();
     }
@@ -339,7 +357,7 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         {
             using var archive = ZipFile.OpenRead(path);
             if (archive.Entries.Count is 0 or > 2000 || archive.Entries.Sum(entry => entry.Length) > 100L * 1024 * 1024) throw new InvalidOperationException("Office package is too large to inspect safely.");
-            var required = extension switch { ".docx" => "word/document.xml", ".xlsx" => "xl/workbook.xml", ".pptx" => "ppt/presentation.xml", _ => string.Empty };
+            var required = extension switch { ".docx" => "word/document.xml", ".xlsx" or ".xlsm" or ".xltx" or ".xltm" => "xl/workbook.xml", ".xlsb" => "xl/workbook.bin", ".pptx" => "ppt/presentation.xml", _ => string.Empty };
             if (string.IsNullOrWhiteSpace(required) || archive.GetEntry("[Content_Types].xml") == null || archive.GetEntry(required) == null) throw new InvalidOperationException("The file is not a valid Office Open XML package.");
         }
         catch (InvalidDataException ex)
@@ -391,8 +409,13 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         ".pdf" => new FileDefinition(extension, "application/pdf", "ready", true, false, false, false),
         ".docx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "ready", false, true, false, false),
         ".xlsx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "ready", false, true, false, false),
+        ".xlsm" => new FileDefinition(extension, "application/vnd.ms-excel.sheet.macroEnabled.12", "ready", false, true, false, false),
+        ".xlsb" => new FileDefinition(extension, "application/vnd.ms-excel.sheet.binary.macroEnabled.12", "ready", false, true, false, false),
+        ".xltx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.spreadsheetml.template", "ready", false, true, false, false),
+        ".xltm" => new FileDefinition(extension, "application/vnd.ms-excel.template.macroEnabled.12", "ready", false, true, false, false),
+        ".xls" or ".xlt" => new FileDefinition(extension, "application/vnd.ms-excel", "ready", false, false, true, false),
         ".pptx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.presentationml.presentation", "ready", false, true, false, false),
-        ".doc" or ".xls" => new FileDefinition(extension, "application/vnd.ms-office", "ready", false, false, true, false),
+        ".doc" => new FileDefinition(extension, "application/vnd.ms-office", "ready", false, false, true, false),
         ".ppt" => new FileDefinition(extension, "application/vnd.ms-office", "unsupported", false, false, true, false),
         ".md" or ".markdown" => new FileDefinition(extension, "text/markdown", "ready", false, false, false, true),
         ".html" or ".htm" => new FileDefinition(extension, "text/html", "ready", false, false, false, true),
