@@ -74,6 +74,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- 知识工作区的面板宽度与滚动由 `KnowledgeWorkspacePanels` 管理，目录、预览、终端各保留单一滚动区域；窄屏按容器宽度堆叠。文件处理弹窗使用 `/knowledge-resources/processing`，从可见资源树取文件并按文件查询最新 `wiki_compile`，保留正文状态与任务状态的区别，读取时覆盖内存终态；不能用任务中心最近列表代替全量文件状态。
+
 - 聊天文档链接与行内文件引用通过 `ChatDocumentCard` 显示，预览与下载共用 `resolveProjectDocumentReference`，仅从当前项目授权资料目录唯一匹配文件；绝对路径需额外经过服务端引用解析。下载获取原始 Blob 并显示请求失败，不将外部 URL 或代码块转换为文档卡片。打开预览时防止跨项目、跨会话及快速连续选择的旧响应覆盖当前选择。旧版 DOC/XLS/PPT/RTF 仅对仓库内文件开放下载与格式说明，不扩大上传转换白名单。
 
 - 聊天图形选择器分为交互图形与 Mermaid 图表；交互图形展示架构、工作流、时序图、数据流、生命周期，Mermaid 保留原有类型并以 mermaid-sequence 区分时序图输出。共用 `aiagent-architecture` version 1，新增可选 `diagramType`、节点 `kind`、边 `style` 均须白名单校验；缺失类型按旧架构图处理。布局与避让位于 `architecture-layout.ts`；时序图不得合并重复消息，edges 顺序即消息顺序。HTML 导出只序列化受控 SVG 和转义文本，禁脚本、禁外部资源，不执行模型 HTML。导出恢复全部节点及边的可见度；离线说明使用原生 details，尺寸开关只使用 CSS。

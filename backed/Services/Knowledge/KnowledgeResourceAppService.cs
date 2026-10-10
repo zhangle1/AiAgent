@@ -11,6 +11,8 @@ public sealed class KnowledgeResourceAppService(KnowledgeResourceService resourc
 {
     [HttpGet("tree")]
     public List<KnowledgeResourceNodeDto> Tree() => resources.Tree();
+    [HttpGet("processing")]
+    public List<KnowledgeResourceProcessingDto> Processing() => resources.Processing();
     [HttpGet("read")]
     public Task<KnowledgeResourceReadDto> Read([FromQuery] string uri, CancellationToken ct) => resources.ReadAsync(uri, ct);
     [HttpPost("directories")]

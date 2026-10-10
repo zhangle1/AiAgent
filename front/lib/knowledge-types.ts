@@ -95,6 +95,16 @@ export type KnowledgeResourceNode = {
   extension?: string | null;
   size?: number | null;
 };
+export type KnowledgeResourceProcessing = {
+  node: KnowledgeResourceNode;
+  task_id?: number | null;
+  task_status?: string | null;
+  stage?: string | null;
+  progress?: number | null;
+  message?: string | null;
+  error_message?: string | null;
+  updated_at?: string | null;
+};
 export type KnowledgeResourceRead = {
   abstract_content?: string | null;
   overview_content?: string | null;

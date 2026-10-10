@@ -30,6 +30,18 @@ public sealed class KnowledgeResourceReadDto
     [JsonPropertyName("children")] public List<KnowledgeResourceNodeDto> Children { get; set; } = [];
 }
 
+public sealed class KnowledgeResourceProcessingDto
+{
+    [JsonPropertyName("node")] public KnowledgeResourceNodeDto Node { get; set; } = new();
+    [JsonPropertyName("task_id")] public long? TaskId { get; set; }
+    [JsonPropertyName("task_status")] public string? TaskStatus { get; set; }
+    [JsonPropertyName("stage")] public string? Stage { get; set; }
+    [JsonPropertyName("progress")] public int? Progress { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+    [JsonPropertyName("error_message")] public string? ErrorMessage { get; set; }
+    [JsonPropertyName("updated_at")] public DateTime? UpdatedAt { get; set; }
+}
+
 public sealed class KnowledgeDirectoryRequest
 {
     [JsonPropertyName("parent_uri")] public string ParentUri { get; set; } = "viking://resources/";

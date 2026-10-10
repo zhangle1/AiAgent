@@ -1,0 +1,44 @@
+.workspace {
+  --scroll-thumb: #cbd5e1;
+  --scroll-thumb-hover: #94a3b8;
+}
+
+.workspace *, .dialog, .dialog * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb, #cbd5e1) transparent;
+}
+
+.workspace *::-webkit-scrollbar, .dialog::-webkit-scrollbar, .dialog *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.workspace *::-webkit-scrollbar-track, .dialog::-webkit-scrollbar-track, .dialog *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workspace *::-webkit-scrollbar-thumb, .dialog::-webkit-scrollbar-thumb, .dialog *::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: var(--scroll-thumb, #cbd5e1);
+}
+
+.workspace *::-webkit-scrollbar-thumb:hover, .dialog::-webkit-scrollbar-thumb:hover, .dialog *::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover, #94a3b8);
+}
+
+.workspace *::-webkit-scrollbar-button, .dialog *::-webkit-scrollbar-button { display: none; }
+.workspace *::-webkit-scrollbar-corner, .dialog *::-webkit-scrollbar-corner { background: transparent; }
+.terminal { --scroll-thumb: #475569; --scroll-thumb-hover: #64748b; }
+.panelsWrapper { container-type: inline-size; flex: 1; min-height: 0; overflow: auto; }
+.panels { display: grid; grid-template-columns: var(--directory-width) 6px minmax(0, 1fr) 6px var(--terminal-width); height: 100%; min-height: 0; }
+.dragging { user-select: none; cursor: col-resize; }
+.dragging iframe { pointer-events: none; }
+.separator { position: relative; cursor: col-resize; touch-action: none; background: #f1f5f9; outline: none; }
+.separator::after { content: ""; position: absolute; inset: 0 2px; background: #e2e8f0; transition: background 120ms; }
+.separator:hover::after, .separator:focus-visible::after, .dragging .separator::after { background: #60a5fa; }
+.dialog::backdrop { background: rgb(15 23 42 / 35%); backdrop-filter: blur(2px); }
+
+@container (max-width: 979px) {
+  .panels { grid-template-columns: minmax(0, 1fr); grid-template-rows: 220px minmax(420px, calc(100dvh - 160px)) 420px; height: auto; min-height: 100%; }
+  .separator { display: none; }
+}

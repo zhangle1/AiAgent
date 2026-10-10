@@ -5,6 +5,9 @@ import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompi
 export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<KnowledgeResourceNode[]> {
   return parseJson(await fetch("/api/v1/knowledge-resources/tree", { cache: "no-store", signal }));
 }
+export async function getKnowledgeResourceProcessing(signal?: AbortSignal): Promise<import("@/lib/knowledge-types").KnowledgeResourceProcessing[]> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/processing", { cache: "no-store", signal }));
+}
 export async function readKnowledgeResource(uri: string, signal?: AbortSignal): Promise<KnowledgeResourceRead> {
   return parseJson(await fetch(`/api/v1/knowledge-resources/read?uri=${encodeURIComponent(uri)}`, { cache: "no-store", signal }));
 }

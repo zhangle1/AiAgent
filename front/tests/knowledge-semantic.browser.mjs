@@ -16,12 +16,14 @@ const overview = "# 概览\n\n目录简介。\n\n[one.md](viking://resources/one
 const bundle = await build({
   stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {KnowledgeWorkspace} from './components/knowledge/KnowledgeWorkspace'; createRoot(document.getElementById('root')).render(<KnowledgeWorkspace/>);`, resolveDir: front, loader: "tsx" },
   bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic",
+  outfile: path.join(front, "knowledge-semantic-fixture", "bundle.js"),
 });
 let slowRead = false;
 let jobId = 1;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://fixture.test");
-  if (url.pathname === "/bundle.js") { res.setHeader("Content-Type", "text/javascript"); return res.end(bundle.outputFiles[0].text); }
+  if (url.pathname === "/bundle.js") { res.setHeader("Content-Type", "text/javascript"); return res.end(bundle.outputFiles.find(file => file.path.endsWith(".js")).text); }
+  if (url.pathname === "/bundle.css") { res.setHeader("Content-Type", "text/css"); return res.end(bundle.outputFiles.find(file => file.path.endsWith(".css"))?.text ?? ""); }
   if (url.pathname.startsWith("/api/")) {
     res.setHeader("Content-Type", "application/json");
     if (url.pathname.endsWith("/tree")) return res.end(JSON.stringify([root, ...files]));
@@ -35,7 +37,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404); return res.end("{}");
   }
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.end('<html><body><div id="root"></div><script src="/bundle.js"></script></body></html>');
+  res.end('<html><head><link rel="stylesheet" href="/bundle.css"></head><body><div id="root"></div><script src="/bundle.js"></script></body></html>');
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 let browser;

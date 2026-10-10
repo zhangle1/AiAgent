@@ -86,6 +86,32 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         }
     }
 
+    public List<KnowledgeResourceProcessingDto> Processing()
+    {
+        worker.RetryPendingFinishes();
+        // The resource tree supplies the visible document set, including the current user's scope.
+        var files = Tree().Where(x => x.Kind == "file" && x.DocumentId.HasValue).ToList();
+        if (files.Count == 0) return [];
+        using var db = database.CopyNew();
+        var ids = files.Select(x => x.DocumentId!.Value).ToList();
+        // Select each file's latest task in SQL; old files must not disappear behind a recent-task limit.
+        var latestIds = db.Queryable<AiKnowledgeJob>()
+            .Where(x => x.JobType == "wiki_compile" && x.DocumentId.HasValue && ids.Contains(x.DocumentId.Value))
+            .GroupBy(x => x.DocumentId).Select(x => SqlFunc.AggregateMax(x.Id)).ToList();
+        var tasks = latestIds.Count == 0 ? new List<AiKnowledgeJob>()
+            : db.Queryable<AiKnowledgeJob>().Where(x => latestIds.Contains(x.Id)).ToList();
+        foreach (var task in tasks) worker.ApplyPendingFinish(task);
+        var byDocument = tasks.ToDictionary(x => x.DocumentId!.Value);
+        return files.Select(node => {
+            byDocument.TryGetValue(node.DocumentId!.Value, out var task);
+            return new KnowledgeResourceProcessingDto {
+                Node = node, TaskId = task?.Id, TaskStatus = task?.Status, Stage = task?.Stage,
+                Progress = task?.Progress, Message = task?.Message, ErrorMessage = task?.ErrorMessage,
+                UpdatedAt = task?.UpdatedAt ?? task?.FinishedAt ?? task?.CreatedAt
+            };
+        }).ToList();
+    }
+
     public async Task<KnowledgeResourceNodeDto> CreateDirectoryAsync(KnowledgeDirectoryRequest request, CancellationToken ct)
     {
         var parent = ScopeUserUri(request.ParentUri);

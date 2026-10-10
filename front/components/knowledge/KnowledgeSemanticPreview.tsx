@@ -20,7 +20,7 @@ export function KnowledgeSemanticPreview({ resource, onOpen }: { resource: Knowl
     </div>
     {content ? <>
       <p className="mb-3 text-[11px] text-slate-400">AI 生成 · {resource?.model ?? "配置模型"} · {resource?.semantic_generated_at ? new Date(resource.semantic_generated_at).toLocaleString() : ""}</p>
-      <article className="max-h-[480px] overflow-auto text-sm leading-7"><ReactMarkdown
+      <article className="break-words text-sm leading-7"><ReactMarkdown
         urlTransform={url => url.startsWith("viking://") ? url : ""}
         components={{ img: () => null, a: ({ href, children }) => href?.startsWith("viking://") ? <button type="button" className="text-blue-600 underline" onClick={() => onOpen(href)}>{children}</button> : <span>{children}</span> }}
       >{content}</ReactMarkdown></article>

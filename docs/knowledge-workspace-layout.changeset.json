@@ -1,0 +1,82 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "知识工作区面板拖动、滚动条与文件处理状态弹窗",
+  "base_commit": "747ae5399a6544b61649dc5c5ae69252ba1ac7a1",
+  "platform_change_set_id": null,
+  "note": "本地代码变更集；用户已明确授权拉取并推送。交付前已核对文件指纹并快进合并远程更新。浏览器验证使用合成数据和模拟 API，不代表后端或真实资料验收，未部署。",
+  "checks": {
+    "browser": "passed: knowledge-layout.browser.mjs (running frontend + mocked APIs)",
+    "syntax": "passed: TypeScript source parsing (6 files) and node --check",
+    "whitespace": "passed: git diff --check",
+    "encoding": "passed: UTF-8 without BOM, LF preserved",
+    "backend": "not run: compilation and backend tests skipped under CodeLimit",
+    "semantic_browser": "existing script updated for CSS module output; not rerun"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "ac54c8f8a8bd83a51cde4b82274884e49ab662404043411a8ca0574ae298d6bf"
+    },
+    {
+      "path": "README.md",
+      "sha256": "5c3ce6eae5175f2f4b865d713f3723bc141cecf80e98c8e86ceb243eb8796c4e"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "25d3cade99a3936c27eea4c390575b8141e14463c85ff3b3077e76b60810355f"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceAppService.cs",
+      "sha256": "79183969dc160d23e24455c2002e97c357b6e6034b20367f10b9d25a9af5d726"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "b3829f21c51539621d8453a08847b1e10c313f1614888bdc7feec932b11ed640"
+    },
+    {
+      "path": "backed.tests/KnowledgeResourceProcessingTests.cs",
+      "sha256": "75cb247b0d87111d9f5dd769bace2f48e4f1b0ca9b01132149541e00d881aba4"
+    },
+    {
+      "path": "docs/knowledge-resource-semantics.md",
+      "sha256": "7ed564f34b1b7d7c72e2984e239a31b8322548862cb7fa4435ae1a6ba0d6a72d"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeSemanticPreview.tsx",
+      "sha256": "350401015ec8cb98232b42d955ff4605aa02eefb56382c320f74b49c0f75dce2"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "50ebc538d8732186ce469c044337f3bce9a4aca782d651dfd8201f5227fc02a6"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspacePanels.tsx",
+      "sha256": "8d8729eb794c20ebc4fd487ee58c2f1c6b44b2366a0d66fe67020c033a3aa7b4"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeFileProcessingDialog.tsx",
+      "sha256": "835891a481ad624e6c335f26aa4a31d0b96f3ad9e63382517edfbbb17ef99071"
+    },
+    {
+      "path": "front/components/knowledge/knowledge-workspace.module.css",
+      "sha256": "3e9fc1e721b3c0dd7d140b96ef029954291d0e7ec9a4eebbdaea3125c5709a16"
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "34eaee858ad40cf5dd152ebf6af4d998e1a0458ad34b723eb10f4e0b9c51f59b"
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "b7b9cff4ec34931f8dd11287eb56847819c13de8d6070eee84c9dd9d84112f82"
+    },
+    {
+      "path": "front/tests/knowledge-layout.browser.mjs",
+      "sha256": "525d422eef3e9a0b0b22ea269716a91e892fb556eaf81bd71ae37db400e23e14"
+    },
+    {
+      "path": "front/tests/knowledge-semantic.browser.mjs",
+      "sha256": "056769aef1edd2e95332d480c4927a9546637f4621f7cce990111d57998f1058"
+    }
+  ],
+  "synchronized_base_commit": "0a153207d26a37ce6c08d7342de8bd040ce900db"
+}
