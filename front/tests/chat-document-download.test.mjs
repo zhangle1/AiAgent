@@ -64,3 +64,21 @@ test("permission failure is surfaced instead of saving an error response", async
   t.mock.method(globalThis, "fetch", async (url) => url.includes("/download?") ? json({ message: "denied" }, 403) : json([file]));
   await assert.rejects(api.downloadProjectDocumentReference(7, "方案.pptx"), /403/);
 });
+
+
+test("root HTML and DOC references resolve with canonical Windows paths", async (t) => {
+  for (const ext of ["html", "doc"]) {
+    const rootFile = { repository_name: "repo", path: `design.${ext}`, name: `design.${ext}` };
+    const requests = [];
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      requests.push({ url, init });
+      return json(url.endsWith("resolve-file-reference") ? { repository_name: "repo", file_path: rootFile.path } : [rootFile]);
+    });
+    for (const ref of [rootFile.name, `repo/${rootFile.name}`, `/D:/work/repo/${rootFile.name}:12`]) {
+      assert.deepEqual(await api.resolveProjectDocumentReference(7, ref), rootFile);
+    }
+    const request = requests.find(({ init }) => init?.method === "POST");
+    assert.equal(JSON.parse(request.init.body).reference, `D:/work/repo/${rootFile.name}:12`);
+    t.mock.restoreAll();
+  }
+});

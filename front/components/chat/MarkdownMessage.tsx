@@ -134,7 +134,7 @@ function codeReferenceFromHref(href?: string): CodeReferenceCandidate | null {
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return null;
 
-  const reference = decodeReference(href).trim();
+  const reference = decodeReference(href).trim().replace(/^\/([a-z]:[\\/])/i, "$1");
   return sourceFilePattern.test(reference) || markdownDocumentReferenceFromText(reference) ? { reference } : null;
 }
 

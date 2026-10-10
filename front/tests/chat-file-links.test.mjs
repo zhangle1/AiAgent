@@ -72,3 +72,13 @@ test("current project download links become document cards", () => {
   assert.equal(link.props.reference, "repo/docs/slides.pptx");
   assert.equal(rendered.props.components.a({ href: rendered.props.urlTransform(href.replace("/7/", "/8/")), children: "slides.pptx" }).type, "a");
 });
+
+
+test("slash-prefixed Windows root documents keep preview and download identity", () => {
+  const rendered = module.exports.MarkdownMessage({ content: "", projectId: 7, onOpenProjectMarkdownDocument: () => {} });
+  for (const ext of ["html", "doc"]) {
+    const link = rendered.props.components.a({ href: rendered.props.urlTransform(`/D:/work/repo/design.${ext}`), children: "Open" });
+    assert.equal(link.type, "DocumentCard");
+    assert.equal(link.props.reference, `D:/work/repo/design.${ext}`);
+  }
+});

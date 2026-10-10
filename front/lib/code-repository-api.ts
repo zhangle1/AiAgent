@@ -120,12 +120,13 @@ export function projectMarkdownDocumentDownloadUrl(projectId: number, repository
 
 // Resolve against the authorized document catalog before constructing any download URL.
 export async function resolveProjectDocumentReference(projectId: number, reference: string): Promise<CodeProjectMarkdownDocument> {
-  const normalized = reference.trim().replace(/\\/g, "/").replace(/(?::|#L)[1-9]\d{0,8}$/i, "").replace(/^\.\//, "").toLowerCase();
+  const canonical = reference.trim().replace(/^\/([a-z]:[\\/])/i, "$1");
+  const normalized = canonical.replace(/\\/g, "/").replace(/(?::|#L)[1-9]\d{0,8}$/i, "").replace(/^\.\//, "").toLowerCase();
   if (/^[a-z][a-z\d+.-]*:/i.test(normalized) && !/^[a-z]:\//i.test(normalized)) throw new Error("请选择当前项目中的文档。");
   const items = await getProjectMarkdownDocuments(projectId);
   let matches: CodeProjectMarkdownDocument[];
   if (/^(?:[a-z]:\/|\/)/i.test(normalized)) {
-    const resolved = await resolveProjectCodeFileReference(projectId, reference);
+    const resolved = await resolveProjectCodeFileReference(projectId, canonical);
     matches = items.filter((item) => item.repository_name === resolved.repository_name && item.path.toLowerCase() === resolved.file_path.toLowerCase());
   } else {
     const exact = items.filter((item) => item.path.toLowerCase() === normalized || `${item.repository_name}/${item.path}`.toLowerCase() === normalized);

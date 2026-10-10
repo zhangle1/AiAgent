@@ -1378,6 +1378,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     private static (string Path, int? Line) ParseFileReference(string reference)
     {
         var value = Uri.UnescapeDataString(reference.Trim()).Trim('`', '"', '\'', ' ', '\t', '\r', '\n');
+        // Markdown links may prefix a Windows drive path with a slash (/D:/...).
+        if (value.Length >= 4 && value[0] == '/' && char.IsAsciiLetter(value[1])
+            && value[2] == ':' && (value[3] == '/' || value[3] == '\\')) value = value[1..];
         var match = TrailingLineReference.Match(value);
         int? line = match.Success && int.TryParse(match.Groups["line"].Value, out var parsedLine) ? parsedLine : null;
         if (match.Success) value = value[..match.Index];

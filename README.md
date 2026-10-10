@@ -32,7 +32,7 @@
 
 - AI 打包与预览默认优先复用已验证流程：由聊天 AI 在仓库 `artifacts/aiagent-workflows/` 保存结构化配方、打包脚本或启动模板，下次核对配置指纹和运行环境后复用。取消“优先复用已验证流程”可重新分析；打包仍构建当前源码，预览仍由后台检查就绪。此版本依赖 AI 实际执行和保存，尚无独立的免模型执行器。详见 [流程复用说明](docs/chat-workflow-reuse.md)。
 
-- 聊天文件卡片：AI 保存到当前项目的 Markdown、HTML、TXT、PDF、DOCX、XLSX、PPTX 等文档链接会显示文件名和格式。点击卡片在右侧项目资料面板预览，点击「下载」保存原文件；历史消息中的链接也适用。Office 新版格式使用内容提取预览；仓库内旧版 DOC、XLS、PPT 和 RTF 支持下载，右侧提示使用本地软件打开。文件须实际存在，外部链接保持普通链接。详见 [文件卡片说明](docs/chat-document-cards.md)。
+- 聊天文件卡片：AI 保存到当前项目的 Markdown、HTML、TXT、PDF、DOCX、XLSX、PPTX 等文档链接会显示文件名和格式。已登记仓库根目录的文档无需移入 doc，兼容 `/D:/...` Windows 链接，生成后可刷新资料列表。点击卡片在右侧项目资料面板预览，点击「下载」保存原文件；历史消息中的链接也适用。Office 新版格式使用内容提取预览；仓库内旧版 DOC、XLS、PPT 和 RTF 支持下载，右侧提示使用本地软件打开。文件须实际存在，外部链接保持普通链接。详见 [文件卡片说明](docs/chat-document-cards.md)。
 
 - 交互图形：聊天 →「可视化」（默认选中「架构」），可使用当前对话、已选资料，或指定代码库目录、解决方案/工程/JSON 分析范围。AI 回复自动显示可探索的图形，支持节点说明与来源、上下游高亮、有向路径追踪、深浅画布、分组配色、节点搜索、节点拖动、画布拖动、重置布局、缩放、大图及 JSON/SVG/PNG/HTML 导出；继续对话可生成新版本，历史图随消息保留。正式图使用本地 React/SVG 画布，无新增服务依赖。详见 [使用与边界](docs/chat-interactive-architecture.md)。
 - Archify 固定示例已从聊天配置弹窗移除，仅保留 `/archify/aiagent-demo.html` 作为开发参考。详见 [示例集成与验证](docs/archify-local-demo.md)。

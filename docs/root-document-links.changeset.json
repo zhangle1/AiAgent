@@ -1,0 +1,52 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Recognize repository-root document links with slash-prefixed Windows paths",
+  "base_commit": "2994bf50f686d578a3ab22c8621a2d9007d17e1d",
+  "platform_change_set_id": null,
+  "note": "Local review snapshot; not platform approval. No commit, push or deployment. Repository-parent scanning is outside this change.",
+  "checks": {
+    "frontend_regressions": "28 passed",
+    "backend_document_tests": "15 passed; existing unrelated compiler warnings",
+    "typescript": "passed",
+    "whitespace": "passed",
+    "production_session": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "8bffd5cafc335cde48a3924d366b14a57ab14ec0489c4eb85ad0529b4e514f55"
+    },
+    {
+      "path": "README.md",
+      "sha256": "2570855154827809e7af88e7a88d21185fab35938c2775df1e7baf1befe33ff0"
+    },
+    {
+      "path": "backed.tests/ProjectPackageDocumentTests.cs",
+      "sha256": "37e1a9f71a3a3c9be47b88aeb2e4ecff4b49d77f14880df4e9ed289d12388319"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryManager.cs",
+      "sha256": "edb3c88d9fefcbdba25b1a2fbd0aa96dd610ad6638dc4d04ed179011265ea3a8"
+    },
+    {
+      "path": "docs/chat-document-cards.md",
+      "sha256": "299fff2db59a02ac26854bd7c26f21562e927ed38cc642dc0b6635d5c95ca17c"
+    },
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "3353a997af2b4ae8503b886eadd7653e91e21cf1410122ceface3cac94b66df0"
+    },
+    {
+      "path": "front/lib/code-repository-api.ts",
+      "sha256": "92eb5a58ab46d0309705ffd6daed1b83645e213bd94423f7818dd95c207ba90f"
+    },
+    {
+      "path": "front/tests/chat-document-download.test.mjs",
+      "sha256": "a3e5e619e3cbde7001daa9bbbd6a74a7596338abf18def1858c710bbf262c856"
+    },
+    {
+      "path": "front/tests/chat-file-links.test.mjs",
+      "sha256": "16a41a155c75179cb1a2b49a5bab90b064a66072e27af1e88670d53d978a4a95"
+    }
+  ]
+}

@@ -57,4 +57,35 @@ public sealed class ProjectPackageDocumentTests
         Assert.Equal(mime, Invoke("GetProjectDocumentContentType", name));
         Assert.Throws<TargetInvocationException>(() => Invoke("NormalizeProjectDocumentPath", "../" + name));
     }
+
+    [Theory]
+    [InlineData("/D:/work/repo/design.html:12", "D:/work/repo/design.html", 12)]
+    [InlineData("/D:/work/repo/report.doc", "D:/work/repo/report.doc", null)]
+    [InlineData("/srv/project/report.doc", "/srv/project/report.doc", null)]
+    public void MarkdownDrivePrefixIsNormalized(string reference, string path, int? line)
+    {
+        var parsed = ((string Path, int? Line))Invoke("ParseFileReference", reference);
+        Assert.Equal(path, parsed.Path);
+        Assert.Equal(line, parsed.Line);
+    }
+
+    [Fact]
+    public void RepositoryRootDocumentsAreListedWithoutDocDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aiagent-root-documents-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var html = Path.Combine(root, "design.html");
+            var doc = Path.Combine(root, "report.doc");
+            File.WriteAllText(html, "<html>demo</html>");
+            File.WriteAllBytes(doc, [0xD0, 0xCF]);
+            File.WriteAllText(Path.Combine(root, "source.cs"), "excluded");
+            var files = ((IEnumerable<string>)Invoke("EnumerateProjectDocumentFiles", root)).ToArray();
+            Assert.Contains(html, files);
+            Assert.Contains(doc, files);
+            Assert.Equal(2, files.Length);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
 }
