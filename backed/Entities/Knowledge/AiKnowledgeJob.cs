@@ -5,6 +5,9 @@ namespace AiAgent.Backend.Entities.Knowledge;
 [SugarTable("ai_knowledge_job")]
 public sealed class AiKnowledgeJob
 {
+    [SugarColumn(ColumnDataType = "nvarchar(max)", IsNullable = true)]
+    public string? ConfigurationJson { get; set; }
+
     [SugarColumn(Length = 512, IsNullable = true)]
     public string? OwnerRoot { get; set; }
 

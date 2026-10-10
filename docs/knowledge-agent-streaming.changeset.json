@@ -1,0 +1,112 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "知识 KnowAgent 流式 LLM API、目录工具与编译配置弹窗",
+  "base_commit": "521d45d4cfd439b4ba9462bc92256d7c13f16fbd",
+  "platform_change_set_id": null,
+  "note": "本地变更校验快照；用户已明确授权拉取并推送至 Gitee 和 GitHub。已无冲突合并远程更新，知识实现文件保持已验证指纹，AGENTS/README 合并内容已核对。未调用真实在线模型或 CLI，未部署或重启用户服务。",
+  "checks": {
+    "backend": "passed: 81 Knowledge/LlmChatClient/NativeTurnRunner tests",
+    "browser_stream": "passed: real local chunked SSE fixture, API/model selection, tools, compaction display, commands, CLI payload, cancellation/EOF, same-folder preview and mobile",
+    "browser_layout": "passed: drag/keyboard/persistence, scroll containment, file status refresh, modal focus, mobile",
+    "typescript": "passed: syntactic and semantic diagnostics for changed frontend files (no emit)",
+    "whitespace": "passed: git diff --check",
+    "encoding": "passed: strict UTF-8 without BOM, LF preserved",
+    "production_frontend_build": "not run",
+    "live_provider_cli": "not run; requires configured environment"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "9dfd6aad01b3e9ba3f237519f8ae47b4af65158a2dd3c88d2919abf300ee7fc5"
+    },
+    {
+      "path": "backed.tests/KnowledgeAgentChatTests.cs",
+      "sha256": "3992a3f5f0dd7ed7de8ac063a4820b78ec2f12cae6e9b362c27729ae3dc6a4d2"
+    },
+    {
+      "path": "backed.tests/KnowledgeAgentCommandTests.cs",
+      "sha256": "29f72276422ecf24d04dce620d6fa196a657fd7e221eeba422c0a628f6b5e483"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeAgentDtos.cs",
+      "sha256": "645d34796f5ae20a7f4b308862669ea9b2645fc64963af8d0c1365b36b92804c"
+    },
+    {
+      "path": "backed/Entities/Knowledge/AiKnowledgeJob.cs",
+      "sha256": "9f7adf09c85952666051898d997c856ffd22c7157ce54d9a55f2590d91648d53"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "5a602ec1a110b3004bfba91eda1efde4f9affb7f03addae6fe9c96353a21bf9f"
+    },
+    {
+      "path": "backed/Services/Chat/Llm/LlmChatClient.cs",
+      "sha256": "adb2a634b38d789ef7dd41967cd3827fab69544157f3f6bb5b81d848a2dd394f"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowledgeAgentChatEngine.cs",
+      "sha256": "7090dd039e998cfad21653a7714f15db004d67e5ebd5f5b2d6788a2f1b48cd9f"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowledgeAgentService.cs",
+      "sha256": "1c935557104b83a982ed1394745e33145852d5be038c5e39165f9cc3d2df2d09"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowledgeAgentTools.cs",
+      "sha256": "86de7f52677fe68718896459dd9c46a74ceafa26bbab536148f872320f3ea2ed"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeAgentAppService.cs",
+      "sha256": "df796a58bda17f9b2b32967ff81a076c102f8ac2deadc1f8b5b6126dfc67cb68"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "306cbdeeb5e7258227f640772bf369721e512e57e78d90f2b3ba3cce1e8a0211"
+    },
+    {
+      "path": "backed/Services/TaskCenter/TaskCenterService.cs",
+      "sha256": "028df6bd822666003261066b9c148664451d3904e61f07406278ec323d31d724"
+    },
+    {
+      "path": "backed/Services/TaskQueue/KnowledgeCompilationWorker.cs",
+      "sha256": "600abab8938382e196ef6a6d29635fefbf9f24a1a8d13ebfb1e5f42c1d258273"
+    },
+    {
+      "path": "docs/knowledge-agent-streaming.md",
+      "sha256": "94a71c53f3a05307f00cd3f6f2f9fb11f6ab6f0e75bea892060ae0d03761a3c8"
+    },
+    {
+      "path": "front/components/knowledge/knowledge-workspace.module.css",
+      "sha256": "f9eff80e1395abc92a7402a79c59d3e9394200b1ee750bcca51129226ccc2361"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeAgentChatPanel.tsx",
+      "sha256": "2c37d71cd2265821296cfbabe0ca133955619056bd024a69b6f3022fc8004d7a"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeAgentCommandDialog.tsx",
+      "sha256": "3d98269e0394518d3368daa40bd7a1035074bc242b0108a9cfb736be187cea19"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "2804aaf814a3b0f5d851c6d2e5f117495b6b8f5c25f47d00b2ded2e5f8a7bfe1"
+    },
+    {
+      "path": "front/lib/knowledge-agent-api.ts",
+      "sha256": "cce72c0da63499be1eb8545eb9273d7303a4cd8e07806667e93596b6511cbb94"
+    },
+    {
+      "path": "front/lib/knowledge-agent-types.ts",
+      "sha256": "70a0cf31b462e44476386356eef6fa42775ea04dce0054fbe7348579ec166775"
+    },
+    {
+      "path": "front/tests/knowledge-agent.browser.mjs",
+      "sha256": "b3ca09500cdea0fdea5d49edb0a8b214609b3ee96d92322fec092304885f6b69"
+    },
+    {
+      "path": "README.md",
+      "sha256": "297385245f0b320eb4dfa5ddead8b902187a0da48777dbd67c8e07c9f037443e"
+    }
+  ],
+  "synchronized_base_commit": "e767bb28c776ac21904382d7ec21ccb3fb5f26ee"
+}

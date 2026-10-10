@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 知识流式聊天由 `KnowAgent/KnowledgeAgentChatEngine` 执行，沿用 AgentRuntime 事件投影、LLM 客户端和原生工具协议，仅开放所选目录内 ls/read/search/status；模型 ID 必须来自配置目录。上下文指标标明估算，压缩移除整组工具调用与结果并保留当前问题，压缩与聊天共用调用预算。`/compiler` 的每批配置保存在任务可空 `ConfigurationJson`，重试沿用快照，不覆盖全局设置。契约与验证见 `docs/knowledge-agent-streaming.md`。
+
 - 知识产物归属与上下文预算：任务入队时从服务端身份捕获 `OwnerRoot`，后台执行沿用快照；个人摘要和 Wiki 写入本人工作区，原文与 L2 保留资源层。Wiki／语义生成通过 `Services/Knowledge/KnowAgent/`，原文证据完整保留，压缩与生成共用调用预算。修改归属、缓存、任务重试或模型预算时先读 `docs/knowledge-personal-workspace.md`，验证双用户隔离及失败后正文可读。
 
 - 知识任务队列位于 `Services/TaskQueue/KnowledgeCompilationWorker.cs`，领域处理位于 `Services/Knowledge/KnowledgeCompilationHandler.cs`。目录资料任务按 L2 → L0/L1 顺序执行，语义服务缺失必须失败，不得静默成功；任务 `Stage` 为可空列。任务中心须补写并覆盖内存终态，阶段缺失的历史任务不得声称已生成语义，可通过重新处理触发。

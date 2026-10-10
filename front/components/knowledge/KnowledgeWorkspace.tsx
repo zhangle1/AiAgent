@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Send, Terminal, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks } from "lucide-react";
-import { askKnowledgeResources, getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResource, uploadKnowledgeResources } from "@/lib/knowledge-api";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks } from "lucide-react";
+import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResource, uploadKnowledgeResources } from "@/lib/knowledge-api";
 import { KnowledgeSemanticPreview } from "./KnowledgeSemanticPreview";
 import { KnowledgeWorkspacePanels } from "./KnowledgeWorkspacePanels";
+import { KnowledgeAgentChatPanel } from "./KnowledgeAgentChatPanel";
 import { KnowledgeFileProcessingDialog } from "./KnowledgeFileProcessingDialog";
 import styles from "./knowledge-workspace.module.css";
 import type { KnowledgeCompilationJob, KnowledgeResourceNode, KnowledgeResourceRead } from "@/lib/knowledge-types";
@@ -37,9 +38,6 @@ export function KnowledgeWorkspace() {
   const [showResourceDialog, setShowResourceDialog] = useState(false);
   const [showProcessing, setShowProcessing] = useState(false);
   const [previewMode, setPreviewMode] = useState<"source" | "parsed" | "semantic">("source");
-  const [terminalInput, setTerminalInput] = useState("");
-  const [terminalLines, setTerminalLines] = useState<string[]>(["AgentViking 工作区已就绪。输入问题，或使用 /ls、/open、/parse。"]);
-  const [asking, setAsking] = useState(false);
   const [job, setJob] = useState<KnowledgeCompilationJob | null>(null);
   const [showTaskLink, setShowTaskLink] = useState(false);
   const readSequence = useRef(0);
@@ -120,21 +118,6 @@ export function KnowledgeWorkspace() {
     try { const next = await parseKnowledgeResource(selected.uri); if (sequence !== readSequence.current) return; setJob(next); setNotice("已加入正文解析与 L0/L1 语义生成队列"); setShowTaskLink(true); }
     catch (ex) { if (sequence === readSequence.current) setError(ex instanceof Error ? ex.message : "解析任务创建失败"); }
   }
-  async function submitTerminal(event?: FormEvent) {
-    event?.preventDefault(); const command = terminalInput.trim(); if (!command) return;
-    setTerminalInput(""); setTerminalLines(lines => [...lines, `> ${command}`]);
-    if (command === "/ls") { setTerminalLines(lines => [...lines, (children.get(selectedUri) ?? []).map(item => `${item.kind === "directory" ? "📁" : "📄"} ${item.name}`).join("\n") || "（空目录）"]); return; }
-    if (command === "/open") { if (selected) setTerminalLines(lines => [...lines, selected.uri]); return; }
-    if (command === "/parse") { await parse(); setTerminalLines(lines => [...lines, "已开始文档解析。"]); return; }
-    if (command.startsWith("/ask ")) { await ask(command.slice(5)); return; }
-    await ask(command);
-  }
-  async function ask(question: string) {
-    setAsking(true); try { const result = await askKnowledgeResources(selectedUri, question); setTerminalLines(lines => [...lines, result.answer, result.truncated ? "[上下文已截断，回答基于部分资料]" : ""]); }
-    catch (ex) { setTerminalLines(lines => [...lines, `错误：${ex instanceof Error ? ex.message : "问答失败"}`]); }
-    finally { setAsking(false); }
-  }
-
   return <main className={`${styles.workspace} flex h-[calc(100dvh-24px)] min-h-0 flex-col overflow-hidden bg-[#f8fafc] text-slate-900`}>
     <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white pl-20 pr-4 lg:px-5">
       <div className="min-w-0"><div className="flex items-center gap-2 text-[15px] font-semibold"><span className="grid h-7 w-7 place-items-center rounded-lg bg-slate-900 text-white"><Library size={15} /></span>知识工作区</div><p className="mt-0.5 truncate text-[11px] text-slate-500">目录即入口 · 原文、解析正文和 Agent 问答在同一空间完成</p></div>
@@ -162,14 +145,7 @@ export function KnowledgeWorkspace() {
           {reading ? <div className="flex h-64 items-center justify-center text-sm text-slate-400">正在读取资料…</div> : selected?.kind === "directory" ? <DirectoryPreview resource={resource} node={selected} children={children.get(selectedUri) ?? []} onOpen={uri => void open(uri)} /> : <FilePreview node={selected} resource={resource} mode={previewMode} setMode={setPreviewMode} activeText={activeText} isPdf={isPdf} isImage={isImage} job={job} onOpen={uri => void open(uri)} />}
         </div>
       </section>}
-      terminal={<aside className="flex min-h-0 min-w-0 flex-col bg-white">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 px-4"><Terminal size={15} className="text-slate-500" /><span className="text-xs font-semibold">Agent 终端</span><span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">目录上下文</span></div>
-        <div className={`${styles.terminal} min-h-0 flex-1 overflow-auto bg-[#111827] p-4 font-mono text-xs leading-6 text-slate-200`}>
-          {terminalLines.map((line, index) => <div key={`${index}-${line.slice(0, 12)}`} className={line.startsWith(">") ? "mt-2 break-words text-blue-300" : "whitespace-pre-wrap break-words text-slate-300"}>{line}</div>)}
-          {asking && <div className="mt-2 text-amber-300">Agent 正在读取目录…</div>}
-        </div>
-        <div className="shrink-0 border-t border-slate-200 p-3"><div className="mb-2 flex flex-wrap gap-1.5">{["/ls", "/open", "/parse"].map(command => <button key={command} type="button" onClick={() => { setTerminalInput(command); }} className="rounded border border-slate-200 px-2 py-1 font-mono text-[10px] text-slate-500 hover:border-blue-300">{command}</button>)}</div><form onSubmit={submitTerminal} className="flex items-center gap-2"><span className="font-mono text-xs text-slate-400">›</span><input value={terminalInput} onChange={event => setTerminalInput(event.target.value)} placeholder="询问当前目录…" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /><button type="submit" disabled={asking || !terminalInput.trim()} className="grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-white disabled:opacity-30"><Send size={13} /></button></form></div>
-      </aside>}
+      terminal={<KnowledgeAgentChatPanel scope={selected?.kind === "file" ? selected.parent_uri ?? selectedUri : selectedUri} nodes={nodes} onOpen={uri => void open(uri)} onQueued={() => { setNotice("编译任务已提交，可在文件处理弹窗和任务中心查看进度。"); setShowTaskLink(true); }} />}
     />
     {showProcessing && <KnowledgeFileProcessingDialog onClose={() => setShowProcessing(false)} onOpen={uri => { setShowProcessing(false); void open(uri); }} />}
     {showResourceDialog && <ResourceDialog parentUri={selected?.kind === "directory" ? selectedUri : selected?.parent_uri ?? "viking://resources/"} onClose={() => setShowResourceDialog(false)} onUploaded={async files => { if (await upload(files)) setShowResourceDialog(false); }} onDirectoryCreated={async name => { const parentUri = selected?.kind === "directory" ? selectedUri : selected?.parent_uri ?? "viking://resources/"; await createKnowledgeResourceDirectory(parentUri, name); setNotice("目录已创建"); setShowResourceDialog(false); await loadTree(parentUri); }} />}

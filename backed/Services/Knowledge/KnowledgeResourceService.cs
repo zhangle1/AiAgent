@@ -217,6 +217,14 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         return worker.Enqueue(kb.Name, doc.Id, parseOnly: !IsWikiUri(uri));
     }
 
+    public KnowledgeCompilationJobDto Compile(string uri, KnowledgeCompilerSettingsDto configuration)
+    {
+        var node = FindNode(uri);
+        if (IsGeneratedUri(node.Uri)) throw new ArgumentException("请选择原始资源文件，不能编译生成产物。");
+        var (kb, doc) = Resolve(node);
+        return worker.Enqueue(kb.Name, doc.Id, parseOnly: true, configuration: configuration);
+    }
+
     public KnowledgeCompilationJobDto? TaskStatus(string uri)
     {
         var (kb, doc) = Resolve(FindNode(uri));

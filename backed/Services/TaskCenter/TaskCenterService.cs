@@ -56,7 +56,9 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         EnsureKnowledge(domain);
         var task = Find(id);
         if (task.JobType != "wiki_compile" || !task.DocumentId.HasValue) throw new InvalidOperationException("该知识任务暂不支持重试。");
-        var retried = knowledgeWorker.Enqueue(task.KnowledgeBaseName, task.DocumentId.Value, task.Job.ParseOnly);
+        var configuration = string.IsNullOrWhiteSpace(task.Job.ConfigurationJson) ? null
+            : System.Text.Json.JsonSerializer.Deserialize<AiAgent.Backend.Dtos.Knowledge.KnowledgeCompilerSettingsDto>(task.Job.ConfigurationJson);
+        var retried = knowledgeWorker.Enqueue(task.KnowledgeBaseName, task.DocumentId.Value, task.Job.ParseOnly, configuration);
         return ReadTask(retried.Id);
     }
 

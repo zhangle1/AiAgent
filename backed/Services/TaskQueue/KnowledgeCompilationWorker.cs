@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using System.Text.Json;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using SqlSugar;
@@ -21,14 +22,15 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         get { using var db = database.CopyNew(); return httpContextAccessor is null ? null : KnowledgeUserScope.Resolve(db, httpContextAccessor); }
     }
 
-    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool? parseOnly = null)
+    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool? parseOnly = null, KnowledgeCompilerSettingsDto? configuration = null)
     {
         RetryPendingFinishes();
         using var db = database.CopyNew();
         var kb = FindBase(name);
         var document = db.Queryable<AiKnowledgeDocument>().Where(x => x.Id == documentId && x.KnowledgeBaseId == kb.Id && !x.IsDeleted).First()
             ?? throw new InvalidOperationException("Knowledge document does not exist.");
-        var config = settings.Get();
+        var config = configuration is null ? settings.Get()
+            : JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>(JsonSerializer.Serialize(configuration))!;
         var ownerRoot = CurrentOwnerRoot;
         var sourceUri = KnowledgeResourceService.DocumentUri(kb, document);
         if (ownerRoot is not null && sourceUri.StartsWith("viking://user/", StringComparison.Ordinal) && !sourceUri.StartsWith(ownerRoot, StringComparison.Ordinal))
@@ -39,8 +41,14 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             var active = db.Queryable<AiKnowledgeJob>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId == documentId &&
                 x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot && (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling"))
                 .WhereIF(finishedIds.Length > 0, x => !finishedIds.Contains(x.Id)).First();
-            if (active is not null) return Map(active);
+            if (active is not null)
+            {
+                if (configuration is not null && (active.ConfigurationJson != JsonSerializer.Serialize(config) || active.ParseOnly != parseOnly))
+                    throw new InvalidOperationException("该文件已有不同配置的活动任务，请等待完成或在任务中心取消后再提交。");
+                return Map(active);
+            }
             var job = new AiKnowledgeJob { OwnerRoot = ownerRoot, ParseOnly = parseOnly ?? document.ResourceUri != null,
+                ConfigurationJson = JsonSerializer.Serialize(config),
                 KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Stage = "queued", Message = "等待正文解析与语义生成" };
             job.Id = db.Insertable(job).ExecuteReturnBigIdentity();
             _cancellations[job.Id] = new CancellationTokenSource();

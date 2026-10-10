@@ -194,6 +194,7 @@ public sealed class LlmChatClient : ILlmChatClient
             var data = line["data:".Length..].Trim();
             if (data == "[DONE]")
             {
+                yield return new LlmStreamChunk { ProviderStreamCompleted = true, ModelId = selection.Model.Id, Model = selection.Model.Model, Provider = selection.Profile.Binding };
                 yield break;
             }
 
@@ -639,6 +640,9 @@ public sealed class LlmChatResult
 /// </summary>
 public sealed class LlmStreamChunk
 {
+    /// <summary>The provider sent its explicit SSE completion marker; plain transport EOF is not this signal.</summary>
+    public bool ProviderStreamCompleted { get; set; }
+
     /// <summary>
     /// 可见回答增量。
     /// </summary>
