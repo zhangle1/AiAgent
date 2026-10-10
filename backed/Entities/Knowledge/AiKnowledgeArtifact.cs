@@ -5,6 +5,9 @@ namespace AiAgent.Backend.Entities.Knowledge;
 [SugarTable("ai_knowledge_artifact")]
 public sealed class AiKnowledgeArtifact
 {
+    [SugarColumn(Length = 512, IsNullable = true)]
+    public string? OwnerRoot { get; set; }
+
     [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
     public long Id { get; set; }
 

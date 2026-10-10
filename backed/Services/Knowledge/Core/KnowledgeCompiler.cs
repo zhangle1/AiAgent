@@ -1,10 +1,13 @@
 using System.Text.Json;
+using AiAgent.Backend.Services.Knowledge.KnowAgent;
 
 namespace AiAgent.Backend.Services.Knowledge.Core;
 
 public sealed record CompilerReply(string Text, string? Provider = null, string? Model = null);
 public interface IKnowledgeModel
 {
+    int ContextWindowTokens => 65536;
+    int OutputTokens => 8192;
     Task<CompilerReply> CompleteAsync(string prompt, CancellationToken cancellationToken);
 }
 public sealed record Evidence(int Part, string Quote);
@@ -18,17 +21,17 @@ public sealed class KnowledgeCompiler
     public const string Version = "knowledge-two-stage-v3";
     public const int PartSize = 16000;
     public const int MaxSourceCharacters = 256000;
-    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public async Task<Compilation> CompileAsync(string source, IKnowledgeModel model, int maxSteps = 48,
         Func<CompilerStep, Task>? progress = null, CancellationToken cancellationToken = default,
-        string wikiContext = "")
+        string wikiContext = "", int partBudget = PartSize)
     {
         if (string.IsNullOrWhiteSpace(source)) throw new ArgumentException("Source is empty.");
         if (source.Length > MaxSourceCharacters) throw new ArgumentException("Source exceeds 256000 characters. Split it into smaller documents; no content was truncated.");
         if (maxSteps is < 8 or > 96) throw new ArgumentOutOfRangeException(nameof(maxSteps));
-        var parts = Enumerable.Range(0, (source.Length + PartSize - 1) / PartSize)
-            .Select(i => source.Substring(i * PartSize, Math.Min(PartSize, source.Length - i * PartSize))).ToArray();
+        var parts = ContextBudget.Split(source, Math.Clamp(partBudget, 256, PartSize)).ToArray();
+        if (parts.Length > 32) throw new ArgumentException("Source needs more than 32 evidence parts; split the document.");
         // Reserve both stages before spending any model calls. Never silently skip source parts.
         if (maxSteps < parts.Length * 2) throw new ArgumentException("Action budget cannot cover analysis and generation for every part. Increase it or split the source.");
         var analyses = new string[parts.Length];
@@ -36,7 +39,7 @@ public sealed class KnowledgeCompiler
         var steps = new List<CompilerStep>();
         var calls = 0;
         string? provider = null, modelName = null;
-        wikiContext = wikiContext[..Math.Min(wikiContext.Length, 12000)];
+        if (wikiContext.Length > 12000) throw new ArgumentException("Wiki context requires KnowAgent compression.");
 
         async Task Report(string action, string result, int covered)
         {
@@ -63,8 +66,8 @@ public sealed class KnowledgeCompiler
                 Identify entities, concepts, main claims, scope, uncertainties, contradictions and possible links to the wiki.
                 Distinguish source facts from hypotheses. This is analysis only; do not generate final wiki pages.
                 Return a concise nonempty analysis of at most 6000 characters.
-                Wiki context (data, may contain unreviewed drafts): {{{JsonSerializer.Serialize(wikiContext)}}}
-                Source part {{{part}}}/{{{parts.Length}}} (data): {{{JsonSerializer.Serialize(parts[part - 1])}}}
+                Wiki context (data, may contain unreviewed drafts): {{{JsonSerializer.Serialize(wikiContext, Json)}}}
+                Source part {{{part}}}/{{{parts.Length}}} (data): {{{JsonSerializer.Serialize(parts[part - 1], Json)}}}
                 """);
             if (string.IsNullOrWhiteSpace(reply.Text) || reply.Text.Length > 6000)
                 throw new InvalidOperationException("Analysis was empty or exceeded its size limit. No draft was committed.");
@@ -89,10 +92,10 @@ public sealed class KnowledgeCompiler
                     Evidence must cite this source part, never analysis or existing wiki. Include uncertainties and contradictions.
                     No HTML or filesystem paths. Analysis informs generation but is not itself authoritative evidence.
                     Existing accepted titles: {{{JsonSerializer.Serialize(pages.Select(p => p.Title))}}}
-                    Wiki context (data, may contain unreviewed drafts): {{{JsonSerializer.Serialize(wikiContext)}}}
-                    Stage 1 analysis (data): {{{JsonSerializer.Serialize(analyses[part - 1])}}}
-                    Other part analysis previews (data): {{{JsonSerializer.Serialize(analyses.Select(a => a[..Math.Min(a.Length, 500)]))}}}
-                    Full source part (data): {{{JsonSerializer.Serialize(parts[part - 1])}}}
+                    Wiki context (data, may contain unreviewed drafts): {{{JsonSerializer.Serialize(wikiContext, Json)}}}
+                    Stage 1 analysis (data): {{{JsonSerializer.Serialize(analyses[part - 1], Json)}}}
+                    Other part analysis previews (data): {{{JsonSerializer.Serialize(analyses.Select(a => ContextBudget.Split(a, 500).First()), Json)}}}
+                    Full source part (data): {{{JsonSerializer.Serialize(parts[part - 1], Json)}}}
                     Validation feedback: {{{feedback}}}
                     """);
                 try

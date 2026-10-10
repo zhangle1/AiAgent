@@ -9,14 +9,19 @@ namespace AiAgent.Backend.Services.TaskQueue;
 
 /// <summary>Serial compilation queue, independent from the existing RAG index worker.</summary>
 public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, KnowledgeCompilerSettings settings,
-    IKnowledgeIngestionService ingestion, ILogger<KnowledgeCompilationWorker> logger, KnowledgeResourceSemanticService? semantic = null) : BackgroundService
+    IKnowledgeIngestionService ingestion, ILogger<KnowledgeCompilationWorker> logger, KnowledgeResourceSemanticService? semantic = null, IHttpContextAccessor? httpContextAccessor = null) : BackgroundService
 {
     private readonly object _sync = new();
     private readonly Dictionary<long, CancellationTokenSource> _cancellations = new();
     private readonly Dictionary<long, TerminalState> _pendingFinishes = new();
     private readonly Channel<Work> _queue = Channel.CreateBounded<Work>(new BoundedChannelOptions(32) { SingleReader = true });
 
-    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool parseOnly = false)
+    public string? CurrentOwnerRoot
+    {
+        get { using var db = database.CopyNew(); return httpContextAccessor is null ? null : KnowledgeUserScope.Resolve(db, httpContextAccessor); }
+    }
+
+    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool? parseOnly = null)
     {
         RetryPendingFinishes();
         using var db = database.CopyNew();
@@ -24,17 +29,22 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         var document = db.Queryable<AiKnowledgeDocument>().Where(x => x.Id == documentId && x.KnowledgeBaseId == kb.Id && !x.IsDeleted).First()
             ?? throw new InvalidOperationException("Knowledge document does not exist.");
         var config = settings.Get();
+        var ownerRoot = CurrentOwnerRoot;
+        var sourceUri = KnowledgeResourceService.DocumentUri(kb, document);
+        if (ownerRoot is not null && sourceUri.StartsWith("viking://user/", StringComparison.Ordinal) && !sourceUri.StartsWith(ownerRoot, StringComparison.Ordinal))
+            throw new UnauthorizedAccessException("Private source belongs to another user.");
         lock (_sync)
         {
             var finishedIds = _pendingFinishes.Keys.ToArray();
             var active = db.Queryable<AiKnowledgeJob>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId == documentId &&
-                x.JobType == "wiki_compile" && (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling"))
+                x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot && (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling"))
                 .WhereIF(finishedIds.Length > 0, x => !finishedIds.Contains(x.Id)).First();
             if (active is not null) return Map(active);
-            var job = new AiKnowledgeJob { KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Stage = "queued", Message = "等待正文解析与语义生成" };
+            var job = new AiKnowledgeJob { OwnerRoot = ownerRoot, ParseOnly = parseOnly ?? document.ResourceUri != null,
+                KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Stage = "queued", Message = "等待正文解析与语义生成" };
             job.Id = db.Insertable(job).ExecuteReturnBigIdentity();
             _cancellations[job.Id] = new CancellationTokenSource();
-            if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id, parseOnly || document.ResourceUri != null)))
+            if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id, job.ParseOnly.Value, ownerRoot)))
             {
                 _cancellations.Remove(job.Id, out var rejected);
                 rejected?.Dispose();
@@ -50,7 +60,8 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         RetryPendingFinishes();
         using var db = database.CopyNew();
         var kb = FindBase(name);
-        var job = db.Queryable<AiKnowledgeJob>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId == documentId && x.JobType == "wiki_compile")
+        var ownerRoot = CurrentOwnerRoot;
+        var job = db.Queryable<AiKnowledgeJob>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId == documentId && x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot)
             .OrderByDescending(x => x.Id).First();
         return job is null ? null : Map(job);
     }
@@ -69,10 +80,11 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
     {
         RetryPendingFinishes();
         using var db = database.CopyNew();
+        var ownerRoot = CurrentOwnerRoot;
         var visible = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).Select(x => x.Id).ToList();
-        var active = db.Queryable<AiKnowledgeJob>().Where(x => visible.Contains(x.KnowledgeBaseId) && x.JobType == "wiki_compile" &&
+        var active = db.Queryable<AiKnowledgeJob>().Where(x => visible.Contains(x.KnowledgeBaseId) && x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot &&
             (x.Status == "queued" || x.Status == "processing" || x.Status == "cancelling")).OrderBy(x => x.Id).ToList();
-        var recent = db.Queryable<AiKnowledgeJob>().Where(x => visible.Contains(x.KnowledgeBaseId) && x.JobType == "wiki_compile" &&
+        var recent = db.Queryable<AiKnowledgeJob>().Where(x => visible.Contains(x.KnowledgeBaseId) && x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot &&
             x.Status != "queued" && x.Status != "processing" && x.Status != "cancelling").OrderByDescending(x => x.Id).Take(20).ToList();
         return active.Concat(recent).Select(Map).ToList();
     }
@@ -81,9 +93,10 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
     {
         using var db = database.CopyNew();
         var kb = FindBase(name);
+        var ownerRoot = CurrentOwnerRoot;
         lock (_sync)
         {
-            var job = db.Queryable<AiKnowledgeJob>().Where(x => x.Id == id && x.KnowledgeBaseId == kb.Id && x.JobType == "wiki_compile").First()
+            var job = db.Queryable<AiKnowledgeJob>().Where(x => x.Id == id && x.KnowledgeBaseId == kb.Id && x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot).First()
                 ?? throw new KeyNotFoundException("Compilation task does not exist.");
             ApplyPendingFinish(job);
             if (job.Status is not ("queued" or "processing" or "cancelling")) return Map(job);
@@ -127,8 +140,10 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         work.Config, work.ParseOnly, (phase, value, message) => {
                             stage = message;
                             UpdateProgress(work.JobId, phase, value, message);
-                        }, execution.Token);
-                    Finish(work.JobId, "success", work.ParseOnly ? "正文解析与语义整理完成，可查看目录 L0/L1。" : "知识整理完成。");
+                        }, execution.Token, work.OwnerRoot);
+                    Finish(work.JobId, "success", work.ParseOnly ? work.OwnerRoot is null
+                        ? "正文解析与语义整理完成，可查看目录 L0/L1。"
+                        : "正文解析完成，概览与摘要已保存到「我的工作区 → 摘要」。" : "知识整理完成。");
                 }
                 catch (Exception ex)
                 {
@@ -244,5 +259,5 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         };
     }
     private sealed record TerminalState(string Status, string Message, DateTime At);
-    private sealed record Work(AiKnowledgeBase Base, AiKnowledgeDocument Document, KnowledgeCompilerSettingsDto Config, long JobId, bool ParseOnly);
+    private sealed record Work(AiKnowledgeBase Base, AiKnowledgeDocument Document, KnowledgeCompilerSettingsDto Config, long JobId, bool ParseOnly, string? OwnerRoot);
 }

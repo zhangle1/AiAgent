@@ -25,10 +25,11 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         knowledgeWorker.RetryPendingFinishes();
         using var db = database.CopyNew();
         var knowledgeBases = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).ToList();
+        var ownerRoot = knowledgeWorker.CurrentOwnerRoot;
         var visibleIds = knowledgeBases.Select(x => x.Id).ToList();
         List<AiKnowledgeJob> rows = visibleIds.Count == 0
             ? new List<AiKnowledgeJob>()
-            : db.Queryable<AiKnowledgeJob>().Where(x => visibleIds.Contains(x.KnowledgeBaseId) && x.JobType == "wiki_compile")
+            : db.Queryable<AiKnowledgeJob>().Where(x => visibleIds.Contains(x.KnowledgeBaseId) && x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot)
                 .OrderByDescending(x => x.CreatedAt).Take(Math.Clamp(limit, 1, 500)).ToList();
         var documents = rows.Where(x => x.DocumentId.HasValue).Select(x => x.DocumentId!.Value).Distinct().ToList();
         var documentRows = documents.Count == 0
@@ -55,7 +56,7 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
         EnsureKnowledge(domain);
         var task = Find(id);
         if (task.JobType != "wiki_compile" || !task.DocumentId.HasValue) throw new InvalidOperationException("该知识任务暂不支持重试。");
-        var retried = knowledgeWorker.Enqueue(task.KnowledgeBaseName, task.DocumentId.Value);
+        var retried = knowledgeWorker.Enqueue(task.KnowledgeBaseName, task.DocumentId.Value, task.Job.ParseOnly);
         return ReadTask(retried.Id);
     }
 
@@ -72,7 +73,8 @@ public sealed class TaskCenterService(ISqlSugarClient database, KnowledgeCompila
     {
         knowledgeWorker.RetryPendingFinishes();
         using var db = database.CopyNew();
-        var row = db.Queryable<AiKnowledgeJob>().Where(x => x.Id == id).First() ?? throw new KeyNotFoundException("后台任务不存在。");
+        var ownerRoot = knowledgeWorker.CurrentOwnerRoot;
+        var row = db.Queryable<AiKnowledgeJob>().Where(x => x.Id == id && x.OwnerRoot == ownerRoot).First() ?? throw new KeyNotFoundException("后台任务不存在。");
         var kb = db.Queryable<AiKnowledgeBase>().Where(x => x.Id == row.KnowledgeBaseId && !x.IsDeleted).First() ?? throw new KeyNotFoundException("任务所属知识库不存在。");
         return new(row, kb.Name);
     }

@@ -498,6 +498,9 @@ public sealed class KnowledgeDocumentImportItemDto
 /// <summary>Requests parsing and knowledge compilation for one uploaded source document.</summary>
 public sealed class KnowledgeProcessRequest
 {
+    [JsonIgnore]
+    public string? OwnerRoot { get; set; }
+
     /// <summary>Generation adapter: llm_api (default) or codex.</summary>
     [JsonPropertyName("generator")]
     public string Generator { get; set; } = "llm_api";

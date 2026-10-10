@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 知识产物归属与上下文预算：任务入队时从服务端身份捕获 `OwnerRoot`，后台执行沿用快照；个人摘要和 Wiki 写入本人工作区，原文与 L2 保留资源层。Wiki／语义生成通过 `Services/Knowledge/KnowAgent/`，原文证据完整保留，压缩与生成共用调用预算。修改归属、缓存、任务重试或模型预算时先读 `docs/knowledge-personal-workspace.md`，验证双用户隔离及失败后正文可读。
+
 - 知识任务队列位于 `Services/TaskQueue/KnowledgeCompilationWorker.cs`，领域处理位于 `Services/Knowledge/KnowledgeCompilationHandler.cs`。目录资料任务按 L2 → L0/L1 顺序执行，语义服务缺失必须失败，不得静默成功；任务 `Stage` 为可空列。任务中心须补写并覆盖内存终态，阶段缺失的历史任务不得声称已生成语义，可通过重新处理触发。
 
 

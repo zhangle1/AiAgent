@@ -304,6 +304,7 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
     }
     private sealed class Llm : ILlmChatClient
     {
+        public LlmModelCapabilities GetCapabilities(string? modelId) => new(modelId, "fake", 65536, 8192, false);
         public Queue<string> Replies { get; } = new();
         public string? ModelId { get; private set; }
         public int? MaxOutputTokens { get; private set; }

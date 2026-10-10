@@ -57,7 +57,29 @@ public sealed class KnowledgeSemanticStore(IKnowledgePathService paths)
     }
 
     public static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private string Location(string uri) => Guard(Path.Combine(paths.RootPath, ".resource-semantic", Hash(uri)));
+    private string Location(string uri)
+    {
+        if (uri == "viking://user/" || !uri.StartsWith("viking://user/", StringComparison.Ordinal))
+            return Guard(Path.Combine(paths.RootPath, ".resource-semantic", Hash(uri)));
+        var ownerEnd = uri.IndexOf('/', "viking://user/".Length);
+        if (ownerEnd < 0) throw new ArgumentException("Invalid personal URI.");
+        return Guard(Path.Combine(paths.RootPath, ".user-workspaces", Hash(uri[..(ownerEnd + 1)]), "semantics", Hash(uri)));
+    }
+    public string MaterializeWiki(string ownerRoot, string content)
+    {
+        var root = Guard(Path.Combine(paths.RootPath, ".user-workspaces", Hash(ownerRoot), "wiki"));
+        Directory.CreateDirectory(root);
+        var target = Guard(Path.Combine(root, Hash(content) + ".md"));
+        if (File.Exists(target)) return target;
+        var temporary = Guard(Path.Combine(root, Guid.NewGuid().ToString("N") + ".tmp"));
+        try
+        {
+            File.WriteAllText(temporary, content, new UTF8Encoding(false));
+            File.Move(temporary, target, true);
+            return target;
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
     private string Guard(string path)
     {
         var full = Path.GetFullPath(path);

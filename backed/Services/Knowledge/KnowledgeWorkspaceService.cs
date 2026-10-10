@@ -7,7 +7,7 @@ using AiAgent.Backend.Services.Knowledge.Core;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
-public sealed class KnowledgeWorkspaceService(ISqlSugarClient database)
+public sealed class KnowledgeWorkspaceService(ISqlSugarClient database, IHttpContextAccessor? httpContextAccessor = null)
 {
     public static KnowledgeOrganizationDto ReadOrganization(string? metadata)
     {
@@ -34,8 +34,10 @@ public sealed class KnowledgeWorkspaceService(ISqlSugarClient database)
         return value;
     }
 
-    public List<KnowledgePageDto> ListPages(string name)
+    public List<KnowledgePageDto> ListPages(string name, string? ownerRoot = null)
     {
+        if (ownerRoot is null && httpContextAccessor is not null)
+        { using var scopeDb = database.CopyNew(); ownerRoot = KnowledgeUserScope.Resolve(scopeDb, httpContextAccessor); }
         AiKnowledgeBase kb;
         using (var db = database.CopyNew())
             kb = Find(db, name);
@@ -50,7 +52,7 @@ public sealed class KnowledgeWorkspaceService(ISqlSugarClient database)
         var latestIds = Array.Empty<long>().ToList();
         using (var db = database.CopyNew())
         {
-            latestIds = db.Queryable<AiKnowledgeArtifact>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId != null)
+            latestIds = db.Queryable<AiKnowledgeArtifact>().Where(x => x.KnowledgeBaseId == kb.Id && x.DocumentId != null && (x.OwnerRoot == null || x.OwnerRoot == ownerRoot))
                 .GroupBy(x => x.DocumentId).Select(x => SqlFunc.AggregateMax(x.Id)).ToList();
         }
         if (latestIds.Count == 0) return [];

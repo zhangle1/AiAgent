@@ -24,6 +24,8 @@ export function KnowledgeSemanticPreview({ resource, onOpen }: { resource: Knowl
         urlTransform={url => url.startsWith("viking://") ? url : ""}
         components={{ img: () => null, a: ({ href, children }) => href?.startsWith("viking://") ? <button type="button" className="text-blue-600 underline" onClick={() => onOpen(href)}>{children}</button> : <span>{children}</span> }}
       >{content}</ReactMarkdown></article>
-    </> : <p className="py-4 text-xs text-slate-500">尚未生成，或资料已变化。请对目录中的文件执行「重新解析」，任务完成后刷新查看 L0/L1。</p>}
+    </> : <p className="py-4 text-xs text-slate-500">{resource?.node.uri.startsWith("viking://user/")
+      ? "尚未生成，或资料已变化。对来源文件执行「重新解析」后，在我的工作区查看概览与摘要。"
+      : "此处保存原始资料和解析正文。对文件执行「重新解析」后，概览与摘要会生成在「人员 → 我的工作区 → 摘要」。"}</p>}
   </section>;
 }

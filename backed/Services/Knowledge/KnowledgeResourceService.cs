@@ -1,9 +1,7 @@
 using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Knowledge;
-using AiAgent.Backend.Entities.Auth;
 using AiAgent.Backend.Entities.Knowledge;
-using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Llm;
 using SqlSugar;
@@ -56,6 +54,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             nodes[root] = new() { Uri = root, Name = name, Kind = "directory" };
         AddDirectory(userRoot, "我的工作区");
         AddDirectory(userRoot + "memory/", "记忆");
+        AddDirectory(userRoot + "wiki/", "Wiki");
         AddDirectory(userRoot + "summaries/", "摘要");
         AddDirectory(userRoot + "derived/", "模型转换");
         foreach (var row in db.Queryable<AiKnowledgeDirectory>().ToList())
@@ -73,6 +72,21 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
                 Kind = "file", DocumentId = doc.Id, KnowledgeBaseName = kb.Name,
                 Extension = doc.Extension, Size = doc.FileSize, Status = doc.Status };
         }
+        var visibleDocuments = nodes.Values.Where(x => x.DocumentId.HasValue).Select(x => x.DocumentId!.Value).ToHashSet();
+        foreach (var artifact in db.Queryable<AiKnowledgeArtifact>().Where(x => x.OwnerRoot == userRoot).ToList())
+        {
+            if (artifact.DocumentId is not { } id || !visibleDocuments.Contains(id) || artifact.KnowledgeBaseId is not { } kbId || !bases.TryGetValue(kbId, out var kb)) continue;
+            var source = nodes.Values.First(x => x.DocumentId == id);
+            var uri = KnowledgeContextUri.Artifact(kb.Name, artifact, source.Name);
+            nodes[uri] = new() { Uri = uri, ParentUri = userRoot + "wiki/", Name = Path.GetFileNameWithoutExtension(source.Name) + $"-{artifact.Id}.md",
+                Kind = "file", DocumentId = id, KnowledgeBaseName = kb.Name, Extension = ".md", Status = artifact.ReviewStatus ?? "draft" };
+        }
+        if (semantic is not null)
+            foreach (var generated in semantic.WorkspaceNodes(userRoot))
+            {
+                AddDirectory(generated.ParentUri!);
+                nodes.TryAdd(generated.Uri, generated);
+            }
         return nodes.Values.OrderBy(x => x.Kind == "directory" ? 0 : 1).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
         void AddDirectory(string uri, string? name = null)
@@ -90,13 +104,14 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     {
         worker.RetryPendingFinishes();
         // The resource tree supplies the visible document set, including the current user's scope.
-        var files = Tree().Where(x => x.Kind == "file" && x.DocumentId.HasValue).ToList();
+        var files = Tree().Where(x => x.Kind == "file" && x.DocumentId.HasValue && !IsGeneratedUri(x.Uri)).ToList();
         if (files.Count == 0) return [];
         using var db = database.CopyNew();
+        var ownerRoot = worker.CurrentOwnerRoot;
         var ids = files.Select(x => x.DocumentId!.Value).ToList();
         // Select each file's latest task in SQL; old files must not disappear behind a recent-task limit.
         var latestIds = db.Queryable<AiKnowledgeJob>()
-            .Where(x => x.JobType == "wiki_compile" && x.DocumentId.HasValue && ids.Contains(x.DocumentId.Value))
+            .Where(x => x.JobType == "wiki_compile" && x.OwnerRoot == ownerRoot && x.DocumentId.HasValue && ids.Contains(x.DocumentId.Value))
             .GroupBy(x => x.DocumentId).Select(x => SqlFunc.AggregateMax(x.Id)).ToList();
         var tasks = latestIds.Count == 0 ? new List<AiKnowledgeJob>()
             : db.Queryable<AiKnowledgeJob>().Where(x => latestIds.Contains(x.Id)).ToList();
@@ -115,6 +130,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     public async Task<KnowledgeResourceNodeDto> CreateDirectoryAsync(KnowledgeDirectoryRequest request, CancellationToken ct)
     {
         var parent = ScopeUserUri(request.ParentUri);
+        if (IsGeneratedUri(parent)) throw new InvalidOperationException("Generated workspace directories are read-only.");
         var name = ValidateName(request.Name);
         var uri = NormalizeUri(parent + Uri.EscapeDataString(name), true);
         await _mutations.WaitAsync(ct);
@@ -134,6 +150,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     public async Task<KnowledgeResourceImportDto> UploadAsync(KnowledgeResourceUploadRequest request, CancellationToken ct)
     {
         var parent = ScopeUserUri(request.Uri);
+        if (IsGeneratedUri(parent)) throw new InvalidOperationException("Generated workspace directories are read-only.");
         await _mutations.WaitAsync(ct);
         try
         {
@@ -147,7 +164,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             if (request.Process)
                 foreach (var doc in result.Documents)
                 {
-                    try { response.Tasks.Add(worker.Enqueue(kb.Name, doc.Id)); }
+                    try { response.Tasks.Add(worker.Enqueue(kb.Name, doc.Id, parseOnly: true)); }
                     catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
                     { response.Warnings.Add($"{doc.OriginalFileName} 已保存，解析未入队：{ex.Message}"); }
                 }
@@ -159,10 +176,21 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     public async Task<KnowledgeResourceReadDto> ReadAsync(string uri, CancellationToken ct)
     {
         var node = FindNode(uri);
-        var generated = semantic.Read(node.Uri);
+        using var scopeDb = database.CopyNew();
+        var ownerRoot = CurrentUserRoot(scopeDb);
+        if (node.Kind == "file" && node.Uri.StartsWith(ownerRoot + "wiki/", StringComparison.Ordinal))
+        {
+            var artifact = WorkspaceArtifact(node, ownerRoot);
+            return new() { Node = node, SourceText = artifact.Content, SemanticContent = artifact.Content, Model = artifact.Model, SemanticStatus = "ready", SemanticGeneratedAt = artifact.CreatedAt };
+        }
+        var generated = semantic.Read(node.Uri, node.Uri.StartsWith(ownerRoot, StringComparison.Ordinal) ? ownerRoot : null);
         if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList(),
             AbstractContent = generated?.Abstract, OverviewContent = generated?.Overview, Model = generated?.Model,
             SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
+        if (node.Uri.StartsWith(ownerRoot + "summaries/", StringComparison.Ordinal))
+            return new() { Node = node, SourceText = generated?.Overview, SemanticContent = generated?.Overview,
+                Model = generated?.Model, SemanticGeneratedAt = generated?.GeneratedAt,
+                SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
         var (kb, doc) = Resolve(node);
         var content = ingestion.GetContent(kb, doc);
         string? source = null;
@@ -186,7 +214,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     public KnowledgeCompilationJobDto Parse(string uri)
     {
         var (kb, doc) = Resolve(FindNode(uri));
-        return worker.Enqueue(kb.Name, doc.Id, parseOnly: true);
+        return worker.Enqueue(kb.Name, doc.Id, parseOnly: !IsWikiUri(uri));
     }
 
     public KnowledgeCompilationJobDto? TaskStatus(string uri)
@@ -205,7 +233,17 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
 
     public (string Path, string Name, string ContentType) File(string uri)
     {
-        var (kb, doc) = Resolve(FindNode(uri));
+        var node = FindNode(uri);
+        if (IsGeneratedUri(node.Uri))
+        {
+            using var db = database.CopyNew();
+            var ownerRoot = CurrentUserRoot(db);
+            var content = IsWikiUri(node.Uri) ? WorkspaceArtifact(node, ownerRoot).Content
+                : semantic.Read(node.Uri, ownerRoot)?.Overview;
+            if (content is null) throw new InvalidOperationException("Generated content is missing or stale.");
+            return (new KnowledgeSemanticStore(paths).MaterializeWiki(ownerRoot, content), Path.GetFileNameWithoutExtension(node.Name) + ".md", "text/markdown; charset=utf-8");
+        }
+        var (kb, doc) = Resolve(node);
         return (SourcePath(kb, doc), doc.OriginalFileName, doc.ContentType ?? "application/octet-stream");
     }
 
@@ -270,6 +308,17 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         return new() { Answer = answer, Model = model, Sources = sources, Truncated = truncated };
     }
 
+    private static bool IsWikiUri(string uri) => uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "wiki";
+    private static bool IsGeneratedUri(string uri) => IsWikiUri(uri) || uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "summaries";
+
+    private AiKnowledgeArtifact WorkspaceArtifact(KnowledgeResourceNodeDto node, string ownerRoot)
+    {
+        using var db = database.CopyNew();
+        return db.Queryable<AiKnowledgeArtifact>().Where(x => x.OwnerRoot == ownerRoot && x.DocumentId == node.DocumentId).ToList()
+            .SingleOrDefault(x => node.Uri.EndsWith($"-{x.Id}.md", StringComparison.Ordinal))
+            ?? throw new KeyNotFoundException("Wiki does not exist.");
+    }
+
     private KnowledgeResourceNodeDto FindNode(string uri)
     {
         var canonical = ScopeUserUri(uri);
@@ -288,28 +337,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         return canonical;
     }
 
-    private string CurrentUserRoot(ISqlSugarClient db)
-    {
-        var context = httpContextAccessor.HttpContext;
-        string? token = null;
-        if (context is not null)
-        {
-            var authorization = context.Request.Headers.Authorization.ToString();
-            if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                token = authorization["Bearer ".Length..].Trim();
-            else
-                context.Request.Cookies.TryGetValue(AuthService.CookieName, out token);
-        }
-        var username = "current";
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(token)));
-            var session = db.Queryable<AiUserSession>().First(x => x.TokenHash == hash && x.Purpose == null && x.RevokedAt == null && x.ExpiresAt > DateTime.UtcNow);
-            var user = session is null ? null : db.Queryable<AiUser>().First(x => x.Id == session.UserId && !x.IsDisabled);
-            if (user is not null) username = string.IsNullOrWhiteSpace(user.Username) ? user.Id : user.Username;
-        }
-        return Roots[2] + Uri.EscapeDataString(username) + "/";
-    }
+    private string CurrentUserRoot(ISqlSugarClient db) => KnowledgeUserScope.Resolve(db, httpContextAccessor);
 
     private (AiKnowledgeBase Base, AiKnowledgeDocument Document) Resolve(KnowledgeResourceNodeDto node)
     {

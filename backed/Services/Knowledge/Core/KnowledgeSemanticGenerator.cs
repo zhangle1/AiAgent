@@ -1,13 +1,14 @@
 using System.Text.Json;
+using AiAgent.Backend.Services.Knowledge.KnowAgent;
 using System.Text.RegularExpressions;
 
 namespace AiAgent.Backend.Services.Knowledge.Core;
 
 /// <summary>Bounded semantic generation over text only. No storage or tool execution.</summary>
-public sealed class KnowledgeSemanticGenerator(IKnowledgeModel model, int maxCalls)
+public sealed class KnowledgeSemanticGenerator(IKnowledgeModel model, int maxCalls, int inputBudget = 32000)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-    public const string Version = "resource-semantic-v1";
+    public const string Version = "resource-semantic-v2";
     private int _calls;
     public string? Model { get; private set; }
 
@@ -16,8 +17,8 @@ public sealed class KnowledgeSemanticGenerator(IKnowledgeModel model, int maxCal
         if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("解析正文为空，无法生成语义摘要。");
         if (text.Length > 256000) throw new InvalidOperationException("正文超过 256000 字符，请拆分资料后重试语义生成。");
         var parts = new List<string>();
-        for (var offset = 0; offset < text.Length; offset += 16000)
-            parts.Add(await GenerateAsync("总结该文档片段的用途、章节、核心概念和关键约束，保留重要参数。用中文 Markdown，最多 1800 字符。", text.Substring(offset, Math.Min(16000, text.Length - offset)), ct));
+        foreach (var part in ContextBudget.Split(text, Math.Min(16000, inputBudget)))
+            parts.Add(await GenerateAsync("总结该文档片段的用途、章节、核心概念和关键约束，保留重要参数。用中文 Markdown，最多 1800 字符。", part, ct));
         return parts.Count == 1 ? parts[0] : await ReduceAsync(parts, "合并文档各片段摘要，保留用途、核心概念、约束与重要参数。最多 3000 字符。", ct);
     }
 
@@ -37,15 +38,21 @@ public sealed class KnowledgeSemanticGenerator(IKnowledgeModel model, int maxCal
     {
         var batches = new List<string>();
         var current = "";
-        foreach (var value in values)
+        foreach (var value in values.SelectMany(v => ContextBudget.Split(v, inputBudget - 1)))
         {
-            if (current.Length + value.Length > 24000 && current.Length > 0) { batches.Add(current); current = ""; }
+            if (ContextBudget.Estimate(current) + ContextBudget.Estimate(value) + 1 > inputBudget && current.Length > 0) { batches.Add(current); current = ""; }
             current += value + "\n";
         }
         if (current.Length > 0) batches.Add(current);
         if (batches.Count <= 1) return await GenerateAsync(instruction, batches.FirstOrDefault() ?? "空目录", ct);
         var reduced = new List<string>();
-        foreach (var batch in batches) reduced.Add(await GenerateAsync("汇总这些资料摘要，保留各条目的名称、用途和限制。最多 3000 字符。", batch, ct));
+        foreach (var batch in batches)
+        {
+            var summary = await GenerateAsync("汇总这些资料摘要，保留各条目的名称、用途和限制。最多 3000 字符。", batch, ct);
+            if (ContextBudget.Estimate(summary) >= ContextBudget.Estimate(batch))
+                throw new InvalidOperationException("语义压缩未收敛，请重试。");
+            reduced.Add(summary);
+        }
         return await ReduceAsync(reduced, instruction, ct);
     }
 

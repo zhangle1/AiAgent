@@ -24,7 +24,8 @@ public static partial class KnowledgeContextUri
     public static string Artifact(string knowledgeBaseName, AiKnowledgeArtifact artifact, string? sourceName)
     {
         var stem = Path.GetFileNameWithoutExtension(sourceName ?? "knowledge");
-        return $"{Root(knowledgeBaseName)}knowledge/{Segment(stem)}-{artifact.Id}.md";
+        var root = artifact.OwnerRoot is null ? Root(knowledgeBaseName) + "knowledge/" : artifact.OwnerRoot + "wiki/";
+        return $"{root}{Segment(stem)}-{artifact.Id}.md";
     }
 
     public static string Segment(string? value)

@@ -41,10 +41,12 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
     private readonly ILlmChatClient _llm;
     private readonly ICodexChatService _codex;
     private readonly IConfiguration? _configuration;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
 
-    public KnowledgeIngestionService(ISqlSugarClient db, IKnowledgePathService paths, IDocumentParsingService parser, ILlmChatClient llm, ICodexChatService codex, KnowledgeCompilerSettings settings, IConfiguration? configuration = null)
+    public KnowledgeIngestionService(ISqlSugarClient db, IKnowledgePathService paths, IDocumentParsingService parser, ILlmChatClient llm, ICodexChatService codex, KnowledgeCompilerSettings settings, IConfiguration? configuration = null, IHttpContextAccessor? httpContextAccessor = null)
     {
         _settings = settings;
+        _httpContextAccessor = httpContextAccessor;
         _configuration = configuration;
         _db = db;
         _paths = paths;
@@ -55,6 +57,8 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
 
     public async Task<KnowledgeProcessingResultDto> ProcessAsync(AiKnowledgeBase knowledgeBase, AiKnowledgeDocument document, KnowledgeProcessRequest request, CancellationToken cancellationToken, KnowledgeCompilerSettingsDto? settings = null, Action<int, string>? progress = null)
     {
+        using var scopeDb = _db.CopyNew();
+        request.OwnerRoot ??= _httpContextAccessor is null ? null : KnowledgeUserScope.Resolve(scopeDb, _httpContextAccessor);
         var config = settings ?? _settings.Get();
         KnowledgeCompilerSettings.Validate(config);
         var callerCancellationToken = cancellationToken;
@@ -98,6 +102,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
             progress?.Invoke(95, "证据校验完成，正在保存知识草稿");
             var artifact = new AiKnowledgeArtifact
             {
+                OwnerRoot = request.OwnerRoot,
                 KnowledgeBaseId = knowledgeBase.Id,
                 DocumentId = document.Id,
                 ParsedDocumentId = parsedRow.Id,
@@ -111,6 +116,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
                 EvidenceJson = JsonSerializer.Serialize(new { source_document_id = document.Id, parsed_document_id = parsedRow.Id, source_hash = document.FileHash, pages = generated.Compilation.Pages, steps = generated.Compilation.Steps }),
                 CreatedAt = DateTime.UtcNow
             };
+            if (artifact.OwnerRoot is not null) new KnowledgeSemanticStore(_paths).MaterializeWiki(artifact.OwnerRoot, artifact.Content!);
             using (var db = _db.CopyNew())
             {
                 if (!db.Queryable<AiKnowledgeDocument>().Any(x => x.Id == document.Id && !x.IsDeleted) ||
@@ -201,8 +207,9 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         var parsed = db.Queryable<AiKnowledgeParsedDocument>()
             .Where(x => x.KnowledgeBaseId == knowledgeBase.Id && x.DocumentId == document.Id)
             .OrderByDescending(x => x.Id).First();
+        var ownerRoot = _httpContextAccessor is null ? null : KnowledgeUserScope.Resolve(db, _httpContextAccessor);
         var artifact = db.Queryable<AiKnowledgeArtifact>()
-            .Where(x => x.KnowledgeBaseId == knowledgeBase.Id && x.DocumentId == document.Id)
+            .Where(x => x.KnowledgeBaseId == knowledgeBase.Id && x.DocumentId == document.Id && (x.OwnerRoot == null || x.OwnerRoot == ownerRoot))
             .OrderByDescending(x => x.Id).First();
         string? parsedContent = null;
         if (parsed?.ContentPath is { Length: > 0 } path && File.Exists(path))
@@ -307,20 +314,22 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
         string wikiContext;
         using (var contextDb = _db.CopyNew())
         {
-            wikiContext = string.Join("\n", new KnowledgeWorkspaceService(contextDb).ListPages(kb.Name)
+            wikiContext = string.Join("\n", new KnowledgeWorkspaceService(contextDb).ListPages(kb.Name, request.OwnerRoot)
                 .Where(page => page.DocumentId != document.Id).Take(40)
                 .Select(page => $"{page.Title}（{page.ReviewStatus}）"));
         }
-        var compilation = await new KnowledgeCompiler().CompileAsync(parsedContent, model, config.MaxSteps,
-            progress: step => {
+        var currentProgress = 15;
+        var compilation = await new KnowAgent.KnowAgent(model, config.MaxSteps, message => progress?.Invoke(currentProgress, message)).CompileAsync(parsedContent,
+            report: step => {
                 var analyzing = step.Action == "analyze_source";
                 var stage = analyzing ? "阶段 1/2：分析原文" : "阶段 2/2：生成并校验知识页";
                 var result = step.Result.StartsWith("Validation", StringComparison.Ordinal) ? "校验未通过，正在修正" :
                     step.Result == "started" ? "正在处理，已完成" : "已完成";
-                progress?.Invoke((analyzing ? 15 : 45) + (analyzing ? 30 : 45) * step.CoveredParts / step.TotalParts,
+                currentProgress = (analyzing ? 15 : 45) + (analyzing ? 30 : 45) * step.CoveredParts / step.TotalParts;
+                progress?.Invoke(currentProgress,
                     $"{stage}；{result} {step.CoveredParts}/{step.TotalParts} 段（模型调用 {step.Number}/{config.MaxSteps}）");
                 return Task.CompletedTask;
-            }, cancellationToken: cancellationToken, wikiContext: wikiContext);
+            }, ct: cancellationToken, wikiContext: wikiContext);
         var content = new StringBuilder();
         foreach (var page in compilation.Pages)
         {

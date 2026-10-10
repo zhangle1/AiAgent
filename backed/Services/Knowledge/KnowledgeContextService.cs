@@ -5,7 +5,7 @@ using SqlSugar;
 namespace AiAgent.Backend.Services.Knowledge;
 
 /// <summary>Maintains the URI tree while preserving the existing raw and artifact stores.</summary>
-public sealed class KnowledgeContextService(ISqlSugarClient database)
+public sealed class KnowledgeContextService(ISqlSugarClient database, IHttpContextAccessor? httpContextAccessor = null)
 {
     public AiKnowledgeContextNode EnsureKnowledgeBaseRoot(AiKnowledgeBase knowledgeBase)
     {
@@ -88,19 +88,21 @@ public sealed class KnowledgeContextService(ISqlSugarClient database)
         var documents = db.Queryable<AiKnowledgeDocument>()
             .Where(x => x.KnowledgeBaseId == knowledgeBase.Id && !x.IsDeleted).ToList();
         foreach (var document in documents) EnsureDocumentNode(knowledgeBase, document);
+        var ownerRoot = httpContextAccessor is null ? null : KnowledgeUserScope.Resolve(db, httpContextAccessor);
         var artifacts = db.Queryable<AiKnowledgeArtifact>()
-            .Where(x => x.KnowledgeBaseId == knowledgeBase.Id).ToList();
+            .Where(x => x.KnowledgeBaseId == knowledgeBase.Id && (x.OwnerRoot == null || x.OwnerRoot == ownerRoot)).ToList();
         foreach (var artifact in artifacts)
         {
             var sourceName = documents.FirstOrDefault(x => x.Id == artifact.DocumentId)?.OriginalFileName;
             EnsureArtifactNode(knowledgeBase, artifact, sourceName);
         }
 
+        var visibleArtifacts = artifacts.Select(x => x.Id).ToHashSet();
         using var refreshed = database.CopyNew();
         return refreshed.Queryable<AiKnowledgeContextNode>()
             .Where(x => x.KnowledgeBaseId == knowledgeBase.Id)
             .OrderBy(x => new { x.Layer, x.Uri })
-            .ToList().Select(ToDto).ToList();
+            .ToList().Where(x => x.ArtifactId is null || visibleArtifacts.Contains(x.ArtifactId.Value)).Select(ToDto).ToList();
     }
 
     private static KnowledgeContextNodeDto ToDto(AiKnowledgeContextNode node) => new()
