@@ -1,0 +1,22 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Fix independent runtime and Git status checks",
+  "base_commit": "747ae5399a6544b61649dc5c5ae69252ba1ac7a1",
+  "platform_change_set_id": null,
+  "note": "Local review manifest; file fingerprints verified before delivery. User explicitly authorized direct Git commit and push. Live authenticated project requests were not verified.",
+  "checks": {
+    "typescript": "passed: tsc --noEmit",
+    "frontend_regressions": "passed: 4 runtime and Git status tests rerun before delivery",
+    "whitespace": "passed: git diff --check"
+  },
+  "files": [
+    {
+      "path": "front/components/chat/ChatRuntimeToolbar.tsx",
+      "sha256": "baf1bd314bb72428cdde9d13a6f0658e8442abad1a0301e216e1ca68d4b85f88"
+    },
+    {
+      "path": "front/tests/chat-runtime-git-status.test.mjs",
+      "sha256": "bc9a6863e6c869b03d3f949fdea203d40fbd249f66a0f04b0dc03e701dc91751"
+    }
+  ]
+}

@@ -80,20 +80,28 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     const projectId = project.id;
     const sequence = ++refreshSequenceRef.current;
     setRefreshing(true);
-    try {
-      const [runtimeState, gitState] = await Promise.all([getCodeProjectRuntime(projectId), getProjectGitStatus(projectId)]);
-      if (sequence !== refreshSequenceRef.current || project?.id !== projectId) return;
-      setRuntime(runtimeState);
+    const [runtimeResult, gitResult] = await Promise.allSettled([getCodeProjectRuntime(projectId), getProjectGitStatus(projectId)]);
+    if (sequence !== refreshSequenceRef.current) return;
+
+    if (runtimeResult.status === "fulfilled") {
+      setRuntime(runtimeResult.value);
+      setError(null);
+    } else {
+      setRuntime(null);
+      const detail = runtimeResult.reason instanceof Error ? runtimeResult.reason.message : "请手动刷新重试。";
+      setError(`运行状态检查失败：${detail}`);
+    }
+
+    if (gitResult.status === "fulfilled") {
+      const gitState = gitResult.value;
       setProjectGitStatus(gitState);
       setGitStatuses(Object.fromEntries(gitState.repositories.flatMap((repository) => repository.status ? [[repository.repository_id, repository.status] as const] : [])));
-      setError(null);
-    } catch (ex) {
-      if (sequence !== refreshSequenceRef.current || project?.id !== projectId) return;
-      setProjectGitStatus({ project_id: project.id, state: "attention", message: "Git 状态检查失败，请手动刷新重试。", repositories: [] });
-      setError(ex instanceof Error ? ex.message : "无法读取运行状态。");
-    } finally {
-      if (sequence === refreshSequenceRef.current) setRefreshing(false);
+    } else {
+      const detail = gitResult.reason instanceof Error ? gitResult.reason.message : "请手动刷新重试。";
+      setProjectGitStatus({ project_id: projectId, state: "attention", message: `Git 状态检查失败：${detail}`, repositories: [] });
+      setGitStatuses({});
     }
+    setRefreshing(false);
   }
 
   async function startProfiles(profiles: CodeRuntimeProfile[], description: string) {
@@ -321,7 +329,7 @@ function ProjectGitOverview({ state, summary, rows, busy, onDiscard, onPush }: {
       <button type="button" disabled={busy || state === "checking" || discardable.length === 0} onClick={onDiscard} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={14}/>一键重置更新</button>
       <button type="button" disabled={busy || state === "checking" || pushable.length === 0} onClick={onPush} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Upload size={14}/>一键提交推送</button>
     </div>}
-    {!discardable.length && !pushable.length && state !== "checking" && <p className="mt-2 text-slate-500">没有待拉取或待推送的 Git 代码库。</p>}
+    {!discardable.length && !pushable.length && state !== "checking" && rows.length > 0 && rows.every((row) => row.status?.is_repository && !row.status.remote_refresh_error) && <p className="mt-2 text-slate-500">没有待拉取或待推送的 Git 代码库。</p>}
   </section>;
 }
 
