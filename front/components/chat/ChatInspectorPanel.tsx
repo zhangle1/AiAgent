@@ -9,6 +9,7 @@ import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeF
 import type { CodeProject, CodeProjectMarkdownDirectory, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeLog } from "@/lib/code-runtime-types";
 import { getChatFileExtraction, getChatUploadText, getMyChatUploads, myChatUploadContentUrl, type ChatFileAttachment, type ChatFileExtractionPreview, type ChatUploadFile } from "@/lib/chat-api";
+import { ChatLibraryPanel } from "@/components/chat/ChatLibraryPanel";
 import { MermaidDiagram, mermaidSourceFromPre } from "@/components/chat/MermaidDiagram";
 
 export type ChatCodeFileReference = {
@@ -24,7 +25,7 @@ function terminalPanelWidth(viewportWidth: number) {
   return Math.max(minimum, Math.min(maximum, Math.round(viewportWidth / 2)));
 }
 
-export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, requestedMarkdownDocument, requestedDocumentAttachment, refreshToken, onInsertMarkdownReference, onPrepareAgentMarkdown, onClose }: { isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; requestedMarkdownDocument?: CodeProjectMarkdownDocument | null; requestedDocumentAttachment?: ChatFileAttachment | null; refreshToken?: number; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onPrepareAgentMarkdown?: (prompt: string) => void; onClose: () => void }) {
+export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, requestToken, requestedMarkdownDocument, requestedDocumentAttachment, refreshToken, onAttachLibraryFile, libraryScope, onInsertMarkdownReference, onPrepareAgentMarkdown, onClose }: { isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; requestToken?: number; requestedMarkdownDocument?: CodeProjectMarkdownDocument | null; requestedDocumentAttachment?: ChatFileAttachment | null; refreshToken?: number; libraryScope?: string; onAttachLibraryFile?: (file: File) => Promise<void>; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onPrepareAgentMarkdown?: (prompt: string) => void; onClose: () => void }) {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   const [activeTab, setActiveTab] = useState<WorkspaceTab | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -63,7 +64,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     setTabs((current) => current.includes(requestedTab) ? current : [...current, requestedTab]);
     setActiveTab(requestedTab);
     if (requestedTab === "terminal") setPanelWidth(terminalPanelWidth(window.innerWidth));
-  }, [requestedTab]);
+  }, [requestedTab, requestToken]);
 
   useEffect(() => {
     if (!requestedMarkdownDocument) return;
@@ -74,18 +75,20 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 
   useEffect(() => {
     if (!requestedDocumentAttachment) return;
+    let disposed = false;
     setTabs((current) => current.includes("uploads") ? current : [...current, "uploads"]);
     setActiveTab("uploads");
     setRequestedExtraction(null);
     setLoadingUploads(true);
     void getChatFileExtraction(requestedDocumentAttachment.id)
-      .then(setRequestedExtraction)
-      .catch((ex) => setError(ex instanceof Error ? ex.message : "无法读取文本提取结果。"))
-      .finally(() => setLoadingUploads(false));
+      .then((value) => { if (!disposed) setRequestedExtraction(value); })
+      .catch((ex) => { if (!disposed) setError(ex instanceof Error ? ex.message : "无法读取文本提取结果。"); })
+      .finally(() => { if (!disposed) setLoadingUploads(false); });
+    return () => { disposed = true; };
   }, [requestedDocumentAttachment]);
 
   useEffect(() => {
-    if (!isOpen || (activeTab !== "uploads" && requestedTab !== "uploads")) return;
+    if (!isOpen || !requestedExtraction || activeTab !== "uploads") return;
     let disposed = false;
     setLoadingUploads(true);
     void getMyChatUploads()
@@ -97,7 +100,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
       .catch((ex) => { if (!disposed) setError(ex instanceof Error ? ex.message : "无法读取上传索引。"); })
       .finally(() => { if (!disposed) setLoadingUploads(false); });
     return () => { disposed = true; };
-  }, [isOpen, activeTab, requestedTab, refreshToken]);
+  }, [isOpen, activeTab, requestedExtraction, refreshToken]);
 
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -190,14 +193,14 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
         setMarkdownDirectories(directories);
         setSelectedMarkdownDirectory((current) => directories.find((item) => item.repository_name === current.repository_name && item.path === current.path) ?? directories[0] ?? { repository_name: "aiagent-uploads", path: "" });
         setSelectedMarkdownDocument((current) => {
-          const target = requestedMarkdownDocument ?? current;
+          const target = current ?? requestedMarkdownDocument;
           return target && items.some((item) => item.repository_name === target.repository_name && item.path === target.path) ? target : items[0] ?? null;
         });
       })
       .catch((ex) => { if (!disposed) setError(ex instanceof Error ? ex.message : "无法读取项目 Markdown 文档。"); })
       .finally(() => { if (!disposed) setLoadingMarkdownDocuments(false); });
     return () => { disposed = true; };
-  }, [isOpen, project, activeTab, requestedTab, requestedMarkdownDocument, refreshToken]);
+  }, [isOpen, project, activeTab, requestedTab, requestToken, requestedMarkdownDocument, refreshToken]);
 
   useEffect(() => {
     if (!project || !selectedMarkdownDocument) { setMarkdownDocumentContent(null); return; }
@@ -218,6 +221,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   }, [project, selectedMarkdownDocument]);
 
   useEffect(() => {
+    setRequestedExtraction(null);
     setBrowserAddress("");
     setBrowserUrl("");
     setMarkdownDocuments([]);
@@ -225,7 +229,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     setSelectedMarkdownDirectory({ repository_name: "aiagent-uploads", path: "" });
     setSelectedMarkdownDocument(null);
     setMarkdownDocumentContent(null);
-  }, [project?.id]);
+  }, [project?.id, libraryScope]);
 
   useEffect(() => {
     if (browserAddress || previewRuns.length === 0) return;
@@ -378,7 +382,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
           {loadingFile ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>读取文件中…</div> : file ? <pre className="workspace-scroll min-h-0 flex-1 overflow-auto bg-slate-950 py-3 text-[12px] leading-6 text-slate-100">{lines.map((content, index) => { const number = index + 1; const highlighted = number === line; return <div id={`chat-code-line-${number}`} key={number} className={`flex min-w-max px-4 ${highlighted ? "bg-amber-300/20 ring-1 ring-inset ring-amber-300/50" : ""}`}><span className="mr-4 w-10 select-none text-right text-slate-500">{number}</span><code className="whitespace-pre">{content || " "}</code></div>; })}{file.line_count > lines.length && <p className="px-4 pt-2 text-slate-500">为保持面板流畅，仅显示前 {lines.length} 行。</p>}</pre> : <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">从聊天结果中的代码引用卡片打开文件。</div>}
         </div>
       ) : activeTab === "uploads" ? (
-        <UploadsTab uploads={uploads} selectedUpload={selectedUpload} requestedExtraction={requestedExtraction} loading={loadingUploads} onSelect={(item) => { setRequestedExtraction(null); setSelectedUpload(item); }} />
+        <>{requestedExtraction ? <UploadsTab uploads={uploads} selectedUpload={selectedUpload} requestedExtraction={requestedExtraction} loading={loadingUploads} onSelect={(item) => { setRequestedExtraction(null); setSelectedUpload(item); }} /> : <ChatLibraryPanel key={`${project?.id}:${libraryScope}`} projectId={project?.id ?? null} refreshToken={refreshToken} onInsert={onInsertMarkdownReference} onAttach={onAttachLibraryFile} onPreview={(document) => { setSelectedMarkdownDocument(document); openTab("documents"); }} />}{requestedExtraction && <button type="button" onClick={() => setRequestedExtraction(null)} className="border-t border-slate-200 p-3 text-xs text-blue-600">返回资料库</button>}</>
       ) : activeTab === "documents" ? (
         <ProjectDocumentsTab
           projectId={project?.id ?? null}
@@ -411,7 +415,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 function workspaceTabMeta(tab: WorkspaceTab) {
   if (tab === "file") return { label: "文件", icon: FileCode2 };
   if (tab === "documents") return { label: "项目文档", icon: FileText };
-  if (tab === "uploads") return { label: "上传文件", icon: FolderOpen };
+  if (tab === "uploads") return { label: "资料库", icon: FolderOpen };
   if (tab === "tasks") return { label: "侧边任务", icon: ListTodo };
   if (tab === "preview") return { label: "浏览器", icon: Globe2 };
   return { label: "终端", icon: Terminal };
@@ -423,12 +427,12 @@ function WorkspaceTabButton({ tab, active, onSelect, onClose }: { tab: Workspace
 }
 
 function AddTabMenu({ tabs, onOpen }: { tabs: WorkspaceTab[]; onOpen: (tab: WorkspaceTab) => void }) {
-  const options: WorkspaceTab[] = ["uploads", "documents", "file", "tasks", "preview", "terminal"];
+  const options: WorkspaceTab[] = ["uploads", "documents", "file", "preview"];
   return <div className="absolute right-0 top-10 z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); const exists = tabs.includes(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-slate-700 transition hover:bg-slate-100"><Icon size={15} className="text-slate-500"/><span className="flex-1">{label}</span><span className="text-[10px] text-slate-400">{exists ? "切换" : "新增"}</span></button>; })}</div>;
 }
 
 function EmptyWorkspace({ onOpen }: { onOpen: (tab: WorkspaceTab) => void }) {
-  const options: WorkspaceTab[] = ["uploads", "documents", "file", "tasks", "preview", "terminal"];
+  const options: WorkspaceTab[] = ["uploads", "documents", "file", "preview"];
   return <div className="flex min-h-0 flex-1 items-center justify-center p-6"><div className="w-full max-w-sm space-y-2">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-11 w-full items-center gap-2.5 rounded-lg bg-slate-50 px-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"><Icon size={16}/><span className="flex-1">{label}</span><Plus size={15} className="text-slate-400"/></button>; })}</div></div>;
 }
 

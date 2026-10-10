@@ -1,0 +1,68 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "聊天资料库与侧栏入口整理",
+  "base_commit": "35168db662fc32d6b792411392b8e731eaacbb06",
+  "platform_change_set_id": null,
+  "note": "本地可审阅变更快照，未提交、推送或部署。",
+  "checks": {
+    "frontend_regressions": "31 passed",
+    "typescript": "passed",
+    "browser": "passed: mock API, discovery/search/filter/download/403/preview/attach/refresh/session race",
+    "backend_tests": "17 passed; existing unrelated compiler warnings",
+    "whitespace": "passed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "047287a5f30f15363445a833baa3a7485933ebe1891ddc75476cfb5b22924610"
+    },
+    {
+      "path": "README.md",
+      "sha256": "f124726cc2ea3bb15c9375dfd38133996599c3d2665ea55e21ceb647737d0ae4"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "2029659cc0f96b0b32d430366f49360e408032b18fb6c67f42c2ee1d5c64dcfd"
+    },
+    {
+      "path": "backed.tests/Chat/ChatUploadLibraryServiceTests.cs",
+      "sha256": "32ce213527468399e61c2451b84043f008a6a0c5a9bb03516990c8b71f66d2f2"
+    },
+    {
+      "path": "front/components/chat/ChatInspectorPanel.tsx",
+      "sha256": "8d234acbe48a6e85f8d6198b75554ba159290c2dcf19b2ebd2e7d60b76edc068"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "077f6139280e2d75b628b244744517051d1f7a1a5f4aef5a6e5a35084bfa5672"
+    },
+    {
+      "path": "front/components/chat/ChatLibraryPanel.tsx",
+      "sha256": "7be4529376d4838389ea0f761e40fc4f13b9e2d47a250a5af0e097eade46ace2"
+    },
+    {
+      "path": "front/lib/chat-library-api.ts",
+      "sha256": "f17edcda34e8113defc2835d2a9fcbc1de2bb5048eec23b59856b3a1b087d474"
+    },
+    {
+      "path": "front/lib/chat-library-types.ts",
+      "sha256": "bef8f55fa93dbfa9ed7170df075ef8fcc55030128073924e93f9e5035dfb579b"
+    },
+    {
+      "path": "front/lib/chat-library.ts",
+      "sha256": "9c6797349501bea7896bd0bccdad3c833eecae21543f81e226df224e43327748"
+    },
+    {
+      "path": "front/tests/chat-library.test.mjs",
+      "sha256": "f176151ed755d672e9e2b15311dcf3f3d5f53e29107853aca2e5141346209883"
+    },
+    {
+      "path": "front/tests/chat-library.browser.mjs",
+      "sha256": "8665baf9d20e110f73e841150c27125593366e3451c830b2260198ece10e8ad7"
+    },
+    {
+      "path": "docs/chat-library.md",
+      "sha256": "43b122c4d47b6421641a42ab132ea60958bc2c561d5078cf22452bd12d324e51"
+    }
+  ]
+}

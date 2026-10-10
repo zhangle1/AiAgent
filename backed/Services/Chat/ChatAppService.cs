@@ -236,12 +236,16 @@ public sealed class ChatAppService : IDynamicApiController
 
     [HttpGet("uploads/mine")]
     public async Task<List<ChatUploadFileDto>> ListMyUploads([FromQuery] string? keyword, [FromQuery] string? kind, [FromQuery(Name = "session_id")] string? sessionId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
-        => await _uploadLibrary.ListAsync(await RequireUser(cancellationToken), null, keyword, kind, sessionId, limit, cancellationToken);
+    {
+        var user = await RequireUser(cancellationToken);
+        return await _uploadLibrary.ListAsync(user, user.Id, keyword, kind, sessionId, limit, cancellationToken);
+    }
 
     [HttpGet("uploads/{attachmentId}/content")]
     public async Task<IActionResult> OpenMyUpload([FromRoute] string attachmentId, CancellationToken cancellationToken)
     {
-        var content = await _uploadLibrary.OpenAsync(await RequireUser(cancellationToken), null, attachmentId, cancellationToken);
+        var user = await RequireUser(cancellationToken);
+        var content = await _uploadLibrary.OpenAsync(user, user.Id, attachmentId, cancellationToken);
         return content == null
             ? new NotFoundResult()
             : new FileStreamResult(new FileStream(content.Path, FileMode.Open, FileAccess.Read, FileShare.Read), content.ContentType) { EnableRangeProcessing = true };

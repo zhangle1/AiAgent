@@ -260,6 +260,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [inspectorRequestToken, setInspectorRequestToken] = useState(0);
   const [requestedInspectorTab, setRequestedInspectorTab] = useState<InspectorTab | null>(null);
   const [requestedMarkdownDocument, setRequestedMarkdownDocument] = useState<CodeProjectMarkdownDocument | null>(null);
   const [markdownDocumentsRefreshToken, setMarkdownDocumentsRefreshToken] = useState(0);
@@ -979,6 +980,32 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     }
   }
 
+  async function attachLibraryFile(file: File) {
+    const scope = documentOpenScope.current;
+    const isImage = file.type.startsWith("image/");
+    if (isImage && !canAttachImages) throw new Error("当前模型未启用图片识别，请切换模型后关联。");
+    if (!isImage && selectedAgentId !== "codex") throw new Error("请先选择 Codex 本地代理，再关联文件附件。");
+    if (uploadingImages || uploadingFiles) throw new Error("请等待当前附件上传完成。");
+    if ((isImage ? imageAttachments.length : documentAttachments.length) >= 4) throw new Error("本轮同类附件最多添加 4 个。");
+    if (isImage) setUploadingImages(true); else setUploadingFiles(true);
+    try {
+      if (isImage) {
+        const attachment = await uploadChatImage(file);
+        if (documentOpenScope.current !== scope) { await deleteChatImage(attachment.id); return; }
+        const previewUrl = URL.createObjectURL(file);
+        attachmentPreviewUrlsRef.current.add(previewUrl);
+        setImageAttachments((current) => [...current, { ...attachment, previewUrl }]);
+      } else {
+        const attachment = await uploadChatFile(file);
+        if (documentOpenScope.current !== scope) { await deleteChatFile(attachment.id); return; }
+        setDocumentAttachments((current) => [...current, attachment]);
+      }
+      setComposerExpanded(true);
+    } finally {
+      if (isImage) setUploadingImages(false); else setUploadingFiles(false);
+    }
+  }
+
   function addAttachments(files: File[]) {
     const images = files.filter((file) => file.type.startsWith("image/"));
     const documents = files.filter((file) => !file.type.startsWith("image/"));
@@ -1017,6 +1044,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function openInspector(tab: InspectorTab) {
+    setInspectorRequestToken((value) => value + 1);
     setRequestedInspectorTab(tab);
     setRightPanelOpen(true);
   }
@@ -1029,6 +1057,13 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const documentOpenScope = useRef("");
   const documentOpenSequence = useRef(0);
   documentOpenScope.current = `${selectedProjectId}:${activeSessionId}`;
+
+  useLayoutEffect(() => {
+    setRequestedDocumentAttachment(null);
+    setRequestedMarkdownDocument(null);
+    setFileReference(null);
+    setRequestedInspectorTab(null);
+  }, [selectedProjectId, activeSessionId]);
 
   async function openProjectMarkdownDocument(reference: string) {
     if (!selectedProjectId) return;
@@ -1361,7 +1396,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</div>}
           </div>
         </section>
-        <ChatInspectorPanel isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)} />
+        <ChatInspectorPanel key={`${selectedProject?.id}:${activeSessionId}`} libraryScope={activeSessionId ?? ""} onAttachLibraryFile={attachLibraryFile} isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestToken={inspectorRequestToken} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)} />
         {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} runs={agentRuns} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
         {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)} />}
       </div>
@@ -1987,11 +2022,10 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
     shortcut: string;
     icon: typeof FileCode2;
   }> = [
+    { tab: "uploads", label: "资料库", shortcut: "", icon: BookOpen },
     { tab: "documents", label: "项目文档", shortcut: "", icon: FileText },
     { tab: "file", label: "文件", shortcut: "Ctrl+P", icon: FileCode2 },
-    { tab: "tasks", label: "侧边任务", shortcut: "Ctrl+Alt+S", icon: ListTodo },
     { tab: "preview", label: "浏览器", shortcut: "Ctrl+I", icon: Globe2 },
-    { tab: "terminal", label: "终端", shortcut: "", icon: Terminal },
   ];
 
   return (
