@@ -14,6 +14,8 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
 
+    <EmbeddedResource Include="Services\Knowledge\Skills\llm-wiki\SKILL.md" LogicalName="AiAgent.Backend.Services.Knowledge.Skills.llm-wiki.SKILL.md" />
+
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
     <PackageReference Include="Furion" Version="4.9.6.17" />
     <PackageReference Include="SqlSugarCore" Version="5.1.4.200" />

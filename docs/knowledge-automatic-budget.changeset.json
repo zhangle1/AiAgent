@@ -1,0 +1,76 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "知识编译自动预算与中文输出误判修复",
+  "base_commit": "463426520c72c708c795392ccc5e61532b65bd18",
+  "platform_change_set_id": null,
+  "note": "本地可审阅校验快照；用户已明确授权提交并推送到 Gitee、GitHub。远程基线已核对，交付前指纹复核通过。未部署或重启用户服务，未调用真实在线模型或 CLI。",
+  "checks": {
+    "reproduction": "red: ValidChineseOutput reproduces exact KnowAgent output budget error before fix",
+    "backend": "passed: 94 scoped tests, temporary data and mocked providers",
+    "budget_cases": "passed: 6000/14000 CJK outputs, 300000-character source in one million-window call, over 48 calls with automatic mode, explicit limits, JSON expansion splits, provider default max_tokens omission and real length rejection",
+    "browser": "passed: legacy global 48 yields new task 0, manual 200 editable, submitted 0, full prior workflow",
+    "typescript": "passed: changed frontend diagnostics without emit",
+    "whitespace": "passed: cr-at-eol diff --check",
+    "encoding": "passed: original UTF-8/BOM/CRLF preserved; new files no BOM LF",
+    "live_provider": "not run",
+    "production_build": "not run"
+  },
+  "files": [
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeWorkspaceDtos.cs",
+      "sha256": "8b458a8169a2a8d712b0c3d7984ad81d91e66c466de604e1708f07319b4b7d3e"
+    },
+    {
+      "path": "backed/Services/Chat/Llm/LlmChatClient.cs",
+      "sha256": "7267bbfb7e59d819f8d57e2b71bdd9ee513c10d0eda9ae6d49e12d812dc5cab4"
+    },
+    {
+      "path": "backed/Services/Knowledge/Core/KnowledgeCompiler.cs",
+      "sha256": "e4c5a2fd8ed641c92d034b309b19fcf1c7debef21bc8351d56a49d02dbb9b742"
+    },
+    {
+      "path": "backed/Services/Knowledge/Core/KnowledgeSemanticGenerator.cs",
+      "sha256": "52186ab6bbb62a1774b6d9a28128f4c494c2a66e5e0139dab7232e113377307f"
+    },
+    {
+      "path": "backed/Services/Knowledge/Core/KnowledgeWikiSearch.cs",
+      "sha256": "be9b94882ce628f0f3dd3ec9872687330441cfb549984d3c63cb9ec74a0519b6"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/ContextBudget.cs",
+      "sha256": "7a79f37bb98ed654872c5e86e7280997f3db49719f29546cb2e028b256ea325a"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowAgent.cs",
+      "sha256": "571dc5d9b20ca0a22cbf0f43b991b3268306d0c0f2eed9d06ac44f01e93f3fcb"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilerSettings.cs",
+      "sha256": "b37eb10343fedba52450f87f04a829668ab6f90d2f0186b8c996ff15e82e76a8"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "541e4ea36e35f906d9e4f0df664336b821d1aa37b60dea175340770d6aff3a4c"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeModelAdapter.cs",
+      "sha256": "df33e9f362f592d5898af00bb8d9f5b630d0d1f90a5901825f11b6a2751afd81"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeAgentCommandDialog.tsx",
+      "sha256": "ec274663139209ecb5097d8f20d1698e29789da8000e9e02e58603cb66b3ac19"
+    },
+    {
+      "path": "front/components/settings/KnowledgeSettingsPage.tsx",
+      "sha256": "0d68b48fda37856eb1849417eb1fd703e12eeab642e76f7c6556fa5533b8a624"
+    },
+    {
+      "path": "front/tests/knowledge-agent.browser.mjs",
+      "sha256": "2d693035b87c74b2611cc623c4d3184813d672241218fa36a65df592d74cc645"
+    },
+    {
+      "path": "backed.tests/KnowledgeAutomaticBudgetTests.cs",
+      "sha256": "c9cd0f65100a36aebda2a2dc715c622a2825f817bb4e5f17a1fd472d7b40457f"
+    }
+  ]
+}

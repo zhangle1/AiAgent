@@ -6,11 +6,16 @@ import { ArrowUp, Cpu, Loader2, Plus, Square, Terminal, Wrench } from "lucide-re
 import { getKnowledgeAgentOptions, streamKnowledgeAgent } from "@/lib/knowledge-agent-api";
 import type { KnowledgeAgentContext, KnowledgeAgentHistory, KnowledgeAgentOptions } from "@/lib/knowledge-agent-types";
 import type { KnowledgeResourceNode } from "@/lib/knowledge-types";
-import { KnowledgeAgentCommandDialog, type KnowledgeAgentDialogCommand } from "./KnowledgeAgentCommandDialog";
+import { KnowledgeAgentCommandDialog, knowledgeAgentCommandLabels, type KnowledgeAgentDialogCommand } from "./KnowledgeAgentCommandDialog";
 
 type ToolItem = { id: string; name: string; arguments: string; result: string; status: "running" | "success" | "error" };
 type Message = { id: string; role: "user" | "assistant" | "command"; text: string; thinking?: string; tools: ToolItem[]; complete?: boolean; error?: string };
 const commands: KnowledgeAgentDialogCommand[] = ["ls", "read", "search", "status", "compiler"];
+let messageSequence = 0;
+function createMessageId() {
+  // UI message keys also need to work on HTTP LAN origins without randomUUID.
+  return globalThis.crypto?.randomUUID?.() ?? `knowledge-${Date.now().toString(36)}-${(++messageSequence).toString(36)}`;
+}
 
 export function KnowledgeAgentChatPanel({ scope, nodes, onOpen, onQueued }: { scope: string; nodes: KnowledgeResourceNode[]; onOpen: (uri: string) => void; onQueued: () => void }) {
   const [options, setOptions] = useState<KnowledgeAgentOptions | null>(null);
@@ -63,9 +68,10 @@ export function KnowledgeAgentChatPanel({ scope, nodes, onOpen, onQueued }: { sc
     if (question.startsWith("/")) { setError("未知命令，请选择 /ls、/read、/search、/status 或 /compiler。"); return; }
     if (!modelId) { setError("请先选择已配置的 LLM API 模型。"); return; }
     const history: KnowledgeAgentHistory[] = messages.filter(message => message.role !== "command" && (message.role === "user" || message.complete)).map(message => ({ role: message.role as "user" | "assistant", content: message.text }));
+    const id = createMessageId();
+    const userId = createMessageId();
     const abort = new AbortController(); controller.current = abort;
-    const id = crypto.randomUUID();
-    setMessages(current => [...current, { id: crypto.randomUUID(), role: "user", text: question, tools: [] }, { id, role: "assistant", text: "", tools: [] }]);
+    setMessages(current => [...current, { id: userId, role: "user", text: question, tools: [] }, { id, role: "assistant", text: "", tools: [] }]);
     setInput(""); setError(""); setRunning(true); setPhase("正在连接 LLM API…"); follow.current = true;
     try {
       await streamKnowledgeAgent({ uri: scope, model_id: modelId, message: question, history }, event => {
@@ -103,16 +109,16 @@ export function KnowledgeAgentChatPanel({ scope, nodes, onOpen, onQueued }: { sc
     <div className="shrink-0 border-t border-slate-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2 text-[10px] text-slate-500"><span title={usage ? `使用 UTF-8 字节数作 token 上界估算；输出预留 ${usage.output_reserve}，协议预留 ${usage.reserve}；非供应商计费统计` : "上下文使用量为估算，非供应商计费统计"}>{usage ? `上下文 ≈ ${usage.estimated_input_tokens.toLocaleString()} / ${usage.input_limit.toLocaleString()}（窗口 ${usage.context_window.toLocaleString()}）` : model ? `模型窗口 ${model.context_window.toLocaleString()} · 尚未调用` : "请选择已配置的 LLM API"}</span><span title={usage ? `最近一次压缩：${usage.compression_before} → ${usage.compression_after}；当前输入用量约 ${used}%` : "尚未压缩"}>{usage ? `压缩 ${Math.round(usage.compression_ratio * 100)}% · ${usage.compactions} 次` : "压缩 0 次"}</span></div>
       <progress aria-label="上下文使用比例（估算）" value={used} max={100} className="mb-2 h-1 w-full accent-blue-500" />
-      <div className="mb-2 flex flex-wrap gap-1.5">{commands.map(value => <button key={value} type="button" disabled={running} onClick={() => command(value)} className="rounded-md border border-slate-200 px-2 py-1 font-mono text-[10px] text-slate-500 hover:border-blue-300 disabled:opacity-40">/{value}</button>)}</div>
+      <div className="mb-2 flex flex-wrap gap-1.5">{commands.map(value => <button key={value} type="button" disabled={running} onClick={() => command(value)} className="rounded-md border border-slate-200 px-2 py-1 font-mono text-[10px] text-slate-500 hover:border-blue-300 disabled:opacity-40">{knowledgeAgentCommandLabels[value]} <span className="font-mono text-slate-400">/{value}</span></button>)}</div>
       <div className="relative rounded-xl border border-slate-200 bg-slate-50 p-3 focus-within:border-blue-300">
         <button type="button" title={scope} onClick={() => command("ls")} disabled={running} className="mb-2 block max-w-full truncate rounded-md bg-white px-2 py-1 font-mono text-[10px] text-slate-500">{scope} ›</button>
         <textarea aria-label="知识 Agent 输入" value={input} onChange={event => { setInput(event.target.value); setMenu(event.target.value === "/"); }} onKeyDown={event => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void send(); } }} rows={3} maxLength={4000} placeholder="询问当前目录，或输入 / 选择命令…" className="w-full resize-none bg-transparent text-sm leading-6 outline-none" />
-        {menu && <div className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">{commands.map(value => <button key={value} type="button" onClick={() => { command(value); setInput(""); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-blue-50">/{value} <span className="ml-2 text-slate-400">{value === "compiler" ? "配置编译任务" : "打开目录命令"}</span></button>)}</div>}
+        {menu && <div className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">{commands.map(value => <button key={value} type="button" onClick={() => { command(value); setInput(""); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-blue-50">/{value} <span className="ml-2 text-slate-400">{knowledgeAgentCommandLabels[value]}</span></button>)}</div>}
         <div className="mt-2 flex items-center gap-2 border-t border-slate-200 pt-2"><select aria-label="知识 Agent LLM API 模型" disabled={running} value={modelId} onChange={event => { setModelId(event.target.value); setUsage(null); }} className="min-w-0 flex-1 bg-transparent text-[11px] text-slate-600 outline-none"><option value="" disabled>选择已配置 LLM API</option>{options?.llm_models.map(item => <option key={item.id} value={item.id}>{item.profile} · {item.name}{item.native_tools ? " · 工具" : " · 文字"}</option>)}</select>{running ? <button type="button" onClick={stop} aria-label="停止知识 Agent" className="rounded-lg bg-slate-900 p-2 text-white"><Square size={15} /></button> : <button type="button" onClick={() => void send()} disabled={!input.trim() || (!modelId && !input.startsWith("/"))} aria-label="发送知识问题" className="rounded-lg bg-blue-600 p-2 text-white disabled:opacity-30"><ArrowUp size={16} /></button>}</div>
       </div>
       {error && <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p>}
       <p role="status" className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">{running && <Loader2 size={11} className="animate-spin" />}{phase || (model?.native_tools ? "原生工具已启用 · Ctrl/⌘ + Enter 发送" : "当前模型未启用原生工具，可使用目录命令")} {usage && `· 调用 ${usage.model_calls}/${usage.model_call_limit}`}</p>
     </div>
-    {dialog && <KnowledgeAgentCommandDialog command={dialog} scope={scope} nodes={nodes} options={options} onClose={() => setDialog(null)} onOpen={uri => { setDialog(null); onOpen(uri); }} onQueued={onQueued} onResult={(title, text) => setMessages(current => [...current, { id: crypto.randomUUID(), role: "command", text: `${title}\n\n${text}`, tools: [], complete: true }])} />}
+    {dialog && <KnowledgeAgentCommandDialog command={dialog} scope={scope} nodes={nodes} options={options} onClose={() => setDialog(null)} onOpen={uri => { setDialog(null); onOpen(uri); }} onQueued={onQueued} onSkillsChanged={() => { getKnowledgeAgentOptions().then(setOptions).catch(ex => setError(ex instanceof Error ? ex.message : "技能目录刷新失败")); }} onResult={(title, text) => { const id = createMessageId(); setMessages(current => [...current, { id, role: "command", text: `${title}\n\n${text}`, tools: [], complete: true }]); }} />}
   </aside>;
 }

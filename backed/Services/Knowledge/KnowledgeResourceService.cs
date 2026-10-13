@@ -96,7 +96,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             var parent = Parent(uri);
             AddDirectory(parent);
             nodes[uri] = new() { Uri = uri, ParentUri = parent,
-                Name = name ?? Uri.UnescapeDataString(uri.TrimEnd('/').Split('/').Last()), Kind = "directory" };
+                Name = name ?? (uri.EndsWith("/_compiled/", StringComparison.Ordinal) ? "编译产物" : Uri.UnescapeDataString(uri.TrimEnd('/').Split('/').Last())), Kind = "directory" };
         }
     }
 
@@ -187,7 +187,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList(),
             AbstractContent = generated?.Abstract, OverviewContent = generated?.Overview, Model = generated?.Model,
             SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
-        if (node.Uri.StartsWith(ownerRoot + "summaries/", StringComparison.Ordinal))
+        if (IsGeneratedUri(node.Uri))
             return new() { Node = node, SourceText = generated?.Overview, SemanticContent = generated?.Overview,
                 Model = generated?.Model, SemanticGeneratedAt = generated?.GeneratedAt,
                 SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
@@ -207,12 +207,14 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             catch (DirectoryNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
         }
         return new() { Node = node, SourceText = source, ParsedContent = content.ParsedContent,
+            CompiledOutputs = Tree().Where(item => item.Kind == "file" && item.DocumentId == doc.Id && IsGeneratedUri(item.Uri)).ToList(),
             SemanticContent = generated?.Overview ?? content.ArtifactContent, Parser = content.Parser, Model = generated?.Model ?? content.Model,
             SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
     }
 
     public KnowledgeCompilationJobDto Parse(string uri)
     {
+        if (IsGeneratedUri(uri) && !IsWikiUri(uri)) throw new ArgumentException("编译产物为只读内容，请重新编译对应原始资料。");
         var (kb, doc) = Resolve(FindNode(uri));
         return worker.Enqueue(kb.Name, doc.Id, parseOnly: !IsWikiUri(uri));
     }
@@ -223,6 +225,15 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         if (IsGeneratedUri(node.Uri)) throw new ArgumentException("请选择原始资源文件，不能编译生成产物。");
         var (kb, doc) = Resolve(node);
         return worker.Enqueue(kb.Name, doc.Id, parseOnly: true, configuration: configuration);
+    }
+
+    public string? CompilationTarget(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return null;
+        var target = ScopeUserUri(NormalizeUri(uri, true));
+        if (!Tree().Any(node => node.Uri == target && node.Kind == "directory") || IsGeneratedUri(target))
+            throw new ArgumentException("请选择已存在的资料、项目或本人原始目录作为产物父目录。");
+        return target;
     }
 
     public KnowledgeCompilationJobDto? TaskStatus(string uri)
@@ -247,7 +258,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             using var db = database.CopyNew();
             var ownerRoot = CurrentUserRoot(db);
             var content = IsWikiUri(node.Uri) ? WorkspaceArtifact(node, ownerRoot).Content
-                : semantic.Read(node.Uri, ownerRoot)?.Overview;
+                : semantic.Read(node.Uri, node.Uri.StartsWith(ownerRoot, StringComparison.Ordinal) ? ownerRoot : null)?.Overview;
             if (content is null) throw new InvalidOperationException("Generated content is missing or stale.");
             return (new KnowledgeSemanticStore(paths).MaterializeWiki(ownerRoot, content), Path.GetFileNameWithoutExtension(node.Name) + ".md", "text/markdown; charset=utf-8");
         }
@@ -317,7 +328,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     }
 
     private static bool IsWikiUri(string uri) => uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "wiki";
-    private static bool IsGeneratedUri(string uri) => IsWikiUri(uri) || uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "summaries";
+    public static bool IsGeneratedUri(string uri) => uri.Contains("/_compiled/", StringComparison.Ordinal) || IsWikiUri(uri) || uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "summaries";
 
     private AiKnowledgeArtifact WorkspaceArtifact(KnowledgeResourceNodeDto node, string ownerRoot)
     {

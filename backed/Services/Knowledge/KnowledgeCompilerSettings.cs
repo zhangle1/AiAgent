@@ -29,7 +29,10 @@ public sealed class KnowledgeCompilerSettings(ISqlSugarClient database)
     {
         if (config.RetrievalMode is not ("wiki" or "rag")) throw new ArgumentException("Retrieval mode must be wiki or rag.");
         if (config.Generator is not ("codex" or "llm_api")) throw new ArgumentException("Generator must be codex or llm_api.");
-        if (config.MaxSteps is < 8 or > 96 || config.TimeoutMinutes is < 1 or > 60) throw new ArgumentException("Invalid compiler action budget or timeout.");
+        if (config.MaxSteps < 0 || config.TimeoutMinutes is < 1 or > 60) throw new ArgumentException("调用次数上限不能为负数；超时须为 1–60 分钟。0 表示不限制调用次数。");
         if (config.ModelId?.Length > 256 || config.VlmModelId?.Length > 256 || config.ReasoningEffort?.Length > 32) throw new ArgumentException("Model setting is too long.");
+        if (config.SkillInstructions?.Length > 10000 || config.SkillId?.Length > 80 || config.SkillName?.Length > 80)
+            throw new ArgumentException("编译技能超出长度限制。");
+        if (config.TargetUri is not null) KnowledgeResourceService.NormalizeUri(config.TargetUri, true);
     }
 }

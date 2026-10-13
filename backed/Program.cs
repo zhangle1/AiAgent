@@ -122,6 +122,7 @@ builder.Services.AddSingleton<IKnowledgeTaskRunner, KnowledgeTaskRunner>();
 builder.Services.AddSingleton<IKnowledgeIngestionService, KnowledgeIngestionService>();
 builder.Services.AddSingleton<KnowledgeOfficePreviewService>();
 builder.Services.AddSingleton<KnowledgeCompilerSettings>();
+builder.Services.AddSingleton<KnowledgeCompilationSkillService>();
 builder.Services.AddSingleton<KnowledgeWorkspaceService>();
 builder.Services.AddSingleton<KnowledgeContextService>();
 builder.Services.AddSingleton<KnowledgeWikiRetrievalService>();

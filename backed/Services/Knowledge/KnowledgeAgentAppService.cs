@@ -12,10 +12,10 @@ namespace AiAgent.Backend.Services.Knowledge;
 [ApiDescriptionSettings("v1", KeepName = true)]
 [Route("api/v1/knowledge-agent")]
 public sealed class KnowledgeAgentAppService(KnowledgeAgentService agent, KnowledgeAgentChatEngine engine,
-    IKnowledgeAgentTools tools, IHttpContextAccessor http, IAuthService auth) : IDynamicApiController
+    IKnowledgeAgentTools tools, IHttpContextAccessor http, IAuthService auth, KnowledgeCompilationSkillService skills) : IDynamicApiController
 {
     [HttpGet("options")]
-    public object Options() => agent.Options();
+    public async Task<object> Options(CancellationToken ct) { await RequireUser(ct); return agent.Options(); }
 
     [HttpPost("command")]
     public async Task<IActionResult> Command([FromBody] KnowledgeAgentCommandRequest request, CancellationToken ct)
@@ -29,6 +29,14 @@ public sealed class KnowledgeAgentAppService(KnowledgeAgentService agent, Knowle
     [HttpPost("compile")]
     public async Task<KnowledgeResourceImportDto> Compile([FromBody] KnowledgeAgentCompileRequest request, CancellationToken ct)
     { await RequireUser(ct); return agent.Compile(request); }
+
+    [HttpPost("skills/draft")]
+    public async Task<object> DraftSkill([FromBody] KnowledgeSkillDraftRequest request, CancellationToken ct)
+    { await RequireUser(ct); agent.RequireModel(request.ModelId); return await skills.DraftAsync(request, ct); }
+
+    [HttpPost("skills")]
+    public async Task<KnowledgeCompilationSkillDto> SaveSkill([FromBody] KnowledgeCompilationSkillDto request, CancellationToken ct)
+    { await RequireUser(ct); return skills.Save(request); }
 
     [HttpPost("stream")]
     public async Task Stream([FromBody] KnowledgeAgentChatRequest request, CancellationToken ct)

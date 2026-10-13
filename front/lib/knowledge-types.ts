@@ -68,6 +68,10 @@ export type KnowledgeCompilerSettings = {
   reasoning_effort?: string | null;
   max_steps: number;
   timeout_minutes: number;
+  target_uri?: string | null;
+  skill_id?: string | null;
+  skill_name?: string | null;
+  skill_instructions?: string | null;
 };
 export type KnowledgeContextNode = {
   id: number;
@@ -117,6 +121,7 @@ export type KnowledgeResourceRead = {
   parser?: string | null;
   model?: string | null;
   children: KnowledgeResourceNode[];
+  compiled_outputs?: KnowledgeResourceNode[];
 };
 export type KnowledgeResourceImport = {
   items: KnowledgeDocumentImportItem[];

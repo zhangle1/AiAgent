@@ -6,7 +6,7 @@ namespace AiAgent.Backend.Services.Knowledge.KnowAgent;
 public sealed class KnowAgent(IKnowledgeModel transport, int maxCalls, Action<string>? progress = null)
 {
     private readonly ContextModel _model = new(transport, maxCalls, progress);
-    private int InputBudget => Math.Max(256, Math.Min(32000, transport.ContextWindowTokens - transport.OutputTokens - ContextBudget.ReserveTokens - 2048));
+    private int InputBudget => Math.Max(256, transport.ContextWindowTokens - transport.OutputTokens - ContextBudget.ReserveTokens - 2048);
     public KnowledgeSemanticGenerator Semantics() => new(_model, maxCalls, InputBudget);
 
     public async Task<Compilation> CompileAsync(string source, Func<CompilerStep, Task>? report,
@@ -41,12 +41,12 @@ public sealed class KnowAgent(IKnowledgeModel transport, int maxCalls, Action<st
         {
             cancellationToken.ThrowIfCancellationRequested();
             ContextBudget.Validate(prompt, transport.ContextWindowTokens, transport.OutputTokens);
-            if (++_calls > maxCalls) throw new InvalidOperationException("KnowAgent 达到模型调用预算，压缩与生成共用预算，请重试或提高预算。");
-            progress?.Invoke($"KnowAgent 模型调用 {_calls}/{maxCalls}，预计输入 {ContextBudget.Estimate(prompt)} token");
+            if (++_calls > maxCalls && maxCalls > 0) throw new InvalidOperationException("KnowAgent 达到模型调用预算，压缩与生成共用预算，请重试或提高预算。");
+            progress?.Invoke($"KnowAgent 模型调用 {ContextBudget.CallsLabel(_calls, maxCalls)}，输入上界估算 {ContextBudget.Estimate(prompt)} token");
             var reply = await transport.CompleteAsync(prompt, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            if (ContextBudget.Estimate(reply.Text) > transport.OutputTokens)
-                throw new InvalidOperationException("KnowAgent 模型输出超过预算，请缩小生成范围。");
+            // UTF-8 bytes are an input estimate, not provider output tokens. The provider
+            // validates its real output limit; valid Chinese text must not be rejected here.
             return reply;
         }
     }

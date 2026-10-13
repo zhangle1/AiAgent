@@ -31,10 +31,21 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             ?? throw new InvalidOperationException("Knowledge document does not exist.");
         var config = configuration is null ? settings.Get()
             : JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>(JsonSerializer.Serialize(configuration))!;
+        if (configuration is null) { config.TargetUri = null; config.SkillId = null; config.SkillName = null; config.SkillInstructions = null; }
         var ownerRoot = CurrentOwnerRoot;
         var sourceUri = KnowledgeResourceService.DocumentUri(kb, document);
         if (ownerRoot is not null && sourceUri.StartsWith("viking://user/", StringComparison.Ordinal) && !sourceUri.StartsWith(ownerRoot, StringComparison.Ordinal))
             throw new UnauthorizedAccessException("Private source belongs to another user.");
+        if (config.TargetUri is { } target)
+        {
+            target = KnowledgeResourceService.NormalizeUri(target, true);
+            if (KnowledgeResourceService.IsGeneratedUri(target) || target == "viking://user/" ||
+                target.StartsWith("viking://user/", StringComparison.Ordinal) && (ownerRoot is null || !target.StartsWith(ownerRoot, StringComparison.Ordinal)))
+                throw new UnauthorizedAccessException("编译目标必须是公共资源或本人原始目录。");
+            if (sourceUri.StartsWith("viking://user/", StringComparison.Ordinal) && !target.StartsWith(ownerRoot ?? "viking://user/", StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("个人来源不能发布到公共目录。");
+            config.TargetUri = target;
+        }
         lock (_sync)
         {
             var finishedIds = _pendingFinishes.Keys.ToArray();

@@ -20,8 +20,12 @@ public sealed class KnowledgeCompilerSettingsDto
     [JsonPropertyName("model_id")] public string? ModelId { get; set; }
     [JsonPropertyName("vlm_model_id")] public string? VlmModelId { get; set; }
     [JsonPropertyName("reasoning_effort")] public string? ReasoningEffort { get; set; }
-    [JsonPropertyName("max_steps")] public int MaxSteps { get; set; } = 48;
+    [JsonPropertyName("max_steps")] public int MaxSteps { get; set; } = 0;
     [JsonPropertyName("timeout_minutes")] public int TimeoutMinutes { get; set; } = 20;
+    [JsonPropertyName("target_uri")] public string? TargetUri { get; set; }
+    [JsonPropertyName("skill_id")] public string? SkillId { get; set; }
+    [JsonPropertyName("skill_name")] public string? SkillName { get; set; }
+    [JsonPropertyName("skill_instructions")] public string? SkillInstructions { get; set; }
 }
 
 public sealed class KnowledgeChainCheckStepDto

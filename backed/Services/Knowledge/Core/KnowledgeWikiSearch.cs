@@ -15,14 +15,14 @@ public sealed class KnowledgeWikiSearch
         IKnowledgeModel model, int topK, int maxSteps, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query) || query.Length > 4000) throw new ArgumentException("Query must contain 1-4000 characters.");
-        if (maxSteps is < 8 or > 96) throw new ArgumentOutOfRangeException(nameof(maxSteps));
+        if (maxSteps < 0) throw new ArgumentOutOfRangeException(nameof(maxSteps));
         topK = Math.Clamp(topK, 1, 12);
         var byId = pages.ToDictionary(p => p.Id);
         var read = new Dictionary<string, List<string>>();
         var hits = new List<WikiSearchHit>();
         var observation = Catalog(pages.Take(40));
         var lastRead = "No page read yet.";
-        for (var step = 0; step < maxSteps; step++)
+        for (var step = 0; maxSteps == 0 || step < maxSteps; step++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var reply = await model.CompleteAsync($$"""
@@ -35,7 +35,7 @@ public sealed class KnowledgeWikiSearch
                 {"action":"cite","id":"page id","quote":"exact quote from a part already read"}
                 {"action":"finish"} -- return accepted evidence, or none if no relevant evidence
                 Quotes must be 12-1800 characters. Maximum {{topK}} citations, one per page.
-                There are {{pages.Count}} pages. Remaining actions: {{maxSteps - step}}.
+                There are {{pages.Count}} pages. Remaining actions: {{(maxSteps == 0 ? "automatic until finish or cancellation" : (maxSteps - step).ToString())}}.
                 Query: {{JsonSerializer.Serialize(query)}}
                 Accepted citations: {{JsonSerializer.Serialize(hits)}}
                 Observation: {{observation}}

@@ -21,7 +21,7 @@ public interface ILlmChatClient
     /// </summary>
     Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken);
 
-    /// <summary>Use a larger output budget for callers whose protocol needs a complete response.</summary>
+    /// <summary>Explicit output tokens, or zero to use the provider's default output limit.</summary>
     Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, int maxOutputTokens, CancellationToken cancellationToken)
         => CompleteAsync(messages, modelId, cancellationToken);
 
@@ -82,7 +82,7 @@ public sealed class LlmChatClient : ILlmChatClient
 
     public async Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, int maxOutputTokens, CancellationToken cancellationToken)
     {
-        if (maxOutputTokens is < 256 or > 16384) throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
+        if (maxOutputTokens != 0 && (maxOutputTokens is < 256 or > 16384)) throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
         var selection = ResolveLlm(modelId);
         using var httpRequest = BuildRequest(selection, messages, null, stream: false, maxOutputTokens);
         var client = _httpClientFactory.CreateClient();
@@ -251,9 +251,9 @@ public sealed class LlmChatClient : ILlmChatClient
             // and a future persisted history format cannot poison the next step.
             ["messages"] = NormalizeToolMessageSequence(messages).Select(ToWireMessage).ToArray(),
             ["temperature"] = 0.2,
-            ["max_tokens"] = maxOutputTokens,
             ["stream"] = stream
         };
+        if (maxOutputTokens > 0) body["max_tokens"] = maxOutputTokens;
         if (tools is { Count: > 0 })
         {
             body["tools"] = tools.Select(ToWireTool).ToArray();

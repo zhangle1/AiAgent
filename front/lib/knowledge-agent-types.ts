@@ -5,7 +5,9 @@ export type KnowledgeAgentOptions = {
   llm_models: KnowledgeAgentModel[];
   cli_policy: { models: { id: string; name: string; profile_name?: string | null; reasoning_efforts: string[] }[]; allowed_model_ids: string[]; default_model_id: string; default_reasoning_effort: string; allow_chat_model_override?: boolean; allow_chat_reasoning_effort_override?: boolean };
   compiler: KnowledgeCompilerSettings;
+  skills?: KnowledgeCompilationSkill[];
 };
+export type KnowledgeCompilationSkill = { id: string; name: string; description: string; instructions: string; builtin: boolean; skill_markdown?: string };
 export type KnowledgeAgentContext = {
   estimated_input_tokens: number; input_limit: number; context_window: number; output_reserve: number; reserve: number;
   estimation: string; compression_before: number; compression_after: number; compression_ratio: number;

@@ -32,8 +32,9 @@ public sealed class ModelCatalogService : IModelCatalogService
     {
         lock (_gate)
         {
-            EnsureCatalogRows();
-            var catalog = ReadFromDb();
+            using var db = _db.CopyNew();
+            EnsureCatalogRows(db);
+            var catalog = ReadFromDb(db);
             return redactSecrets ? RedactSecrets(catalog) : catalog;
         }
     }
@@ -45,12 +46,13 @@ public sealed class ModelCatalogService : IModelCatalogService
     {
         lock (_gate)
         {
-            EnsureCatalogRows();
-            var current = ReadFromDb();
+            using var db = _db.CopyNew();
+            EnsureCatalogRows(db);
+            var current = ReadFromDb(db);
             PreserveRedactedSecrets(catalog, current);
             var normalized = Normalize(catalog);
-            SaveToDb(normalized, writeSnapshot: false);
-            return RedactSecrets(ReadFromDb());
+            SaveToDb(db, normalized, writeSnapshot: false);
+            return RedactSecrets(ReadFromDb(db));
         }
     }
 
@@ -61,9 +63,10 @@ public sealed class ModelCatalogService : IModelCatalogService
     {
         lock (_gate)
         {
-            EnsureCatalogRows();
-            var normalized = Normalize(catalog ?? ReadFromDb());
-            SaveToDb(normalized, writeSnapshot: true);
+            using var db = _db.CopyNew();
+            EnsureCatalogRows(db);
+            var normalized = Normalize(catalog ?? ReadFromDb(db));
+            SaveToDb(db, normalized, writeSnapshot: true);
             return new ApplyResult
             {
                 CatalogPath = "database: ai_model_profile / ai_model",
@@ -73,20 +76,20 @@ public sealed class ModelCatalogService : IModelCatalogService
         }
     }
 
-    private void EnsureCatalogRows()
+    private void EnsureCatalogRows(ISqlSugarClient db)
     {
-        var exists = _db.Queryable<AiModelProfile>().Any(x => !x.IsDeleted);
+        var exists = db.Queryable<AiModelProfile>().Any(x => !x.IsDeleted);
         if (!exists)
         {
-            SaveToDb(DefaultCatalog(), writeSnapshot: false);
+            SaveToDb(db, DefaultCatalog(), writeSnapshot: false);
         }
     }
 
-    private ModelCatalog ReadFromDb()
+    private ModelCatalog ReadFromDb(ISqlSugarClient db)
     {
         var catalog = new ModelCatalog { Version = 1 };
         var serviceNames = ServiceNames.ToList();
-        var profiles = _db.Queryable<AiModelProfile>()
+        var profiles = db.Queryable<AiModelProfile>()
             .Where(x => serviceNames.Contains(x.ServiceType) && !x.IsDeleted)
             .OrderBy(x => x.ServiceType)
             .OrderBy(x => x.SortOrder)
@@ -95,7 +98,7 @@ public sealed class ModelCatalogService : IModelCatalogService
         var profileIds = profiles.Select(x => x.Id).ToList();
         var models = profileIds.Count == 0
             ? new List<AiModel>()
-            : _db.Queryable<AiModel>()
+            : db.Queryable<AiModel>()
                 .Where(x => profileIds.Contains(x.ProfileId) && !x.IsDeleted)
                 .OrderBy(x => x.ProfileId)
                 .OrderBy(x => x.SortOrder)
@@ -148,24 +151,24 @@ public sealed class ModelCatalogService : IModelCatalogService
         return service;
     }
 
-    private void SaveToDb(ModelCatalog catalog, bool writeSnapshot)
+    private void SaveToDb(ISqlSugarClient db, ModelCatalog catalog, bool writeSnapshot)
     {
-        var providerRows = _db.Queryable<AiModelProvider>()
+        var providerRows = db.Queryable<AiModelProvider>()
             .Where(x => !x.IsDeleted)
             .ToList()
             .ToDictionary(x => $"{x.ServiceType}:{x.ProviderCode}", StringComparer.OrdinalIgnoreCase);
 
         try
         {
-            _db.Ado.BeginTran();
+            db.Ado.BeginTran();
             foreach (var (serviceName, service) in EnumerateNamedServices(catalog))
             {
-                SaveService(serviceName, service, providerRows);
+                SaveService(db, serviceName, service, providerRows);
             }
 
             if (writeSnapshot)
             {
-                _db.Insertable(new AiSettingSnapshot
+                db.Insertable(new AiSettingSnapshot
                 {
                     SettingKey = "model_catalog",
                     PayloadJson = JsonSerializer.Serialize(RedactSecrets(catalog), JsonOptions),
@@ -174,45 +177,45 @@ public sealed class ModelCatalogService : IModelCatalogService
                 }).ExecuteCommand();
             }
 
-            _db.Ado.CommitTran();
+            db.Ado.CommitTran();
         }
         catch
         {
-            _db.Ado.RollbackTran();
+            db.Ado.RollbackTran();
             throw;
         }
     }
 
-    private void SaveService(string serviceName, CatalogService service, Dictionary<string, AiModelProvider> providerRows)
+    private void SaveService(ISqlSugarClient db, string serviceName, CatalogService service, Dictionary<string, AiModelProvider> providerRows)
     {
         var now = DateTime.UtcNow;
-        var existingProfiles = _db.Queryable<AiModelProfile>()
+        var existingProfiles = db.Queryable<AiModelProfile>()
             .Where(x => x.ServiceType == serviceName && !x.IsDeleted)
             .ToList();
         var existingProfileMap = existingProfiles.ToDictionary(x => x.Id);
         var keepProfileIds = new List<long>();
 
-        _db.Updateable<AiModelProfile>()
+        db.Updateable<AiModelProfile>()
             .SetColumns(x => new AiModelProfile { IsActive = false, UpdatedAt = now })
             .Where(x => x.ServiceType == serviceName && !x.IsDeleted)
             .ExecuteCommand();
 
         foreach (var profile in service.Profiles)
         {
-            var profileId = SaveProfile(serviceName, service, profile, existingProfileMap, providerRows, now);
+            var profileId = SaveProfile(db, serviceName, service, profile, existingProfileMap, providerRows, now);
             keepProfileIds.Add(profileId);
-            SaveModels(serviceName, service, profileId, profile, now);
+            SaveModels(db, serviceName, service, profileId, profile, now);
             profile.Id = profileId.ToString();
         }
 
         var deleteProfileIds = existingProfiles.Select(x => x.Id).Except(keepProfileIds).ToList();
         if (deleteProfileIds.Count > 0)
         {
-            _db.Updateable<AiModelProfile>()
+            db.Updateable<AiModelProfile>()
                 .SetColumns(x => new AiModelProfile { IsDeleted = true, IsActive = false, UpdatedAt = now })
                 .Where(x => deleteProfileIds.Contains(x.Id))
                 .ExecuteCommand();
-            _db.Updateable<AiModel>()
+            db.Updateable<AiModel>()
                 .SetColumns(x => new AiModel { IsDeleted = true, IsActive = false, UpdatedAt = now })
                 .Where(x => deleteProfileIds.Contains(x.ProfileId))
                 .ExecuteCommand();
@@ -220,6 +223,7 @@ public sealed class ModelCatalogService : IModelCatalogService
     }
 
     private long SaveProfile(
+        ISqlSugarClient db,
         string serviceName,
         CatalogService service,
         CatalogProfile profile,
@@ -256,22 +260,22 @@ public sealed class ModelCatalogService : IModelCatalogService
 
         if (isExisting)
         {
-            _db.Updateable(row).ExecuteCommand();
+            db.Updateable(row).ExecuteCommand();
             return row.Id;
         }
 
-        return _db.Insertable(row).ExecuteReturnBigIdentity();
+        return db.Insertable(row).ExecuteReturnBigIdentity();
     }
 
-    private void SaveModels(string serviceName, CatalogService service, long profileId, CatalogProfile profile, DateTime now)
+    private void SaveModels(ISqlSugarClient db, string serviceName, CatalogService service, long profileId, CatalogProfile profile, DateTime now)
     {
-        var existingModels = _db.Queryable<AiModel>()
+        var existingModels = db.Queryable<AiModel>()
             .Where(x => x.ProfileId == profileId && !x.IsDeleted)
             .ToList();
         var existingModelMap = existingModels.ToDictionary(x => x.Id);
         var keepModelIds = new List<long>();
 
-        _db.Updateable<AiModel>()
+        db.Updateable<AiModel>()
             .SetColumns(x => new AiModel { IsActive = false, UpdatedAt = now })
             .Where(x => x.ProfileId == profileId && !x.IsDeleted)
             .ExecuteCommand();
@@ -310,11 +314,11 @@ public sealed class ModelCatalogService : IModelCatalogService
 
             if (isExisting)
             {
-                _db.Updateable(row).ExecuteCommand();
+                db.Updateable(row).ExecuteCommand();
             }
             else
             {
-                row.Id = _db.Insertable(row).ExecuteReturnBigIdentity();
+                row.Id = db.Insertable(row).ExecuteReturnBigIdentity();
             }
 
             model.Id = row.Id.ToString();
@@ -324,7 +328,7 @@ public sealed class ModelCatalogService : IModelCatalogService
         var deleteModelIds = existingModels.Select(x => x.Id).Except(keepModelIds).ToList();
         if (deleteModelIds.Count > 0)
         {
-            _db.Updateable<AiModel>()
+            db.Updateable<AiModel>()
                 .SetColumns(x => new AiModel { IsDeleted = true, IsActive = false, UpdatedAt = now })
                 .Where(x => deleteModelIds.Contains(x.Id))
                 .ExecuteCommand();

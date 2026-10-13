@@ -1,5 +1,5 @@
 import type { KnowledgeCompilerSettings } from "./knowledge-types";
-import type { KnowledgeAgentCommand, KnowledgeAgentCommandResult, KnowledgeAgentCompileResult, KnowledgeAgentEvent, KnowledgeAgentHistory, KnowledgeAgentOptions } from "./knowledge-agent-types";
+import type { KnowledgeAgentCommand, KnowledgeAgentCommandResult, KnowledgeAgentCompileResult, KnowledgeAgentEvent, KnowledgeAgentHistory, KnowledgeAgentOptions, KnowledgeCompilationSkill } from "./knowledge-agent-types";
 
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null);
@@ -15,6 +15,15 @@ export function runKnowledgeAgentCommand(input: { command: KnowledgeAgentCommand
 }
 export function compileKnowledgeAgent(uris: string[], configuration: KnowledgeCompilerSettings, signal?: AbortSignal) {
   return fetch("/api/v1/knowledge-agent/compile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uris, configuration }), signal }).then(json<KnowledgeAgentCompileResult>);
+}
+
+export function draftKnowledgeSkill(input: { model_id: string; message: string; history: KnowledgeAgentHistory[]; draft?: KnowledgeCompilationSkill | null }, signal?: AbortSignal) {
+  return fetch("/api/v1/knowledge-agent/skills/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal })
+    .then(json<{ reply: string; skill: KnowledgeCompilationSkill }>);
+}
+export function saveKnowledgeSkill(skill: KnowledgeCompilationSkill, signal?: AbortSignal) {
+  return fetch("/api/v1/knowledge-agent/skills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(skill), signal })
+    .then(json<KnowledgeCompilationSkill>);
 }
 
 /** A real SSE response; EOF without a terminal event is a failed turn, not a successful answer. */

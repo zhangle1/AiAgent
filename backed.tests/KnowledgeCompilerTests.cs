@@ -148,7 +148,7 @@ public sealed class KnowledgeCompilerTests
     {
         Assert.Equal("llm_api", new KnowledgeCompilerSettingsDto().Generator);
         Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { Generator = "shell" }));
-        Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { MaxSteps = 0 }));
+        Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { MaxSteps = -1 }));
         Assert.Throws<ArgumentException>(() => KnowledgeCompilerSettings.Validate(new() { TimeoutMinutes = 0 }));
     }
 

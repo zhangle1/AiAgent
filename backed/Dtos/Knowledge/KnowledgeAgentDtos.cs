@@ -41,3 +41,21 @@ public sealed class KnowledgeAgentCompileRequest
     [JsonPropertyName("uris")] public List<string> Uris { get; set; } = [];
     [JsonPropertyName("configuration")] public KnowledgeCompilerSettingsDto Configuration { get; set; } = new();
 }
+
+public sealed class KnowledgeCompilationSkillDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
+    [JsonPropertyName("instructions")] public string Instructions { get; set; } = "";
+    [JsonPropertyName("builtin")] public bool Builtin { get; set; }
+    [JsonPropertyName("skill_markdown")] public string SkillMarkdown { get; set; } = "";
+}
+
+public sealed class KnowledgeSkillDraftRequest
+{
+    [JsonPropertyName("model_id")] public string ModelId { get; set; } = "";
+    [JsonPropertyName("message")] public string Message { get; set; } = "";
+    [JsonPropertyName("history")] public List<KnowledgeAgentHistoryDto> History { get; set; } = [];
+    [JsonPropertyName("draft")] public KnowledgeCompilationSkillDto? Draft { get; set; }
+}

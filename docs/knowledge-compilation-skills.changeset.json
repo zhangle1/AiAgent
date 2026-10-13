@@ -1,0 +1,206 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "知识编译连接隔离、目标目录与技能对话",
+  "base_commit": "463426520c72c708c795392ccc5e61532b65bd18",
+  "platform_change_set_id": null,
+  "note": "本地可审阅校验快照；用户已明确授权提交并推送到 Gitee、GitHub。远程基线已核对，交付前指纹复核通过。未部署或重启用户服务，未调用真实在线模型或 CLI。",
+  "checks": {
+    "backend": "passed: 94 Knowledge/LlmChatClient/NativeTurnRunner tests; includes automatic budget regressions",
+    "connection_regression": "red before fix, green after fix: shared root unavailable while CopyNew can query/load/save/apply",
+    "browser_uuid_missing": "passed: default calls 0, editable 200, payload, SSE, Chinese commands, filtered trees, skill conversation/save/select, upload target, cancellation and mobile",
+    "browser_uuid_native": "passed: same scenarios with native UUID",
+    "browser_layout": "passed: resize/scroll/state/error/refresh/focus/mobile",
+    "typescript": "passed: syntax and semantic diagnostics for changed files; no emit",
+    "whitespace": "passed: git -c core.whitespace=cr-at-eol diff --check",
+    "encoding": "passed: UTF-8, existing BOM/CRLF unchanged; new files no BOM LF",
+    "production_build": "not run",
+    "live_provider_cli": "not run",
+    "runtime_restart": "not performed"
+  },
+  "requirements": {
+    "l0_l1_error": "ModelCatalogService uses independent clients throughout load/save/apply and one client per transaction; connection regression and semantic tests passed",
+    "target_directories": "three actual publish/read cases: resources, projects/BOS and current-user/memory; default owner mapping covered; source unchanged",
+    "skills": "embedded llm-wiki SKILL.md; owner-scoped saved drafts; model conversation/edit/save/select; skill and target frozen in job JSON and retry",
+    "chinese_commands": "Chinese labels retain /ls /read /search /status /compiler protocol",
+    "resource_picker": "scoped command target tree, compiler source filtering and destination directory tree; upload target tree uses chosen directory",
+    "automatic_budget": "CJK byte-count false failure removed; selected million-window full source and JSON-aware segmentation; 0 calls default, explicit limits and cancellation; provider-default output with real truncation rejected"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "167004bc7c12035e5621cd08e93553356ef237e263ed07a0d8b388585c5b37f3"
+    },
+    {
+      "path": "README.md",
+      "sha256": "9a30bdffff2ecd623e5c4bf7b2c7a09cada28c8e4ef28474e786c20cda807f0d"
+    },
+    {
+      "path": "backed.tests/KnowledgeCompilerTests.cs",
+      "sha256": "291317cd0161be40431ac5ffd347cc0ea04130e776029e7c3fd3040d80189842"
+    },
+    {
+      "path": "backed.tests/KnowledgeSemanticTests.cs",
+      "sha256": "626c5fea5fa483bb8ed90540874deb3f6edf82f1d56bd6f9143ec11e882f81e0"
+    },
+    {
+      "path": "backed.tests/KnowledgeWorkspaceTests.cs",
+      "sha256": "fbc794fbb51a91271a730cd57577e1d5993701182c7c071022d661c2a8d4083a"
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "8770f8edbe4d8453f018ef3da0598965492b5e5be4cc40483724a6da9ebd0e93"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeAgentDtos.cs",
+      "sha256": "5e3575b6bc46796c47c33869af3d2ab0e9a6a1d9e1f7b917971b4de955f6e55f"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "032b3faaf0af49dc69252c0fb26ef5715cc8aa135bb716472a9c868706b5be8e"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeWorkspaceDtos.cs",
+      "sha256": "8b458a8169a2a8d712b0c3d7984ad81d91e66c466de604e1708f07319b4b7d3e"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "d6d646765487866800c756d422fd245e5083e3c1e45b096a046936abe847bea4"
+    },
+    {
+      "path": "backed/Services/Chat/Llm/LlmChatClient.cs",
+      "sha256": "7267bbfb7e59d819f8d57e2b71bdd9ee513c10d0eda9ae6d49e12d812dc5cab4"
+    },
+    {
+      "path": "backed/Services/Knowledge/Core/KnowledgeCompiler.cs",
+      "sha256": "e4c5a2fd8ed641c92d034b309b19fcf1c7debef21bc8351d56a49d02dbb9b742"
+    },
+    {
+      "path": "backed/Services/Knowledge/Core/KnowledgeSemanticGenerator.cs",
+      "sha256": "52186ab6bbb62a1774b6d9a28128f4c494c2a66e5e0139dab7232e113377307f"
+    },
+    {
+      "path": "backed/Services/Knowledge/Core/KnowledgeWikiSearch.cs",
+      "sha256": "be9b94882ce628f0f3dd3ec9872687330441cfb549984d3c63cb9ec74a0519b6"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/ContextBudget.cs",
+      "sha256": "7a79f37bb98ed654872c5e86e7280997f3db49719f29546cb2e028b256ea325a"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowAgent.cs",
+      "sha256": "571dc5d9b20ca0a22cbf0f43b991b3268306d0c0f2eed9d06ac44f01e93f3fcb"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowledgeAgentService.cs",
+      "sha256": "10fac8084a9af4080a655c10325f6151caed4ab917b36b883200d6ad4e7f1d91"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeAgentAppService.cs",
+      "sha256": "b78f2a1509129008e34521052ecea433822b05f5452d39ffbd54d71a60a99728"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilerSettings.cs",
+      "sha256": "b37eb10343fedba52450f87f04a829668ab6f90d2f0186b8c996ff15e82e76a8"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "541e4ea36e35f906d9e4f0df664336b821d1aa37b60dea175340770d6aff3a4c"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeModelAdapter.cs",
+      "sha256": "df33e9f362f592d5898af00bb8d9f5b630d0d1f90a5901825f11b6a2751afd81"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceSemanticService.cs",
+      "sha256": "87ace545c281149fa4c66b1774cae5c90ec89363bfcd4cbbf7abc41763ab286a"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "1261de045a162643134413eee6a72361072809e5c92c4d957ee5f2775260ff7b"
+    },
+    {
+      "path": "backed/Services/Settings/ModelCatalogService.cs",
+      "sha256": "02c20e629037d13b28532bc62dccd8dfb8cf2bf1c41c12a4dfe8c211a3a4ff0d"
+    },
+    {
+      "path": "backed/Services/TaskQueue/KnowledgeCompilationWorker.cs",
+      "sha256": "c2f7fa9223c71fe2667f894a3b97e5b182a837983ef4d3135716a92b587f824b"
+    },
+    {
+      "path": "docs/knowledge-agent-streaming.md",
+      "sha256": "7e4d68a0660bb2039c0f34b3982cf52fe032af161aadf0a3e9221669551e48fa"
+    },
+    {
+      "path": "docs/knowledge-personal-workspace.md",
+      "sha256": "7c003aad87343e40e8c6e922d24425b36111ba6b2e6b046fbdbb39700903f0b6"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeAgentChatPanel.tsx",
+      "sha256": "8184f5f067b444cff5c8e165b723433a06803529b4d2f93e63d51db8ad89de82"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeAgentCommandDialog.tsx",
+      "sha256": "ec274663139209ecb5097d8f20d1698e29789da8000e9e02e58603cb66b3ac19"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeSemanticPreview.tsx",
+      "sha256": "28b0874e132cad0c079565ddbdd40ce711e6277f9da5a257ec8b559063bedab5"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "b05e3d69bc569eea2f75dc56a134940ce18cc789b19f1a321e655b202ecfa773"
+    },
+    {
+      "path": "front/components/settings/KnowledgeSettingsPage.tsx",
+      "sha256": "0d68b48fda37856eb1849417eb1fd703e12eeab642e76f7c6556fa5533b8a624"
+    },
+    {
+      "path": "front/lib/knowledge-agent-api.ts",
+      "sha256": "5ee601438e97fdda3561d448806f87b952eb39af8e5b7c1beeee3fb204f44d67"
+    },
+    {
+      "path": "front/lib/knowledge-agent-types.ts",
+      "sha256": "62c39fe7dec775254917d6eae6ffec58fce48d5ed3f817e8a0eb789e39149eea"
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "8151009dbc9746db8974832fa37a4193623059268398c1a98364477a47c9d296"
+    },
+    {
+      "path": "front/tests/knowledge-agent.browser.mjs",
+      "sha256": "2d693035b87c74b2611cc623c4d3184813d672241218fa36a65df592d74cc645"
+    },
+    {
+      "path": "backed.tests/KnowledgeAutomaticBudgetTests.cs",
+      "sha256": "c9cd0f65100a36aebda2a2dc715c622a2825f817bb4e5f17a1fd472d7b40457f"
+    },
+    {
+      "path": "backed.tests/KnowledgeCompilationSkillsTests.cs",
+      "sha256": "5eaf0c46025c54171c50adac7ab8ba3f17d885e39a7a5d2a78289d2d77cb4924"
+    },
+    {
+      "path": "backed.tests/KnowledgeModelCatalogConnectionTests.cs",
+      "sha256": "b2deae65033876d59da9b82bbe12690203e026f77057fa535437a7f5ba984c2d"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilationSkillService.cs",
+      "sha256": "223dcf104439700e63bbe97d9f268067e2e1d7b98d8ac60c9256fd42c21adeb1"
+    },
+    {
+      "path": "backed/Services/Knowledge/Skills/llm-wiki/SKILL.md",
+      "sha256": "f1047da30837ec2dd946013fa7c86ef15a861e976179e56bf379cb98eade6d9d"
+    },
+    {
+      "path": "docs/knowledge-compilation-skills.md",
+      "sha256": "c3b5bb43a38bf83399b4373f8920e93ed1e5550c6a559e7236152743342fddc3"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeResourcePicker.tsx",
+      "sha256": "77971f3e635c8f03dd11d0cb0a63d7ea049b39f511d14cfa5b9e571d95b1f129"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeSkillDialog.tsx",
+      "sha256": "84775a4c5a9d2fb74b6bbac1b11879873a352e072ee244af6f51c756e98ad794"
+    }
+  ]
+}

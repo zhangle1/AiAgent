@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 namespace AiAgent.Backend.Services.Knowledge.KnowAgent;
 
@@ -10,6 +11,24 @@ public static class ContextBudget
     public const int OutputTokens = 8192;
     public const int ReserveTokens = 4096;
     public static int Estimate(string text) => Encoding.UTF8.GetByteCount(text);
+    public static string CallsLabel(int count, int limit) => limit > 0 ? $"{count}/{limit}" : $"{count}（自动，不限次数）";
+    public static int EstimateJsonData(string text) => Estimate(JsonSerializer.Serialize(text,
+        new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+
+    public static IEnumerable<string> SplitJsonData(string text, int budget)
+    {
+        foreach (var part in Split(text, budget))
+            foreach (var value in Fit(part)) yield return value;
+        IEnumerable<string> Fit(string part)
+        {
+            if (EstimateJsonData(part) <= budget) { yield return part; yield break; }
+            var middle = part.Length / 2;
+            if (middle > 0 && char.IsLowSurrogate(part[middle])) middle--;
+            if (middle == 0) throw new InvalidOperationException("上下文窗口不足以容纳一个完整字符。");
+            foreach (var value in Fit(part[..middle])) yield return value;
+            foreach (var value in Fit(part[middle..])) yield return value;
+        }
+    }
     public static void Validate(string prompt, int window = WindowTokens, int output = OutputTokens)
     {
         if (Estimate(prompt) + output + ReserveTokens > window)

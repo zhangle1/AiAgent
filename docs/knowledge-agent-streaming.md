@@ -43,9 +43,25 @@
 
 配置由入队时复制并保存到 `AiKnowledgeJob.ConfigurationJson`（新增可空列，随现有实体初始化）；不修改全局 knowledge_compiler。重试读取快照。已有不同配置的活动任务时拒绝本次入队并返回原因，避免界面选择新模型但实际上沿用旧任务。
 
-任务沿用 `wiki_compile`，执行 L2 解析后生成文件摘要、目录 L1 `.overview.md` 与 L0 `.abstract.md`，发布到本人工作区。沿用原子版本、缓存指纹和用户归属；正文已保存但语义失败时仍可阅读正文。队列、失败原因、取消和重试继续在文件处理弹窗及任务中心展示。
+任务沿用 `wiki_compile`，执行 L2 解析后生成文件摘要、目录 L1 `.overview.md` 与 L0 `.abstract.md`，默认发布到本人工作区；2026-10-13 起可选择已有目录作为产物父目录并选择编译技能，生成 / 编辑技能对话和数据边界见 [知识编译目标与技能](knowledge-compilation-skills.md)。沿用原子版本、缓存指纹和用户归属；正文已保存但语义失败时仍可阅读正文。队列、失败原因、取消和重试继续在文件处理弹窗及任务中心展示。
 
 ## 本轮验证
+
+### HTTP 局域网兼容修复（2026-10-13）
+
+知识聊天的用户、助手和目录命令结果消息统一生成 UI ID：可用时调用 `crypto.randomUUID()`，不可用时使用时间戳和模块内递增序号。这些 ID 仅用于消息更新和 React key，不是认证或授权凭据。ID 在登记活动请求及 React 状态更新器之外生成，避免异常留下发送锁和状态更新重复执行时重新分配 ID。
+
+浏览器回归增加 `KNOWLEDGE_TEST_NO_RANDOM_UUID=1`，模拟普通 HTTP 局域网下缺少该 API 的环境。修复前发送问题复现 `crypto.randomUUID is not a function`；修复后该模式与原生 UUID 模式均通过现有完整场景，覆盖流式输出、重复发送、目录命令、编译任务、断流、停止及移动端。测试使用模拟 API 和本地 SSE，未调用真实模型或 CLI；本次未运行生产构建或后端编译。
+
+```powershell
+# 沿用下方 KNOWLEDGE_TEST_TOOLS 配置及已运行的前端
+$env:KNOWLEDGE_TEST_NO_RANDOM_UUID = "1"
+node front/tests/knowledge-agent.browser.mjs
+$env:KNOWLEDGE_TEST_NO_RANDOM_UUID = "0"
+node front/tests/knowledge-agent.browser.mjs
+```
+
+### 初始实现验证（2026-10-10）
 
 - 后端 Knowledge、LlmChatClient、NativeTurnRunner 专项测试 **81 项通过**，含新增原生工具分块/配对、真实 LlmChatClient 的模拟 HTTP 协议、第二配置档选择、未知模型拒绝、供应商异常 EOF、压缩测量、取消、实际目录与越界拦截、人员根别名，以及配置冻结/不同配置去重拦截/重试快照。
 - 浏览器 `knowledge-agent.browser.mjs` 通过：运行中的前端 + 模拟模型目录/命令/编译 API + 独立本地分块 SSE 服务，验证首段先显示、指定 API、工具卡片、上下文指标、同目录预览不丢会话、命令/CLI 表单、断流、停止与窄屏弹窗。

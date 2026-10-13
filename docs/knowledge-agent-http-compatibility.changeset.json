@@ -1,0 +1,32 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "修复知识工作区 HTTP 局域网消息 ID 兼容性",
+  "base_commit": "463426520c72c708c795392ccc5e61532b65bd18",
+  "platform_change_set_id": null,
+  "note": "本地可审阅校验快照；用户已明确授权提交并推送到 Gitee、GitHub。远程基线已核对，交付前指纹复核通过。未部署或重启用户服务，未调用真实在线模型或 CLI。",
+  "checks": {
+    "reproduction": "failed before fix: browser send throws crypto.randomUUID is not a function when API is unavailable",
+    "browser_without_random_uuid": "passed: full knowledge-agent.browser.mjs with KNOWLEDGE_TEST_NO_RANDOM_UUID=1",
+    "browser_native_random_uuid": "passed: full knowledge-agent.browser.mjs with KNOWLEDGE_TEST_NO_RANDOM_UUID=0",
+    "script_syntax": "passed: node --check front/tests/knowledge-agent.browser.mjs",
+    "whitespace": "passed: git diff --check",
+    "encoding": "passed: strict UTF-8 without BOM and LF preserved",
+    "production_build": "not run (CodeLimit)",
+    "backend_compile": "not run; no backend changes",
+    "live_provider_cli": "not run; fixture APIs and local SSE only"
+  },
+  "files": [
+    {
+      "path": "front/components/knowledge/KnowledgeAgentChatPanel.tsx",
+      "sha256": "8184f5f067b444cff5c8e165b723433a06803529b4d2f93e63d51db8ad89de82"
+    },
+    {
+      "path": "front/tests/knowledge-agent.browser.mjs",
+      "sha256": "2d693035b87c74b2611cc623c4d3184813d672241218fa36a65df592d74cc645"
+    },
+    {
+      "path": "docs/knowledge-agent-streaming.md",
+      "sha256": "7e4d68a0660bb2039c0f34b3982cf52fe032af161aadf0a3e9221669551e48fa"
+    }
+  ]
+}

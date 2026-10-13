@@ -304,12 +304,14 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
     }
     private sealed class Llm : ILlmChatClient
     {
+        public List<IReadOnlyList<LlmMessage>> Inputs { get; } = [];
         public LlmModelCapabilities GetCapabilities(string? modelId) => new(modelId, "fake", 65536, 8192, false);
         public Queue<string> Replies { get; } = new();
         public string? ModelId { get; private set; }
         public int? MaxOutputTokens { get; private set; }
         public Task<LlmChatResult> CompleteAsync(IReadOnlyList<LlmMessage> messages, string? modelId, CancellationToken cancellationToken)
         {
+            Inputs.Add(messages.ToArray());
             ModelId = modelId;
             return Task.FromResult(new LlmChatResult { Text = Replies.Count > 0 ? Replies.Dequeue() : "{}", Provider = "api", Model = "api-model" });
         }
@@ -337,7 +339,7 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
         var result = await new KnowledgeModelAdapter(api, cli, new() { Generator = "llm_api", ModelId = "configured-api" }, "unused").CompleteAsync("api", CancellationToken.None);
         Assert.Equal("api", result.Provider);
         Assert.Equal("configured-api", api.ModelId);
-        Assert.Equal(8192, api.MaxOutputTokens);
+        Assert.Equal(0, api.MaxOutputTokens);
         Assert.Equal(3, cli.Requests.Count);
     }
 
@@ -425,7 +427,7 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
             Assert.Contains(source, content.ArtifactContent);
             Assert.Equal("draft", content.ReviewStatus);
             Assert.Equal("processed", db.Queryable<AiKnowledgeDocument>().InSingle(doc.Id).Status);
-            Assert.Equal(8192, api.MaxOutputTokens);
+            Assert.Equal(0, api.MaxOutputTokens);
         }
         finally
         {

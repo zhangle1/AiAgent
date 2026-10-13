@@ -28,6 +28,7 @@ public sealed class KnowledgeResourceReadDto
     [JsonPropertyName("parser")] public string? Parser { get; set; }
     [JsonPropertyName("model")] public string? Model { get; set; }
     [JsonPropertyName("children")] public List<KnowledgeResourceNodeDto> Children { get; set; } = [];
+    [JsonPropertyName("compiled_outputs")] public List<KnowledgeResourceNodeDto> CompiledOutputs { get; set; } = [];
 }
 
 public sealed class KnowledgeResourceProcessingDto

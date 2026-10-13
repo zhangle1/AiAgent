@@ -29,11 +29,11 @@ public sealed class KnowledgeCompiler
     {
         if (string.IsNullOrWhiteSpace(source)) throw new ArgumentException("Source is empty.");
         if (source.Length > MaxSourceCharacters) throw new ArgumentException("Source exceeds 256000 characters. Split it into smaller documents; no content was truncated.");
-        if (maxSteps is < 8 or > 96) throw new ArgumentOutOfRangeException(nameof(maxSteps));
+        if (maxSteps < 0) throw new ArgumentOutOfRangeException(nameof(maxSteps));
         var parts = ContextBudget.Split(source, Math.Clamp(partBudget, 256, PartSize)).ToArray();
         if (parts.Length > 32) throw new ArgumentException("Source needs more than 32 evidence parts; split the document.");
         // Reserve both stages before spending any model calls. Never silently skip source parts.
-        if (maxSteps < parts.Length * 2) throw new ArgumentException("Action budget cannot cover analysis and generation for every part. Increase it or split the source.");
+        if (maxSteps > 0 && maxSteps < parts.Length * 2) throw new ArgumentException("Action budget cannot cover analysis and generation for every part. Increase it or split the source.");
         var analyses = new string[parts.Length];
         var pages = new List<KnowledgePage>();
         var steps = new List<CompilerStep>();
@@ -51,7 +51,7 @@ public sealed class KnowledgeCompiler
         async Task<CompilerReply> Call(string prompt)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (++calls > maxSteps) throw new InvalidOperationException("Knowledge compiler exhausted its action budget. No draft was committed.");
+            if (++calls > maxSteps && maxSteps > 0) throw new InvalidOperationException("Knowledge compiler exhausted its action budget. No draft was committed.");
             var reply = await model.CompleteAsync(prompt, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             provider = reply.Provider; modelName = reply.Model;
@@ -125,7 +125,7 @@ public sealed class KnowledgeCompiler
                 {
                     feedback = "Validation rejected the operation: " + ex.Message;
                     await Report("generate_pages", feedback, part - 1);
-                    if (attempt >= 3 || maxSteps - calls <= parts.Length - part)
+                    if (attempt >= 3 || maxSteps > 0 && maxSteps - calls <= parts.Length - part)
                         throw new InvalidOperationException("Wiki generation failed validation. No draft was committed.", ex);
                     continue;
                 }

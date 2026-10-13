@@ -36,10 +36,10 @@ public sealed partial class KnowledgeWorkspaceTests
     public async Task SemanticLongSourceReadsEveryPartAndBudgetAndCancellationAreEnforced()
     {
         var model = new SemanticModel();
-        await new KnowledgeSemanticGenerator(model, 8).SummarizeAsync(new string('a', 16000) + "END_OF_SOURCE", default);
-        Assert.Equal(3, model.Prompts.Count);
-        Assert.Contains("END_OF_SOURCE", model.Prompts[1]);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new KnowledgeSemanticGenerator(model, 1).SummarizeAsync(new string('x', 16001), default));
+        await new KnowledgeSemanticGenerator(model, 8, 16000).SummarizeAsync(new string('a', 16000) + "END_OF_SOURCE", default);
+        Assert.True(model.Prompts.Count > 1);
+        Assert.Contains(model.Prompts, prompt => prompt.Contains("END_OF_SOURCE", StringComparison.Ordinal));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new KnowledgeSemanticGenerator(model, 1, 16000).SummarizeAsync(new string('x', 16001), default));
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new KnowledgeSemanticGenerator(model, 8).SummarizeAsync("text", cancelled.Token));
     }

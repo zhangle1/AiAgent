@@ -2,11 +2,13 @@ using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Llm;
 using AiAgent.Backend.Services.Settings;
+using System.Text.Json;
 
 namespace AiAgent.Backend.Services.Knowledge.KnowAgent;
 
 public sealed class KnowledgeAgentService(IModelCatalogService catalog, ILlmChatClient llm,
-    ICodexModelPolicyService codexPolicy, KnowledgeCompilerSettings settings, KnowledgeResourceService resources)
+    ICodexModelPolicyService codexPolicy, KnowledgeCompilerSettings settings, KnowledgeResourceService resources,
+    KnowledgeCompilationSkillService? skills = null)
 {
     public List<KnowledgeAgentModelDto> Models()
     {
@@ -20,7 +22,7 @@ public sealed class KnowledgeAgentService(IModelCatalogService catalog, ILlmChat
         })).ToList();
     }
 
-    public object Options() => new { llm_models = Models(), cli_policy = codexPolicy.GetPolicy(), compiler = settings.Get() };
+    public object Options() => new { llm_models = Models(), cli_policy = codexPolicy.GetPolicy(), compiler = settings.Get(), skills = skills?.List() };
 
     public KnowledgeAgentModelDto RequireModel(string id) => Models().FirstOrDefault(x => x.Id == id)
         ?? throw new ArgumentException("请选择已配置的 LLM API 模型；未知模型不会回退到默认模型。");
@@ -28,7 +30,12 @@ public sealed class KnowledgeAgentService(IModelCatalogService catalog, ILlmChat
     public KnowledgeResourceImportDto Compile(KnowledgeAgentCompileRequest request)
     {
         if (request.Uris.Count is 0 or > 32) throw new ArgumentException("每次请选择 1–32 个原始资源文件。");
-        var configuration = request.Configuration;
+        var configuration = JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>(JsonSerializer.Serialize(request.Configuration))!;
+        if (skills is not null)
+        {
+            var skill = skills.Require(configuration.SkillId);
+            configuration.SkillId = skill.Id; configuration.SkillName = skill.Name; configuration.SkillInstructions = skill.Instructions;
+        }
         KnowledgeCompilerSettings.Validate(configuration);
         if (configuration.Generator == "llm_api") RequireModel(configuration.ModelId ?? "");
         else
@@ -38,11 +45,14 @@ public sealed class KnowledgeAgentService(IModelCatalogService catalog, ILlmChat
             configuration.ReasoningEffort = resolved.ReasoningEffort;
         }
         var tree = resources.Tree();
+        configuration.TargetUri = resources.CompilationTarget(configuration.TargetUri);
         var files = request.Uris.Distinct(StringComparer.Ordinal).Select(uri => tree.FirstOrDefault(x => x.Uri == uri && x.Kind == "file")
             ?? throw new ArgumentException("请选择当前可见的原始文件。")).ToList();
-        if (files.Any(x => x.Uri.StartsWith("viking://user/", StringComparison.Ordinal) &&
-            (x.Uri.Contains("/summaries/", StringComparison.Ordinal) || x.Uri.Contains("/wiki/", StringComparison.Ordinal))))
+        if (files.Any(x => KnowledgeResourceService.IsGeneratedUri(x.Uri)))
             throw new ArgumentException("生成产物不能作为原始资料重新编译。");
+        if (configuration.TargetUri is { } destination && !destination.StartsWith("viking://user/", StringComparison.Ordinal) &&
+            files.Any(x => x.Uri.StartsWith("viking://user/", StringComparison.Ordinal)))
+            throw new ArgumentException("个人原始资料只能编译到本人目录，不能发布到公共资料或项目目录。");
         var result = new KnowledgeResourceImportDto();
         foreach (var file in files)
         {

@@ -327,7 +327,7 @@ public sealed class KnowledgeIngestionService : IKnowledgeIngestionService
                     step.Result == "started" ? "正在处理，已完成" : "已完成";
                 currentProgress = (analyzing ? 15 : 45) + (analyzing ? 30 : 45) * step.CoveredParts / step.TotalParts;
                 progress?.Invoke(currentProgress,
-                    $"{stage}；{result} {step.CoveredParts}/{step.TotalParts} 段（模型调用 {step.Number}/{config.MaxSteps}）");
+                    $"{stage}；{result} {step.CoveredParts}/{step.TotalParts} 段（模型调用 {KnowAgent.ContextBudget.CallsLabel(step.Number, config.MaxSteps)}）");
                 return Task.CompletedTask;
             }, ct: cancellationToken, wikiContext: wikiContext);
         var content = new StringBuilder();

@@ -30,6 +30,10 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- L0/L1 生成按模型窗口及 JSON 转义开销动态分段，UTF-8 字节上界只用于输入估算，不能据此拒绝中文模型输出。API 编译输出使用供应商默认策略（客户端输出参数 0 时省略 max_tokens）；输出空间预留不是硬上限。新编译任务调用次数默认 0 表示不限，正整数为显式上限，历史快照保持；超时、取消、压缩不收敛和真实截断继续失败。与独立 Wiki 证据协议的字符／页数校验区分。见 `docs/knowledge-compilation-skills.md`。
+
+- 知识编译允许显式选择资料、项目或本人原始目录，产物放入该目录 `_compiled/`，默认仍是本人摘要空间；个人来源不能发布到公共目标，生成目录只读。技能由服务器按本人 ID 解析后连同目标保存到任务配置 JSON，重试不重新读取技能新版本。自定义技能存本人设置快照，内置 `llm-wiki/SKILL.md` 作为明确命名的程序集资源；技能不执行脚本。目录指纹包含已发布子文件摘要，不能拿当前任务的技能替兄弟文件生成产物。模型目录读写使用独立客户端和操作内事务。契约见 `docs/knowledge-compilation-skills.md`。
+
 - 知识流式聊天由 `KnowAgent/KnowledgeAgentChatEngine` 执行，沿用 AgentRuntime 事件投影、LLM 客户端和原生工具协议，仅开放所选目录内 ls/read/search/status；模型 ID 必须来自配置目录。上下文指标标明估算，压缩移除整组工具调用与结果并保留当前问题，压缩与聊天共用调用预算。`/compiler` 的每批配置保存在任务可空 `ConfigurationJson`，重试沿用快照，不覆盖全局设置。契约与验证见 `docs/knowledge-agent-streaming.md`。
 
 - 知识产物归属与上下文预算：任务入队时从服务端身份捕获 `OwnerRoot`，后台执行沿用快照；个人摘要和 Wiki 写入本人工作区，原文与 L2 保留资源层。Wiki／语义生成通过 `Services/Knowledge/KnowAgent/`，原文证据完整保留，压缩与生成共用调用预算。修改归属、缓存、任务重试或模型预算时先读 `docs/knowledge-personal-workspace.md`，验证双用户隔离及失败后正文可读。
