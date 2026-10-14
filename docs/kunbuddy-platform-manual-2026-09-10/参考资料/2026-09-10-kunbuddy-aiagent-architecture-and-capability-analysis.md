@@ -24,7 +24,7 @@
 | 层次 | 当前实现 | 职责与边界 |
 | --- | --- | --- |
 | 浏览器工作台 | `front/`，Next.js 16、React 19、TypeScript、Tailwind | 提供聊天、工作画布、任务、知识库、代码管理、交付、设置等界面；复杂状态集中在 Provider 或领域组件。 |
-| 同源访问层 | `front/next.config.js` 的 `/api/:path*` rewrite | 浏览器始终请求前端同源 `/api/*`，Next.js 服务端将请求转发给 `NEXT_PUBLIC_AIAGENT_API_BASE_URL` 指定的后端。 |
+| 同源访问层 | `front/next.config.js` 的 `/api/:path*` rewrite | 浏览器始终请求前端同源 `/api/*`，Next.js 默认转发到本机 `127.0.0.1:5000`；仅前后端分机部署时才设置 `NEXT_PUBLIC_AIAGENT_API_BASE_URL`。 |
 | 应用与协议层 | `backed/`，ASP.NET Core、Furion Dynamic API | `*AppService.cs` 承接 HTTP 协议；统一登录拦截、Swagger、CORS、WebSocket 映射与依赖注入。 |
 | 领域与编排层 | `backed/Services/` | 承担权限校验、项目边界、Agent 编排、受控文件/进程/Git 操作、任务、画布、知识、消息推送等业务。 |
 | 数据与执行层 | SQL Server / SqlSugar、受限文件系统、Git、CLI、Python Worker | 保存业务元数据；在服务端允许根目录内操作项目文件与 Git；调用模型、CLI、RAG/解析工具。 |

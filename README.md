@@ -136,13 +136,12 @@ dotnet run
 ```powershell
 cd front
 npm install
-$env:NEXT_PUBLIC_AIAGENT_API_BASE_URL="http://localhost:5000"
 npm run dev
 ```
 
 默认地址：`http://localhost:3782`
 
-前端通过 Next.js rewrite 将 `/api/*` 转发到后端。开发服务器监听 `0.0.0.0`，可通过内网 IP 访问；请在防火墙和 `next.config.js` 的开发来源白名单中配置实际网段。
+前端通过 Next.js rewrite 将同源 `/api/*` 转发到本机 `127.0.0.1:5000`，浏览器用当前访问地址调用前端代理，不需要配置或随网络变化修改后端 IP。前后端部署在不同机器时，才通过 `NEXT_PUBLIC_AIAGENT_API_BASE_URL` 显式指定后端地址。开发服务器监听 `0.0.0.0`，可通过内网 IP 访问；请在防火墙和 `next.config.js` 的开发来源白名单中配置实际网段。
 
 ### 3. 本机 Codex 接管（可选）
 

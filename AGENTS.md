@@ -110,7 +110,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 原型 PSD 导出逻辑位于 `front/lib/prototype-psd.ts`。导出 iframe 禁止脚本，仅允许同源 DOM 读取，不得同时开启 `allow-scripts`；PSD 缓存必须随 HTML 变化失效。图层为区域像素图层，不得标为原生可编辑文字。
 
 - Next.js App Router，默认开发端口 `3782`，监听 `0.0.0.0`。
-- 后端地址由 `NEXT_PUBLIC_AIAGENT_API_BASE_URL` 控制；`next.config.js` 负责 `/api/*` rewrite。
+- 浏览器始终请求同源 `/api/*`；`next.config.js` 默认将请求转发到本机 `127.0.0.1:5000`，不配置机器 IP。只有前后端分机部署时才显式设置 `NEXT_PUBLIC_AIAGENT_API_BASE_URL`。
 - 页面保持轻量；复杂状态放在 Provider、hook 或领域组件中。
 - 长列表、终端、聊天内容必须拥有独立滚动容器，不能撑破工作台布局。
 - 项目资料树只展示文档白名单格式，不展示代码后缀；PDF/HTML 使用当前页受限 iframe，Office/文本走服务端受控提取预览，下载保留原文件。聊天中的项目资料引用复用右侧资料面板，不得通过刷新或页面跳转打开。
