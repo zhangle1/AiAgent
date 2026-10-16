@@ -146,8 +146,20 @@ public sealed class AdminAppService : IDynamicApiController
     }
 
     [HttpGet("usage")]
-    public async Task<AdminUsageReportDto> Usage([FromQuery] string period = "day", [FromQuery] int days = 365, [FromQuery(Name = "user_id")] string? userId = null, CancellationToken cancellationToken = default)
-        => await _admin.GetUsageReportAsync(await RequireAdministrator(cancellationToken), period, days, userId, cancellationToken);
+    public async Task<IActionResult> Usage([FromQuery] string period = "day", [FromQuery] int days = 365, [FromQuery(Name = "user_id")] string? userId = null, CancellationToken cancellationToken = default,
+        [FromQuery(Name = "start_date")] string? startDate = null, [FromQuery(Name = "end_date")] string? endDate = null,
+        [FromQuery(Name = "project_id")] long? projectId = null)
+    {
+        var administrator = await RequireAdministrator(cancellationToken);
+        try
+        {
+            return new OkObjectResult(await _admin.GetUsageReportAsync(administrator, period, days, userId, cancellationToken, startDate, endDate, projectId));
+        }
+        catch (ArgumentException exception)
+        {
+            return new BadRequestObjectResult(new { message = exception.Message });
+        }
+    }
 
     [HttpGet("uploads")]
     public async Task<List<ChatUploadFileDto>> ListUploads([FromQuery(Name = "user_id")] string? userId, [FromQuery] string? keyword, [FromQuery] string? kind, [FromQuery(Name = "session_id")] string? sessionId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)

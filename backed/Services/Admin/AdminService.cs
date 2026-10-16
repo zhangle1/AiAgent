@@ -47,7 +47,7 @@ public interface IAdminService
     Task<(bool Succeeded, string? Error)> UpdateUserStatusAsync(AuthenticatedUser administrator, string userId, bool isDisabled, CancellationToken cancellationToken);
     Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken);
     Task<ChatSessionDetailDto?> GetSessionAsync(AuthenticatedUser administrator, string userId, string sessionId, CancellationToken cancellationToken);
-    Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken);
+    Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken, string? startDate = null, string? endDate = null, long? projectId = null);
 }
 
 public sealed class AdminService : IAdminService
@@ -254,45 +254,85 @@ public sealed class AdminService : IAdminService
         });
     }
 
-    public Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken)
+    public Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken, string? startDate = null, string? endDate = null, long? projectId = null)
     {
         RequireAdministrator(administrator);
         cancellationToken.ThrowIfCancellationRequested();
         period = NormalizePeriod(period);
-        var periodDays = Math.Clamp(days, 1, 3650);
         var to = DateTime.UtcNow.Date.AddDays(1);
-        var from = to.AddDays(-periodDays);
+        var from = to.AddDays(-Math.Clamp(days, 1, 3650));
+        if (startDate != null || endDate != null)
+        {
+            if (!DateTime.TryParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out from)
+                || !DateTime.TryParseExact(endDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var last)
+                || last < from || (last - from).TotalDays >= 3650 || last >= DateTime.MaxValue.Date)
+                throw new ArgumentException("日期须为 yyyy-MM-dd，结束不早于开始，最多 3650 天。");
+            to = last.AddDays(1);
+        }
+        if (projectId < 0) throw new ArgumentException("项目 ID 无效。");
         var query = _db.Queryable<AiUsageRecord>().Where(item => item.CreatedAt >= from && item.CreatedAt < to);
         if (!string.IsNullOrWhiteSpace(userId)) query = query.Where(item => item.UserId == userId.Trim());
-        var rows = query.ToList();
-        var users = _db.Queryable<AiUser>().ToList();
-        var userMap = users.ToDictionary(item => item.Id, item => item.Username);
-        var visibleUsers = string.IsNullOrWhiteSpace(userId) ? users : users.Where(item => item.Id == userId).ToList();
-
+        // Match both owner and session: an orphan ledger row must never borrow another user's project.
+        var rowsQuery = query.LeftJoin<AiChatSession>((record, session) => record.SessionId == session.Id && record.UserId == session.UserId);
+        if (projectId == 0) rowsQuery = rowsQuery.Where((record, session) => session.CodeProjectId == null);
+        else if (projectId.HasValue) rowsQuery = rowsQuery.Where((record, session) => session.CodeProjectId == projectId);
+        var rows = rowsQuery.Select((record, session) => new UsageReportRow
+        {
+            UserId = record.UserId, SessionId = record.SessionId, ProjectId = session.CodeProjectId,
+            CreatedAt = record.CreatedAt, TotalTokens = record.TotalTokens,
+            PromptTokens = record.PromptTokens, CompletionTokens = record.CompletionTokens
+        }).ToList();
+        var userMap = _db.Queryable<AiUser>().Select(item => new { item.Id, item.Username }).ToList().ToDictionary(item => item.Id, item => item.Username);
+        var projectMap = _db.Queryable<AiCodeProject>().Select(item => new { item.Id, item.DisplayName, item.IsDeleted }).ToList()
+            .ToDictionary(item => item.Id, item => item.DisplayName + (item.IsDeleted ? "（已删除）" : ""));
+        var periodDays = (int)(to - from).TotalDays;
+        AdminUsageMetricsDto Metrics(IEnumerable<UsageReportRow> source, int denominator)
+        {
+            var list = source.ToList();
+            return new AdminUsageMetricsDto
+            {
+                SessionCount = list.Where(item => !string.IsNullOrWhiteSpace(item.SessionId)).Select(item => (item.UserId, item.SessionId)).Distinct().Count(),
+                ActiveDays = list.Select(item => item.CreatedAt.Date).Distinct().Count(),
+                DailyTurns = Math.Round((double)list.Count / denominator, 2)
+            };
+        }
+        var grouped = rows.GroupBy(item => GetBucket(item.CreatedAt, period).Key).ToDictionary(group => group.Key, group => group.ToList());
+        var buckets = Enumerable.Range(0, periodDays).Select(offset => from.AddDays(offset)).GroupBy(date => GetBucket(date, period))
+            .Select(group =>
+            {
+                var items = grouped.GetValueOrDefault(group.Key.Key) ?? [];
+                return new AdminUsageBucketDto { Key = group.Key.Key, Label = group.Key.Label,
+                    TotalTokens = items.Sum(item => (long)item.TotalTokens), TurnCount = items.Count, Metrics = Metrics(items, group.Count()) };
+            }).ToList();
         return Task.FromResult(new AdminUsageReportDto
         {
-            Period = period,
-            From = from,
-            To = to,
-            TotalTokens = rows.Sum(item => (long)item.TotalTokens),
-            TurnCount = rows.Count,
-            Buckets = rows.GroupBy(item => GetBucket(item.CreatedAt, period))
-                .Select(group => new AdminUsageBucketDto { Key = group.Key.Key, Label = group.Key.Label, TotalTokens = group.Sum(item => (long)item.TotalTokens), TurnCount = group.Count() })
-                .OrderBy(item => item.Key).ToList(),
-            Users = visibleUsers.Select(user =>
+            Period = period, From = AsUtc(from), To = AsUtc(to), Metrics = Metrics(rows, periodDays),
+            TotalTokens = rows.Sum(item => (long)item.TotalTokens), TurnCount = rows.Count, Buckets = buckets,
+            Projects = projectMap.Select(item => new AdminUsageProjectDto { Id = item.Key, Name = item.Value }).OrderBy(item => item.Name).ToList(),
+            UserProjects = rows.GroupBy(item => (item.UserId, item.ProjectId)).Select(group => new AdminUsageUserProjectDto
             {
-                var userRows = rows.Where(item => item.UserId == user.Id).ToList();
-                return new AdminUsageUserDto
-                {
-                    UserId = user.Id,
-                    Username = userMap.GetValueOrDefault(user.Id) ?? user.Username,
-                    TotalTokens = userRows.Sum(item => (long)item.TotalTokens),
-                    PromptTokens = userRows.Sum(item => (long)item.PromptTokens),
-                    CompletionTokens = userRows.Sum(item => (long)item.CompletionTokens),
-                    TurnCount = userRows.Count
-                };
-            }).OrderByDescending(item => item.TotalTokens).ThenBy(item => item.Username).ToList()
+                UserId = group.Key.UserId, Username = userMap.GetValueOrDefault(group.Key.UserId) ?? "已删除",
+                ProjectId = group.Key.ProjectId, ProjectName = group.Key.ProjectId.HasValue ? projectMap.GetValueOrDefault(group.Key.ProjectId.Value) ?? "已删除" : "未关联 / 无法归属",
+                TurnCount = group.Count(), TotalTokens = group.Sum(item => (long)item.TotalTokens), Metrics = Metrics(group, periodDays)
+            }).OrderByDescending(item => item.TurnCount).ThenBy(item => item.UserId).ThenBy(item => item.ProjectId).ToList(),
+            Users = rows.GroupBy(item => item.UserId).Select(group => new AdminUsageUserDto
+            {
+                UserId = group.Key, Username = userMap.GetValueOrDefault(group.Key) ?? "已删除",
+                TotalTokens = group.Sum(item => (long)item.TotalTokens), PromptTokens = group.Sum(item => (long)item.PromptTokens),
+                CompletionTokens = group.Sum(item => (long)item.CompletionTokens), TurnCount = group.Count()
+            }).OrderByDescending(item => item.TotalTokens).ToList()
         });
+    }
+
+    private sealed class UsageReportRow
+    {
+        public string UserId { get; set; } = "";
+        public string? SessionId { get; set; }
+        public long? ProjectId { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int TotalTokens { get; set; }
+        public int PromptTokens { get; set; }
+        public int CompletionTokens { get; set; }
     }
 
     private bool AllProjectsExist(List<long> projectIds)
