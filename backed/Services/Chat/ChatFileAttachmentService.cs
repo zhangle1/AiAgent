@@ -34,7 +34,7 @@ public sealed record ResolvedChatFileAttachment(ChatFileAttachmentDto Attachment
 /// Stores non-image chat attachments under a server-owned directory and converts only a small,
 /// validated subset into untrusted text for a Codex turn. Codex app-server has no local-file input.
 /// </summary>
-public sealed class ChatFileAttachmentService : IChatFileAttachmentService
+public sealed partial class ChatFileAttachmentService : IChatFileAttachmentService
 {
     private const int HeaderLength = 16;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -61,7 +61,7 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
         if (file.Length > MaxFileBytes) throw new InvalidOperationException($"Attachment exceeds the {MaxFileBytes / 1024 / 1024} MB limit.");
 
         var extension = Path.GetExtension(file.FileName ?? string.Empty).ToLowerInvariant();
-        var definition = GetDefinition(extension) ?? throw new InvalidOperationException("Only PDF, DOC/DOCX, Excel (XLS/XLT/XLSX/XLSM/XLSB/XLTX/XLTM), PPT/PPTX, HTML, Markdown, TXT, and CSV files are supported.");
+        var definition = GetDefinition(extension) ?? throw new InvalidOperationException("Only PDF, DOC/DOCX, Excel (XLS/XLT/XLSX/XLSM/XLSB/XLTX/XLTM), PPT/PPTX, HTML, Markdown, TXT, CSV, ZIP, RAR, and DLL files are supported.");
         Directory.CreateDirectory(RootPath);
         var id = Guid.NewGuid().ToString("N");
         var targetPath = Path.Combine(RootPath, $"{id}{definition.Extension}");
@@ -221,6 +221,8 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
     private async Task<string> ExtractTextAsync(string path, CancellationToken cancellationToken)
     {
         var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".zip" or ".rar") return await ReadArchiveTextAsync(path, cancellationToken);
+        if (extension == ".dll") return ReadDllText(path, cancellationToken);
         if (ExcelExtensions.Contains(extension)) return ReadSpreadsheetText(path, cancellationToken);
         if (extension == ".doc")
         {
@@ -339,6 +341,8 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
 
     private static void ValidateStoredFile(string path, FileDefinition definition)
     {
+        if (definition.Extension is ".zip" or ".rar") ValidateArchive(path, definition.Extension);
+        if (definition.Extension == ".dll") _ = ReadDllText(path, CancellationToken.None);
         using var stream = File.OpenRead(path);
         Span<byte> header = stackalloc byte[HeaderLength];
         var count = stream.Read(header);
@@ -406,6 +410,9 @@ public sealed class ChatFileAttachmentService : IChatFileAttachmentService
     }
     private FileDefinition? GetDefinition(string extension) => extension switch
     {
+        ".zip" => new FileDefinition(extension, "application/zip", "ready", false, false, false, false),
+        ".rar" => new FileDefinition(extension, "application/vnd.rar", "ready", false, false, false, false),
+        ".dll" => new FileDefinition(extension, "application/octet-stream", "ready", false, false, false, false),
         ".pdf" => new FileDefinition(extension, "application/pdf", "ready", true, false, false, false),
         ".docx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "ready", false, true, false, false),
         ".xlsx" => new FileDefinition(extension, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "ready", false, true, false, false),
