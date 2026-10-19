@@ -1,0 +1,48 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "Chat ZIP RAR DLL attachments",
+    "base_commit":  "b0de3b099c1dd4b69ba9d51711c7eba3b58f21b7",
+    "platform_change_set_id":  null,
+    "note":  "Local review snapshot only; not committed or pushed.",
+    "checks":  {
+                   "typescript":  "passed",
+                   "whitespace":  "passed",
+                   "browser":  "not run",
+                   "backend_attachment_tests":  "28 passed",
+                   "rar5_solid":  "not run"
+               },
+    "files":  [
+                  {
+                      "sha256":  "07b9ad3266100b1de5aca1b949468eeb195a51b6874a617f24ce5867eeed5443",
+                      "path":  "AGENTS.md"
+                  },
+                  {
+                      "sha256":  "016da8b76e6b48bfe1cc2049e5e1e2d1b30ad510817fee3de83850519e886d5c",
+                      "path":  "README.md"
+                  },
+                  {
+                      "sha256":  "dc953962774ee94c5748940d20f4a0f3fc3e311c2c9e4ff1876c2d188f5094e9",
+                      "path":  "backed.tests/Chat/ChatFileAttachmentServiceTests.cs"
+                  },
+                  {
+                      "sha256":  "0faeeab19d4e53e480292f727c3b10ef8924736b96121aef675b5b024497678c",
+                      "path":  "backed/AiAgent.Backend.csproj"
+                  },
+                  {
+                      "sha256":  "df281d3abada36322918e2bc45ade3ec1109bba2ef833f81f35c63acb534c37d",
+                      "path":  "backed/Services/Chat/ChatFileAttachmentService.cs"
+                  },
+                  {
+                      "sha256":  "954b0c9b37f901285d48b81a603d0031e66aceb217d63a4f8b9e9161c781270f",
+                      "path":  "backed/Services/Chat/ChatFileAttachmentService.Binary.cs"
+                  },
+                  {
+                      "sha256":  "5986d5141a129e1fb4b88fb1e4306f5953657ee464b8ed2727bdf126700bf95f",
+                      "path":  "front/components/chat/KnowledgeChatHome.tsx"
+                  },
+                  {
+                      "sha256":  "e3ef8e88ae94c54dce42fdfc06f4adee076f5371ed5443cb9b00c0d90b920327",
+                      "path":  "docs/chat-binary-attachments.md"
+                  }
+              ]
+}

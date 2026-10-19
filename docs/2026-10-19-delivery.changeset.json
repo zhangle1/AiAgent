@@ -1,0 +1,288 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "2026-10-19 合并交付校验",
+  "base_commit": "9a6c22f6c803b1c1593164a874502c913f0acf1b",
+  "feature_commit": "cd2a692ae56ecea71844be93eddf2f8aeb3ca198",
+  "merged_remote_commit": "2d7345a1509035ed1a8c3ac4cf3591e0d507fcba",
+  "platform_change_set_id": null,
+  "authorization": "用户明确要求推送；本文件为本地复核快照，不冒充平台审批记录。",
+  "note": "覆盖前三份快照在合并后发生变化的共享文件；保留远端 ZIP/RAR/DLL 与用户流量统计，保留本轮原图开关和 OCR 界面隐藏。部署脚本原有改动、前端自动生成的 AGENTS/CLAUDE 文件、本地配置和运行数据不在交付范围。",
+  "checks": {
+    "backend": {
+      "passed": 35,
+      "failed": 0,
+      "trx_sha256": "1dbb972705f3d387aa049828bd2b3278ed7e69afb66897447ff2ef14010c2800",
+      "filter": "FullyQualifiedName~CodexDiagnosticsTests|FullyQualifiedName~CodexProfileImageTests|FullyQualifiedName~CodexModelPolicyTests"
+    },
+    "typescript": "passed: noEmit, incremental false",
+    "browser_diagnostics": {
+      "result": "passed",
+      "log_sha256": "ca3206b4b0024b94908592249f29847509d183c5f12adf2c2d6fe8b04e167756"
+    },
+    "browser_images": {
+      "result": "passed",
+      "log_sha256": "df2eb29e1d2b52f1e093ecca30fdec2067dcf111018184c53a34c768a81d2892"
+    },
+    "whitespace": "passed: cr-at-eol diff --check",
+    "scope": "synthetic APIs, fake CLI, in-memory SQLite; no real model or user database",
+    "production_build_and_deployment": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "bb54710184ff193ecceedf2f5d2f4eb4255d3e6ee61241e14b16b6ec7507093c"
+    },
+    {
+      "path": "backed.tests/AdminUsageReportTests.cs",
+      "sha256": "6bfb158e0a710d1ba8f1632516cd60df8ede73b53966e8b24c0d5b810e501764"
+    },
+    {
+      "path": "backed.tests/Chat/ChatFileAttachmentServiceTests.cs",
+      "sha256": "566c40bc3733bfb86cb086380d1de8153474ed711f25160fb9d014692ec89424"
+    },
+    {
+      "path": "backed.tests/CodexDiagnosticsTests.cs",
+      "sha256": "a94d5c66affc34c27ea45f91ffeb3da999a06c78e343b1be217d2a98b334bfad"
+    },
+    {
+      "path": "backed.tests/CodexProfileImageTests.cs",
+      "sha256": "cf630fcd413501cf483938a3b33ac625ad8c56b7d914fe99938920d0f4a08ce7"
+    },
+    {
+      "path": "backed.tests/KnowledgeParsingTests.cs",
+      "sha256": "e5a1efc366c135ccc23d2099822160434930123bef6705f5bf980e7f96d2d80a"
+    },
+    {
+      "path": "backed.tests/MarkdownDocumentPlannerTests.cs",
+      "sha256": "b527948737f12f282ad35ce2dc1f3a78e65025462b8fd8345dee06f462d3d4a4"
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "44a489efef88a43004fed74ba88c5c2001120740d3530340943b0453058ff569"
+    },
+    {
+      "path": "backed/Dtos/Admin/AdminDtos.cs",
+      "sha256": "23fd25877c1615ba0a3380ca48e8ed05671e606d22e080c1abf1c32f92be7605"
+    },
+    {
+      "path": "backed/Dtos/Chat/AgentProviderDtos.cs",
+      "sha256": "07be8c9b25b5310759454998f77f7813f0f72424652290d2564de7f97988721c"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "a17d0110824d4d1b750eebac20f57a7d0a1002dbdffb1120bc7c0975d4105af7"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeDtos.cs",
+      "sha256": "c60132b2318dd640142cff9512a67227ef5326fd28f81e2ecbd21130d2d38796"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "280855ac3214bd99a265cd1a150f6ffe1401358faaed845cf0e3021ccdf71f27"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeWorkspaceDtos.cs",
+      "sha256": "8eb73a557dc5d51733104758516cbdcc7ff07923033e5e9e4af04c653abfcb42"
+    },
+    {
+      "path": "backed/Services/Admin/AdminAppService.cs",
+      "sha256": "d39850bfce5902a345993f757721d678c6808e14c6dfc3a8e90d0c23c9e958bb"
+    },
+    {
+      "path": "backed/Services/Admin/AdminService.cs",
+      "sha256": "d9673172a8677fff72c5e245924cf061c6742caa4bd3a762d5aed6e0d2ef83f8"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "ed29f95cd156b84c3dc78abeae7d59e3e7d987d4f62c05306deb0e08282f9a72"
+    },
+    {
+      "path": "backed/Services/Chat/ChatDebugTrace.cs",
+      "sha256": "b26f7932b3efbe16d9bf046957f6c4349928737b04112014f53b50170c955c7f"
+    },
+    {
+      "path": "backed/Services/Chat/ChatFileAttachmentService.Binary.cs",
+      "sha256": "954b0c9b37f901285d48b81a603d0031e66aceb217d63a4f8b9e9161c781270f"
+    },
+    {
+      "path": "backed/Services/Chat/ChatFileAttachmentService.cs",
+      "sha256": "b208b50ba2d2506ab7efda4330c0c30ccb2248716c5976b0872d6e8590302e5a"
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "a3051d58077f3c4e7aa8ba9d39d322e7cb160a619b110ec3c57472286e3ab5f0"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "bf7cf00c5ace1ffe5266938c8ff70f19b8f9417556d7f29250712b4c2101ac3f"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexModelPolicyService.cs",
+      "sha256": "5333dfb1cf4b567c984176b0536929131688707b604e7d9e9e58fde1ea423df6"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexRequestDiagnostics.cs",
+      "sha256": "55ca1ccfe9f7d5a199bdf11a0724333a096fcd144f7192527aa0dcfbc55faeb9"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowAgent/KnowledgeAgentTools.cs",
+      "sha256": "2d678ba3176668826a7f19371de7f433c46fb606ec48a95cb88ee4ddb976f2fd"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilationHandler.cs",
+      "sha256": "1f3863a1072f956339ce4ff27548928a805670a78078d9c3cce183b6085291e7"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilerSettings.cs",
+      "sha256": "87563c72777b0a07df535d6a1339e9d8755f209c58a95ff2f152e5eb49945561"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "15d50cc25add98c2827166a5f697a310d0b7e41bb27207057bff0c6f97ccde41"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeParsedDocumentStore.cs",
+      "sha256": "f734481fd964f654db46a6880e6373f5be94be6a08b5749e57ad11cf05dfe5b6"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "10b6c33c7402a6b9c2dc36b4b3cb824bc4034962d8d741a6ea7e8e1d17d45f1c"
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingService.cs",
+      "sha256": "48f4a231ddb26b670efaa0ce9e570cba2d945a1b293f82a5e73137cde5ab2899"
+    },
+    {
+      "path": "backed/Services/Parsing/MarkdownDocumentPlanner.cs",
+      "sha256": "0b76d6217e83121b4aeae02fac5218bd66e34e72deceaaef7e3a85513c5f3795"
+    },
+    {
+      "path": "backed/Services/Parsing/OfficeMarkdownConverter.cs",
+      "sha256": "7679dd00d2beb9b27c6f0a1b3dfd15be01af16472c09b81adedde3b5aaec85ec"
+    },
+    {
+      "path": "docs/chat-binary-attachments.changeset.json",
+      "sha256": "0a4792e99fc205d044cf1e6d49dc32763b5f8f3ac29974cb64b64d7e41f9b3ab"
+    },
+    {
+      "path": "docs/chat-binary-attachments.md",
+      "sha256": "e3ef8e88ae94c54dce42fdfc06f4adee076f5371ed5443cb9b00c0d90b920327"
+    },
+    {
+      "path": "docs/codex-profile-images.changeset.json",
+      "sha256": "a3647157783aa2f5ac8f639006280acf5cbe751c31c7b69502f91123fff211ea"
+    },
+    {
+      "path": "docs/codex-profile-images.md",
+      "sha256": "b423f226389de12dfb728b1a066b48e7a198793ce0dd95562963bdadeadf94e0"
+    },
+    {
+      "path": "docs/codex-runtime-diagnostics.changeset.json",
+      "sha256": "6601c2bcdf35b37772d032df7c6b007cd8d15d6f9e62437112fd2fe8c87779df"
+    },
+    {
+      "path": "docs/codex-runtime-diagnostics.md",
+      "sha256": "4ab9a3b1451127d57f13fa833c9beb8dfa467c19b848a6001ca72dd83cbe3ce5"
+    },
+    {
+      "path": "docs/knowledge-document-parsing.changeset.json",
+      "sha256": "947dbb05d74c24c4c50027b595c02197f0e0bd53004b3e916840ca67fb31dd6a"
+    },
+    {
+      "path": "docs/knowledge-document-parsing.md",
+      "sha256": "ae1120f1dde69bb29730a0c7721e51f99668f17d2e4c956a82b2073a0ce86f9d"
+    },
+    {
+      "path": "front/app/settings/admin/image-ocr/page.tsx",
+      "sha256": "806cc5cb1f1e6b4ac63ba5c9fb5a4f213a2daf79b651b62c2bcc056c093978c3"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "778c0cf5155f6ac6ee928b59be1522aa1d872ab85a5587cb76adf8c09d313938"
+    },
+    {
+      "path": "front/components/knowledge/knowledge-workspace.module.css",
+      "sha256": "4caca36e82844e78858fdfc27162330159acfb13e74b3d14deeb56d4a6474f0f"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeAgentCommandDialog.tsx",
+      "sha256": "180d84f1ce2adbc91c4361996cac2224f20e44ac3682083605beec59909028f7"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeParsedSections.tsx",
+      "sha256": "5fa01671a898b1b0a7c0e16a005fb7ae0e0a7205a84a96ba0ef7f449ca51bfa5"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeParsingControls.tsx",
+      "sha256": "439f1028cc2a1e3e67ffeb28302271b87600abe5fa92b721037a124550f99a58"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeResourcePicker.tsx",
+      "sha256": "65fa13f54d47b0fe600ed3b5a52b0e154c2e62388d7d855ed5b795d375cd0605"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "1596fc4f2c32075c17dc7a19cf755e498b51889bcb9a582f3aa8d59246a05763"
+    },
+    {
+      "path": "front/components/settings/admin/AdminSettingsPages.tsx",
+      "sha256": "2e1991f8c05291e3f67186d25492ae8a7cd0ba18ad35bd47bc47367efd4e46f5"
+    },
+    {
+      "path": "front/components/settings/admin/AdminUsagePage.tsx",
+      "sha256": "9c268c2384eeb049250950cd78b27e2f73eaa40dc465d19960b350c36f8d1f0f"
+    },
+    {
+      "path": "front/components/settings/agents/AgentProvidersSettingsPage.tsx",
+      "sha256": "6a3d6d2d180da25b0789bf954d1bc9a5bb8a498878acc17dae10a3b14ee987db"
+    },
+    {
+      "path": "front/components/settings/KnowledgeSettingsPage.tsx",
+      "sha256": "5a16d706dfc825e5c7bc6df0abcafc02ab6c1fb36794240e6a2721a0b103d3e8"
+    },
+    {
+      "path": "front/components/settings/layout/SettingsShell.tsx",
+      "sha256": "7c83175be06da9ad1bd473329496927030182852a2de239b8d54671c548ab4d7"
+    },
+    {
+      "path": "front/lib/admin-api.ts",
+      "sha256": "7af26203b2e668e1d5620752269c70f9d54fbfe557cafd2f5532f9f08565e028"
+    },
+    {
+      "path": "front/lib/admin-usage-types.ts",
+      "sha256": "53d35a8a47bd472ff46997e00c6b353d5dcd03b3193858b10b07df046540bfd5"
+    },
+    {
+      "path": "front/lib/agent-provider-api.ts",
+      "sha256": "b111d1612f14424da9982f891b6c7f197b1e2c5dbd4c59add48ed91855c61fb5"
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "36d2034129f1749d8cc0dd67cf97fa2e8c2f01f3d6c7acdda3f3ee1c4efc4a52"
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "2da21d6b033ea6e2628915b34f7a75e6b646130d69ed1427639985c290f7d80d"
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "0ea05cdbf31c696303a3b83a453c804a52d9b208d250b546f10ebda5ddd016fa"
+    },
+    {
+      "path": "front/tests/codex-diagnostics.browser.mjs",
+      "sha256": "e6b2b8198f67dcc24e1d57ba7f82879cd97eb1e065fb6b331a76e979ae75d4d9"
+    },
+    {
+      "path": "front/tests/codex-profile-images.browser.mjs",
+      "sha256": "9c0bc9d63cfbccd6819a6dd99cf5f0d58d52fbb9fba1cb1a86d8a3efe3fa7768"
+    },
+    {
+      "path": "front/tests/knowledge-parsing.browser.mjs",
+      "sha256": "08e673706f8420200d1f5b35196604768f42f18ad5724d0b157f87737b99eb6c"
+    },
+    {
+      "path": "README.md",
+      "sha256": "408d3553045c51fcfd6304d1f0577fcb22b408aea8ec8468d117da9613989969"
+    }
+  ]
+}

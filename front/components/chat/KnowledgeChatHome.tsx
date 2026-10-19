@@ -1308,7 +1308,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                   <input
                     type="file"
-                    accept={`${canAttachImages ? "image/png,image/jpeg,image/webp,image/gif," : ""}.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv`}
+                    accept={`${canAttachImages ? "image/png,image/jpeg,image/webp,image/gif," : ""}.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.zip,.rar,.dll`}
                     multiple
                     className="hidden"
                     onChange={(event) => {
@@ -1320,7 +1320,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       fileInputRef.current = element;
                     }}
                   />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={`${imageAttachmentHint}；可添加 PDF、Word、Excel、PowerPoint、HTML 或文本文件`}>
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={`${imageAttachmentHint}；可添加文档、文本、ZIP/RAR 压缩包或 DLL（文档单文件最多 20 MB）`}>
                     {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                   </button>
                   {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}

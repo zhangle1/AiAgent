@@ -63,6 +63,7 @@ public sealed class AdminSessionSummaryDto : ChatSessionSummaryDto
 
 public sealed class AdminUsageBucketDto
 {
+    [JsonPropertyName("metrics")] public AdminUsageMetricsDto Metrics { get; set; } = new();
     [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
     [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
     [JsonPropertyName("total_tokens")] public long TotalTokens { get; set; }
@@ -81,6 +82,9 @@ public sealed class AdminUsageUserDto
 
 public sealed class AdminUsageReportDto
 {
+    [JsonPropertyName("metrics")] public AdminUsageMetricsDto Metrics { get; set; } = new();
+    [JsonPropertyName("projects")] public List<AdminUsageProjectDto> Projects { get; set; } = [];
+    [JsonPropertyName("user_projects")] public List<AdminUsageUserProjectDto> UserProjects { get; set; } = [];
     [JsonPropertyName("period")] public string Period { get; set; } = "day";
     [JsonPropertyName("from")] public DateTime From { get; set; }
     [JsonPropertyName("to")] public DateTime To { get; set; }
@@ -88,4 +92,26 @@ public sealed class AdminUsageReportDto
     [JsonPropertyName("turn_count")] public int TurnCount { get; set; }
     [JsonPropertyName("buckets")] public List<AdminUsageBucketDto> Buckets { get; set; } = [];
     [JsonPropertyName("users")] public List<AdminUsageUserDto> Users { get; set; } = [];
+}
+
+public sealed class AdminUsageMetricsDto
+{
+    [JsonPropertyName("session_count")] public int SessionCount { get; set; }
+    [JsonPropertyName("active_days")] public int ActiveDays { get; set; }
+    [JsonPropertyName("daily_turns")] public double DailyTurns { get; set; }
+}
+public sealed class AdminUsageProjectDto
+{
+    [JsonPropertyName("id")] public long Id { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+}
+public sealed class AdminUsageUserProjectDto
+{
+    [JsonPropertyName("user_id")] public string UserId { get; set; } = "";
+    [JsonPropertyName("username")] public string Username { get; set; } = "";
+    [JsonPropertyName("project_id")] public long? ProjectId { get; set; }
+    [JsonPropertyName("project_name")] public string ProjectName { get; set; } = "";
+    [JsonPropertyName("total_tokens")] public long TotalTokens { get; set; }
+    [JsonPropertyName("turn_count")] public int TurnCount { get; set; }
+    [JsonPropertyName("metrics")] public AdminUsageMetricsDto Metrics { get; set; } = new();
 }
