@@ -13,7 +13,7 @@ internal static class KnowledgeCompilationHandler
         progress("validating", 1, "正在校验知识整理设置");
         KnowledgeCompilerSettings.Validate(config);
         var request = new KnowledgeProcessRequest {
-            OwnerRoot = ownerRoot, Generator = config.Generator, ModelId = config.ModelId, VlmModelId = config.VlmModelId, ReasoningEffort = config.ReasoningEffort
+            OwnerRoot = ownerRoot, Generator = config.Generator, ModelId = config.ModelId, VlmModelId = config.VlmModelId, ReasoningEffort = config.ReasoningEffort, Parsing = config.Parsing
         };
         if (!parseOnly)
         {

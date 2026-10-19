@@ -29,7 +29,7 @@ export async function askKnowledgeResources(uri: string, question: string): Prom
   return parseJson(await fetch("/api/v1/knowledge-resources/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri, question }) }));
 }
 export function knowledgeResourceFileUrl(uri: string, download = false): string {
-  return `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}${download ? "&download=1" : ""}`;
+  return `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}${download ? "&download=true" : ""}`;
 }
 
 export async function getKnowledgeCompilations(signal?: AbortSignal): Promise<KnowledgeCompilationJob[]> {

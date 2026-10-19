@@ -1,0 +1,104 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Codex Profile 原图输入、模型卡片开关与聊天策略刷新",
+  "base_commit": "9a6c22f6c803b1c1593164a874502c913f0acf1b",
+  "platform_change_set_id": null,
+  "note": "本地实现与验证快照。首轮后端原图实现的 19 项授权专项测试已通过，后端文件指纹保持一致；本轮入口优化仅修改前端及说明，未重复编译。模型卡片复选框、统一保存、OCR 界面隐藏、旧 URL 跳转、策略焦点/手动刷新及旧后端回读校验均通过浏览器回归。AGENTS/README 保留原有解析工作，其余知识解析修改、部署脚本及 artifacts 不在本轮范围。未提交、推送、部署、重启服务或修改真实用户配置。交付前重新核验共享文档的审批指纹。",
+  "checks": {
+    "backend": {
+      "passed": 19,
+      "failed": 0,
+      "filter": "FullyQualifiedName~CodexProfileImageTests|FullyQualifiedName~CodexModelPolicyTests",
+      "trx_sha256": "0f868814102b93f7c670db3e5fb75054d47d5e4f731f13df2d6cbb2f03c84d30",
+      "scope": "内存 SQLite / OCR 替身 / 不存在的 CLI 测试入口；不调用真实模型",
+      "unchanged_since_last_pass": true
+    },
+    "browser": {
+      "result": "passed",
+      "suite": "front/tests/codex-profile-images.browser.mjs",
+      "scope": "existing frontend; synthetic APIs only; desktop and mobile",
+      "log_sha256": "df2eb29e1d2b52f1e093ecca30fdec2067dcf111018184c53a34c768a81d2892",
+      "red_before_fix": "Native image checkbox must be visible on the model card: 0 !== 1",
+      "regressions": [
+        "model-card checkbox and unified save",
+        "global toggle saved and read back without hidden settings writes",
+        "OCR panels and admin entry hidden; old URL redirects",
+        "return-to-chat focus and manual policy refresh",
+        "historical OCR does not enable original-image upload UI",
+        "unsupported model and global toggle gates",
+        "older backend ignoring image fields cannot report save success"
+      ]
+    },
+    "typescript": "passed: whole frontend tsc --noEmit --incremental false --pretty false; exit 0",
+    "encoding": "passed: UTF-8 no BOM; original LF/mixed CRLF preserved",
+    "whitespace": "passed: git -c core.whitespace=cr-at-eol diff --check",
+    "production_build_and_deployment": "not run; current refinement is frontend-only"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "1b4a92e7920f4dcd7909d75d5cf4c2892782b64c536b8367fa2fec3ca484496b"
+    },
+    {
+      "path": "README.md",
+      "sha256": "b1e8e7946b4ce128ca14cdf57b638c675c0dd576db4ff236fba37ec4abb6535c"
+    },
+    {
+      "path": "backed.tests/CodexProfileImageTests.cs",
+      "sha256": "1b0df12756845962083954a3d489026107d72437edd5ba980f7f0b378f634a81"
+    },
+    {
+      "path": "backed/Dtos/Chat/AgentProviderDtos.cs",
+      "sha256": "07be8c9b25b5310759454998f77f7813f0f72424652290d2564de7f97988721c"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "67bd46a21c04eb1e580cc884a40a110b1a68a680f11a7d5eccd9c2ae98b0d773"
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "cade9bf3914312332000738321088d723d566343928af8ec412fc83553f522aa"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "5cda6d0b10b91b3f8fde6c07014c318ed213de022fb262c5bb0d73f9f0abfbb4"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexModelPolicyService.cs",
+      "sha256": "5333dfb1cf4b567c984176b0536929131688707b604e7d9e9e58fde1ea423df6"
+    },
+    {
+      "path": "docs/codex-profile-images.md",
+      "sha256": "b423f226389de12dfb728b1a066b48e7a198793ce0dd95562963bdadeadf94e0"
+    },
+    {
+      "path": "front/app/settings/admin/image-ocr/page.tsx",
+      "sha256": "806cc5cb1f1e6b4ac63ba5c9fb5a4f213a2daf79b651b62c2bcc056c093978c3"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "84bb0eb02401d08974ccbaeddd222823d56406f408be2361febcbec47ae794ca"
+    },
+    {
+      "path": "front/components/settings/admin/AdminSettingsPages.tsx",
+      "sha256": "1a29aba048560cfd7b5a5313246a39ca52ed5f0c3cd6b2fd8f29587a086522a6"
+    },
+    {
+      "path": "front/components/settings/agents/AgentProvidersSettingsPage.tsx",
+      "sha256": "6a3d6d2d180da25b0789bf954d1bc9a5bb8a498878acc17dae10a3b14ee987db"
+    },
+    {
+      "path": "front/components/settings/layout/SettingsShell.tsx",
+      "sha256": "7c83175be06da9ad1bd473329496927030182852a2de239b8d54671c548ab4d7"
+    },
+    {
+      "path": "front/lib/agent-provider-api.ts",
+      "sha256": "b111d1612f14424da9982f891b6c7f197b1e2c5dbd4c59add48ed91855c61fb5"
+    },
+    {
+      "path": "front/tests/codex-profile-images.browser.mjs",
+      "sha256": "9c0bc9d63cfbccd6819a6dd99cf5f0d58d52fbb9fba1cb1a86d8a3efe3fa7768"
+    }
+  ],
+  "supersedes_snapshot_sha256": "bdb03690e3c9d8852d6df73c4359691ad511e2d20d4fb174fc44d88dfe471ce1"
+}

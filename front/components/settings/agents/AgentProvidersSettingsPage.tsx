@@ -11,6 +11,7 @@ export function AgentProvidersSettingsPage() {
   const [providers, setProviders] = useState<AgentProviderEnvironment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [preferredAgent, setPreferredAgent] = useState<"codex" | "codebuddy" | "none">("codex");
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
@@ -42,8 +43,10 @@ export function AgentProvidersSettingsPage() {
   }
 
   async function saveCodexModelPolicy() {
-    if (!codexModelPolicy) return;
+    if (!codexModelPolicy || !imageOcrPolicy) return;
     setSaving(true);
+    setSuccess(null);
+    let modelPolicySaved = false;
     try {
       const saved = await updateCodexModelPolicy({
         allowed_model_ids: codexModelPolicy.allowed_model_ids,
@@ -54,26 +57,23 @@ export function AgentProvidersSettingsPage() {
         allow_chat_reasoning_effort_override: codexModelPolicy.allow_chat_reasoning_effort_override,
         profile_models: codexModelPolicy.profile_models,
       });
+      const unsupported = codexModelPolicy.profile_models.some((profile) => {
+        const persisted = saved.profile_models.find((item) => item.profile_name === profile.profile_name);
+        return !persisted || Boolean(profile.supports_image_input) !== Boolean(persisted.supports_image_input)
+          || (profile.supports_image_input && !saved.models.some((model) => model.profile_name === profile.profile_name && model.image_input === "native"));
+      });
+      if (unsupported) throw new Error("后端未保存原图能力，请更新并重启后端后再保存图片配置。");
       setCodexModelPolicy(saved);
+      modelPolicySaved = true;
+      const imagePolicy = await updateImageOcrPolicy({ native_image_input_enabled: imageOcrPolicy.native_image_input_enabled });
+      if (imagePolicy.native_image_input_enabled !== imageOcrPolicy.native_image_input_enabled)
+        throw new Error("后端未保存图片上传总开关，请更新后端后重试。");
+      setImageOcrPolicy(imagePolicy);
       setError(null);
+      setSuccess("模型与图片上传配置已保存，返回聊天即可使用。");
     }
-    catch (ex) { setError(ex instanceof Error ? ex.message : "Codex 模型策略保存失败。"); }
+    catch (ex) { setError(`${modelPolicySaved ? "模型已保存，但图片总开关保存失败：" : ""}${ex instanceof Error ? ex.message : "Codex 模型策略保存失败。"}`); }
     finally { setSaving(false); }
-  }
-
-  async function saveImageOcrPolicy() {
-    if (!imageOcrPolicy) return;
-    setSaving(true);
-    try { setImageOcrPolicy(await updateImageOcrPolicy(imageOcrPolicy)); setError(null); }
-    catch (ex) { setError(ex instanceof Error ? ex.message : "图片 OCR 策略保存失败。"); }
-    finally { setSaving(false); }
-  }
-
-  function setProfileImageOcr(profileName: string, enabled: boolean) {
-    setCodexModelPolicy((current) => current ? {
-      ...current,
-      profile_models: current.profile_models.map((profile) => profile.profile_name === profileName ? { ...profile, supports_image_ocr: enabled } : profile),
-    } : current);
   }
 
   if (!loading && !isAdmin) return <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center"><CircleAlert size={28} className="mx-auto text-amber-600" /><h1 className="mt-3 text-lg font-semibold text-amber-900">没有管理权限</h1><p className="mt-2 text-sm text-amber-700">第三方代理配置仅对管理员开放。</p></section>;
@@ -81,17 +81,73 @@ export function AgentProvidersSettingsPage() {
   return <section>
     <SettingsPageHeader title="第三方代理" description="检测后端运行账户可用的本地编码代理。只有具备结构化 app-server 协议的代理，才能在聊天中安全接管项目。" action={<div className="flex gap-2"><button type="button" onClick={() => void load()} disabled={loading || saving} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"><RefreshCw size={14} className={loading ? "animate-spin" : ""}/>刷新检测</button><button type="button" onClick={() => void savePreferredAgent()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-3 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存首选项</button></div>}/>
     <section className="mb-4 rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><label className="block text-sm font-semibold text-slate-800">默认聊天代理</label><p className="mt-1 text-xs leading-5 text-slate-500">每次打开聊天时默认选中此代理；若本机环境不满足要求，会自动回退到可用的 Codex 或“不接管”。</p><select value={preferredAgent} onChange={(event) => setPreferredAgent(event.target.value as "codex" | "codebuddy" | "none")} className="mt-3 h-9 min-w-56 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-blue-400"><option value="codex">Codex 本地</option><option value="none">不接管</option><option value="codebuddy" disabled>CodeBuddy CLI（待协议适配）</option></select></section>
-    {isAdmin && codexModelPolicy && <section className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">Codex 模型策略</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">仅管理员可配置。模型可用性仍受运行后端账户的 Codex 登录状态、套餐和实时容量影响。</p></div><button type="button" onClick={() => void saveCodexModelPolicy()} disabled={saving || codexModelPolicy.allowed_model_ids.length === 0 || !codexModelPolicy.allowed_model_ids.includes(codexModelPolicy.default_model_id)} className="inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存模型策略</button></div><div className="mt-4 grid gap-3 md:grid-cols-2">{codexModelPolicy.models.map((model) => { const enabled = codexModelPolicy.allowed_model_ids.includes(model.id); return <label key={model.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${enabled ? "border-violet-200 bg-white" : "border-slate-200 bg-slate-50"}`}><input type="checkbox" checked={enabled} onChange={(event) => setCodexModelPolicy((current) => current ? { ...current, allowed_model_ids: event.target.checked ? [...current.allowed_model_ids, model.id] : current.allowed_model_ids.filter((id) => id !== model.id), default_model_id: !event.target.checked && current.default_model_id === model.id ? current.allowed_model_ids.find((id) => id !== model.id) ?? "" : current.default_model_id } : current)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600"/><span><span className="block text-sm font-medium text-slate-800">{model.name}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{model.description}</span><span className="mt-1 block font-mono text-[10px] text-slate-400">{model.id}</span></span></label>; })}</div><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium text-slate-600">默认 Codex 模型<select value={codexModelPolicy.default_model_id} onChange={(event) => setCodexModelPolicy((current) => current ? { ...current, default_model_id: event.target.value } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-700"><option value="">请选择默认模型</option>{codexModelPolicy.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label><label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"><input type="checkbox" checked={codexModelPolicy.allow_chat_model_override} onChange={(event) => setCodexModelPolicy((current) => current ? { ...current, allow_chat_model_override: event.target.checked } : current)} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>允许用户在聊天框切换已启用模型</label></div></section>}
-    {isAdmin && codexModelPolicy && <CodexAdvancedPolicySettings policy={codexModelPolicy} saving={saving} onChange={setCodexModelPolicy} onSave={() => void saveCodexModelPolicy()}/>}
-    {isAdmin && imageOcrPolicy && <section className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">第三方 Profile 图片 OCR</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">开启后，第三方 <code>codex exec --profile</code> 不再接收原图参数，而是接收本机 PaddleOCR 提取的、明确标记为不可信的文本。原生 Codex 保持原图输入。</p></div><button type="button" onClick={() => void saveImageOcrPolicy()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存 OCR 策略</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs text-slate-700"><input type="checkbox" checked={imageOcrPolicy.enabled} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, enabled: event.target.checked } : current)} className="h-4 w-4 rounded border-slate-300 text-emerald-600"/>启用 OCR 降级</label><label className="text-xs font-medium text-slate-600">识别语言<select value={imageOcrPolicy.language} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, language: event.target.value as ImageOcrPolicy["language"] } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="ch">中文 / 英文</option><option value="en">英文</option><option value="japan">日文</option><option value="korean">韩文</option></select></label><label className="text-xs font-medium text-slate-600">Prompt 最多字符<input type="number" min={256} max={12000} value={imageOcrPolicy.max_prompt_characters} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, max_prompt_characters: Number(event.target.value) || 256 } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"/></label><label className="text-xs font-medium text-slate-600">超时（秒）<input type="number" min={10} max={180} value={imageOcrPolicy.timeout_seconds} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, timeout_seconds: Number(event.target.value) || 10 } : current)} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"/></label></div><p className="mt-3 text-[11px] text-emerald-800">首次启用前，请在后端配置 <code>PythonWorkers:Ocr</code> 指向已安装 CPU PaddleOCR 的 Python 环境；识别失败会保留正常聊天，不会中断请求。</p></section>}
-    {isAdmin && imageOcrPolicy && <section className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">原生 Codex 图片输入</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">原生 Codex app-server 使用受控原图输入；关闭后，聊天输入框会禁用图片上传。该开关不影响第三方 Profile 的 PaddleOCR 降级。</p></div><button type="button" onClick={() => void saveImageOcrPolicy()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-sky-600 px-3 text-xs font-medium text-white hover:bg-sky-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存图片能力</button></div><label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs text-slate-700"><input type="checkbox" checked={imageOcrPolicy.native_image_input_enabled} onChange={(event) => setImageOcrPolicy((current) => current ? { ...current, native_image_input_enabled: event.target.checked } : current)} className="h-4 w-4 rounded border-slate-300 text-sky-600"/>允许原生 Codex 接收原图</label></section>}
-    {isAdmin && codexModelPolicy && codexModelPolicy.profile_models.length > 0 && <section className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">第三方 Profile 图片能力</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">开启后，该 Profile 可以上传图片，并由本机 PaddleOCR 提取文字后作为不可信附件上下文发送。关闭后，选择该模型时聊天框会禁用图片上传。</p></div><button type="button" onClick={() => void saveCodexModelPolicy()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">{saving && <Loader2 size={14} className="animate-spin"/>}保存 Profile 能力</button></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{codexModelPolicy.profile_models.map((profile) => <label key={profile.profile_name} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-violet-100 bg-white px-3 py-2 text-xs text-slate-700"><span><span className="block font-medium text-slate-800">{profile.display_name}</span><span className="font-mono text-[11px] text-slate-500">--profile {profile.profile_name}</span></span><span className="inline-flex items-center gap-2"><span>本地 OCR 识图</span><input type="checkbox" checked={profile.supports_image_ocr} onChange={(event) => setProfileImageOcr(profile.profile_name, event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-violet-600"/></span></label>)}</div></section>}
+    {success && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{success}</p>}
+    {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+    {isAdmin && codexModelPolicy && <CodexModelSettings policy={codexModelPolicy} imagePolicy={imageOcrPolicy} saving={saving} onChange={(policy) => { setCodexModelPolicy(policy); setSuccess(null); }} onImageInputChange={(enabled) => { setImageOcrPolicy((current) => current ? { ...current, native_image_input_enabled: enabled } : current); setSuccess(null); }} onSave={() => void saveCodexModelPolicy()}/>}
+    {isAdmin && codexModelPolicy && <CodexAdvancedPolicySettings policy={codexModelPolicy} saving={saving} onChange={(policy) => { setCodexModelPolicy(policy); setSuccess(null); }} onSave={() => void saveCodexModelPolicy()}/>}
     <div className="grid gap-4 lg:grid-cols-2">
       {providers.map((provider) => <ProviderCard key={provider.id} provider={provider}/>) }
       {loading && providers.length === 0 && <div className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/>正在检测本地 CLI…</div>}
     </div>
-    {error && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
     <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-xs leading-5 text-amber-900"><p className="font-semibold">CodeBuddy 兼容性说明</p><p className="mt-1">CodeBuddy 官方页面说明可通过 <code>npm install -g @tencent-ai/codebuddy-code</code> 安装，并支持 Windows；当前公开资料未说明兼容 Codex <code>app-server --stdio</code> JSONL 协议。因此本页只做环境检测，聊天中不会把 CodeBuddy 当作 Codex 调用。</p></div>
+  </section>;
+}
+
+function CodexModelSettings({ policy, imagePolicy, saving, onChange, onImageInputChange, onSave }: {
+  policy: CodexModelPolicy;
+  imagePolicy: ImageOcrPolicy | null;
+  saving: boolean;
+  onChange: (policy: CodexModelPolicy) => void;
+  onImageInputChange: (enabled: boolean) => void;
+  onSave: () => void;
+}) {
+  function toggleModel(modelId: string, enabled: boolean) {
+    const allowed = enabled ? [...policy.allowed_model_ids, modelId] : policy.allowed_model_ids.filter((id) => id !== modelId);
+    onChange({ ...policy, allowed_model_ids: allowed, default_model_id: allowed.includes(policy.default_model_id) ? policy.default_model_id : allowed[0] || "" });
+  }
+
+  function toggleImages(model: CodexModelOption, enabled: boolean) {
+    onChange({
+      ...policy,
+      profile_models: policy.profile_models.map((profile) => profile.profile_name === model.profile_name ? { ...profile, supports_image_input: enabled } : profile),
+      models: policy.models.map((item) => item.id === model.id ? { ...item, image_input: enabled ? "native" : "none" } : item),
+    });
+  }
+
+  return <section id="model-image-settings" className="mb-4 scroll-mt-6 rounded-2xl border border-violet-200 bg-violet-50/50 p-4" aria-label="模型与图片上传">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 className="text-sm font-semibold text-slate-800">Codex 模型与图片上传</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">在对应模型卡片勾选“支持图片上传”，再保存。图片会直接交给模型识别。</p></div>
+      <button type="button" onClick={onSave} disabled={saving || !imagePolicy || policy.allowed_model_ids.length === 0 || !policy.allowed_model_ids.includes(policy.default_model_id)} className="inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">
+        {saving && <Loader2 size={14} className="animate-spin"/>}保存模型与图片配置
+      </button>
+    </div>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-white px-3 py-3">
+      <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-800"><input type="checkbox" checked={imagePolicy?.native_image_input_enabled === true} disabled={saving || !imagePolicy} onChange={(event) => onImageInputChange(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>允许聊天上传图片</label>
+      <span className="text-[11px] text-slate-500">总开关 · 各 Profile 还需勾选下方能力</span>
+    </div>
+    {imagePolicy?.native_image_input_enabled === false && <p className="mt-2 text-xs text-amber-800">图片上传总开关已关闭，模型勾选后也无法上传，请一并开启并保存。</p>}
+    <div className="mt-4 grid gap-3 md:grid-cols-2">
+      {policy.models.map((model) => {
+        const enabled = policy.allowed_model_ids.includes(model.id);
+        const profile = policy.profile_models.find((item) => item.profile_name === model.profile_name);
+        return <article key={model.id} aria-label={`${model.name} 模型配置`} className={`min-w-0 rounded-xl border p-3 ${enabled ? "border-violet-200 bg-white" : "border-slate-200 bg-slate-50"}`}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" aria-label={`启用 ${model.name}`} checked={enabled} disabled={saving} onChange={(event) => toggleModel(model.id, event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-violet-600"/>
+            <span className="min-w-0"><span className="block break-words text-sm font-medium text-slate-800">{model.name}</span><span className="mt-1 block break-words text-xs leading-5 text-slate-500">{model.description}</span><span className="mt-1 block break-all font-mono text-[10px] text-slate-400">{model.id}</span></span>
+          </label>
+          <div className="mt-3 border-t border-slate-100 pt-3">
+            {model.is_builtin ? <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700"><CheckCircle2 size={14}/>支持图片上传 · 内置能力</span> : <>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700"><input type="checkbox" aria-label={`${model.name} 支持图片上传（原图）`} checked={profile?.supports_image_input === true} disabled={saving || !profile} onChange={(event) => toggleImages(model, event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>支持图片上传（原图）</label>
+              <p className="mt-1 text-[11px] text-slate-500">{profile?.supports_image_input ? "图片直接交给模型识别。" : "未开启，勾选后可上传、粘贴图片。"}</p>
+            </>}
+          </div>
+        </article>;
+      })}
+    </div>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <label className="text-xs font-medium text-slate-600">默认 Codex 模型<select value={policy.default_model_id} disabled={saving} onChange={(event) => onChange({ ...policy, default_model_id: event.target.value })} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-700"><option value="">请选择默认模型</option>{policy.models.filter((model) => policy.allowed_model_ids.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
+      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"><input type="checkbox" checked={policy.allow_chat_model_override} disabled={saving} onChange={(event) => onChange({ ...policy, allow_chat_model_override: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>允许用户在聊天框切换已启用模型</label>
+    </div>
   </section>;
 }
 
@@ -106,7 +162,7 @@ const CODEX_REASONING_EFFORTS = [
 ];
 
 function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { policy: CodexModelPolicy; saving: boolean; onChange: (policy: CodexModelPolicy) => void; onSave: () => void }) {
-  const [draft, setDraft] = useState<CodexProfileModel>({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_ocr: true });
+  const [draft, setDraft] = useState<CodexProfileModel>({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_input: false, supports_image_ocr: false });
   const applyProfiles = (profiles: CodexProfileModel[]) => {
     const profileModels: CodexModelOption[] = profiles.map((profile) => ({
       id: `profile:${profile.profile_name.trim().toLowerCase()}`,
@@ -117,7 +173,7 @@ function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { pol
       supports_reasoning_effort: profile.supports_reasoning_effort,
       reasoning_efforts: profile.supports_reasoning_effort ? policy.allowed_reasoning_efforts : [],
       is_builtin: false,
-      image_input: profile.supports_image_ocr ? "ocr" : "none",
+      image_input: profile.supports_image_input ? "native" : profile.supports_image_ocr ? "ocr" : "none",
     }));
     const models = [...policy.models.filter((model) => model.is_builtin), ...profileModels];
     const allowed_model_ids = policy.allowed_model_ids.filter((id) => models.some((model) => model.id === id));
@@ -128,13 +184,15 @@ function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { pol
     if (!profileName) return;
     if (policy.profile_models.some((item) => item.profile_name.toLowerCase() === profileName.toLowerCase())) return;
     applyProfiles([...policy.profile_models, { ...draft, display_name: draft.display_name.trim() || profileName, profile_name: profileName, model_id: draft.model_id?.trim() || null, description: draft.description.trim() }]);
-    setDraft({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_ocr: true });
+    setDraft({ display_name: "", profile_name: "", model_id: "", description: "", supports_reasoning_effort: false, supports_image_input: false, supports_image_ocr: false });
   };
 
   return <section className="mb-4 space-y-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">推理等级与第三方 Profile</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">内置 Codex 模型使用 app-server 推理等级。第三方 profile 使用 <code>codex exec --profile &lt;名称&gt; --json</code>，由后端将 JSONL 实时转发到聊天框。</p></div><button type="button" onClick={onSave} disabled={saving || policy.allowed_model_ids.length === 0 || !policy.default_model_id} className="inline-flex h-9 items-center rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">保存高级配置</button></div>
     <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><p className="text-xs font-medium text-slate-700">允许的推理等级</p><div className="mt-2 flex flex-wrap gap-2">{CODEX_REASONING_EFFORTS.map((effort) => <label key={effort.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-white px-2 py-1 text-xs text-slate-700 shadow-sm"><input type="checkbox" checked={policy.allowed_reasoning_efforts.includes(effort.id)} onChange={(event) => { const allowed = event.target.checked ? [...policy.allowed_reasoning_efforts, effort.id] : policy.allowed_reasoning_efforts.filter((id) => id !== effort.id); onChange({ ...policy, allowed_reasoning_efforts: allowed, default_reasoning_effort: allowed.includes(policy.default_reasoning_effort) ? policy.default_reasoning_effort : allowed[0] || "" }); }} className="h-3.5 w-3.5 rounded border-slate-300 text-violet-600"/>{effort.label}</label>)}</div></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium text-slate-600">默认推理等级<select value={policy.default_reasoning_effort} onChange={(event) => onChange({ ...policy, default_reasoning_effort: event.target.value })} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs">{policy.allowed_reasoning_efforts.map((effort) => <option key={effort} value={effort}>{CODEX_REASONING_EFFORTS.find((item) => item.id === effort)?.label || effort}</option>)}</select></label><label className="mt-5 flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700"><input type="checkbox" checked={policy.allow_chat_reasoning_effort_override} onChange={(event) => onChange({ ...policy, allow_chat_reasoning_effort_override: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>允许聊天中切换</label></div></div>
-    <div className="rounded-xl border border-slate-200 p-3"><div><p className="text-xs font-medium text-slate-700">第三方 Codex Profile</p><p className="mt-1 text-[11px] text-slate-500">只填第一个名称即可：输入 <code>deepseek</code> 后，AiAgent 会自动以 <code>codex exec --profile deepseek --json</code> 启动。模型 ID 留空时完全使用 profile 文件内配置。</p></div><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5"><input value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} placeholder="Profile 名称，例如 deepseek" className="h-9 rounded-md border border-slate-200 px-2 text-xs"/><input value={draft.profile_name} onChange={(event) => setDraft({ ...draft, profile_name: event.target.value })} placeholder="可选：覆盖 profile 名称" className="h-9 rounded-md border border-slate-200 px-2 font-mono text-xs"/><input value={draft.model_id ?? ""} onChange={(event) => setDraft({ ...draft, model_id: event.target.value })} placeholder="可选 model id" className="h-9 rounded-md border border-slate-200 px-2 font-mono text-xs"/><input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="说明（可选）" className="h-9 rounded-md border border-slate-200 px-2 text-xs"/><button type="button" onClick={addProfile} className="h-9 rounded-md border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-700 hover:bg-violet-100">添加 Profile</button></div><label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={draft.supports_reasoning_effort} onChange={(event) => setDraft({ ...draft, supports_reasoning_effort: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>该 profile 允许在聊天中选择推理等级</label>{policy.profile_models.length > 0 && <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-100">{policy.profile_models.map((profile) => <div key={profile.profile_name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"><div><span className="font-medium text-slate-800">{profile.display_name}</span><span className="ml-2 font-mono text-slate-500">--profile {profile.profile_name}</span>{profile.model_id && <span className="ml-2 font-mono text-slate-400">{profile.model_id}</span>}</div><button type="button" onClick={() => applyProfiles(policy.profile_models.filter((item) => item.profile_name !== profile.profile_name))} className="text-rose-600 hover:text-rose-700">移除</button></div>)}</div>}</div>
+    <div className="rounded-xl border border-slate-200 p-3"><div><p className="text-xs font-medium text-slate-700">第三方 Codex Profile</p><p className="mt-1 text-[11px] text-slate-500">只填第一个名称即可：输入 <code>deepseek</code> 后，AiAgent 会自动以 <code>codex exec --profile deepseek --json</code> 启动。模型 ID 留空时完全使用 profile 文件内配置。</p></div><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5"><input value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} placeholder="Profile 名称，例如 deepseek" className="h-9 rounded-md border border-slate-200 px-2 text-xs"/><input value={draft.profile_name} onChange={(event) => setDraft({ ...draft, profile_name: event.target.value })} placeholder="可选：覆盖 profile 名称" className="h-9 rounded-md border border-slate-200 px-2 font-mono text-xs"/><input value={draft.model_id ?? ""} onChange={(event) => setDraft({ ...draft, model_id: event.target.value })} placeholder="可选 model id" className="h-9 rounded-md border border-slate-200 px-2 font-mono text-xs"/><input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="说明（可选）" className="h-9 rounded-md border border-slate-200 px-2 text-xs"/><button type="button" onClick={addProfile} className="h-9 rounded-md border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-700 hover:bg-violet-100">添加 Profile</button></div><label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={draft.supports_reasoning_effort} onChange={(event) => setDraft({ ...draft, supports_reasoning_effort: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>该 profile 允许在聊天中选择推理等级</label>
+      <label className="ml-4 mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={draft.supports_image_input} onChange={(event) => setDraft({ ...draft, supports_image_input: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>新 Profile 支持图片上传（原图）</label>
+      <p className="mt-2 text-[11px] leading-5 text-slate-500">现有模型的“支持图片上传”开关已移至上方模型卡片；新增 Profile 可在这里预先勾选，统一点击保存生效。</p>{policy.profile_models.length > 0 && <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-100">{policy.profile_models.map((profile) => <div key={profile.profile_name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"><div><span className="font-medium text-slate-800">{profile.display_name}</span><span className="ml-2 font-mono text-slate-500">--profile {profile.profile_name}</span>{profile.model_id && <span className="ml-2 font-mono text-slate-400">{profile.model_id}</span>}</div><div className="flex flex-wrap items-center gap-4"><span className={profile.supports_image_input ? "text-emerald-700" : "text-slate-400"}>{profile.supports_image_input ? "支持图片上传" : "仅文字"}</span><button type="button" onClick={() => applyProfiles(policy.profile_models.filter((item) => item.profile_name !== profile.profile_name))} className="text-rose-600 hover:text-rose-700">移除</button></div></div>)}</div>}</div>
   </section>;
 }
 

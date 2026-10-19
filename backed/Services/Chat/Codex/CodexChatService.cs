@@ -29,6 +29,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     private readonly IConfiguration _configuration;
     private readonly ICodexModelPolicyService _modelPolicy;
     private readonly IImageOcrService _imageOcr;
+    private readonly ILogger<CodexChatService> _logger;
     private readonly ConcurrentDictionary<string, CodexRuntimeLease> _runtimeLeases = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _activeSessionsByUser = new(StringComparer.Ordinal);
     private readonly object _leaseSync = new();
@@ -38,12 +39,13 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
     private readonly TimeSpan _turnTimeout;
     private readonly int _maxSessionsPerUser;
 
-    public CodexChatService(ISqlSugarClient db, IConfiguration configuration, ICodexModelPolicyService modelPolicy, IImageOcrService imageOcr)
+    public CodexChatService(ISqlSugarClient db, IConfiguration configuration, ICodexModelPolicyService modelPolicy, IImageOcrService imageOcr, ILogger<CodexChatService>? logger = null)
     {
         _db = db;
         _configuration = configuration;
         _modelPolicy = modelPolicy;
         _imageOcr = imageOcr;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<CodexChatService>.Instance;
         var configuredLeaseSeconds = int.TryParse(_configuration["Codex:RuntimeLeaseSeconds"], out var seconds)
             ? Math.Clamp(seconds, 30, 600)
             : 90;
@@ -64,30 +66,71 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
 
     public async Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
     {
+        var diagnostics = new CodexRequestDiagnostics(request, _logger, onEvent);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await CompleteCoreAsync(request, onEvent, diagnostics, cancellationToken);
+            await diagnostics.StepAsync("codex_completed", "completed", cancellationToken);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            try { await diagnostics.StepAsync("codex_cancelled", "cancelled", CancellationToken.None); }
+            catch { /* A disconnected client must not replace cancellation with a delivery failure. */ }
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw await diagnostics.FailAsync(exception);
+        }
+    }
+
+    private async Task<ChatCompleteResponse> CompleteCoreAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CodexRequestDiagnostics diagnostics, CancellationToken cancellationToken)
+    {
+        await diagnostics.StepAsync("codex_model_resolution", ct: cancellationToken);
         if (string.IsNullOrWhiteSpace(request.Message)) throw new ArgumentException("Message is required.", nameof(request));
         var model = _modelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
         request.CodexModelId = model.Id;
         request.CodexReasoningEffort = model.ReasoningEffort;
         var sandboxMode = ResolveSandboxMode(request.CodexSandboxMode);
         request.CodexSandboxMode = sandboxMode;
+        diagnostics.Model(model, sandboxMode);
+        await diagnostics.StepAsync("codex_model_resolution", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_workspace", ct: cancellationToken);
         var workspacePath = request.MaintenanceWorkspacePath ?? ResolveWorkspacePath(request.CodeProjectId);
+        await diagnostics.StepAsync("codex_workspace", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_session_acquire", ct: cancellationToken);
         var activeSession = AcquireActiveSession(request.RuntimeUserId, request.SessionId);
 
         try
         {
+            await diagnostics.StepAsync("codex_session_acquire", "completed", cancellationToken);
             if (!string.IsNullOrWhiteSpace(model.ProfileName))
             {
-                request.ImageOcrResults = await _imageOcr.ExtractAsync(request.LocalImagePaths, onEvent, cancellationToken);
+                await diagnostics.StepAsync("codex_attachments", ct: cancellationToken);
+                request.ImageOcrResults = !model.SupportsNativeImageInput && model.SupportsImageOcr
+                    ? await _imageOcr.ExtractAsync(request.LocalImagePaths, onEvent, cancellationToken)
+                    : [];
+                await diagnostics.StepAsync("codex_attachments", "completed", cancellationToken);
                 await EmitAsync(onEvent, new AgentStreamEvent { Type = "provider_request_started" }, cancellationToken);
-                return await CompleteWithExecAsync(request, model, workspacePath, sandboxMode, onEvent, cancellationToken);
+                return await CompleteWithExecAsync(request, model, workspacePath, sandboxMode, onEvent, diagnostics, cancellationToken);
             }
 
-            var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, ResolveCodexCommand(), workspacePath, model.Definition, sandboxMode);
+            await diagnostics.StepAsync("codex_cli_resolve", ct: cancellationToken);
+            var command = ResolveCodexCommand();
+            diagnostics.Runtime(command, workspacePath, null, request.LocalImagePaths.Count);
+            await diagnostics.StepAsync("codex_cli_resolve", "completed", cancellationToken);
+            await diagnostics.StepAsync("codex_app_server_start", ct: cancellationToken);
+            var lease = GetLease(request.RuntimeUserId, request.ClientRuntimeId, command, workspacePath, model.Definition, sandboxMode);
+            await diagnostics.StepAsync("codex_app_server_start", "completed", cancellationToken);
             CodexRunState result;
             try
             {
                 await EmitAsync(onEvent, new AgentStreamEvent { Type = "provider_request_started" }, cancellationToken);
+                await diagnostics.StepAsync("codex_app_server_turn", ct: cancellationToken);
                 result = await lease.RunAsync(request, model, workspacePath, onEvent, cancellationToken);
+                await diagnostics.StepAsync("codex_app_server_turn", "completed", cancellationToken);
             }
             catch (InvalidOperationException exception)
             {
@@ -108,6 +151,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                     : "Codex 已完成，未检测到文件修改。";
             }
 
+            await diagnostics.StepAsync("codex_result", ct: cancellationToken);
             answer = AppendModifiedFileLinks(answer, result.CompletedFiles);
 
             await EmitAsync(onEvent, new AgentStreamEvent
@@ -352,21 +396,36 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         }
     }
 
-    private async Task<ChatCompleteResponse> CompleteWithExecAsync(ChatCompleteRequest request, CodexResolvedModel model, string workspacePath, string sandboxMode, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
+    private async Task<ChatCompleteResponse> CompleteWithExecAsync(ChatCompleteRequest request, CodexResolvedModel model, string workspacePath, string sandboxMode, AgentStreamEventHandler? onEvent, CodexRequestDiagnostics diagnostics, CancellationToken cancellationToken)
     {
         var profileName = model.ProfileName ?? throw new InvalidOperationException("A Codex CLI profile is required.");
+        await diagnostics.StepAsync("codex_session_resume", ct: cancellationToken);
         var previousSessionId = GetExecSessionId(request.RuntimeUserId, request.SessionId, profileName);
-        // Third-party profiles receive the OCR prompt augmentation only. Do not pass --image because a profile is not assumed to support Codex's local-image contract.
-        using var process = StartCodexExec(ResolveCodexCommand(), workspacePath, profileName, sandboxMode, model.AppServerModelId, model.ReasoningEffort, previousSessionId, []);
+        diagnostics.Resume(!string.IsNullOrWhiteSpace(previousSessionId));
+        await diagnostics.StepAsync("codex_session_resume", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_cli_resolve", ct: cancellationToken);
+        var command = ResolveCodexCommand();
+        diagnostics.Runtime(command, workspacePath, profileName, request.LocalImagePaths.Count);
+        await diagnostics.StepAsync("codex_cli_resolve", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_profile_config", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_process_start", ct: cancellationToken);
+        // Only explicitly enabled profiles receive original images; paths were resolved from owned attachment IDs.
+        using var process = StartCodexExec(CreateExecStartInfo(command, workspacePath, model, sandboxMode, previousSessionId, request.LocalImagePaths));
+        using var processCleanup = new CodexProcessCleanup(process);
+        diagnostics.Fact("pid", process.Id);
+        await diagnostics.StepAsync("codex_process_start", "completed", cancellationToken);
         using var turnTimeout = new CancellationTokenSource(_turnTimeout);
         using var executionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, turnTimeout.Token);
         var executionToken = executionCancellation.Token;
         using var cancelRegistration = executionToken.Register(() => TryKillProcess(process));
-        var stderrTask = process.StandardError.ReadToEndAsync();
+        var stderrTask = CodexRequestDiagnostics.ReadStderrAsync(process.StandardError, executionToken);
         var state = new CodexExecRunState();
+        await diagnostics.StepAsync("codex_stdin", ct: cancellationToken);
         await process.StandardInput.WriteLineAsync(BuildPromptText(request));
         await process.StandardInput.FlushAsync(executionToken);
         process.StandardInput.Close();
+        await diagnostics.StepAsync("codex_stdin", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_cli_output", ct: cancellationToken);
         await EmitAsync(onEvent, new AgentStreamEvent
         {
             Type = "tool",
@@ -398,8 +457,10 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 var line = await lineTask;
                 if (line == null) break;
                 lastCliOutputAt = elapsed.Elapsed;
+                await diagnostics.ObserveCliLineAsync(line, executionToken);
                 await HandleExecJsonLineAsync(line, state, model, profileName, onEvent, executionToken);
             }
+            await diagnostics.StepAsync("codex_cli_exit", ct: cancellationToken);
             await process.WaitForExitAsync(executionToken);
         }
         catch (OperationCanceledException) when (turnTimeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -407,16 +468,18 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             throw new CodexExecutionTimeoutException($"Codex exceeded the maximum execution time of {(int)_turnTimeout.TotalSeconds} seconds. Please retry the task.");
         }
         var stderr = await stderrTask;
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? $"Codex CLI exited with code {process.ExitCode}." : TrimTrace(stderr));
-        }
-        if (string.Equals(state.TurnStatus, "failed", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(state.ErrorMessage ?? "Codex CLI could not complete the turn.");
-        }
+        diagnostics.Fact("exit_code", process.ExitCode);
+        diagnostics.Fact("stderr_characters", (int)Math.Min(int.MaxValue, stderr.Characters));
+        if (process.ExitCode != 0 || string.Equals(state.TurnStatus, "failed", StringComparison.OrdinalIgnoreCase))
+            throw CodexDiagnosticException.Cli(diagnostics.Id, CodexDiagnosticException.ClassifyCli(state.ErrorMessage) ?? stderr.Code ?? "codex_cli_failed");
+        if (!string.Equals(state.TurnStatus, "completed", StringComparison.OrdinalIgnoreCase))
+            throw CodexDiagnosticException.Cli(diagnostics.Id, "codex_protocol_incomplete");
+        await diagnostics.StepAsync("codex_cli_exit", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_session_save", ct: cancellationToken);
         if (!string.IsNullOrWhiteSpace(state.CodexSessionId)) StoreExecSessionId(request.RuntimeUserId, request.SessionId, profileName, state.CodexSessionId);
 
+        await diagnostics.StepAsync("codex_session_save", "completed", cancellationToken);
+        await diagnostics.StepAsync("codex_result", ct: cancellationToken);
         var answer = state.Answer.ToString().Trim();
         if (answer.Length == 0) answer = "Codex CLI 已完成，但未返回可显示的文本。";
         answer = AppendModifiedFileLinks(answer, state.CompletedFiles);
@@ -450,8 +513,11 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         };
     }
 
-    private static Process StartCodexExec(string command, string workspacePath, string profileName, string sandboxMode, string? modelId, string? reasoningEffort, string? previousSessionId, IEnumerable<string> imagePaths)
+    internal static ProcessStartInfo CreateExecStartInfo(string command, string workspacePath, CodexResolvedModel model, string sandboxMode, string? previousSessionId, IEnumerable<string> imagePaths)
     {
+        var profileName = model.ProfileName ?? throw new InvalidOperationException("A Codex CLI profile is required.");
+        var modelId = model.AppServerModelId;
+        var reasoningEffort = model.ReasoningEffort;
         var startInfo = new ProcessStartInfo
         {
             FileName = command,
@@ -493,13 +559,18 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             startInfo.ArgumentList.Add($"model_reasoning_effort={reasoningEffort}");
         }
         startInfo.ArgumentList.Add("--skip-git-repo-check");
-        foreach (var imagePath in imagePaths.Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var imagePath in (model.SupportsNativeImageInput ? imagePaths : []).Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             startInfo.ArgumentList.Add("--image");
             startInfo.ArgumentList.Add(imagePath);
         }
         if (!string.IsNullOrWhiteSpace(resumeSessionId)) startInfo.ArgumentList.Add(resumeSessionId);
         startInfo.ArgumentList.Add("-");
+        return startInfo;
+    }
+
+    private static Process StartCodexExec(ProcessStartInfo startInfo)
+    {
         try
         {
             return Process.Start(startInfo) ?? throw new InvalidOperationException("Unable to start Codex CLI exec.");
@@ -516,7 +587,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         try { document = JsonDocument.Parse(line); }
         catch (JsonException)
         {
-            await EmitAsync(onEvent, ExecTraceEvent($"Codex CLI: {TrimTrace(line)}", model, profileName), cancellationToken);
+            await EmitAsync(onEvent, ExecTraceEvent("Codex CLI 返回非 JSON 输出，已省略原始内容。", model, profileName), cancellationToken);
             return;
         }
         using (document)
@@ -551,6 +622,12 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
                 var item = root.TryGetProperty("item", out var directItem) ? directItem : root.TryGetProperty("params", out var parameters) && parameters.TryGetProperty("item", out var nestedItem) ? nestedItem : default;
                 var completed = normalized.Contains("item.completed", StringComparison.Ordinal) || normalized.Contains("itemcompleted", StringComparison.Ordinal);
                 if (item.ValueKind != JsonValueKind.Undefined) await HandleExecItemAsync(item, completed, state, model, profileName, onEvent, cancellationToken);
+                return;
+            }
+            if (normalized.Contains("turn.failed", StringComparison.Ordinal) || normalized.Contains("turnfailed", StringComparison.Ordinal))
+            {
+                state.TurnStatus = "failed";
+                state.ErrorMessage = root.TryGetProperty("error", out var failure) ? ReadString(failure, "message") : ReadString(root, "message");
                 return;
             }
             if (normalized.Contains("turn.completed", StringComparison.Ordinal) || normalized.Contains("turncompleted", StringComparison.Ordinal))
@@ -1194,6 +1271,11 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         public bool HasAgentMessageDelta { get; set; }
         public string? TurnStatus { get; set; }
         public string? ErrorMessage { get; set; }
+    }
+
+    private sealed class CodexProcessCleanup(Process process) : IDisposable
+    {
+        public void Dispose() => TryKillProcess(process);
     }
 
     private sealed class CodexExecRunState

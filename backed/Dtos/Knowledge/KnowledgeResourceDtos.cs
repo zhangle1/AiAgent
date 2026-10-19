@@ -13,6 +13,9 @@ public sealed class KnowledgeResourceNodeDto
     [JsonPropertyName("knowledge_base_name")] public string? KnowledgeBaseName { get; set; }
     [JsonPropertyName("extension")] public string? Extension { get; set; }
     [JsonPropertyName("size")] public long? Size { get; set; }
+    [JsonPropertyName("source_uri")] public string? SourceUri { get; set; }
+    [JsonPropertyName("parsed_document_id")] public long? ParsedDocumentId { get; set; }
+    [JsonPropertyName("section_order")] public int? SectionOrder { get; set; }
 }
 
 public sealed class KnowledgeResourceReadDto
@@ -29,6 +32,7 @@ public sealed class KnowledgeResourceReadDto
     [JsonPropertyName("model")] public string? Model { get; set; }
     [JsonPropertyName("children")] public List<KnowledgeResourceNodeDto> Children { get; set; } = [];
     [JsonPropertyName("compiled_outputs")] public List<KnowledgeResourceNodeDto> CompiledOutputs { get; set; } = [];
+    [JsonPropertyName("parsed_outputs")] public List<KnowledgeResourceNodeDto> ParsedOutputs { get; set; } = [];
 }
 
 public sealed class KnowledgeResourceProcessingDto

@@ -133,6 +133,9 @@ public sealed class ChatCompleteRequest
     [JsonIgnore]
     public string? RuntimeUserId { get; set; }
 
+    [JsonIgnore]
+    public string? CodexDiagnosticId { get; set; }
+
     /// <summary>Server-owned isolated maintenance workspace; never accepted from HTTP JSON.</summary>
     [JsonIgnore]
     public string? MaintenanceWorkspacePath { get; set; }
@@ -361,6 +364,15 @@ public sealed class ChatDebugTraceEvent
 
     [JsonPropertyName("error_code")]
     public string? ErrorCode { get; set; }
+
+    [JsonPropertyName("diagnostic_id")]
+    public string? DiagnosticId { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("details")]
+    public Dictionary<string, string>? Details { get; set; }
 }
 
 public sealed class ChatDebugTraceRecordDto

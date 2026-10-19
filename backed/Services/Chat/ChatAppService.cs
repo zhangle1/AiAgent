@@ -36,11 +36,12 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly ICodexModelPolicyService _codexModelPolicy;
     private readonly IImageOcrPolicyService _imageOcrPolicy;
     private readonly IChatDebugTraceStore _debugTraceStore;
+    private readonly ILogger<ChatAppService> _logger;
 
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IChatUploadLibraryService uploadLibrary, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IChatUploadLibraryService uploadLibrary, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatAppService>? logger = null)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
@@ -58,6 +59,7 @@ public sealed class ChatAppService : IDynamicApiController
         _codexModelPolicy = codexModelPolicy;
         _imageOcrPolicy = imageOcrPolicy;
         _debugTraceStore = debugTraceStore;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatAppService>.Instance;
     }
 
     /// <summary>
@@ -65,6 +67,18 @@ public sealed class ChatAppService : IDynamicApiController
     /// </summary>
     [HttpPost("complete")]
     public async Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
+    {
+        try { return await CompleteCore(request, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) when (string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+        {
+            var failure = CodexDiagnosticException.ForRequest(exception, request);
+            _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
+            throw failure;
+        }
+    }
+
+    private async Task<ChatCompleteResponse> CompleteCore(ChatCompleteRequest request, CancellationToken cancellationToken)
     {
         var trace = ChatDebugTrace.Create(request);
         trace?.Complete("backend_received");
@@ -110,17 +124,7 @@ public sealed class ChatAppService : IDynamicApiController
         var trace = ChatDebugTrace.Create(request);
         await WriteTraceAsync(response, trace?.Complete("backend_received"), cancellationToken);
         await WriteTraceAsync(response, trace?.Start("auth_session_context"), cancellationToken);
-        var user = await RequireUser(cancellationToken);
-        request.RuntimeUserId = user.Id;
-        await ResolveImageAttachmentsAsync(user, request, cancellationToken);
-        await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
-        await _projectReferences.ResolveAsync(user, request, cancellationToken);
-        await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
-        await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
-        await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
-        await WriteSseAsync(response, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
-        request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
-        await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
+        AuthenticatedUser? user = null;
         var content = new System.Text.StringBuilder();
         var thinking = new System.Text.StringBuilder();
         object? citations = null;
@@ -130,10 +134,22 @@ public sealed class ChatAppService : IDynamicApiController
 
         try
         {
+            user = await RequireUser(cancellationToken);
+            request.RuntimeUserId = user.Id;
+            await ResolveImageAttachmentsAsync(user, request, cancellationToken);
+            await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
+            await _projectReferences.ResolveAsync(user, request, cancellationToken);
+            await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
+            await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
+            await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
+            await WriteSseAsync(response, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
+            request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
+            await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
             await WriteTraceAsync(response, trace?.Start("request_started"), cancellationToken);
             await WriteTraceAsync(response, trace?.Complete("request_started"), cancellationToken);
             var result = await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
             {
+                if (streamEvent.Type == "debug_trace") trace?.RecordProviderDiagnostic(streamEvent.DebugTrace);
                 if (streamEvent.Type == "provider_request_started")
                 {
                     if (!providerRequestStarted)
@@ -166,24 +182,32 @@ public sealed class ChatAppService : IDynamicApiController
             await WriteTraceAsync(response, trace?.Start("frontend_push"), cancellationToken);
             await WriteTraceAsync(response, trace?.Complete("frontend_push"), cancellationToken);
             await WriteTraceAsync(response, trace?.Complete("request_completed"), cancellationToken);
-            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
+            if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await WriteSseAsync(response, new AgentStreamEvent { Type = "completed" }, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             if (providerRequestStarted) await WriteTraceAsync(response, trace?.CancelProvider(), CancellationToken.None);
             await WriteTraceAsync(response, trace?.Cancel("request_completed"), CancellationToken.None);
-            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
+            if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
         }
         catch (Exception exception)
         {
+            var clientException = exception;
+            if (string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+            {
+                var failure = CodexDiagnosticException.ForRequest(exception, request);
+                _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
+                await WriteTraceAsync(response, trace?.ReportCodexFailure(failure), CancellationToken.None);
+                clientException = failure;
+            }
             if (providerRequestStarted) await WriteTraceAsync(response, trace?.FailProvider("request_failed"), CancellationToken.None);
             await WriteTraceAsync(response, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
-            await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
+            if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await WriteSseAsync(response, new AgentStreamEvent
             {
                 Type = "error",
-                Content = ToClientError(exception, request)
+                Content = ToClientError(clientException, request)
             }, cancellationToken);
         }
     }
@@ -277,15 +301,7 @@ public sealed class ChatAppService : IDynamicApiController
         }
         var model = _codexModelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
         var imagePolicy = _imageOcrPolicy.GetPolicy();
-        var imageEnabled = model.IsBuiltin
-            ? imagePolicy.NativeImageInputEnabled
-            : model.SupportsImageOcr && imagePolicy.Enabled;
-        if (!imageEnabled)
-        {
-            throw new InvalidOperationException(model.IsBuiltin
-                ? "The administrator has disabled native Codex image input."
-                : "The selected Codex profile does not have PaddleOCR image recognition enabled.");
-        }
+        model.EnsureImageInputEnabled(imagePolicy);
         request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
     }
 
@@ -317,6 +333,7 @@ public sealed class ChatAppService : IDynamicApiController
 
     private static string ToClientError(Exception exception, ChatCompleteRequest request)
     {
+        if (exception is CodexDiagnosticException diagnostic) return diagnostic.Message;
         var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
         if (isCodex && exception.Message.Contains("requires a newer version of Codex", StringComparison.OrdinalIgnoreCase))
         {

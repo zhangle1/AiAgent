@@ -1,0 +1,90 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Codex 与第三方 Profile 默认阶段诊断、分类错误及历史记录",
+  "base_commit": "9a6c22f6c803b1c1593164a874502c913f0acf1b",
+  "platform_change_set_id": null,
+  "note": "本地实现及验证快照。保留工作区既有解析和原图改动；共享文件本指纹覆盖此前快照中的重叠文件。未提交、推送、部署或修改用户配置，未调用真实模型及用户数据库。首次测试意外复制 Python 虚拟环境占满 C 盘，已停止并排除嵌套 .venv 内容复制，后续验证全部放在 E 盘。C 盘临时输出自动删除被 policy 拦截，用户已获知清理目录，当前空间恢复但目录仍在。交付前须复核最新文件指纹。",
+  "checks": {
+    "backend": {
+      "passed": 35,
+      "failed": 0,
+      "filter": "FullyQualifiedName~CodexDiagnosticsTests|FullyQualifiedName~CodexProfileImageTests|FullyQualifiedName~CodexModelPolicyTests",
+      "trx_sha256": "80a1c14c4f3e16467d467a77c78e093b00ea4238848ebafc890f046faa535da0",
+      "scope": "in-memory SQLite, fake CLI, owner isolation, cancellation, classification, private data exclusion, native image regressions"
+    },
+    "browser": {
+      "result": "passed",
+      "suite": "front/tests/codex-diagnostics.browser.mjs",
+      "log_sha256": "ca3206b4b0024b94908592249f29847509d183c5f12adf2c2d6fe8b04e167756",
+      "scope": "synthetic APIs and WebSocket; default live failure, history, safe clipboard, desktop and mobile; no model calls"
+    },
+    "typescript": "passed: tsc --noEmit --incremental false --pretty false",
+    "encoding": "UTF-8 no BOM; existing mixed line endings preserved (ChatAppService: 47 CRLF)",
+    "whitespace": "passed: git -c core.whitespace=cr-at-eol diff --check",
+    "virtualenv_output_excluded": true,
+    "deployment_script_unchanged": true,
+    "production_build_and_deployment": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "eb17f5685b403e7a133e91d5fdd4e3d402253dc9767f1a275ed2eb2cc90e8622"
+    },
+    {
+      "path": "README.md",
+      "sha256": "fcfc098678b72f10ae2da6b6cb02892f43b04de3db2c5c5ba3af29f9c539a196"
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "2381b09592b212bb89b1e777cae6d7f24f46d817c0c8dffdbd30e5f56bcb594c"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "a17d0110824d4d1b750eebac20f57a7d0a1002dbdffb1120bc7c0975d4105af7"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "ed29f95cd156b84c3dc78abeae7d59e3e7d987d4f62c05306deb0e08282f9a72"
+    },
+    {
+      "path": "backed/Services/Chat/ChatDebugTrace.cs",
+      "sha256": "b26f7932b3efbe16d9bf046957f6c4349928737b04112014f53b50170c955c7f"
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "a3051d58077f3c4e7aa8ba9d39d322e7cb160a619b110ec3c57472286e3ab5f0"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "bf7cf00c5ace1ffe5266938c8ff70f19b8f9417556d7f29250712b4c2101ac3f"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexRequestDiagnostics.cs",
+      "sha256": "55ca1ccfe9f7d5a199bdf11a0724333a096fcd144f7192527aa0dcfbc55faeb9"
+    },
+    {
+      "path": "backed.tests/CodexDiagnosticsTests.cs",
+      "sha256": "a94d5c66affc34c27ea45f91ffeb3da999a06c78e343b1be217d2a98b334bfad"
+    },
+    {
+      "path": "backed.tests/CodexProfileImageTests.cs",
+      "sha256": "cf630fcd413501cf483938a3b33ac625ad8c56b7d914fe99938920d0f4a08ce7"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "ab7374471b35514582dabc990e9966529cf51f3f87d07807210f2a63014d3f26"
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "36d2034129f1749d8cc0dd67cf97fa2e8c2f01f3d6c7acdda3f3ee1c4efc4a52"
+    },
+    {
+      "path": "front/tests/codex-diagnostics.browser.mjs",
+      "sha256": "e6b2b8198f67dcc24e1d57ba7f82879cd97eb1e065fb6b331a76e979ae75d4d9"
+    },
+    {
+      "path": "docs/codex-runtime-diagnostics.md",
+      "sha256": "4ab9a3b1451127d57f13fa833c9beb8dfa467c19b848a6001ca72dd83cbe3ce5"
+    }
+  ]
+}

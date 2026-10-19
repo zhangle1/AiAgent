@@ -208,12 +208,15 @@ export type ChatStreamEvent = {
 export type ChatDebugTraceEvent = {
   trace_id: string;
   stage: string;
-  status: "started" | "completed" | "failed" | "cancelled";
+  status: "started" | "completed" | "failed" | "cancelled" | "warning";
   elapsed_ms: number;
   duration_ms?: number | null;
   provider: "codex" | "openai_compatible" | "unknown";
-  transport: "codex_app_server" | "http_stream" | "websocket" | "sse" | "unknown";
+  transport: "codex_app_server" | "codex_exec" | "http_stream" | "websocket" | "sse" | "unknown";
   error_code?: "cancelled" | "request_failed" | string | null;
+  diagnostic_id?: string | null;
+  message?: string | null;
+  details?: Record<string, string> | null;
 };
 
 export async function streamCompleteChat(

@@ -5,7 +5,7 @@ import { ChevronRight, FileText, Folder, Search, X } from "lucide-react";
 import type { KnowledgeResourceNode } from "@/lib/knowledge-types";
 import styles from "./knowledge-workspace.module.css";
 
-export function isGeneratedResource(uri: string) { return uri.includes("/_compiled/") || /^viking:\/\/user\/[^/]+\/(summaries|wiki)(\/|$)/.test(uri); }
+export function isGeneratedResource(uri: string) { return uri.includes("/_parsed/") || uri.includes("/_compiled/") || /^viking:\/\/user\/[^/]+\/(summaries|wiki)(\/|$)/.test(uri); }
 
 export function KnowledgeResourceTree({ nodes, selected, onSelect, directoriesOnly = false, multiple = false, label }: {
   nodes: KnowledgeResourceNode[]; selected: string[]; onSelect: (uri: string) => void; directoriesOnly?: boolean; multiple?: boolean; label: string;

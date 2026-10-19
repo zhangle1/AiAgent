@@ -498,6 +498,9 @@ public sealed class KnowledgeDocumentImportItemDto
 /// <summary>Requests parsing and knowledge compilation for one uploaded source document.</summary>
 public sealed class KnowledgeProcessRequest
 {
+    [JsonPropertyName("parsing")]
+    public Services.Parsing.MarkdownParsingOptions? Parsing { get; set; }
+
     [JsonIgnore]
     public string? OwnerRoot { get; set; }
 
@@ -541,6 +544,9 @@ public sealed class KnowledgeProcessingResultDto
 
 public sealed class KnowledgeDocumentContentDto
 {
+    [JsonPropertyName("parsing_version")] public string? ParsingVersion { get; set; }
+    [JsonPropertyName("parsed_section_count")] public int? ParsedSectionCount { get; set; }
+
     [JsonPropertyName("document_id")]
     public long DocumentId { get; set; }
 

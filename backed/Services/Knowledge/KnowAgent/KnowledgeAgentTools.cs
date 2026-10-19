@@ -54,7 +54,7 @@ public sealed class KnowledgeAgentTools(KnowledgeResourceService resources) : IK
                 return JsonSerializer.Serialize(new { uri = node.Uri, content = text[offset..end], offset, total_characters = text.Length,
                     next_offset = end < text.Length ? (int?)end : null, parsed = !string.IsNullOrEmpty(data.ParsedContent) }, Json);
             case "status":
-                if (node.Kind != "file" || System.Text.RegularExpressions.Regex.IsMatch(node.Uri, @"^viking://user/[^/]+/(summaries|wiki)/"))
+                if (node.Kind != "file" || KnowledgeResourceService.IsGeneratedUri(node.Uri))
                     throw new ArgumentException("status 需要原始资源文件 URI。");
                 var task = resources.Processing().FirstOrDefault(x => x.Node.Uri == node.Uri);
                 return JsonSerializer.Serialize(new { uri = node.Uri, processing = task }, Json);

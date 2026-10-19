@@ -1,5 +1,5 @@
-import { ImageOcrDiagnosticsPage } from "@/components/settings/admin/ImageOcrDiagnosticsPage";
+import { redirect } from "next/navigation";
 
-export default function ImageOcrDiagnosticsRoute() {
-  return <ImageOcrDiagnosticsPage />;
+export default function LegacyImageSettingsRoute() {
+  redirect("/settings/admin/agents");
 }

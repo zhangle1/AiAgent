@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace AiAgent.Backend.Services.Chat;
 
-/// <summary>Request-scoped, non-persistent timing trace for a chat turn.</summary>
+/// <summary>Request-scoped timing and classified diagnostics; persistence is handled by ChatDebugTraceStore.</summary>
 public sealed class ChatDebugTrace
 {
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -27,14 +27,17 @@ public sealed class ChatDebugTrace
 
     public static ChatDebugTrace? Create(ChatCompleteRequest request)
     {
-        if (!request.DebugTrace) return null;
+        var isCodexRequest = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
+        if (!request.DebugTrace && !isCodexRequest) return null;
+        if (isCodexRequest) CodexDiagnosticException.EnsureId(request);
         var traceId = NormalizeTraceId(request.TraceId) ?? Guid.NewGuid().ToString("N");
-        var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
+        var isCodex = isCodexRequest;
         var isDsh = string.Equals(request.Agent?.Trim(), "deepseek-harness", StringComparison.OrdinalIgnoreCase);
+        var codexTransport = request.CodexModelId?.StartsWith("profile:", StringComparison.OrdinalIgnoreCase) == true ? "codex_exec" : "codex_app_server";
         return new ChatDebugTrace(
             traceId,
             isCodex ? "codex" : isDsh ? "deepseek_harness" : "openai_compatible",
-            isCodex ? "codex_app_server" : isDsh ? "sdk_jsonrpc_stdio" : "http_stream");
+            isCodex ? codexTransport : isDsh ? "sdk_jsonrpc_stdio" : "http_stream");
     }
 
     public AgentStreamEvent Start(string stage) => Add(stage, "started", null, null);
@@ -56,6 +59,24 @@ public sealed class ChatDebugTrace
         if (_firstStreamEventRecorded) return null;
         _firstStreamEventRecorded = true;
         return Add("first_stream_event", "completed", null, null);
+    }
+
+    public AgentStreamEvent ReportCodexFailure(CodexDiagnosticException failure)
+    {
+        var existing = _events.LastOrDefault(item => item.Stage == failure.Stage && item.DiagnosticId == failure.DiagnosticId && item.Status == "failed");
+        if (existing != null) return new AgentStreamEvent { Type = "debug_trace", DebugTrace = existing };
+        var diagnostic = new ChatDebugTraceEvent { Stage = failure.Stage, DiagnosticId = failure.DiagnosticId,
+            Status = "failed", Provider = "codex", Transport = _transport, ErrorCode = failure.Code, Message = failure.Reason };
+        RecordProviderDiagnostic(diagnostic);
+        return new AgentStreamEvent { Type = "debug_trace", DebugTrace = diagnostic };
+    }
+
+    public void RecordProviderDiagnostic(ChatDebugTraceEvent? diagnostic)
+    {
+        if (diagnostic == null || !diagnostic.Stage.StartsWith("codex_", StringComparison.Ordinal) || _events.Count >= 96) return;
+        diagnostic.TraceId = TraceId;
+        diagnostic.ElapsedMs = _clock.ElapsedMilliseconds;
+        _events.Add(diagnostic);
     }
 
     private AgentStreamEvent Add(string stage, string status, long? durationMs, string? errorCode)

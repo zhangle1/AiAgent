@@ -8,6 +8,7 @@ import type { KnowledgeCompilerSettings, KnowledgeResourceNode } from "@/lib/kno
 import styles from "./knowledge-workspace.module.css";
 import { isGeneratedResource, KnowledgeResourcePicker, KnowledgeResourceTree } from "./KnowledgeResourcePicker";
 import { KnowledgeSkillDialog } from "./KnowledgeSkillDialog";
+import { KnowledgeParsingControls } from "./KnowledgeParsingControls";
 
 export type KnowledgeAgentDialogCommand = KnowledgeAgentCommand | "compiler";
 export const knowledgeAgentCommandLabels = { ls: "浏览目录", read: "读取正文", search: "搜索资料", status: "处理状态", compiler: "编译资料" };
@@ -71,6 +72,7 @@ export function KnowledgeAgentCommandDialog({ command, scope, nodes, options, on
     <div className="space-y-4 p-5">
       <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">{scope}</p>
       {command === "compiler" ? <>
+        <KnowledgeParsingControls value={configuration.parsing} disabled={busy} onChange={parsing => setConfiguration(current => ({ ...current, parsing }))} />
         <section className="space-y-2"><label className="block text-xs text-slate-600">产物保存位置</label><div className="flex min-w-0 flex-wrap items-center gap-2"><p className="min-w-0 flex-1 break-all rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">{configuration.target_uri ? decodeURI(configuration.target_uri) : "人员 → 我的工作区 → 摘要（默认）"}</p><button type="button" disabled={busy} onClick={() => setPicker("destination")} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs"><FolderOpen size={13} />选择产物目录</button>{configuration.target_uri && <button type="button" disabled={busy} onClick={() => setConfiguration(c => ({ ...c, target_uri: null }))} className="text-xs text-slate-500">恢复默认</button>}</div><p className="text-[11px] leading-5 text-slate-500">选择目录后，产物保存在其“编译产物”子目录。资料 / 项目目录沿用公共资源可见范围；个人来源只能保存到本人目录。</p></section>
         <section className="space-y-2"><div className="flex items-center gap-2"><label className="min-w-0 flex-1 text-xs text-slate-600">编译技能<select aria-label="编译技能" disabled={busy || !skills.length} value={configuration.skill_id ?? "llm-wiki"} onChange={event => setConfiguration(c => ({ ...c, skill_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm">{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.name}{skill.builtin ? " · 内置" : ""}</option>)}</select></label><button type="button" disabled={busy} onClick={() => setSkillDialog(true)} className="mt-4 rounded-lg border border-slate-200 px-3 py-2 text-xs">生成 / 编辑技能</button></div><p className="text-[11px] text-slate-500">{skills.find(skill => skill.id === configuration.skill_id)?.description ?? "技能目录尚未加载，请确认后端已更新后刷新页面。"}</p></section>
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-slate-600">生成通道<select aria-label="编译生成通道" disabled={busy} value={configuration.generator} onChange={event => {

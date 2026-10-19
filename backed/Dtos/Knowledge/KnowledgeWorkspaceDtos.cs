@@ -26,6 +26,7 @@ public sealed class KnowledgeCompilerSettingsDto
     [JsonPropertyName("skill_id")] public string? SkillId { get; set; }
     [JsonPropertyName("skill_name")] public string? SkillName { get; set; }
     [JsonPropertyName("skill_instructions")] public string? SkillInstructions { get; set; }
+    [JsonPropertyName("parsing")] public Services.Parsing.MarkdownParsingOptions Parsing { get; set; } = new();
 }
 
 public sealed class KnowledgeChainCheckStepDto

@@ -27,7 +27,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var tail = value![root.Length..].TrimEnd('/');
         var parts = tail.Length == 0 ? [] : tail.Split('/');
         var canonical = root + string.Join('/', parts.Select(part => Uri.EscapeDataString(ValidateName(Uri.UnescapeDataString(part)))));
-        if (canonical.Length > 1000) throw new ArgumentException("目录层级过深或名称过长。");
+        if (canonical.Length > (IsParsedUri(canonical) ? 4096 : 1000)) throw new ArgumentException("目录层级过深或名称过长。");
         return directory && parts.Length > 0 ? canonical + "/" : canonical;
     }
 
@@ -62,7 +62,8 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var bases = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).ToList().ToDictionary(x => x.Id);
         foreach (var kb in bases.Values.Where(k => k.Name != StoreName))
             AddDirectory(LegacyDirectory(kb));
-        foreach (var doc in db.Queryable<AiKnowledgeDocument>().Where(x => !x.IsDeleted).ToList())
+        var documents = db.Queryable<AiKnowledgeDocument>().Where(x => !x.IsDeleted).ToList();
+        foreach (var doc in documents)
         {
             if (!bases.TryGetValue(doc.KnowledgeBaseId, out var kb)) continue;
             var uri = DocumentUri(kb, doc);
@@ -71,6 +72,32 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             nodes[uri] = new() { Uri = uri, ParentUri = Parent(uri), Name = doc.OriginalFileName,
                 Kind = "file", DocumentId = doc.Id, KnowledgeBaseName = kb.Name,
                 Extension = doc.Extension, Size = doc.FileSize, Status = doc.Status };
+        }
+        var visibleSourceIds = nodes.Values.Where(n => n.DocumentId.HasValue).Select(n => n.DocumentId!.Value).ToList();
+        var latestParsedIds = db.Queryable<AiKnowledgeParsedDocument>().Where(x => x.DocumentId.HasValue && visibleSourceIds.Contains(x.DocumentId.Value))
+            .GroupBy(x => x.DocumentId).Select(x => SqlFunc.AggregateMax(x.Id)).ToList();
+        var latestParsed = db.Queryable<AiKnowledgeParsedDocument>().Where(x => latestParsedIds.Contains(x.Id)).ToList()
+            .GroupBy(x => x.DocumentId!.Value).ToDictionary(g => g.Key, g => g.MaxBy(p => p.Id)!);
+        var parsedStore = new KnowledgeParsedDocumentStore(paths);
+        foreach (var doc in documents)
+        {
+            if (!bases.TryGetValue(doc.KnowledgeBaseId, out var kb) || !latestParsed.TryGetValue(doc.Id, out var parsed) ||
+                parsed.SourceHash != doc.FileHash || !nodes.TryGetValue(DocumentUri(kb, doc), out var source)) continue;
+            var layout = parsedStore.ReadManifest(kb, parsed); if (layout is null) continue;
+            var root = ParsedRootUri(source.Uri, doc);
+            AddDirectory(root, layout.RootName);
+            SetMetadata(nodes[root]);
+            foreach (var entry in layout.Files)
+            {
+                var uri = root + string.Join('/', entry.Path.Split('/').Select(Uri.EscapeDataString));
+                var parent = Parent(uri); AddDirectory(parent);
+                for (var directory = parent; directory.StartsWith(root, StringComparison.Ordinal); directory = Parent(directory)) SetMetadata(nodes[directory]);
+                var node = new KnowledgeResourceNodeDto { Uri = uri, ParentUri = parent, Name = entry.Path.Split('/').Last(),
+                    Kind = "file", Extension = ".md", Status = "processed", SectionOrder = entry.Order };
+                SetMetadata(node); nodes[uri] = node;
+            }
+            void SetMetadata(KnowledgeResourceNodeDto node)
+            { node.DocumentId = doc.Id; node.KnowledgeBaseName = kb.Name; node.SourceUri = source.Uri; node.ParsedDocumentId = parsed.Id; }
         }
         var visibleDocuments = nodes.Values.Where(x => x.DocumentId.HasValue).Select(x => x.DocumentId!.Value).ToHashSet();
         foreach (var artifact in db.Queryable<AiKnowledgeArtifact>().Where(x => x.OwnerRoot == userRoot).ToList())
@@ -96,7 +123,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             var parent = Parent(uri);
             AddDirectory(parent);
             nodes[uri] = new() { Uri = uri, ParentUri = parent,
-                Name = name ?? (uri.EndsWith("/_compiled/", StringComparison.Ordinal) ? "编译产物" : Uri.UnescapeDataString(uri.TrimEnd('/').Split('/').Last())), Kind = "directory" };
+                Name = name ?? (uri.EndsWith("/_compiled/", StringComparison.Ordinal) ? "编译产物" : uri.EndsWith("/_parsed/", StringComparison.Ordinal) ? "解析正文" : Uri.UnescapeDataString(uri.TrimEnd('/').Split('/').Last())), Kind = "directory" };
         }
     }
 
@@ -133,6 +160,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         if (IsGeneratedUri(parent)) throw new InvalidOperationException("Generated workspace directories are read-only.");
         var name = ValidateName(request.Name);
         var uri = NormalizeUri(parent + Uri.EscapeDataString(name), true);
+        if (IsGeneratedUri(uri)) throw new InvalidOperationException("该目录名称保留给系统解析和编译产物。");
         await _mutations.WaitAsync(ct);
         try
         {
@@ -178,6 +206,13 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var node = FindNode(uri);
         using var scopeDb = database.CopyNew();
         var ownerRoot = CurrentUserRoot(scopeDb);
+        if (IsParsedUri(node.Uri))
+        {
+            if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList(), SemanticStatus = "not_applicable" };
+            var part = ParsedSection(node);
+            var text = await System.IO.File.ReadAllTextAsync(part.Path, Encoding.UTF8, ct);
+            return new() { Node = node, SourceText = text, ParsedContent = text, Parser = part.Parser, SemanticStatus = "not_applicable" };
+        }
         if (node.Kind == "file" && node.Uri.StartsWith(ownerRoot + "wiki/", StringComparison.Ordinal))
         {
             var artifact = WorkspaceArtifact(node, ownerRoot);
@@ -206,8 +241,10 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             catch (FileNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
             catch (DirectoryNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
         }
+        var outputs = Tree().Where(item => item.Kind == "file" && item.DocumentId == doc.Id && IsGeneratedUri(item.Uri)).ToList();
         return new() { Node = node, SourceText = source, ParsedContent = content.ParsedContent,
-            CompiledOutputs = Tree().Where(item => item.Kind == "file" && item.DocumentId == doc.Id && IsGeneratedUri(item.Uri)).ToList(),
+            ParsedOutputs = outputs.Where(item => item.ParsedDocumentId == content.ParsedDocumentId && IsParsedUri(item.Uri)).OrderBy(item => item.SectionOrder).ToList(),
+            CompiledOutputs = outputs.Where(item => !IsParsedUri(item.Uri)).ToList(),
             SemanticContent = generated?.Overview ?? content.ArtifactContent, Parser = content.Parser, Model = generated?.Model ?? content.Model,
             SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
     }
@@ -238,6 +275,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
 
     public KnowledgeCompilationJobDto? TaskStatus(string uri)
     {
+        if (IsParsedUri(uri)) { FindNode(uri); return null; }
         var (kb, doc) = Resolve(FindNode(uri));
         return worker.Latest(kb.Name, doc.Id);
     }
@@ -253,6 +291,11 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     public (string Path, string Name, string ContentType) File(string uri)
     {
         var node = FindNode(uri);
+        if (IsParsedUri(node.Uri))
+        {
+            if (node.Kind != "file") throw new ArgumentException("请选择解析章节文件。");
+            return (ParsedSection(node).Path, node.Name, "text/markdown; charset=utf-8");
+        }
         if (IsGeneratedUri(node.Uri))
         {
             using var db = database.CopyNew();
@@ -328,7 +371,22 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
     }
 
     private static bool IsWikiUri(string uri) => uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "wiki";
-    public static bool IsGeneratedUri(string uri) => uri.Contains("/_compiled/", StringComparison.Ordinal) || IsWikiUri(uri) || uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "summaries";
+    public static bool IsParsedUri(string uri) => uri.Contains("/_parsed/", StringComparison.Ordinal);
+    public static bool IsGeneratedUri(string uri) => IsParsedUri(uri) || uri.Contains("/_compiled/", StringComparison.Ordinal) || IsWikiUri(uri) || uri.StartsWith("viking://user/", StringComparison.Ordinal) && uri["viking://user/".Length..].Split('/').ElementAtOrDefault(1) == "summaries";
+    private static string ParsedRootUri(string source, AiKnowledgeDocument doc) => Parent(source) + "_parsed/" + Uri.EscapeDataString(Parsing.MarkdownDocumentPlanner.SafeName(Path.GetFileNameWithoutExtension(doc.OriginalFileName)) + "-" + doc.Id) + "/";
+    private (string Path, string? Parser) ParsedSection(KnowledgeResourceNodeDto node)
+    {
+        var (kb, doc) = Resolve(node);
+        using var db = database.CopyNew();
+        var parsed = db.Queryable<AiKnowledgeParsedDocument>().Where(p => p.DocumentId == doc.Id && p.KnowledgeBaseId == kb.Id).OrderByDescending(p => p.Id).First();
+        if (parsed is null || parsed.Id != node.ParsedDocumentId || parsed.SourceHash != doc.FileHash) throw new InvalidOperationException("解析版本已改变，请刷新目录。");
+        var store = new KnowledgeParsedDocumentStore(paths);
+        var layout = store.ReadManifest(kb, parsed) ?? throw new InvalidOperationException("解析目录缺失，请重新解析。");
+        var root = ParsedRootUri(DocumentUri(kb, doc), doc);
+        var entry = layout.Files.SingleOrDefault(e => root + string.Join('/', e.Path.Split('/').Select(Uri.EscapeDataString)) == node.Uri)
+            ?? throw new KeyNotFoundException("解析章节不存在。");
+        return (store.SectionPath(kb, parsed, entry), parsed.Parser);
+    }
 
     private AiKnowledgeArtifact WorkspaceArtifact(KnowledgeResourceNodeDto node, string ownerRoot)
     {

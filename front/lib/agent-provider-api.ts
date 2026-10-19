@@ -27,6 +27,7 @@ export type CodexProfileModel = {
   model_id?: string | null;
   description: string;
   supports_reasoning_effort: boolean;
+  supports_image_input: boolean;
   supports_image_ocr: boolean;
 };
 
@@ -76,6 +77,12 @@ async function parseJson<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
+export const CODEX_POLICY_CHANGED_EVENT = "aiagent:codex-policy-changed";
+
+function notifyCodexPolicyChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CODEX_POLICY_CHANGED_EVENT));
+}
+
 export async function getAgentProviderEnvironments(): Promise<AgentProviderEnvironment[]> {
   return parseJson<AgentProviderEnvironment[]>(await fetch("/api/v1/agent-providers/environments", { cache: "no-store" }));
 }
@@ -85,23 +92,27 @@ export async function getCodexModelPolicy(): Promise<CodexModelPolicy> {
 }
 
 export async function updateCodexModelPolicy(payload: Pick<CodexModelPolicy, "allowed_model_ids" | "default_model_id" | "allow_chat_model_override" | "allowed_reasoning_efforts" | "default_reasoning_effort" | "allow_chat_reasoning_effort_override" | "profile_models">): Promise<CodexModelPolicy> {
-  return parseJson<CodexModelPolicy>(await fetch("/api/v1/agent-providers/codex-model-policy", {
+  const saved = await parseJson<CodexModelPolicy>(await fetch("/api/v1/agent-providers/codex-model-policy", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   }));
+  notifyCodexPolicyChanged();
+  return saved;
 }
 
 export async function getImageOcrPolicy(): Promise<ImageOcrPolicy> {
   return parseJson<ImageOcrPolicy>(await fetch("/api/v1/agent-providers/image-ocr-policy", { cache: "no-store" }));
 }
 
-export async function updateImageOcrPolicy(payload: ImageOcrPolicy): Promise<ImageOcrPolicy> {
-  return parseJson<ImageOcrPolicy>(await fetch("/api/v1/agent-providers/image-ocr-policy", {
+export async function updateImageOcrPolicy(payload: Partial<ImageOcrPolicy>): Promise<ImageOcrPolicy> {
+  const saved = await parseJson<ImageOcrPolicy>(await fetch("/api/v1/agent-providers/image-ocr-policy", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   }));
+  notifyCodexPolicyChanged();
+  return saved;
 }
 
 export async function diagnoseImageOcr(attachmentId?: string): Promise<ImageOcrDiagnostic> {

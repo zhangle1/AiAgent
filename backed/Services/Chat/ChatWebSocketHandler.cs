@@ -97,15 +97,7 @@ public sealed class ChatWebSocketHandler
                 }
                 var resolvedModel = _codexModelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
                 var imagePolicy = _imageOcrPolicy.GetPolicy();
-                var imageEnabled = resolvedModel.IsBuiltin
-                    ? imagePolicy.NativeImageInputEnabled
-                    : resolvedModel.SupportsImageOcr && imagePolicy.Enabled;
-                if (!imageEnabled)
-                {
-                    throw new InvalidOperationException(resolvedModel.IsBuiltin
-                        ? "The administrator has disabled native Codex image input."
-                        : "The selected Codex profile does not have PaddleOCR image recognition enabled.");
-                }
+                resolvedModel.EnsureImageInputEnabled(imagePolicy);
                 request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
             }
             if (request.DocumentAttachmentIds.Count > 0)
@@ -134,6 +126,7 @@ public sealed class ChatWebSocketHandler
             await SendTraceAsync(socket, trace?.Complete("request_started"), cancellationToken);
             var result = await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
             {
+                if (streamEvent.Type == "debug_trace") trace?.RecordProviderDiagnostic(streamEvent.DebugTrace);
                 if (streamEvent.Type == "provider_request_started")
                 {
                     if (!providerRequestStarted)
@@ -186,14 +179,22 @@ public sealed class ChatWebSocketHandler
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Chat request failed for agent {Agent} in session {SessionId}.", request?.Agent, request?.SessionId);
+            var clientException = exception;
+            if (request != null && string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+            {
+                var failure = CodexDiagnosticException.ForRequest(exception, request);
+                _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
+                await SendTraceAsync(socket, trace?.ReportCodexFailure(failure), CancellationToken.None);
+                clientException = failure;
+            }
+            else _logger.LogError(exception, "Chat request failed for agent {Agent} in session {SessionId}.", request?.Agent, request?.SessionId);
             if (providerRequestStarted) await SendTraceAsync(socket, trace?.FailProvider("request_failed"), CancellationToken.None);
             await SendTraceAsync(socket, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
             if (user != null && request != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await SendEventAsync(socket, new AgentStreamEvent
             {
                 Type = "error",
-                Content = ToClientError(exception, request)
+                Content = ToClientError(clientException, request)
             }, CancellationToken.None);
 
             if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
@@ -213,6 +214,7 @@ public sealed class ChatWebSocketHandler
 
     private static string ToClientError(Exception exception, ChatCompleteRequest? request)
     {
+        if (exception is CodexDiagnosticException diagnostic) return diagnostic.Message;
         var isCodex = string.Equals(request?.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
         if (isCodex && exception.Message.Contains("requires a newer version of Codex", StringComparison.OrdinalIgnoreCase))
         {

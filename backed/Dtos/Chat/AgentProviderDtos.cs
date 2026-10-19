@@ -77,6 +77,10 @@ public sealed class CodexProfileModelDto
     [JsonPropertyName("supports_reasoning_effort")]
     public bool SupportsReasoningEffort { get; set; }
 
+    /// <summary>Explicitly allows this CLI profile to receive original images via --image.</summary>
+    [JsonPropertyName("supports_image_input")]
+    public bool SupportsImageInput { get; set; }
+
     /// <summary>Allows this third-party CLI profile to receive local PaddleOCR text from image attachments.</summary>
     [JsonPropertyName("supports_image_ocr")]
     public bool SupportsImageOcr { get; set; } = true;
@@ -138,7 +142,7 @@ public sealed class ImageOcrPolicyDto
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; }
 
-    /// <summary>Allows native Codex app-server models to receive controlled original image inputs.</summary>
+    /// <summary>Allows built-in Codex and explicitly enabled CLI profiles to receive controlled original images.</summary>
     [JsonPropertyName("native_image_input_enabled")]
     public bool NativeImageInputEnabled { get; set; } = true;
 

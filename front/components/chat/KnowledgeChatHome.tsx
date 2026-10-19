@@ -4,6 +4,7 @@ import { getChatClipboardFiles } from "@/lib/chat-clipboard";
 
 import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
@@ -26,7 +27,7 @@ import type { KnowledgeBase, KnowledgeCitation } from "@/lib/knowledge-types";
 import type { CodeProject, CodeProjectMarkdownDocument, CodeProjectReference, SelectedGitCommit } from "@/lib/code-repository-types";
 import { useI18n } from "@/i18n/I18nProvider";
 import { cancelAgentRun, getAgentRun, getSession, getSessionDiagnostics, listAgentRuns, type AgentRunDetail, type AgentRunSummary, type ChatDebugTraceRecord, type SessionDetail } from "@/lib/session-api";
-import { getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
+import { CODEX_POLICY_CHANGED_EVENT, getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 
 type InspectorTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal";
 
@@ -299,8 +300,12 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
   const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
   const imageInput = selectedAgentId === "codex" ? (currentCodexModel?.image_input ?? "none") : "none";
-  const canAttachImages = imageInput === "native" ? imageOcrPolicy?.native_image_input_enabled === true : imageInput === "ocr" && imageOcrPolicy?.enabled === true;
-  const imageAttachmentHint = imageInput === "native" ? "原生 Codex 原图识图" : imageInput === "ocr" ? "第三方 Profile 使用本地 PaddleOCR 识别图片文字" : "当前模型未启用图片识别";
+  const canAttachImages = imageInput === "native" && imageOcrPolicy?.native_image_input_enabled === true;
+  const imageAttachmentHint = canAttachImages ? "原图直接传给当前模型识别" : "当前模型未启用图片上传";
+  const imageInputError = `图片上传未开启：${currentCodexModel?.name || "当前模型"}。${imageInput === "native" ? "请在模型图片设置中开启“允许聊天上传图片”并保存。" : "请在该模型卡片勾选“支持图片上传（原图）”并保存。"}`;
+  useEffect(() => {
+    if (canAttachImages) setError((current) => current?.startsWith("图片上传未开启：") ? null : current);
+  }, [canAttachImages]);
   const codexReasoningEfforts = useMemo(() => {
     if (!currentCodexModel?.supports_reasoning_effort) return [];
     const policyEfforts = codexModelPolicy?.allowed_reasoning_efforts ?? [];
@@ -332,16 +337,39 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     void getAgentProviderEnvironments()
       .then(setAgentProviders)
       .catch(() => setAgentProviders([]));
-    void getCodexModelPolicy()
-      .then((policy) => {
-        setCodexModelPolicy(policy);
-        setSelectedCodexModelId((current) => current || policy.default_model_id);
-        setSelectedCodexReasoningEffort((current) => current || policy.default_reasoning_effort);
-      })
-      .catch(() => setCodexModelPolicy(null));
-    void getImageOcrPolicy()
-      .then(setImageOcrPolicy)
-      .catch(() => setImageOcrPolicy(null));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let generation = 0;
+    const refresh = () => {
+      const requestGeneration = ++generation;
+      void Promise.all([getCodexModelPolicy(), getImageOcrPolicy()])
+        .then(([policy, imagePolicy]) => {
+          if (!active || requestGeneration !== generation) return;
+          setCodexModelPolicy(policy);
+          setImageOcrPolicy(imagePolicy);
+          setSelectedCodexModelId((current) => policy.allow_chat_model_override && policy.allowed_model_ids.includes(current) ? current : policy.default_model_id);
+          setSelectedCodexReasoningEffort((current) => current || policy.default_reasoning_effort);
+        })
+        .catch(() => {
+          if (!active || requestGeneration !== generation) return;
+          setCodexModelPolicy(null);
+          setImageOcrPolicy(null);
+        });
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    window.addEventListener(CODEX_POLICY_CHANGED_EVENT, refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      generation++;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(CODEX_POLICY_CHANGED_EVENT, refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
   useEffect(() => {
     if (!embedded || !embeddedCodexModelId) return;
@@ -791,7 +819,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       return;
     }
     if (attachmentsForTurn.length > 0 && !canAttachImages) {
-      setError("当前 Codex 模型未启用图片识别，请切换模型或在第三方代理设置中开启相应图片能力。");
+      setError(imageInputError);
       return;
     }
 
@@ -930,7 +958,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       return;
     }
     if (!canAttachImages) {
-      setError("当前模型未启用图片识别，无法添加图片附件。");
+      setError(imageInputError);
       return;
     }
     const availableSlots = 4 - imageAttachments.length;
@@ -983,7 +1011,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   async function attachLibraryFile(file: File) {
     const scope = documentOpenScope.current;
     const isImage = file.type.startsWith("image/");
-    if (isImage && !canAttachImages) throw new Error("当前模型未启用图片识别，请切换模型后关联。");
+    if (isImage && !canAttachImages) throw new Error(imageInputError);
     if (!isImage && selectedAgentId !== "codex") throw new Error("请先选择 Codex 本地代理，再关联文件附件。");
     if (uploadingImages || uploadingFiles) throw new Error("请等待当前附件上传完成。");
     if ((isImage ? imageAttachments.length : documentAttachments.length) >= 4) throw new Error("本轮同类附件最多添加 4 个。");
@@ -1112,7 +1140,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               })
             }
             className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition ${debugTraceEnabled ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"}`}
-            title="仅当前浏览器会话显示耗时诊断，不记录消息内容"
+            title="显示请求耗时；Codex 基础诊断默认保存，不记录消息内容"
           >
             <Terminal size={13} />
             Debug
@@ -1241,7 +1269,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                   <ChevronDown size={13} className="shrink-0" />
                 </button>
                 <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title="添加图片、PDF、Word、Excel、PowerPoint、HTML 或文本文件" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title={`${imageAttachmentHint}；可添加 PDF、Word、Excel、PowerPoint、HTML 或文本文件`} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
                   {uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20} />}
                 </button>
                 {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} mobile />}
@@ -1280,7 +1308,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv"
+                    accept={`${canAttachImages ? "image/png,image/jpeg,image/webp,image/gif," : ""}.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv`}
                     multiple
                     className="hidden"
                     onChange={(event) => {
@@ -1292,7 +1320,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       fileInputRef.current = element;
                     }}
                   />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title="添加图片、PDF、Word、Excel、PowerPoint、HTML 或文本文件">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={`${imageAttachmentHint}；可添加 PDF、Word、Excel、PowerPoint、HTML 或文本文件`}>
                     {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
                   </button>
                   {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}
@@ -1393,7 +1421,13 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               </div>
             </form>
 
-            {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</div>}
+            {error && <div role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              <p>{error}</p>
+              {error.startsWith("图片上传未开启：") && <div className="mt-2 flex flex-wrap items-center gap-3">
+                <Link href="/settings/admin/agents#model-image-settings" target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">前往模型图片设置</Link>
+                <button type="button" onClick={() => window.dispatchEvent(new Event(CODEX_POLICY_CHANGED_EVENT))} className="inline-flex items-center gap-1 rounded border border-red-200 bg-white px-2 py-1 text-xs hover:bg-red-50"><RefreshCw size={12}/>刷新图片配置</button>
+              </div>}
+            </div>}
           </div>
         </section>
         <ChatInspectorPanel key={`${selectedProject?.id}:${activeSessionId}`} libraryScope={activeSessionId ?? ""} onAttachLibraryFile={attachLibraryFile} isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestToken={inspectorRequestToken} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onClose={() => setRightPanelOpen(false)} />
@@ -2325,7 +2359,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
         ) : (
           <div ref={contentRef} onContextMenu={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{message.status === "stopped" ? "本次执行已由你停止。" : message.status === "error" ? "本次执行未完成，请查看运行日志后重试。" : t("chat.thinking")}</div>}</div>
         )}
-        {!isUser && showDebugTrace && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
+        {!isUser && (showDebugTrace || message.status === "error") && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (
           <details className="mt-3 rounded-lg border border-zinc-200 bg-white p-2 text-[11px] text-zinc-500" open={!message.content || message.streamHealth === "quiet"}>
             <summary className="cursor-pointer select-none font-medium">{message.status === "streaming" ? t("chat.traceLive") : t("chat.traceHistory")}</summary>
@@ -2413,6 +2447,7 @@ function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
               {event.provider} / {event.transport}
             </span>
             {event.error_code && <span className="text-rose-600">{event.error_code}</span>}
+            <CodexDiagnosticDetails event={event}/>
           </div>
         ))}
       </div>
@@ -2420,8 +2455,49 @@ function DebugTraceTimeline({ events }: { events: ChatDebugTraceEvent[] }) {
   );
 }
 
+const CODEX_DIAGNOSTIC_LABELS: Record<string, string> = {
+  model: "模型", profile: "Profile", model_override: "实际 model id / 覆盖", reasoning: "推理等级", sandbox: "执行权限",
+  config_home_source: "配置目录来源", base_config_exists: "主配置存在", profile_config_exists: "独立 Profile 文件存在",
+  image_count: "图片数量", resume_selected: "续接旧 CLI 会话", pid: "进程 PID", exit_code: "退出码",
+  stdout_lines: "CLI 输出行数", stderr_characters: "标准错误字符数", native_error: "系统错误码",
+  exception_type: "异常类型", exception_hresult: "异常 HResult",
+};
+
+function CodexDiagnosticDetails({ event }: { event: ChatDebugTraceEvent }) {
+  if (!event.diagnostic_id) return null;
+  const details = Object.entries(event.details ?? {}).filter(([key]) => key in CODEX_DIAGNOSTIC_LABELS);
+  return <div className="w-full min-w-0">
+    {event.message && <p className={event.status === "failed" ? "text-rose-700" : "text-amber-800"}>{event.message}</p>}
+    <details className="rounded border border-slate-200 bg-white/80 px-2 py-1" open={event.status === "failed"}>
+      <summary className="cursor-pointer text-slate-600">{event.status === "failed" ? "失败详情" : "运行详情"}</summary>
+      <p className="mt-1 break-all text-slate-500">诊断编号：<code>{event.diagnostic_id}</code></p>
+      {details.length > 0 && <dl className="my-1 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">{details.map(([key, value]) => <div key={key} className="contents"><dt className="text-slate-500">{CODEX_DIAGNOSTIC_LABELS[key]}</dt><dd className="break-all text-slate-700">{value}</dd></div>)}</dl>}
+      <button type="button" onClick={() => void copyPlainText(JSON.stringify({ diagnostic_id: event.diagnostic_id, stage: event.stage, error_code: event.error_code, message: event.message, details: Object.fromEntries(details) }, null, 2))} className="mt-1 rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50">复制诊断信息</button>
+    </details>
+  </div>;
+}
+
 function debugStageLabel(stage: string) {
   const labels: Record<string, string> = {
+    codex_model_resolution: "模型配置校验",
+    codex_workspace: "项目工作目录",
+    codex_session_acquire: "会话并发检查",
+    codex_attachments: "附件准备",
+    codex_session_resume: "CLI 会话续接",
+    codex_cli_resolve: "CLI 路径定位",
+    codex_profile_config: "Profile 配置定位",
+    codex_process_start: "CLI 进程启动",
+    codex_stdin: "写入 CLI 请求",
+    codex_cli_output: "读取 CLI 输出",
+    codex_cli_notice: "CLI 提示",
+    codex_cli_exit: "CLI 退出校验",
+    codex_session_save: "保存 CLI 会话",
+    codex_app_server_start: "app-server 准备",
+    codex_app_server_turn: "app-server 调用",
+    codex_request_context: "请求上下文准备",
+    codex_result: "返回模型结果",
+    codex_completed: "Codex 执行完成",
+    codex_cancelled: "Codex 执行取消",
     browser_submit: "浏览器提交",
     backend_received: "后端接收",
     auth_session_context: "鉴权与上下文",
@@ -2467,7 +2543,7 @@ function ChatDiagnosticsDialog({ traces, runs, loading, onClose }: { traces: Cha
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-slate-900">聊天诊断日志</h2>
-            <p className="mt-0.5 text-[11px] text-slate-500">仅保存脱敏耗时靶点，默认保留 7 天。</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">保存阶段、错误分类和必要运行参数，不记录聊天正文或认证信息，默认保留 7 天。</p>
           </div>
           <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="关闭诊断日志">
             <X size={17} />
@@ -2480,7 +2556,7 @@ function ChatDiagnosticsDialog({ traces, runs, loading, onClose }: { traces: Cha
               正在读取诊断日志…
             </div>
           ) : traces.length === 0 && runs.length === 0 ? (
-            <p className="py-10 text-center text-sm text-slate-500">当前会话没有可用的诊断日志。请先开启 Debug 后发送消息。</p>
+            <p className="py-10 text-center text-sm text-slate-500">当前会话没有诊断记录。Codex 基础诊断默认保存，请复现一次问题后查看。</p>
           ) : (
             <div className="space-y-5">
               {runs.length > 0 && <section>
@@ -2511,6 +2587,7 @@ function ChatDiagnosticsDialog({ traces, runs, loading, onClose }: { traces: Cha
                           {event.duration_ms == null ? "" : `（${event.duration_ms}ms）`}
                         </span>
                         {event.error_code && <span className="text-rose-600">{event.error_code}</span>}
+            <CodexDiagnosticDetails event={event}/>
                       </div>
                     ))}
                   </div>

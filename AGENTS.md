@@ -30,6 +30,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 文档转换统一进入 `Services/Parsing/MarkdownDocumentPlanner` 的确定性标题／段落布局，保留完整 L2，不把章节阈值当模型窗口。解析配置 `parsing` 随任务 JSON 深拷贝，重试沿用。`KnowledgeParsedDocumentStore` 在受控临时目录写齐正文、章节与 manifest 后整体重命名，再用数据库行发布版本；不扫描磁盘选最新。版本标记 `markdown-layout-1`，旧单文件仍可读。资源 `_parsed/` 为只读来源投影，章节须校验来源可见性、最新解析 ID、来源哈希、清单路径及内容哈希，不进入原文编译／任务列表；原始文件 URI、个人范围和 RAG 索引不变。语义生成继续读取完整正文。修改前参见 `docs/knowledge-document-parsing.md`，验证全文区间覆盖、表格行、同名标题、取消／失败保留正文及个人隔离。
+
 - L0/L1 生成按模型窗口及 JSON 转义开销动态分段，UTF-8 字节上界只用于输入估算，不能据此拒绝中文模型输出。API 编译输出使用供应商默认策略（客户端输出参数 0 时省略 max_tokens）；输出空间预留不是硬上限。新编译任务调用次数默认 0 表示不限，正整数为显式上限，历史快照保持；超时、取消、压缩不收敛和真实截断继续失败。与独立 Wiki 证据协议的字符／页数校验区分。见 `docs/knowledge-compilation-skills.md`。
 
 - 知识编译允许显式选择资料、项目或本人原始目录，产物放入该目录 `_compiled/`，默认仍是本人摘要空间；个人来源不能发布到公共目标，生成目录只读。技能由服务器按本人 ID 解析后连同目标保存到任务配置 JSON，重试不重新读取技能新版本。自定义技能存本人设置快照，内置 `llm-wiki/SKILL.md` 作为明确命名的程序集资源；技能不执行脚本。目录指纹包含已发布子文件摘要，不能拿当前任务的技能替兄弟文件生成产物。模型目录读写使用独立客户端和操作内事务。契约见 `docs/knowledge-compilation-skills.md`。
@@ -58,8 +60,10 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 所有后续新增的实体字段必须显式标注 `[SugarColumn(IsNullable = true)]`；除非已明确完成现网数据迁移、回填和非空约束验收，不得新增非空列。
 
 - 聊天图片附件必须先以不透明附件 ID 上传到后端受控临时目录；校验真实图片签名、大小、数量和当前用户归属后，才可转换为 Codex app-server 的 `localImage` 输入。发送后应将图片迁移到按用户和会话隔离的历史目录，并在聊天消息元数据保存不含真实路径的附件信息。不得接受浏览器提供的本地路径、将路径拼入 shell，也不得假定第三方 CLI 兼容该协议。
-- 第三方 `codex exec --profile` 不传递 `--image`。如管理员启用图片 OCR，只能把后端从受控图片路径提取、并明确标记为不可信附件数据的文本注入 prompt；OCR 失败必须继续文字聊天，且 Python Worker 只能读取 `PythonWorkers:AllowedRoots` 内的路径。
+- 第三方 Profile 仅在管理员显式启用 `supports_image_input` 且原图总开关开启时，通过 `ProcessStartInfo.ArgumentList` 的重复 `--image` 接收受控附件路径；该路由跳过 OCR，新会话和 resume 保持一致。历史配置默认不启用原图；独立启用的 OCR 路由继续使用不可信文本边界与 Worker 允许根目录。前端只开放原图能力，模型卡片与总开关统一保存，隐藏旧 OCR 入口；聊天恢复焦点时更新策略并忽略过期响应。修改图片能力、配置投影或附件校验时参见 `docs/codex-profile-images.md`，验证 HTTP/WebSocket 同一策略、原图关闭不静默降级、历史配置兼容与用户归属。
 - Codex 聊天的 `codex_sandbox_mode` 只能接受 `full-access`、`workspace-write`、`read-only` 三个服务端白名单值；`full-access` 才可映射为 `--dangerously-bypass-approvals-and-sandbox`，必须通过 `ProcessStartInfo.ArgumentList` 传参，不能由聊天文本或任意配置字符串拼接命令。
+
+- Codex 基础诊断默认记录到本人会话；阶段与服务端生成的诊断编号贯穿 CLI、WebSocket/SSE 和历史记录。仅记录固定分类及允许的元数据，运行账号与实际路径只进服务器日志；CLI metadata 警告不决定终态。修改诊断、失败映射或持久化时参见 `docs/codex-runtime-diagnostics.md`，验证脱敏、取消、真实协议终态及用户归属。
 
 - Codex 模型目录与分版本升级由 `CodexModelPolicyService` 管理。新增 `gpt-6.1-sol` 时保留默认模型及已禁用的旧模型；仅支持 `low/medium/high/xhigh/max`，前端从策略接口获取模型与推理等级。
 

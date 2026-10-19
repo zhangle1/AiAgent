@@ -16,7 +16,8 @@ public sealed record CodexModelDefinition(
     bool SupportsReasoningEffort,
     bool IsBuiltin,
     bool SupportsImageOcr = false,
-    IReadOnlyList<string>? AllowedReasoningEfforts = null);
+    IReadOnlyList<string>? AllowedReasoningEfforts = null,
+    bool SupportsImageInput = false);
 
 public sealed record CodexResolvedModel(CodexModelDefinition Definition, string? ReasoningEffort)
 {
@@ -26,6 +27,17 @@ public sealed record CodexResolvedModel(CodexModelDefinition Definition, string?
     public string? ProfileName => Definition.ProfileName;
     public bool IsBuiltin => Definition.IsBuiltin;
     public bool SupportsImageOcr => Definition.SupportsImageOcr;
+    public bool SupportsNativeImageInput => IsBuiltin || Definition.SupportsImageInput;
+    public string ImageInput => SupportsNativeImageInput ? "native" : SupportsImageOcr ? "ocr" : "none";
+
+    public void EnsureImageInputEnabled(ImageOcrPolicyDto policy)
+    {
+        var enabled = SupportsNativeImageInput ? policy.NativeImageInputEnabled : SupportsImageOcr && policy.Enabled;
+        if (!enabled)
+            throw new InvalidOperationException(SupportsNativeImageInput
+                ? "The administrator has disabled native Codex image input."
+                : "The selected Codex profile has neither native image input nor enabled OCR image recognition.");
+    }
 }
 
 public interface ICodexModelPolicyService
@@ -263,6 +275,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 ModelId = modelId,
                 Description = description,
                 SupportsReasoningEffort = input.SupportsReasoningEffort,
+                SupportsImageInput = input.SupportsImageInput,
                 SupportsImageOcr = input.SupportsImageOcr
             });
         }
@@ -277,6 +290,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             ModelId = item.ModelId,
             Description = item.Description,
             SupportsReasoningEffort = item.SupportsReasoningEffort,
+            SupportsImageInput = item.SupportsImageInput,
             SupportsImageOcr = item.SupportsImageOcr
         }));
 
@@ -293,7 +307,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
                 profile.ProfileName,
                 profile.SupportsReasoningEffort,
                 false,
-                profile.SupportsImageOcr));
+                profile.SupportsImageOcr,
+                SupportsImageInput: profile.SupportsImageInput));
         }
         return models;
     }
@@ -315,7 +330,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             SupportsReasoningEffort = item.SupportsReasoningEffort,
             ReasoningEfforts = item.SupportsReasoningEffort ? (item.AllowedReasoningEfforts ?? SupportedReasoningEfforts).ToList() : [],
             IsBuiltin = item.IsBuiltin,
-            ImageInput = item.IsBuiltin ? "native" : item.SupportsImageOcr ? "ocr" : "none"
+            ImageInput = new CodexResolvedModel(item, null).ImageInput
         }).ToList(),
         AllowedModelIds = policy.AllowedModelIds,
         DefaultModelId = policy.DefaultModelId,
@@ -330,6 +345,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             ModelId = item.ModelId,
             Description = item.Description,
             SupportsReasoningEffort = item.SupportsReasoningEffort,
+            SupportsImageInput = item.SupportsImageInput,
             SupportsImageOcr = item.SupportsImageOcr
         }).ToList()
     };
@@ -353,6 +369,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
         public string? ModelId { get; set; }
         public string Description { get; set; } = string.Empty;
         public bool SupportsReasoningEffort { get; set; }
+        public bool SupportsImageInput { get; set; }
         public bool SupportsImageOcr { get; set; } = true;
     }
 }

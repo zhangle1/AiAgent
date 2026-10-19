@@ -1,0 +1,88 @@
+// Synthetic HTTP/WebSocket fixtures only; no credentials, user data or model calls.
+import assert from "node:assert/strict";
+import path from "node:path";
+import { createRequire } from "node:module";
+const require = process.env.DIAGNOSTICS_TEST_TOOLS ? createRequire(path.resolve(process.env.DIAGNOSTICS_TEST_TOOLS, "package.json")) : createRequire(import.meta.url);
+const { chromium } = require("playwright");
+const browser = await chromium.launch({ headless: true, channel: "msedge" });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const base = process.env.DIAGNOSTICS_TEST_URL ?? "http://127.0.0.1:3782";
+const output = process.env.DIAGNOSTICS_TEST_OUTPUT ?? process.env.TEMP;
+const diagnosticId = "d".repeat(32);
+const failure = { trace_id: "fixture-trace", diagnostic_id: diagnosticId, stage: "codex_cli_exit", status: "failed", elapsed_ms: 290, provider: "codex", transport: "codex_exec", error_code: "codex_authentication", message: "模型鉴权失败，请核对后端服务账号使用的 API Key 与配置目录。", details: { profile: "deepseek", model: "profile:deepseek", exit_code: "3", base_config_exists: "True", profile_config_exists: "True", resume_selected: "False", cli_path: "PRIVATE_SERVER_PATH", unknown: "PRIVATE_PAYLOAD" } };
+const project = { id: 1, name: "Fixture", display_name: "Fixture", repositories: [] };
+const session = { id: "diagnostic-fixture", title: "Diagnostic fixture", project_id: 1, messages: [], preferences: {}, message_count: 0, created_at: "2026-10-19T06:00:00Z", updated_at: "2026-10-19T06:00:00Z" };
+const errors = []; const requests = [];
+page.on("pageerror", error => errors.push(error.message));
+await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
+await page.route("**/api/**", async route => {
+  const name = new URL(route.request().url()).pathname;
+  let body = [];
+  if (name.endsWith("/auth/status")) body = { authenticated: true, username: "fixture", user_id: "fixture", is_admin: true };
+  if (name.endsWith("/sessions/list")) body = { sessions: [session] };
+  if (name.endsWith("/sessions/project-preferences")) body = { preferences: [] };
+  if (name.endsWith("/sessions/sidebar-preference")) body = { project_sort_mode: "recent" };
+  if (name.endsWith(`/sessions/${session.id}`)) body = session;
+  if (name.endsWith("/diagnostics")) body = { traces: [{ trace_id: failure.trace_id, provider: "codex", transport: "codex_exec", created_at: "2026-10-19T06:00:00Z", expires_at: "2026-10-26T06:00:00Z", events: [failure] }] };
+  if (name.includes("/agent-runs/session/")) body = { runs: [] };
+  if (name.endsWith("/settings")) body = { ui: { preferred_agent: "codex" }, catalog: { version: 1, services: Object.fromEntries(["llm", "embedding", "search", "tts", "stt", "imagegen", "videogen"].map(key => [key, { active_profile_id: null, profiles: [] }])) } };
+  if (name.endsWith("/code-repositories/projects")) body = [project];
+  if (name.endsWith("/code-repositories/projects/1/git/status")) body = { project_id: 1, state: "neutral", repositories: [] };
+  if (name.endsWith("/code-runtime/projects/1")) body = { project_id: 1, profiles: [], runs: [] };
+  if (name.endsWith("/agent-providers/environments")) body = [{ id: "codex", name: "Codex", installed: true, command: "fixture", chat_supported: true, message: "Fixture" }];
+  if (name.endsWith("/codex-model-policy")) body = { models: [{ id: "profile:deepseek", name: "deepseek", profile_name: "deepseek", is_builtin: false, supports_reasoning_effort: false, reasoning_efforts: [], image_input: "none" }], allowed_model_ids: ["profile:deepseek"], default_model_id: "profile:deepseek", allow_chat_model_override: true, allowed_reasoning_efforts: ["medium"], default_reasoning_effort: "medium" };
+  if (name.endsWith("/image-ocr-policy")) body = { enabled: false, native_image_input_enabled: false };
+  await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+});
+await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw => {
+  requests.push(JSON.parse(raw));
+  socket.send(JSON.stringify({ type: "debug_trace", debug_trace: { ...failure, status: "started", error_code: null, message: null, stage: "codex_process_start" } }));
+  socket.send(JSON.stringify({ type: "debug_trace", debug_trace: failure }));
+  socket.send(JSON.stringify({ type: "error", content: `Codex 执行失败：${failure.message} 阶段：${failure.stage}；错误码：${failure.error_code}；诊断编号：${diagnosticId}` }));
+}));
+try {
+  await page.goto(`${base}/chat?session=${session.id}`);
+  await page.waitForLoadState("networkidle");
+  const composer = page.locator('[contenteditable="true"]:visible').first();
+  await composer.fill("fixture request");
+  await page.locator('button[type="submit"]').filter({ visible: true }).click();
+  const timeline = page.locator("details").filter({ has: page.locator("summary").filter({ hasText: "诊断时间线（仅当前请求）" }) }).first();
+  await timeline.getByText("失败详情", { exact: true }).waitFor();
+  assert.equal(requests.length, 1);
+  assert.equal(Boolean(requests[0].debug_trace), false, "Diagnostics must be visible without the Debug switch");
+  await page.getByRole("button", { name: "取消自动重试", exact: true }).click();
+  assert.match(await timeline.innerText(), /CLI 退出校验/);
+  assert.match(await timeline.innerText(), /codex_authentication/);
+  assert.match(await timeline.innerText(), new RegExp(diagnosticId));
+  assert.equal(await page.getByText("PRIVATE_SERVER_PATH", { exact: true }).count(), 0);
+  assert.equal(await page.getByText("PRIVATE_PAYLOAD", { exact: true }).count(), 0);
+  await timeline.screenshot({ path: path.join(output, "diagnostics-desktop.png") });
+  await page.getByRole("button", { name: "查看诊断日志", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "聊天诊断日志", exact: true });
+  await dialog.getByText("失败详情", { exact: true }).waitFor();
+  assert.match(await dialog.innerText(), new RegExp(diagnosticId));
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await dialog.getByRole("button", { name: "复制诊断信息", exact: true }).click();
+  await page.waitForFunction(id => navigator.clipboard.readText().then(text => text.includes(id)), diagnosticId);
+  const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  assert.equal(copied.details.exit_code, "3");
+  assert.equal(copied.details.cli_path, undefined);
+  assert.equal(copied.details.unknown, undefined);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.querySelector("main")?.getBoundingClientRect().left === 0);
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Mobile diagnostic view must not overflow");
+  await dialog.screenshot({ path: path.join(output, "diagnostics-mobile.png") });
+  await page.getByRole("button", { name: "关闭诊断日志", exact: true }).click();
+  session.messages = [{ id: 1, role: "user", content: "fixture request", created_at: session.created_at }, { id: 2, role: "assistant", content: "Historical fixture reply", created_at: session.created_at }];
+  await page.reload();
+  await composer.waitFor();
+  // History loads diagnostics from owner-scoped storage after the live trace is gone.
+  await page.getByRole("button", { name: "查看诊断日志", exact: true }).first().click();
+  await dialog.getByText("失败详情", { exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log("PASS: default live failure, classified stage/ID, stored diagnostics, safe clipboard, desktop/mobile layout; no real backend or model");
+} catch (error) {
+  console.error("Fixture page:", (await page.locator("body").innerText()).slice(0, 7000));
+  console.error("Page errors:", errors);
+  throw error;
+} finally { await browser.close(); }

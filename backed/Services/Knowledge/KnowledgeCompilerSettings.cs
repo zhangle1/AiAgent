@@ -27,6 +27,8 @@ public sealed class KnowledgeCompilerSettings(ISqlSugarClient database)
 
     public static void Validate(KnowledgeCompilerSettingsDto config)
     {
+        if (config.Parsing is null) throw new ArgumentException("解析配置不能为空。");
+        config.Parsing.Validate();
         if (config.RetrievalMode is not ("wiki" or "rag")) throw new ArgumentException("Retrieval mode must be wiki or rag.");
         if (config.Generator is not ("codex" or "llm_api")) throw new ArgumentException("Generator must be codex or llm_api.");
         if (config.MaxSteps < 0 || config.TimeoutMinutes is < 1 or > 60) throw new ArgumentException("调用次数上限不能为负数；超时须为 1–60 分钟。0 表示不限制调用次数。");

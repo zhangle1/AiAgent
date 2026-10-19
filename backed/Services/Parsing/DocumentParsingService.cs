@@ -98,6 +98,7 @@ public sealed class DocumentParsingService : IDocumentParsingService
         {
             return ParseResult(ex.Stdout);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             return new DocumentParseResult

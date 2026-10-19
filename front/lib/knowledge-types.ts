@@ -54,13 +54,16 @@ export type KnowledgeDocument = {
 };
 
 export type KnowledgeProcessRequest = {
+  parsing?: KnowledgeParsingOptions;
   generator: "llm_api" | "codex";
   model_id?: string | null;
   reasoning_effort?: string | null;
 };
 
 export type KnowledgeOrganization = { company?: string | null; project?: string | null };
+export type KnowledgeParsingOptions = { split_content: boolean; max_section_tokens: number; max_section_chars: number; min_section_tokens: number };
 export type KnowledgeCompilerSettings = {
+  parsing?: KnowledgeParsingOptions;
   retrieval_mode: "wiki" | "rag";
   generator: "codex" | "llm_api";
   model_id?: string | null;
@@ -89,6 +92,9 @@ export type KnowledgeContextNode = {
 };
 
 export type KnowledgeResourceNode = {
+  source_uri?: string | null;
+  parsed_document_id?: number | null;
+  section_order?: number | null;
   uri: string;
   parent_uri?: string | null;
   name: string;
@@ -113,7 +119,7 @@ export type KnowledgeResourceRead = {
   abstract_content?: string | null;
   overview_content?: string | null;
   semantic_generated_at?: string | null;
-  semantic_status: "ready" | "missing_or_stale";
+  semantic_status: "ready" | "missing_or_stale" | "not_applicable";
   node: KnowledgeResourceNode;
   source_text?: string | null;
   parsed_content?: string | null;
@@ -122,6 +128,7 @@ export type KnowledgeResourceRead = {
   model?: string | null;
   children: KnowledgeResourceNode[];
   compiled_outputs?: KnowledgeResourceNode[];
+  parsed_outputs?: KnowledgeResourceNode[];
 };
 export type KnowledgeResourceImport = {
   items: KnowledgeDocumentImportItem[];
@@ -174,6 +181,8 @@ export type KnowledgeProcessingResult = {
 };
 
 export type KnowledgeDocumentContent = {
+  parsing_version?: string | null;
+  parsed_section_count?: number | null;
   document_id: number;
   original_file_name: string;
   status: string;
