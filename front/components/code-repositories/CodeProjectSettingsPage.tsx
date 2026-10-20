@@ -24,14 +24,6 @@ const languages = ["C#", "TypeScript/JavaScript", "Java", "Python"];
 const emptyProject: ProjectDraft = { name: "", displayName: "", rootPath: "", description: "" };
 const emptyRepository: RepositoryDraft = { name: "", projectId: "", displayName: "", rootPath: "", description: "", languages: [], solutionFiles: [], configurationFiles: [], chatEditableConfigurationFiles: [], publishTarget: "", publishConfiguration: "Release", publishRuntime: "", publishOutputPath: "artifacts/publish" };
 const emptyClone: CloneDraft = { projectId: "", repositoryUrl: "", destinationDirectoryName: "", branch: "", gitAccountId: "" };
-const bulkCloneDefaultText = [
-  "https://gitee.com/yun_kun/guokun-cps-web-shengyue.git\tdevelop",
-  "https://gitee.com/yun_kun/shengyue-cps-api-single.git\tdevelop",
-  "https://gitee.com/yun_kun/shengyue-srm-web.git\tdevelop",
-  "https://gitee.com/yun_kun/shengyue-new-datasync.git\tmaster",
-  "https://gitee.com/yun_kun/shengyue-padcps2.git\tmaster",
-  "https://gitee.com/yun_kun/shengyue-pda.git\tmaster",
-].join("\n");
 const emptyRuntime: RuntimeDraft = { role: "backend", entryPath: "", runScript: "dev", testScript: "dotnet test", preferredPort: "5100", healthPath: "/", isEnabled: true, isPreviewEnabled: false };
 const input = "mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
@@ -250,7 +242,7 @@ export function CodeProjectSettingsPage() {
   }
 
   async function openBulkClone() {
-    setError(""); setBulkCloneError(""); setBulkCloneText(bulkCloneDefaultText); setBulkCloneResults([]); setCloneLines([]);
+    setError(""); setBulkCloneError(""); setBulkCloneText(""); setBulkCloneResults([]); setCloneLines([]);
     setBulkCloneProjectId(selectedProjectId ?? projects[0]?.id ?? "");
     try {
       const items = await listGitAccounts();
