@@ -219,6 +219,8 @@ Windows 运行服务使用 Job Object 托管子进程，npm/dotnet 启动器先�
 
 ## 开发协作
 
+KunBuddy 桌面客户端位于 [client/](client/README.zh-CN.md)，完整保留 Electron、React、Rust Host 与插件工具链。使用独立应用标识、数据目录和开发端口 4382；在 `client` 中执行 `pnpm install --frozen-lockfile` 后运行 `Run-KunBuddy.ps1`。迁移与隔离说明见 [客户端移植说明](client/docs/kunbuddy-migration.md)。
+
 开始改动前请阅读 [AGENTS.md](AGENTS.md)。其中定义了前后端契约、Agent 工具流程、编码/密钥处理和不应提交的本地内容。
 
 ## 管理配置与账户权限

@@ -15,6 +15,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 后端目录：`backed/`
 - 前端目录：`front/`
+- KunBuddy 桌面客户端：`client/`，开发及插件约定先读 `client/AGENTS.md`；身份隔离、更新源和移植验收见 `client/docs/kunbuddy-migration.md`。该目录归属 AiAgent Git，不创建独立仓库。
 - 看板模板：`dashboard-templates/`
 - 架构与实施文档：`docs/`
 - 阶段规格与开发交接：`handoff/`

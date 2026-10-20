@@ -1,0 +1,291 @@
+import {
+  readAppSource,
+  readSettingsSource,
+  readMainSource,
+  readSharedTypesSource,
+} from "./helpers/source-contracts.mjs";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { loadStyles } from "./helpers/styles.mjs";
+
+const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+
+const [
+  protocolSource,
+  typesSource,
+  updaterSource,
+  mainSource,
+  menuSource,
+  apiSource,
+  bannerSource,
+  releaseNotesDialogSource,
+  settingsSource,
+  appSource,
+  stylesSource,
+  pkgSource,
+  buildReleaseSource,
+  enSource,
+  zhSource,
+  changelogSource,
+  changelogLoaderSource,
+  englishChangelogSource,
+] = await Promise.all([
+  read("../../../packages/shared/src/protocol.ts"),
+  readSharedTypesSource(),
+  read("../electron/main/updater.ts"),
+  readMainSource(),
+  read("../electron/main/application-menu.ts"),
+  read("../src/lib/api.ts"),
+  read("../src/components/UpdateBanner.tsx"),
+  read("../src/components/ReleaseNotesDialog.tsx"),
+  readSettingsSource(),
+  readAppSource(),
+  loadStyles(),
+  read("../package.json"),
+  read("../../../scripts/build-desktop-release.mjs"),
+  read("../../../packages/i18n/src/locales/en/index.ts"),
+  read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
+  read("../../../packages/shared/src/changelog.ts"),
+  read("../../../packages/shared/src/changelog-loader.ts"),
+  read("../../../packages/shared/src/changelog-en.ts"),
+]);
+
+test("update IPC channels are declared and whitelisted for the preload bridge", () => {
+  for (const channel of [
+    "updatesGetState",
+    "updatesCheck",
+    "updatesDownload",
+    "updatesInstall",
+    "updatesOpenReleases",
+    "updatesDismiss",
+    "updatesState",
+  ]) {
+    assert.match(protocolSource, new RegExp(`${channel}:`), channel);
+  }
+  // The whitelist derives from the IPC map, so declaring is allowing.
+  assert.match(protocolSource, /\.\.\.Object\.values\(IPC\.invoke\)/);
+  assert.match(protocolSource, /\.\.\.Object\.values\(IPC\.event\)/);
+  assert.match(typesSource, /export type UpdateState = \{/);
+  assert.match(
+    typesSource,
+    /releaseNotes\?: string/,
+    "UpdateState carries localized product notes from Main",
+  );
+});
+
+test("main process registers update handlers and the auto-check lifecycle", () => {
+  for (const channel of [
+    "IPC.invoke.updatesGetState",
+    "IPC.invoke.updatesCheck",
+    "IPC.invoke.updatesDownload",
+    "IPC.invoke.updatesInstall",
+    "IPC.invoke.updatesOpenReleases",
+    "IPC.invoke.updatesDismiss",
+  ]) {
+    assert.ok(mainSource.includes(channel), channel);
+  }
+  assert.match(mainSource, /new AppUpdaterController\(/);
+  assert.match(mainSource, /isPackaged:\s*!isDevelopmentBuild/);
+  assert.match(mainSource, /updater\.startAutoCheck\(\)/);
+  assert.match(
+    mainSource,
+    /await ensureWindow\(\);[\s\S]*updater\.startAutoCheck\(\)/,
+    "auto-check starts after the first window exists, never on the boot await path",
+  );
+  assert.match(mainSource, /updater\.dispose\(\)/);
+});
+
+test("updater gates delivery mode by platform and delivery policy", () => {
+  // The pure policy tests cover platform capability and portable defaults.
+  assert.match(updaterSource, /resolveUpdateModePolicy/);
+  assert.match(updaterSource, /resolveDefaultUpdatePreference/);
+  assert.match(updaterSource, /supportsAutomaticUpdates/);
+  assert.match(updaterSource, /kunbuddyDistribution/);
+  assert.match(updaterSource, /autoUpdater\.autoDownload = false/);
+  assert.match(updaterSource, /autoUpdater\.autoInstallOnAppQuit = false/);
+  assert.match(updaterSource, /autoUpdater\.autoDownload = mode === "in-app"/);
+  assert.match(updaterSource, /autoUpdater\.autoInstallOnAppQuit = mode === "in-app"/);
+  assert.match(updaterSource, /this\.applyPreference\(preference, false\)/);
+  assert.match(updaterSource, /manualReminderTracker/);
+  assert.match(updaterSource, /applyPreference\(this\.preference, false\)/);
+  assert.match(updaterSource, /resolveStoredUpdatePreference/);
+  assert.match(updaterSource, /if \(!preferenceChanged\) return/);
+  assert.match(
+    updaterSource,
+    /allowPrerelease = false/,
+    "prerelease installs must still track the stable GitHub latest release",
+  );
+  assert.match(updaterSource, /quitAndInstall/);
+  assert.match(
+    updaterSource,
+    /private installRequested = false/,
+    "the install request is latched so the shutdown path can see it",
+  );
+  assert.match(
+    updaterSource,
+    /isInstallingUpdate\(\): boolean/,
+    "the shutdown path must be able to ask whether this quit is an update restart",
+  );
+  assert.match(
+    updaterSource,
+    /this\.installRequested = true;[\s\S]*?autoUpdater\.quitAndInstall\(/,
+    "the latch must be set before quitAndInstall spawns the installer",
+  );
+  assert.match(
+    updaterSource,
+    /state\.status === "downloaded"[\s\S]*return this\.state/,
+  );
+  assert.match(updaterSource, /autoUpdater\.on\("error"/);
+  assert.match(
+    updaterSource,
+    /github\.com\/zhangle1\/AiAgent\/releases/,
+    "releases fallback URL",
+  );
+  assert.match(
+    updaterSource,
+    /formatChangelogNotes/,
+    "in-app localized notes attach from the shared changelog catalog",
+  );
+  assert.match(
+    updaterSource,
+    /releaseNotes: this\.notesFor/,
+    "discovery and download events attach releaseNotes on UpdateState",
+  );
+  assert.match(
+    updaterSource,
+    /refreshReleaseNotes/,
+    "locale changes re-resolve notes without a new feed check",
+  );
+  assert.match(
+    updaterSource,
+    /AUTO_CHECK_TIMEOUT_MS = 8_000/,
+    "auto GitHub checks must not wait for Chromium's ~60s socket timeout",
+  );
+  assert.match(updaterSource, /raceWithTimeout/);
+  assert.match(updaterSource, /UPDATE_CHECK_TIMEOUT/);
+  assert.match(
+    updaterSource,
+    /status === "checking"[\s\S]*status: "idle"/,
+    "a timed-out auto-check must leave checking so the next interval can run",
+  );
+});
+
+test("renderer exposes the updates API, banner and settings row", () => {
+  assert.match(apiSource, /updatesGetState:/);
+  assert.match(apiSource, /updatesCheck:/);
+  assert.match(apiSource, /updatesInstall:/);
+  assert.match(bannerSource, /update\.dismissed === true/);
+  assert.match(bannerSource, /api\.updatesDismiss\(\)/);
+  assert.match(apiSource, /onUpdateState:/);
+  assert.match(bannerSource, /updates\.restart/);
+  assert.match(bannerSource, /updates\.viewRelease/);
+  assert.match(bannerSource, /updates\.whatsNew/);
+  assert.match(bannerSource, /releaseNotes/);
+  assert.match(bannerSource, /availableVersion}:\$\{update\.status/);
+  assert.match(bannerSource, /className="update-notice"/);
+  assert.match(bannerSource, /manualReminder === true/);
+  assert.match(bannerSource, /role="progressbar"/);
+  assert.match(settingsSource, /<UpdatesRow[\s\S]*currentVersion=\{version\?\.version\}/);
+  assert.match(settingsSource, /settings=\{settings\}/);
+  assert.match(settingsSource, /saveSettings=\{saveSettings\}/);
+  assert.match(settingsSource, /update-settings-notes/);
+  assert.match(settingsSource, /updates\.whatsNew/);
+  assert.match(settingsSource, /updates\.releaseNotes/);
+  assert.match(settingsSource, /const ReleaseNotesDialog = lazy\(\(\) =>/);
+  assert.match(settingsSource, /<Suspense[\s\S]*?<ReleaseNotesDialog/);
+  assert.match(settingsSource, /role="status"[\s\S]*?app\.loadingView/);
+  assert.match(settingsSource, /<ReleaseNotesDialog/);
+  assert.match(releaseNotesDialogSource, /loadChangelogCatalog\(locale\)/);
+  assert.match(releaseNotesDialogSource, /setLoadedCatalog\(\{ locale, entries: catalog \}\)/);
+  assert.match(changelogLoaderSource, /import\("\.\/changelog-en\.js"\)/);
+  assert.match(changelogLoaderSource, /import\("\.\/changelog-zh-CN\.js"\)/);
+  assert.match(releaseNotesDialogSource, /new Intl\.DateTimeFormat\(locale,/);
+  assert.match(releaseNotesDialogSource, /role="dialog"/);
+  assert.match(releaseNotesDialogSource, /aria-modal="true"/);
+  assert.match(releaseNotesDialogSource, /data-release-version/);
+  assert.match(releaseNotesDialogSource, /event\.key === "Escape"/);
+  assert.match(
+    appSource,
+    /<section className="main-pane">[\s\S]*?<UpdateBanner \/>/,
+    "chat update notice is anchored inside the main pane",
+  );
+  assert.match(
+    stylesSource,
+    /\.update-notice \{[\s\S]*?position: absolute;[\s\S]*?top: 54px;/,
+  );
+  assert.doesNotMatch(
+    bannerSource,
+    /fixed bottom-4 right-4/,
+    "update notice must not occupy the composer edge",
+  );
+  assert.match(appSource, /case "checkForUpdates"/);
+});
+
+test("check-for-updates is reachable from the application menu", () => {
+  assert.match(protocolSource, /"checkForUpdates",/);
+  assert.match(menuSource, /checkForUpdates/);
+  for (const source of [enSource, zhSource]) {
+    assert.match(source, /checkForUpdates:/);
+    assert.match(source, /updates: \{/);
+    for (const key of [
+      "upToDate",
+      "downloading",
+      "downloaded",
+      "restart",
+      "whatsNew",
+      "releaseNotes",
+      "closeReleaseNotes",
+      "currentBadge",
+      "availableBadge",
+      "preferenceTitle",
+      "preferenceDesc",
+      "automatic",
+      "manual",
+      "automaticUnsupported",
+      "automaticPortableWarning",
+      "preferenceSaveFailed",
+    ]) {
+      assert.match(source, new RegExp(`${key}:`), key);
+    }
+  }
+});
+
+test('KunBuddy packaging never includes the upstream update feed',()=>{
+ const pkg=JSON.parse(pkgSource);
+ assert.equal(pkg.build.publish,null);
+ assert(!pkg.build.win.extraResources.some(item=>item.to==='app-update.yml'));
+ assert.match(updaterSource,/KUNBUDDY_UPDATE_FEED_URL/);
+ assert.match(updaterSource,/feed !== null/);
+ for(const script of ['dist:mac','dist:win','dist:linux'])assert.match(pkg.scripts[script],/--publish never|build-desktop-release\.mjs/);
+ assert.equal(pkg.build.nsis.shortcutName,'KunBuddy');
+});
+
+test("shared shipped-locale changelog is the in-app notes source of truth", () => {
+  assert.match(changelogSource, /export const CHANGELOG/);
+  assert.match(changelogSource, /formatChangelogNotes/);
+  assert.match(changelogSource, /"zh-CN"/);
+  assert.match(changelogSource, /"zh-TW"/);
+  assert.match(englishChangelogSource, /version: "0\.2\.7"/);
+  assert.match(
+    mainSource,
+    /getLocale:\s*\(\)\s*=>\s*(?:updaterLocale|mainState\.updaterLocale)/,
+    "Main supplies product locale to the updater for note selection",
+  );
+  assert.match(mainSource, /updater\.refreshReleaseNotes\(\)/);
+  assert.match(stylesSource, /\.update-notice-notes/);
+  assert.match(stylesSource, /\.update-settings-notes/);
+});
+
+test("update cache relocation and cleanup preserve the delta-update path", async () => {
+  const updateCacheSource = await read("../electron/main/update-cache.ts");
+  const maintenanceSource = await read("../electron/main/update-cache-maintenance.ts");
+  assert.match(updateCacheSource, /KUNBUDDY_UPDATE_CACHE_DIR/);
+  assert.match(updaterSource, /new RelocatedNsisUpdater\(baseCachePath\)/);
+  assert.match(updaterSource, /relocateUpdateCacheBasePath\(this\.app, baseCachePath\)/);
+  assert.match(maintenanceSource, /readFileSync\([\s\S]*app-update\.yml/);
+  assert.match(mainSource, /reclaimRelocatedUpdateCache/);
+  assert.match(updateCacheSource, /UPDATE_INSTALLER_BASELINE_NAME/);
+  assert.match(updateCacheSource, /UPDATE_BLOCKMAP_BASELINE_NAME/);
+  assert.match(updateCacheSource, /UPDATE_DOWNLOAD_DIR_NAME/);
+});
