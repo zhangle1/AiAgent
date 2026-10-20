@@ -14,6 +14,8 @@ type ProjectDraft = { id?: number; name: string; displayName: string; rootPath: 
 type RepositoryDraft = { name: string; projectId: number | ""; displayName: string; rootPath: string; description: string; languages: string[]; solutionFiles: string[]; configurationFiles: string[]; chatEditableConfigurationFiles: string[]; publishTarget: string; publishConfiguration: string; publishRuntime: string; publishOutputPath: string };
 type ConsoleLine = { stream?: "stdout" | "stderr"; line: string };
 type CloneDraft = { projectId: number | ""; repositoryUrl: string; destinationDirectoryName: string; branch: string; gitAccountId: number | "" };
+type BulkCloneEntry = { repositoryUrl: string; branch: string };
+type BulkCloneResult = BulkCloneEntry & { status: "pending" | "cloning" | "success" | "failed"; message?: string };
 type FileDraft = { path: string; content: string; sha256: string };
 type RuntimeDraft = { id?: number; role: "frontend" | "backend"; entryPath: string; runScript: string; testScript: string; preferredPort: string; healthPath: string; isEnabled: boolean; isPreviewEnabled: boolean };
 type FileBrowserTarget = "solution" | "configuration" | "backendEntry" | "frontendEntry";
@@ -22,6 +24,14 @@ const languages = ["C#", "TypeScript/JavaScript", "Java", "Python"];
 const emptyProject: ProjectDraft = { name: "", displayName: "", rootPath: "", description: "" };
 const emptyRepository: RepositoryDraft = { name: "", projectId: "", displayName: "", rootPath: "", description: "", languages: [], solutionFiles: [], configurationFiles: [], chatEditableConfigurationFiles: [], publishTarget: "", publishConfiguration: "Release", publishRuntime: "", publishOutputPath: "artifacts/publish" };
 const emptyClone: CloneDraft = { projectId: "", repositoryUrl: "", destinationDirectoryName: "", branch: "", gitAccountId: "" };
+const bulkCloneDefaultText = [
+  "https://gitee.com/yun_kun/guokun-cps-web-shengyue.git\tdevelop",
+  "https://gitee.com/yun_kun/shengyue-cps-api-single.git\tdevelop",
+  "https://gitee.com/yun_kun/shengyue-srm-web.git\tdevelop",
+  "https://gitee.com/yun_kun/shengyue-new-datasync.git\tmaster",
+  "https://gitee.com/yun_kun/shengyue-padcps2.git\tmaster",
+  "https://gitee.com/yun_kun/shengyue-pda.git\tmaster",
+].join("\n");
 const emptyRuntime: RuntimeDraft = { role: "backend", entryPath: "", runScript: "dev", testScript: "dotnet test", preferredPort: "5100", healthPath: "/", isEnabled: true, isPreviewEnabled: false };
 const input = "mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
@@ -46,6 +56,12 @@ export function CodeProjectSettingsPage() {
   const [error, setError] = useState("");
   const [cloneOpen, setCloneOpen] = useState(false);
   const [cloneDraft, setCloneDraft] = useState<CloneDraft>(emptyClone);
+  const [bulkCloneOpen, setBulkCloneOpen] = useState(false);
+  const [bulkCloneProjectId, setBulkCloneProjectId] = useState<number | "">("");
+  const [bulkCloneAccountId, setBulkCloneAccountId] = useState<number | "">("");
+  const [bulkCloneText, setBulkCloneText] = useState("");
+  const [bulkCloneResults, setBulkCloneResults] = useState<BulkCloneResult[]>([]);
+  const [bulkCloneError, setBulkCloneError] = useState("");
   const [accounts, setAccounts] = useState<GitAccount[]>([]);
   const [cloneLines, setCloneLines] = useState<ConsoleLine[]>([]);
   const [terminalTitle, setTerminalTitle] = useState("");
@@ -233,6 +249,59 @@ export function CodeProjectSettingsPage() {
     } catch (value) { setError(message(value)); }
   }
 
+  async function openBulkClone() {
+    setError(""); setBulkCloneError(""); setBulkCloneText(bulkCloneDefaultText); setBulkCloneResults([]); setCloneLines([]);
+    setBulkCloneProjectId(selectedProjectId ?? projects[0]?.id ?? "");
+    try {
+      const items = await listGitAccounts();
+      const configuredAccounts = items.filter((account) => account.token_configured);
+      setAccounts(configuredAccounts);
+      setBulkCloneAccountId(configuredAccounts.find((account) => account.is_active)?.id ?? configuredAccounts[0]?.id ?? "");
+      setBulkCloneOpen(true);
+    } catch (value) { setError(message(value)); }
+  }
+
+  async function cloneBulkRepositories() {
+    if (!bulkCloneProjectId || !bulkCloneAccountId) {
+      setBulkCloneError("请选择目标项目和已配置访问令牌的 Git 账号。");
+      return;
+    }
+    const parsed = parseBulkCloneInput(bulkCloneText);
+    if (parsed.errors.length) {
+      setBulkCloneError(parsed.errors.join("；"));
+      return;
+    }
+    if (!parsed.entries.length) {
+      setBulkCloneError("请粘贴至少一条 HTTPS 仓库地址，可在地址后填写分支。");
+      return;
+    }
+
+    setBulkCloneError(""); setBusy(true); setCloneLines([]);
+    setBulkCloneResults(parsed.entries.map((entry) => ({ ...entry, status: "pending" })));
+    for (let index = 0; index < parsed.entries.length; index += 1) {
+      const entry = parsed.entries[index];
+      const order = index + 1;
+      setBulkCloneResults((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, status: "cloning", message: "正在克隆…" } : item));
+      setCloneLines((lines) => [...lines.slice(-499), { line: `[${order}/${parsed.entries.length}] 开始：${entry.repositoryUrl}${entry.branch ? `（${entry.branch}）` : "（默认分支）"}` }]);
+      try {
+        const result = await cloneCodeRepositoryViaWebSocket({ project_id: Number(bulkCloneProjectId), repository_url: entry.repositoryUrl, branch: entry.branch || undefined, git_account_id: Number(bulkCloneAccountId) }, (event) => {
+          const prefix = `[${order}/${parsed.entries.length}] `;
+          if (event.line) setCloneLines((lines) => [...lines.slice(-499), { stream: event.stream, line: `${prefix}${event.line}` }]);
+          else if (event.message && event.type !== "completed") setCloneLines((lines) => [...lines.slice(-499), { line: `${prefix}${event.message}` }]);
+        });
+        if (!result.success) throw new Error(result.message || "克隆失败，请查看终端输出。");
+        setBulkCloneResults((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, status: "success", message: "克隆并登记成功" } : item));
+        setCloneLines((lines) => [...lines.slice(-499), { line: `[${order}/${parsed.entries.length}] 完成：${entry.repositoryUrl}` }]);
+      } catch (value) {
+        const reason = message(value);
+        setBulkCloneResults((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, status: "failed", message: reason } : item));
+        setCloneLines((lines) => [...lines.slice(-499), { stream: "stderr", line: `[${order}/${parsed.entries.length}] 失败：${reason}` }]);
+      }
+    }
+    try { await reload(); }
+    finally { setBusy(false); }
+  }
+
   async function cloneRepository() {
     if (!cloneDraft.projectId || !cloneDraft.repositoryUrl.trim() || !cloneDraft.gitAccountId) return setError("请选择项目、填写 HTTPS 仓库地址并选择 Git 账号。");
     setBusy(true); setCloneLines([]); setTerminalTitle("克隆终端"); setTerminalOpen(true); setError("");
@@ -277,7 +346,7 @@ export function CodeProjectSettingsPage() {
   }
 
   return <section>
-    <SettingsPageHeader title="项目与代码库" description="项目对应服务器文件夹；可在项目内克隆远程仓库，选择供 AI、调试和打包使用的入口文件。" action={<div className="flex gap-2"><button onClick={startProject} className="secondary-button"><FolderGit2 size={15}/>新建项目</button><button onClick={() => void openClone()} className="secondary-button"><GitBranch size={15}/>克隆代码库</button><button onClick={() => startRepository()} className="primary-button"><Plus size={15}/>挂载代码库</button></div>} />
+    <SettingsPageHeader title="项目与代码库" description="项目对应服务器文件夹；可在项目内克隆远程仓库，选择供 AI、调试和打包使用的入口文件。" action={<div className="flex flex-wrap gap-2"><button onClick={startProject} className="secondary-button"><FolderGit2 size={15}/>新建项目</button><button onClick={() => void openClone()} className="secondary-button"><GitBranch size={15}/>克隆代码库</button><button onClick={() => void openBulkClone()} disabled={projects.length === 0} className="secondary-button disabled:cursor-not-allowed disabled:opacity-50"><GitBranch size={15}/>批量克隆</button><button onClick={() => startRepository()} className="primary-button"><Plus size={15}/>挂载代码库</button></div>} />
     <div className="grid gap-5 xl:grid-cols-[310px_minmax(0,1fr)]">
       <aside className="workspace-scroll max-h-[calc(100vh-190px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between px-1"><span className="text-xs font-semibold text-slate-700">项目资源</span><button onClick={() => void reload()} className="icon-button" aria-label="刷新"><RefreshCw size={14} className={loading ? "animate-spin" : ""}/></button></div>
@@ -295,6 +364,7 @@ export function CodeProjectSettingsPage() {
     {browser && <DirectoryPicker browser={browser} allowCreate={browserTarget === "project"} onClose={() => setBrowser(null)} onOpen={(path) => void openBrowser(browserTarget, path)} onCreate={createProjectDirectory} onChoose={() => { if (browserTarget === "project") setProjectDraft((item) => ({ ...item, rootPath: browser.path })); else setRepositoryDraft((item) => ({ ...item, rootPath: browser.path })); setBrowser(null); }} />}
     {fileBrowser && <FilePicker browser={fileBrowser} target={fileBrowserTarget} onClose={() => setFileBrowser(null)} onOpen={(path) => void openFileBrowser(fileBrowserTarget, path)} onChoose={chooseFile} />}
     {cloneOpen && <CloneDialog projects={projects} accounts={accounts} draft={cloneDraft} lines={cloneLines} busy={busy} onChange={setCloneDraft} onClose={() => !busy && setCloneOpen(false)} onSubmit={() => void cloneRepository()} />}
+    {bulkCloneOpen && <BulkCloneDialog projects={projects} accounts={accounts} projectId={bulkCloneProjectId} accountId={bulkCloneAccountId} text={bulkCloneText} results={bulkCloneResults} lines={cloneLines} error={bulkCloneError} busy={busy} onProjectChange={setBulkCloneProjectId} onAccountChange={setBulkCloneAccountId} onTextChange={(value) => { setBulkCloneText(value); setBulkCloneError(""); setBulkCloneResults([]); setCloneLines([]); }} onClearResults={() => { setBulkCloneResults([]); setCloneLines([]); }} onClose={() => !busy && setBulkCloneOpen(false)} onSubmit={() => void cloneBulkRepositories()} />}
     {terminalOpen && <TerminalDialog title={terminalTitle} lines={cloneLines} busy={busy} onClose={() => !busy && setTerminalOpen(false)} />}
     {fileDraft && <FileEditor file={fileDraft} busy={busy} onChange={setFileDraft} onClose={() => !busy && setFileDraft(null)} onSave={() => void saveFile()} />}
   </section>;
@@ -463,6 +533,79 @@ function DirectoryPicker({ browser, allowCreate, onClose, onOpen, onCreate, onCh
   </Modal>;
 }
 function CloneDialog({ projects, accounts, draft, lines, busy, onChange, onClose, onSubmit }: { projects: CodeProject[]; accounts: GitAccount[]; draft: CloneDraft; lines: ConsoleLine[]; busy: boolean; onChange: (value: CloneDraft) => void; onClose: () => void; onSubmit: () => void }) { return <Modal title="克隆远程代码库" onClose={onClose}><p className="text-xs leading-5 text-slate-500">可将同一远程仓库克隆到不同项目；每份代码库独立登记、运行和切换分支。</p><Field label="目标项目"><SearchableProjectSelect projects={projects} value={draft.projectId} onChange={(projectId) => onChange({ ...draft, projectId })} /></Field><Field label="HTTPS 仓库地址"><input className={input} value={draft.repositoryUrl} onChange={(event) => onChange({ ...draft, repositoryUrl: event.target.value })} placeholder="https://gitee.com/org/repository.git"/></Field><div className="grid gap-3 sm:grid-cols-2"><Field label="分支（可选）" hint="留空使用远程默认分支。"><input className={input} value={draft.branch} onChange={(event) => onChange({ ...draft, branch: event.target.value })} placeholder="develop"/></Field><Field label="本地目录名（可选）" hint="留空使用仓库名；不同分支可填写不同目录。"><input className={input} value={draft.destinationDirectoryName} onChange={(event) => onChange({ ...draft, destinationDirectoryName: event.target.value })} placeholder="guokun-aps-develop"/></Field></div><Field label="Git 账号"><select className={input} value={draft.gitAccountId} onChange={(event) => onChange({ ...draft, gitAccountId: event.target.value ? Number(event.target.value) : "" })}><option value="">选择已配置账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.provider} · {account.display_name} (@{account.username}){account.is_active ? "（当前默认）" : ""}</option>)}</select></Field>{accounts.length === 0 && <p className="mt-3 text-xs text-amber-700">尚未配置 Git 账号，请先前往 Git 管理添加访问令牌。</p>}{lines.length > 0 && <Console lines={lines}/>}<div className="mt-5 flex justify-end gap-2"><button onClick={onClose} disabled={busy} className="secondary-button">取消</button><button onClick={onSubmit} disabled={busy} className="primary-button">{busy && <Loader2 size={14} className="animate-spin"/>}开始克隆</button></div></Modal>; }
+
+function parseBulkCloneInput(text: string): { entries: BulkCloneEntry[]; errors: string[] } {
+  const entries: BulkCloneEntry[] = [];
+  const errors: string[] = [];
+  for (const [index, sourceLine] of text.split(/\r?\n/).entries()) {
+    const line = sourceLine.trim();
+    if (!line || /^```/.test(line) || /^\|?\s*:?-{3,}/.test(line)) continue;
+    const isTableRow = line.includes("|");
+    const cells = isTableRow ? line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim()) : [line];
+    if (isTableRow && cells.every((cell) => !cell || /^:?-{1,}:?$/.test(cell))) continue;
+    const urlCellIndex = cells.findIndex((cell) => /https?:\/\//i.test(cell));
+    if (urlCellIndex < 0) {
+      if (/^(?:\|?\s*)?(?:仓库|项目|repository|url|分支|branch)(?:地址|名称)?\s*\|?/i.test(line)) continue;
+      errors.push(`第 ${index + 1} 行：没有找到 HTTPS 仓库地址。`);
+      continue;
+    }
+    const urlMatch = cells[urlCellIndex].match(/https:\/\/[^\s|<>"']+/i);
+    if (!urlMatch) {
+      errors.push(`第 ${index + 1} 行：仓库地址必须使用 HTTPS。`);
+      continue;
+    }
+    const repositoryUrl = urlMatch[0].replace(/[),\]}，；;]+$/, "");
+    let branch = "";
+    if (isTableRow) {
+      branch = cells.slice(urlCellIndex + 1).find((cell) => cell.trim())?.trim() ?? "";
+    } else {
+      branch = cells[0].slice(cells[0].indexOf(urlMatch[0]) + urlMatch[0].length).replace(/^[\s|,，;；-]+/, "").trim();
+    }
+    branch = branch.replace(/[`*_]/g, "").split(/\s+/)[0] ?? "";
+    try {
+      const parsedUrl = new URL(repositoryUrl);
+      if (parsedUrl.protocol !== "https:" || !["gitee.com", "github.com"].includes(parsedUrl.hostname.toLowerCase()) || parsedUrl.pathname.split("/").filter(Boolean).length < 2) {
+        errors.push(`第 ${index + 1} 行：仅支持 gitee.com 或 github.com 的 HTTPS 仓库地址。`);
+        continue;
+      }
+    } catch {
+      errors.push(`第 ${index + 1} 行：仓库地址格式无效。`);
+      continue;
+    }
+    entries.push({ repositoryUrl, branch });
+  }
+  return { entries, errors };
+}
+
+function BulkCloneDialog({ projects, accounts, projectId, accountId, text, results, lines, error, busy, onProjectChange, onAccountChange, onTextChange, onClearResults, onClose, onSubmit }: { projects: CodeProject[]; accounts: GitAccount[]; projectId: number | ""; accountId: number | ""; text: string; results: BulkCloneResult[]; lines: ConsoleLine[]; error: string; busy: boolean; onProjectChange: (value: number | "") => void; onAccountChange: (value: number | "") => void; onTextChange: (value: string) => void; onClearResults: () => void; onClose: () => void; onSubmit: () => void }) {
+  const parsed = parseBulkCloneInput(text);
+  const completed = results.filter((item) => item.status === "success" || item.status === "failed").length;
+  const statusLabel: Record<BulkCloneResult["status"], string> = { pending: "等待中", cloning: "克隆中", success: "完成", failed: "失败" };
+  return <Modal title="批量克隆远程代码库" onClose={onClose} wide>
+    <p className="mt-1 text-xs leading-5 text-slate-500">粘贴 Markdown 表格或每行一个“仓库 URL 分支”；系统会按输入顺序逐个克隆。单项失败不会阻止后续仓库。</p>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label="目标项目"><SearchableProjectSelect projects={projects} value={projectId} onChange={onProjectChange}/></Field>
+      <Field label="Git 账号"><select className={input} value={accountId} onChange={(event) => onAccountChange(event.target.value ? Number(event.target.value) : "")}><option value="">选择已配置账号</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.provider} · {account.display_name} (@{account.username}){account.is_active ? "（当前默认）" : ""}</option>)}</select></Field>
+    </div>
+    <Field label="仓库列表" hint="Markdown 表格会自动读取仓库地址及其右侧分支；没有填写分支时使用远程默认分支。">
+      <textarea className="workspace-scroll mt-1.5 h-36 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs leading-5 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={text} onChange={(event) => onTextChange(event.target.value)} disabled={busy} placeholder={'| 仓库地址 | 分支 |\n| --- | --- |\n| https://gitee.com/org/repo-one.git | develop |\n| https://gitee.com/org/repo-two.git | master |'} />
+    </Field>
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <span className="text-slate-500">识别到 {parsed.entries.length} 个仓库{results.length > 0 ? ` · 已完成 ${completed}/${results.length}` : ""}</span>
+      {parsed.errors.length > 0 && <span className="text-red-600">{parsed.errors.slice(0, 2).join("；")}{parsed.errors.length > 2 ? `（另有 ${parsed.errors.length - 2} 项）` : ""}</span>}
+    </div>
+    {error && <p role="alert" className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+    {accounts.length === 0 && <p className="mt-2 text-xs text-amber-700">尚未配置 Git 账号，请先前往 Git 管理添加访问令牌。</p>}
+    {results.length > 0 && <div className="workspace-scroll mt-3 max-h-36 overflow-auto rounded-xl border border-slate-200">
+      {results.map((item, index) => <div key={`${item.repositoryUrl}-${index}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 last:border-b-0">
+        <div className="min-w-0"><p className="truncate text-xs font-medium text-slate-800">{index + 1}. {item.repositoryUrl}</p><p className="truncate mt-0.5 text-[11px] text-slate-500">分支：{item.branch || "远程默认分支"}{item.message ? ` · ${item.message}` : ""}</p></div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${item.status === "success" ? "bg-emerald-50 text-emerald-700" : item.status === "failed" ? "bg-red-50 text-red-700" : item.status === "cloning" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{item.status === "cloning" && <Loader2 size={10} className="mr-1 inline animate-spin"/>}{statusLabel[item.status]}</span>
+      </div>)}
+    </div>}
+    {lines.length > 0 && <pre className="workspace-scroll mt-3 max-h-36 overflow-auto rounded-xl bg-slate-950 p-3 font-mono text-[10px] leading-4 text-slate-100">{lines.map((item, index) => <span key={`${index}-${item.line}`} className={`block ${item.stream === "stderr" ? "text-amber-300" : "text-emerald-300"}`}>{item.line}</span>)}</pre>}
+    <div className="mt-5 flex justify-end gap-2">{results.length > 0 && <button onClick={onClearResults} disabled={busy} className="secondary-button">清除执行结果</button>}<button onClick={onClose} disabled={busy} className="secondary-button">{busy ? "克隆进行中…" : "关闭"}</button><button onClick={onSubmit} disabled={busy || parsed.entries.length === 0 || parsed.errors.length > 0 || projects.length === 0 || accounts.length === 0} className="primary-button">{busy ? <Loader2 size={14} className="animate-spin"/> : <GitBranch size={14}/>}开始顺序克隆 {parsed.entries.length} 个仓库</button></div>
+  </Modal>;
+}
 
 function SearchableProjectSelect({ projects, value, onChange }: { projects: CodeProject[]; value: number | ""; onChange: (value: number | "") => void }) {
   const [open, setOpen] = useState(false);
