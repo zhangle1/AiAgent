@@ -2,6 +2,7 @@ using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
+using AiAgent.Backend.Entities.Auth;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Llm;
 using SqlSugar;
@@ -50,6 +51,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         using var db = database.CopyNew();
         var nodes = new Dictionary<string, KnowledgeResourceNodeDto>(StringComparer.Ordinal);
         var userRoot = CurrentUserRoot(db);
+        var allSessions = KnowledgeUserScope.CanReadAllSessions(db, httpContextAccessor);
         foreach (var (root, name) in Roots.Zip(new[] { "资料", "项目", "人员" }))
             nodes[root] = new() { Uri = root, Name = name, Kind = "directory" };
         AddDirectory(userRoot, "我的工作区");
@@ -57,17 +59,26 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         AddDirectory(userRoot + "wiki/", "Wiki");
         AddDirectory(userRoot + "summaries/", "摘要");
         AddDirectory(userRoot + "derived/", "模型转换");
+        AddDirectory(userRoot + "sessions/", "会话");
+        if (allSessions)
+            foreach (var user in db.Queryable<AiUser>().Select(user => new { user.Id, user.Username, user.Alias }).ToList())
+            {
+                var otherRoot = KnowledgeUserScope.RootFor(user.Username, user.Id);
+                if (otherRoot == userRoot) continue;
+                AddDirectory(otherRoot, (user.Alias ?? user.Username) + "的工作区");
+                AddDirectory(otherRoot + "sessions/", "会话");
+            }
         foreach (var row in db.Queryable<AiKnowledgeDirectory>().ToList())
-            if (row.Uri is { } uri && (!uri.StartsWith(Roots[2], StringComparison.Ordinal) || uri.StartsWith(userRoot, StringComparison.Ordinal))) AddDirectory(uri, row.Name);
+            if (row.Uri is { } uri && (!uri.StartsWith(Roots[2], StringComparison.Ordinal) || uri.StartsWith(userRoot, StringComparison.Ordinal) || allSessions && KnowledgeUserScope.IsSessionScope(uri))) AddDirectory(uri, row.Name);
         var bases = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).ToList().ToDictionary(x => x.Id);
-        foreach (var kb in bases.Values.Where(k => k.Name != StoreName))
+        foreach (var kb in bases.Values.Where(k => k.Name != StoreName && k.Name != KnowledgeInternalStores.Sessions))
             AddDirectory(LegacyDirectory(kb));
         var documents = db.Queryable<AiKnowledgeDocument>().Where(x => !x.IsDeleted).ToList();
         foreach (var doc in documents)
         {
             if (!bases.TryGetValue(doc.KnowledgeBaseId, out var kb)) continue;
             var uri = DocumentUri(kb, doc);
-            if (uri.StartsWith(Roots[2], StringComparison.Ordinal) && !uri.StartsWith(userRoot, StringComparison.Ordinal)) continue;
+            if (uri.StartsWith(Roots[2], StringComparison.Ordinal) && !uri.StartsWith(userRoot, StringComparison.Ordinal) && !(allSessions && KnowledgeUserScope.IsSessionScope(uri))) continue;
             AddDirectory(Parent(uri));
             nodes[uri] = new() { Uri = uri, ParentUri = Parent(uri), Name = doc.OriginalFileName,
                 Kind = "file", DocumentId = doc.Id, KnowledgeBaseName = kb.Name,
@@ -123,7 +134,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             var parent = Parent(uri);
             AddDirectory(parent);
             nodes[uri] = new() { Uri = uri, ParentUri = parent,
-                Name = name ?? (uri.EndsWith("/_compiled/", StringComparison.Ordinal) ? "编译产物" : uri.EndsWith("/_parsed/", StringComparison.Ordinal) ? "解析正文" : Uri.UnescapeDataString(uri.TrimEnd('/').Split('/').Last())), Kind = "directory" };
+                Name = name ?? (uri.EndsWith("/sessions/", StringComparison.Ordinal) ? "会话" : uri.EndsWith("/_compiled/", StringComparison.Ordinal) ? "编译产物" : uri.EndsWith("/_parsed/", StringComparison.Ordinal) ? "解析正文" : Uri.UnescapeDataString(uri.TrimEnd('/').Split('/').Last())), Kind = "directory" };
         }
     }
 
@@ -185,11 +196,12 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             if (!Tree().Any(x => x.Uri == parent && x.Kind == "directory")) throw new KeyNotFoundException("上传目录不存在。");
             using var db = database.CopyNew();
             var manager = new KnowledgeBaseManager(db, paths, managerLogger);
-            var kb = db.Queryable<AiKnowledgeBase>().Where(x => x.Name == StoreName && !x.IsDeleted).First()
-                ?? manager.CreateKnowledgeBase(StoreName, "资料存储", "Internal source storage for logical directories.", "llamaindex");
+            var kb = KnowledgeUserScope.IsSessionScope(parent) ? KnowledgeInternalStores.EnsureSessions(db, paths)
+                : db.Queryable<AiKnowledgeBase>().Where(x => x.Name == StoreName && !x.IsDeleted).First()
+                    ?? manager.CreateKnowledgeBase(StoreName, "资料存储", "Internal source storage for logical directories.", "llamaindex");
             var result = await manager.ImportDocumentsAsync(kb, request.Files, ct, parent);
             var response = new KnowledgeResourceImportDto { Items = result.Items };
-            if (request.Process)
+            if (request.Process && !KnowledgeUserScope.IsSessionScope(parent))
                 foreach (var doc in result.Documents)
                 {
                     try { response.Tasks.Add(worker.Enqueue(kb.Name, doc.Id, parseOnly: true)); }
@@ -251,6 +263,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
 
     public KnowledgeCompilationJobDto Parse(string uri)
     {
+        ScopeUserUri(uri);
         if (IsGeneratedUri(uri) && !IsWikiUri(uri)) throw new ArgumentException("编译产物为只读内容，请重新编译对应原始资料。");
         var (kb, doc) = Resolve(FindNode(uri));
         return worker.Enqueue(kb.Name, doc.Id, parseOnly: !IsWikiUri(uri));
@@ -258,6 +271,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
 
     public KnowledgeCompilationJobDto Compile(string uri, KnowledgeCompilerSettingsDto configuration)
     {
+        ScopeUserUri(uri);
         var node = FindNode(uri);
         if (IsGeneratedUri(node.Uri)) throw new ArgumentException("请选择原始资源文件，不能编译生成产物。");
         var (kb, doc) = Resolve(node);
@@ -398,18 +412,18 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
 
     private KnowledgeResourceNodeDto FindNode(string uri)
     {
-        var canonical = ScopeUserUri(uri);
+        var canonical = ScopeUserUri(uri, allowSessionAdminRead: true);
         return Tree().FirstOrDefault(x => x.Uri == canonical) ?? throw new KeyNotFoundException("资源不存在。");
     }
 
-    private string ScopeUserUri(string uri)
+    private string ScopeUserUri(string uri, bool allowSessionAdminRead = false)
     {
         var canonical = NormalizeUri(uri, uri.EndsWith('/'));
         using var db = database.CopyNew();
         if (!canonical.StartsWith(Roots[2], StringComparison.Ordinal) || canonical == Roots[2])
             return canonical == Roots[2] ? CurrentUserRoot(db) : canonical;
         var userRoot = CurrentUserRoot(db);
-        if (!canonical.StartsWith(userRoot, StringComparison.Ordinal))
+        if (!canonical.StartsWith(userRoot, StringComparison.Ordinal) && !(allowSessionAdminRead && KnowledgeUserScope.IsSessionScope(canonical, includeWorkspaceRoot: true) && KnowledgeUserScope.CanReadAllSessions(db, httpContextAccessor)))
             throw new UnauthorizedAccessException("不能访问其他登录用户的个人资源目录。");
         return canonical;
     }

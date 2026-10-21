@@ -6,7 +6,9 @@ import { useSettings } from "@/components/settings/SettingsProvider";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
 import type { ModelServiceConfig } from "@/components/settings/models/model-service-config";
 import { ProviderIcon } from "@/components/settings/models/ProviderIcon";
+import { ModelDiscoveryPanel } from "./ModelDiscoveryPanel";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useState } from "react";
 import type { TranslationKey } from "@/i18n/dictionaries";
 
 const fieldLabelKeys: Record<string, TranslationKey> = {
@@ -26,6 +28,7 @@ const fieldLabelKeys: Record<string, TranslationKey> = {
 export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
   const { t } = useI18n();
   const settings = useSettings();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const {
     draft,
     providers,
@@ -60,7 +63,7 @@ export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
   const providerValue = String((profile?.[providerField] as string | null | undefined) ?? "");
 
   return (
-    <section>
+    <fieldset className="min-w-0 border-0 p-0" disabled={settings.loading || saving || applying || testing !== null} aria-busy={settings.loading || saving || applying || testing !== null} aria-label={t(config.titleKey)}>
       <div className="mb-5 flex items-center justify-between gap-4 text-[12px] text-[var(--muted-foreground)]">
         <span>{t("models.savedToDb")}</span>
         <div className="flex items-center gap-2">
@@ -135,13 +138,24 @@ export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
             <div className="mt-4 space-y-4">
               <Field label={t("models.baseUrl")} value={profile?.base_url ?? ""} onChange={(value) => updateProfile(service, "base_url", value)} />
               <Field label={t("models.apiKey")} value={profile?.api_key ?? ""} onChange={(value) => updateProfile(service, "api_key", value)} type="password" />
-              <button className="flex h-[62px] w-full items-center justify-between rounded-lg border border-[var(--border)] bg-white px-4 text-left">
+              {profile && (service === "llm" || service === "embedding") && <ModelDiscoveryPanel key={`${service}:${profile.id}`} profile={profile} service={service} />}
+              <button type="button" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(value => !value)} className="flex h-[62px] w-full items-center justify-between rounded-lg border border-[var(--border)] bg-white px-4 text-left">
                 <span>
                   <span className="block text-[12px] font-semibold">{t("models.extra")}</span>
                   <span className="mt-1 block text-[12px] text-[var(--muted-foreground)]">{t("models.extraDesc")}</span>
                 </span>
                 <ChevronDown size={16} />
               </button>
+              {advancedOpen && profile && <div className="space-y-4 rounded-lg border border-[var(--border)] p-4">
+                {service === "llm" && <label className="block text-[12px]">
+                  坤伴订阅请求协议
+                  <select className="mt-2 h-10 w-full rounded-md border border-[var(--border)] bg-white px-3" value={profile.api_style ?? ""} onChange={event => updateProfile(service, "api_style", event.target.value)}>
+                    <option value="">按供应商自动选择</option><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="anthropic_messages">Anthropic Messages</option><option value="google_generative_ai">Google Generative AI</option>
+                  </select>
+                </label>}
+                <Field label="API Version" value={profile.api_version ?? ""} onChange={value => updateProfile(service, "api_version", value)} />
+                <ProfileHeaders key={profile.id} value={profile.extra_headers ?? {}} onChange={value => updateProfile(service, "extra_headers", value)} />
+              </div>}
             </div>
           </section>
 
@@ -182,6 +196,7 @@ export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label={t("models.modelName")} value={model?.name ?? ""} onChange={(value) => updateModel(service, "name", value)} />
+                  {service === "llm" && <Field label="最大输出 Token（元数据）" value={model?.max_output_tokens ?? ""} onChange={(value) => updateModel(service, "max_output_tokens", value)} />}
                   {config.modelFields.map((field) => {
                     if (field === "model") {
                       return <Field key={field} label={t(fieldLabelKeys[field])} value={model?.model ?? ""} onChange={(value) => updateModel(service, field, value)} />;
@@ -196,6 +211,12 @@ export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
                     );
                   })}
                 </div>
+                {service === "llm" && (
+                  <label className="mt-4 flex items-center gap-2 text-[12px]">
+                    <input type="checkbox" checked={model?.supports_images === true} onChange={event => updateModel(service, "supports_images", event.target.checked)} />
+                    支持原生图片输入（用于客户端模型能力配置）
+                  </label>
+                )}
                 {service === "llm" && (
                   <label className="mt-4 flex items-start gap-3 rounded-lg border border-[var(--border)] bg-zinc-50 p-3 text-[12px]">
                     <input
@@ -236,8 +257,24 @@ export function ModelServiceEditor({ config }: { config: ModelServiceConfig }) {
           </section>
         </div>
       </div>
-    </section>
+    </fieldset>
   );
+}
+
+function ProfileHeaders({ value, onChange }: { value: Record<string, string>; onChange: (value: Record<string, string>) => void }) {
+  const [text, setText] = useState(() => JSON.stringify(value, null, 2));
+  const [error, setError] = useState("");
+  return <label className="block text-[12px]">额外请求头（JSON）
+    <textarea className="mt-2 min-h-24 w-full rounded-md border border-[var(--border)] p-3 font-mono" value={text} onChange={event => {
+      setText(event.target.value);
+      try {
+        const parsed: unknown = JSON.parse(event.target.value || "{}");
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object" || Object.values(parsed).some(item => typeof item !== "string")) throw new Error();
+        onChange(parsed as Record<string, string>); setError("");
+      } catch { setError("请输入键和值均为字符串的 JSON 对象。"); }
+    }} />
+    {error && <span role="alert" className="text-red-600">{error}</span>}
+  </label>;
 }
 
 function ProfilesPanel({

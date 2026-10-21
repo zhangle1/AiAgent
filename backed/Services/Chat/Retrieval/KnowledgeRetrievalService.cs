@@ -240,6 +240,7 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
     private AiKnowledgeBase FindKnowledgeBase(string kbName)
     {
         var normalized = kbName.Trim().ToLowerInvariant();
+        KnowledgeInternalStores.RequirePublic(normalized);
         var kb = _db.Queryable<AiKnowledgeBase>()
             .Where(x => x.Name == normalized && !x.IsDeleted)
             .First();

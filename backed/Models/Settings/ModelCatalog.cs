@@ -149,6 +149,9 @@ public sealed class CatalogProfile
     [JsonPropertyName("api_version")]
     public string ApiVersion { get; set; } = "";
 
+    [JsonPropertyName("api_style")]
+    public string? ApiStyle { get; set; }
+
     /// <summary>
     /// 额外请求头。
     /// </summary>
@@ -220,6 +223,18 @@ public sealed class CatalogModel
     /// </summary>
     [JsonPropertyName("context_window")]
     public string? ContextWindow { get; set; }
+
+    [JsonPropertyName("max_output_tokens")]
+    public string? MaxOutputTokens { get; set; }
+
+    [JsonPropertyName("max_output_tokens_source")]
+    public string? MaxOutputTokensSource { get; set; }
+
+    [JsonPropertyName("supports_images")]
+    public bool? SupportsImages { get; set; }
+
+    [JsonPropertyName("supports_tools")]
+    public bool? SupportsTools { get; set; }
 
     /// <summary>
     /// 上下文窗口来源。

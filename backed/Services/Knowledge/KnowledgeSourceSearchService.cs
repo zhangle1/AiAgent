@@ -27,6 +27,7 @@ public sealed class KnowledgeSourceSearchService(ISqlSugarClient db, IKnowledgeP
             throw new ArgumentException("Query must contain 1-4000 characters.");
 
         var normalizedName = paths.NormalizeName(name);
+        KnowledgeInternalStores.RequirePublic(normalizedName);
         AiKnowledgeBase knowledgeBase;
         List<AiKnowledgeDocument> documents;
         Dictionary<long, string?> parsedPaths;

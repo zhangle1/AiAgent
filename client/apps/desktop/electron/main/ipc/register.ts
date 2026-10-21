@@ -19,6 +19,7 @@ import { registerPluginIpc } from "./plugin-ipc";
 import { registerPluginUiIpc } from "./plugin-ui-ipc";
 import { registerJevIpc } from "./jev-ipc";
 import { registerProviderIpc } from "./provider-ipc";
+import { registerKunBuddySubscriptionIpc } from "./kunbuddy-subscription-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
@@ -307,6 +308,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     bindingForModel,
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
+  registerKunBuddySubscriptionIpc(registrar, getHost, enrichProvider, dependencies.subscriptionSessionSync);
   registerJevIpc({ registrar, logger });
   registerWorktreeIpc({
     registrar,

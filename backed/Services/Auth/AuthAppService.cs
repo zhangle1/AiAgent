@@ -65,6 +65,17 @@ public sealed class AuthAppService : IDynamicApiController
         return new OkObjectResult(new { access_token = token, token_type = "Bearer", expires_in = 8 * 60 * 60, user_id = user.Id, username = user.Username });
     }
 
+    [HttpPost("kunbuddy-login")]
+    public async Task<IActionResult> KunBuddyLogin([FromBody] LoginRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Username) || request.Username.Length > 128 || string.IsNullOrEmpty(request.Password) || request.Password.Length > 4096)
+            return new BadRequestObjectResult(new { message = "请输入有效的账号和密码。" });
+        var (user, token) = await _authService.LoginKunBuddyAsync(request.Username, request.Password, cancellationToken);
+        if (user is null || token is null) return new UnauthorizedObjectResult(new { message = "账号或密码错误。" });
+        return new OkObjectResult(new { access_token = token, token_type = "Bearer", expires_in = 8 * 60 * 60,
+            expires_at = DateTimeOffset.UtcNow.AddHours(8), user_id = user.Id, username = user.Username });
+    }
+
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
     {

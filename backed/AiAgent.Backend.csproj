@@ -15,6 +15,7 @@
     </Content>
 
     <EmbeddedResource Include="Services\Knowledge\Skills\llm-wiki\SKILL.md" LogicalName="AiAgent.Backend.Services.Knowledge.Skills.llm-wiki.SKILL.md" />
+    <EmbeddedResource Include="Resources\Models\models.dev.json" LogicalName="AiAgent.Models.models.dev.json" />
 
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
     <PackageReference Include="Furion" Version="4.9.6.17" />

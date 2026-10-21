@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { applyCatalog as applyCatalogApi, getSettings, saveCatalog as saveCatalogApi, testService } from "@/lib/api";
+import { createCatalogOperationQueue, mergeDiscoveredModels } from "@/lib/model-discovery-state";
 import {
   activeModel,
   activeProfile,
@@ -33,12 +34,13 @@ type SettingsContextValue = {
   runTest: (service: ServiceName) => Promise<void>;
   setActiveProfile: (service: ServiceName, profileId: string) => void;
   setActiveModel: (service: ServiceName, modelId: string) => void;
-  updateProfile: (service: ServiceName, field: keyof CatalogProfile, value: string) => void;
+  updateProfile: (service: ServiceName, field: keyof CatalogProfile, value: string | Record<string, string>) => void;
   updateModel: (service: ServiceName, field: keyof CatalogModel, value: string | boolean) => void;
   addProfile: (service: ServiceName) => void;
   addModel: (service: ServiceName) => void;
   deleteActiveProfile: (service: ServiceName) => void;
   deleteActiveModel: (service: ServiceName) => void;
+  importDiscoveredModels: (service: ServiceName, profileId: string, models: CatalogModel[], expected: string) => Promise<boolean>;
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -68,41 +70,64 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [applying, setApplying] = useState(false);
   const [testing, setTesting] = useState<ServiceName | null>(null);
   const [results, setResults] = useState<Partial<Record<ServiceName, TestResult>>>({});
+  const draftRef = useRef(draft);
+  const enqueueCatalogOperation = useRef(createCatalogOperationQueue()).current;
+  const replaceDraft = useCallback((next: Catalog) => { draftRef.current = next; setDraft(next); }, []);
 
-  const reload = useCallback(async () => {
+  const importDiscoveredModels = useCallback((service: ServiceName, profileId: string, models: CatalogModel[], expected: string) => {
+    return enqueueCatalogOperation(async () => {
+      const current = draftRef.current;
+      if (!current) return false;
+      const next = mergeDiscoveredModels(current, service, profileId, models, expected);
+      if (!next) return false;
+      setSaving(true);
+      try {
+        const saved = await saveCatalogApi(next);
+        if (draftRef.current === current) {
+          setCatalog(saved.catalog);
+          replaceDraft(cloneCatalog(saved.catalog));
+        }
+        setToast(models.length ? `已保存 ${models.length} 个模型及可获取的上下文参数` : "连接配置已保存，已有模型保持不变");
+        return true;
+      } finally {
+        setSaving(false);
+      }
+    });
+  }, [enqueueCatalogOperation, replaceDraft]);
+
+  const reload = useCallback(() => enqueueCatalogOperation(async () => {
     setLoading(true);
     setError("");
     try {
       const payload = await getSettings();
       setCatalog(payload.catalog);
-      setDraft(cloneCatalog(payload.catalog));
+      replaceDraft(cloneCatalog(payload.catalog));
       setProviders(payload.providers);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Settings failed to load.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }), [enqueueCatalogOperation, replaceDraft]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const mutateDraft = useCallback((mutator: (next: Catalog) => void) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const next = cloneCatalog(current);
-      mutator(next);
-      return next;
-    });
-  }, []);
+    const current = draftRef.current;
+    if (!current) return;
+    const next = cloneCatalog(current);
+    mutator(next);
+    replaceDraft(next);
+  }, [replaceDraft]);
 
   const updateProfile = useCallback(
-    (service: ServiceName, field: keyof CatalogProfile, value: string) => {
+    (service: ServiceName, field: keyof CatalogProfile, value: string | Record<string, string>) => {
       mutateDraft((next) => {
         const profile = activeProfile(next, service);
         if (!profile) return;
-        (profile[field] as string | null | undefined) = value;
+        (profile[field] as string | Record<string, string> | null | undefined) = value;
         if (field === "binding" || field === "provider") {
           const option = providers[service]?.find((item) => item.value === value);
           if (option?.base_url) profile.base_url = option.base_url;
@@ -143,6 +168,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const model = activeModel(next, service);
         if (!model) return;
         (model[field] as string | boolean | undefined) = value;
+        if (field === "context_window") { model.context_window_source = "manual"; model.context_window_detected_at = undefined; }
+        if (field === "max_output_tokens") model.max_output_tokens_source = "manual";
       });
     },
     [mutateDraft],
@@ -225,49 +252,52 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [mutateDraft],
   );
 
-  const saveDraft = useCallback(async () => {
-    if (!draft) return;
+  const saveDraft = useCallback(() => enqueueCatalogOperation(async () => {
+    const current = draftRef.current;
+    if (!current) return;
     setSaving(true);
     try {
-      const payload = await saveCatalogApi(draft);
+      const payload = await saveCatalogApi(current);
       setCatalog(payload.catalog);
-      setDraft(cloneCatalog(payload.catalog));
+      replaceDraft(cloneCatalog(payload.catalog));
       setToast("Draft saved");
     } finally {
       setSaving(false);
     }
-  }, [draft]);
+  }), [enqueueCatalogOperation, replaceDraft]);
 
-  const applyDraft = useCallback(async () => {
-    if (!draft) return;
+  const applyDraft = useCallback(() => enqueueCatalogOperation(async () => {
+    const current = draftRef.current;
+    if (!current) return;
     setApplying(true);
     try {
-      const payload = await applyCatalogApi(draft);
+      const payload = await applyCatalogApi(current);
       setCatalog(payload.catalog);
-      setDraft(cloneCatalog(payload.catalog));
+      replaceDraft(cloneCatalog(payload.catalog));
       setToast("All changes saved");
     } finally {
       setApplying(false);
     }
-  }, [draft]);
+  }), [enqueueCatalogOperation, replaceDraft]);
 
   const runTest = useCallback(
-    async (service: ServiceName) => {
-      if (!draft) return;
+    (service: ServiceName) => enqueueCatalogOperation(async () => {
+      const current = draftRef.current;
+      if (!current) return;
       setTesting(service);
       try {
-        const result = await testService(service, draft);
+        const result = await testService(service, current);
         setResults((current) => ({ ...current, [service]: result }));
         if (result.catalog) {
           setCatalog(result.catalog);
-          setDraft(cloneCatalog(result.catalog));
+          replaceDraft(cloneCatalog(result.catalog));
         }
         setToast(result.message);
       } finally {
         setTesting(null);
       }
-    },
-    [draft],
+    }),
+    [enqueueCatalogOperation, replaceDraft],
   );
 
   const dirty = useMemo(() => {
@@ -301,8 +331,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       addModel,
       deleteActiveProfile,
       deleteActiveModel,
+      importDiscoveredModels,
     }),
-    [addModel, addProfile, applying, catalog, deleteActiveModel, deleteActiveProfile, dirty, draft, error, loading, providers, reload, results, runTest, saveDraft, saving, setActiveModel, setActiveProfile, testing, toast, updateModel, updateProfile, applyDraft],
+    [addModel, addProfile, applying, catalog, deleteActiveModel, deleteActiveProfile, dirty, draft, error, loading, providers, reload, results, runTest, saveDraft, saving, setActiveModel, setActiveProfile, testing, toast, updateModel, updateProfile, applyDraft, importDiscoveredModels],
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

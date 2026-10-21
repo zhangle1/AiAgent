@@ -95,6 +95,7 @@ export type ProviderSetupDialogProps = {
   vendors?: OAuthVendor[] | null;
   /** Leaves this dialog for the vendor's browser sign-in. */
   onPickSubscription?: (vendor: OAuthVendor) => void;
+  onPickKunBuddy?: () => void;
   /** Opens straight on this service; Jev has no preset tile to land on. */
   initialService?: string | null;
   /** Jev was configured from inside this dialog. */
@@ -114,6 +115,7 @@ export function ProviderSetupDialog({
   imageModelIds,
   vendors,
   onPickSubscription,
+  onPickKunBuddy,
   initialService,
   onJevConfigured,
   onPickPluginProvider,
@@ -577,6 +579,7 @@ export function ProviderSetupDialog({
         current={service}
         onPickService={pickService}
         onPickSubscription={editing ? undefined : onPickSubscription}
+        onPickKunBuddy={editing ? undefined : onPickKunBuddy}
         showClassifiers={!editing}
         pluginProviders={editing ? [] : pluginProviderOptions}
         onPickPluginProvider={editing ? undefined : onPickPluginProvider}

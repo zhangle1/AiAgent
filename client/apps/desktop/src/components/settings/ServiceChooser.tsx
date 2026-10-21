@@ -32,6 +32,7 @@ export type ServiceChooserProps = {
   disabled?: boolean;
   onPickService: (id: string) => void;
   onPickSubscription?: (vendor: OAuthVendor) => void;
+  onPickKunBuddy?: () => void;
   /** Offers the classifier group; a new service, never an existing row. */
   showClassifiers?: boolean;
   /** API-key providers contributed by enabled plugins, grouped by category. */
@@ -50,6 +51,7 @@ export function ServiceChooser({
   disabled = false,
   onPickService,
   onPickSubscription,
+  onPickKunBuddy,
   showClassifiers = false,
   pluginProviders = [],
   onPickPluginProvider,
@@ -107,7 +109,9 @@ export function ServiceChooser({
     }
     return [...groups].map(([category, options]) => ({ category, options }));
   }, [visiblePluginProviders]);
+  const visibleKunBuddy = !!onPickKunBuddy && (!query.trim() || "坤伴订阅 kunbuddy aiagent".includes(query.trim().toLowerCase()));
   const nothingMatches =
+    !visibleKunBuddy &&
     visibleServices.length === 0 &&
     visibleSubscriptions.length === 0 &&
     visibleClassifiers.length === 0 &&
@@ -122,6 +126,7 @@ export function ServiceChooser({
         ? `plugin:${visiblePluginProviders[0].id}`
         : visibleClassifiers[0]
         ? `service:${visibleClassifiers[0].id}`
+        : visibleKunBuddy ? "subscription:kunbuddy"
         : visibleSubscriptions[0]
           ? `subscription:${visibleSubscriptions[0].vendor.vendorId}`
           : ""
@@ -142,6 +147,7 @@ export function ServiceChooser({
     if (visibleServices[0]) pickService(visibleServices[0].id);
     else if (visiblePluginProviders[0]) pickPluginProvider(visiblePluginProviders[0].id);
     else if (visibleClassifiers[0]) pickService(visibleClassifiers[0].id);
+    else if (visibleKunBuddy && onPickKunBuddy) onPickKunBuddy();
     else if (visibleSubscriptions[0]) pickSubscription(visibleSubscriptions[0].vendor);
     else pickService(CUSTOM_SERVICE);
   };
@@ -228,12 +234,18 @@ export function ServiceChooser({
           </div>
         ) : null}
 
-        {visibleSubscriptions.length > 0 ? (
+        {visibleSubscriptions.length > 0 || visibleKunBuddy ? (
           <section className="service-chooser-group" aria-labelledby="service-chooser-subscriptions">
             <h4 id="service-chooser-subscriptions" className="service-chooser-group-title">
               {t("settings.chooserSubscriptions")}
             </h4>
             <div className="service-chooser-grid">
+              {visibleKunBuddy && <button
+                type="button" data-service-tile data-kunbuddy-subscription className={cx("service-chooser-tile", enterTarget === "subscription:kunbuddy" && "is-active")} disabled={disabled}
+                onKeyDown={onTileKeyDown} onClick={onPickKunBuddy}>
+                <ServiceMonogram name="KunBuddy" />
+                <span className="service-chooser-tile-copy"><span className="service-chooser-tile-name">坤伴订阅</span><span className="service-chooser-tile-detail">使用 AiAgent 账号登录</span></span>
+              </button>}
               {/* Every OAuth-capable vendor; existing accounts do not disable a
                   vendor, because one vendor can hold several accounts. */}
               {visibleSubscriptions.map(({ vendor }) => {

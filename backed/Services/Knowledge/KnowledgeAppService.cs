@@ -13,6 +13,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 [DynamicApiController]
 [ApiDescriptionSettings("v1", KeepName = true)]
 [Route("api/v1/knowledge")]
+[TypeFilter(typeof(KnowledgeInternalStoreFilter))]
 public sealed class KnowledgeAppService : IDynamicApiController
 {
     private readonly ISqlSugarClient _db;
@@ -565,6 +566,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
         }
 
         var normalized = kbName.Trim().ToLowerInvariant();
+        KnowledgeInternalStores.RequirePublic(normalized);
         var kb = _db.Queryable<AiKnowledgeBase>()
             .Where(x => x.Name == normalized && !x.IsDeleted)
             .First();

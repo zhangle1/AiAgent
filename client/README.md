@@ -38,6 +38,16 @@ Start with examples/ and docs/plugin-development.md. Workspace imports use
 @kunbuddy/plugin-sdk and @kunbuddy/plugin-devkit; the CLI is kunbuddy-plugin.
 Use packages/agent-host and apps/kunbuddy-host for headless hosting.
 Bundled pi.* IDs and .piplug packages retain compatibility with the original wire format.
-No AiAgent server authentication or custom server plugin has been added in this migration.
+Settings → Models → Add AI service → 坤伴订阅 connects an existing AiAgent account.
+Enter the server URL and account credentials to import its authorized model profiles.
+Provider keys stay on the server; the client stores only an encrypted eight-hour session.
+See [model discovery and subscription](../docs/kunbuddy-subscription-and-model-discovery.md).
+
+Subscription conversations sync their original Markdown to the account's workspace
+`sessions/` directory, one file per conversation, with idempotent appends and retries.
+Startup and sign-in backfill existing subscription sessions. Upload does not invoke a
+model, enqueue parsing/compilation, or transfer attachment files. Ordinary API-key,
+paired-remote and native-import sessions are not automatically uploaded.
+See [conversation sync](../docs/kunbuddy-session-sync.md).
 
 [Migration and isolation](docs/kunbuddy-migration.md) · [Source/license](UPSTREAM.md) · [中文](README.zh-CN.md)

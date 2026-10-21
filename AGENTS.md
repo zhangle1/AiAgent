@@ -31,6 +31,10 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 修改订阅会话上传、历史补传或人员目录可见性前读 `docs/kunbuddy-session-sync.md`：持久化确认后确定性导出原始 Markdown，仅按服务端登录身份写入，分片无损追加且重试去重；不调用模型、不自动入解析／编译队列。管理员额外读取范围限他人 sessions 目录，写入和编译仍限本人；普通 Key、远程与原生导入会话不自动上传。
+
+- 模型发现与坤伴订阅改动前先读 `docs/kunbuddy-subscription-and-model-discovery.md`。可用模型以供应商列表为准，容量按端点 → 本地公开 `model.json` 补全，未知留空；公开能力不启用 Native V2。`kunbuddy-client` 会话独立于网页和插件会话，转发仅接受已配置模型和固定协议路径，平台密钥只在服务端补充；登录 IPC 限主窗口。验证使用合成账号与隔离数据。
+
 - 文档转换统一进入 `Services/Parsing/MarkdownDocumentPlanner` 的确定性标题／段落布局，保留完整 L2，不把章节阈值当模型窗口。解析配置 `parsing` 随任务 JSON 深拷贝，重试沿用。`KnowledgeParsedDocumentStore` 在受控临时目录写齐正文、章节与 manifest 后整体重命名，再用数据库行发布版本；不扫描磁盘选最新。版本标记 `markdown-layout-1`，旧单文件仍可读。资源 `_parsed/` 为只读来源投影，章节须校验来源可见性、最新解析 ID、来源哈希、清单路径及内容哈希，不进入原文编译／任务列表；原始文件 URI、个人范围和 RAG 索引不变。语义生成继续读取完整正文。修改前参见 `docs/knowledge-document-parsing.md`，验证全文区间覆盖、表格行、同名标题、取消／失败保留正文及个人隔离。
 
 - L0/L1 生成按模型窗口及 JSON 转义开销动态分段，UTF-8 字节上界只用于输入估算，不能据此拒绝中文模型输出。API 编译输出使用供应商默认策略（客户端输出参数 0 时省略 max_tokens）；输出空间预留不是硬上限。新编译任务调用次数默认 0 表示不限，正整数为显式上限，历史快照保持；超时、取消、压缩不收敛和真实截断继续失败。与独立 Wiki 证据协议的字符／页数校验区分。见 `docs/knowledge-compilation-skills.md`。

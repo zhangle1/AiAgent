@@ -20,8 +20,10 @@ public interface IAuthService
     Task<(bool Succeeded, string? Error)> ChangePasswordAsync(AuthenticatedUser user, string currentPassword, string newPassword, CancellationToken cancellationToken);
     Task<(AuthenticatedUser? User, string? Token)> LoginAsync(string username, string password, CancellationToken cancellationToken);
     Task<(AuthenticatedUser? User, string? Token)> LoginPluginAsync(string username, string password, CancellationToken cancellationToken);
+    Task<(AuthenticatedUser? User, string? Token)> LoginKunBuddyAsync(string username, string password, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> TryGetPluginUserAsync(HttpContext context, CancellationToken cancellationToken);
+    Task<AuthenticatedUser?> TryGetKunBuddyUserAsync(HttpContext context, CancellationToken cancellationToken);
     Task LogoutAsync(HttpContext context, CancellationToken cancellationToken);
     Task EnsureInitialAdministratorAsync(CancellationToken cancellationToken);
 }
@@ -99,6 +101,9 @@ public sealed class AuthService : IAuthService
     public Task<(AuthenticatedUser? User, string? Token)> LoginPluginAsync(string username, string password, CancellationToken cancellationToken)
         => LoginCoreAsync(username, password, TimeSpan.FromHours(8), "deepseek-plugin", cancellationToken);
 
+    public Task<(AuthenticatedUser? User, string? Token)> LoginKunBuddyAsync(string username, string password, CancellationToken cancellationToken)
+        => LoginCoreAsync(username, password, TimeSpan.FromHours(8), "kunbuddy-client", cancellationToken);
+
     private Task<(AuthenticatedUser? User, string? Token)> LoginCoreAsync(string username, string password, TimeSpan lifetime, string? purpose, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -118,20 +123,26 @@ public sealed class AuthService : IAuthService
     }
 
     public Task<AuthenticatedUser?> TryGetCurrentUserAsync(HttpContext context, CancellationToken cancellationToken)
-        => TryGetUserAsync(context, pluginSession: false, cancellationToken);
+        => TryGetUserAsync(context, purpose: null, cancellationToken);
 
     public Task<AuthenticatedUser?> TryGetPluginUserAsync(HttpContext context, CancellationToken cancellationToken)
-        => TryGetUserAsync(context, pluginSession: true, cancellationToken);
+        => TryGetUserAsync(context, purpose: "deepseek-plugin", cancellationToken);
 
-    private Task<AuthenticatedUser?> TryGetUserAsync(HttpContext context, bool pluginSession, CancellationToken cancellationToken)
+    public Task<AuthenticatedUser?> TryGetKunBuddyUserAsync(HttpContext context, CancellationToken cancellationToken)
+        => TryGetUserAsync(context, purpose: "kunbuddy-client", cancellationToken);
+
+    private Task<AuthenticatedUser?> TryGetUserAsync(HttpContext context, string? purpose, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var token = ResolveToken(context);
+        if (purpose == "kunbuddy-client" && string.IsNullOrWhiteSpace(token))
+            token = context.Request.Headers["x-api-key"].FirstOrDefault() ?? context.Request.Headers["x-goog-api-key"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(token))
             return Task.FromResult<AuthenticatedUser?>(null);
         var tokenHash = HashToken(token);
         var now = DateTime.UtcNow;
-        var session = pluginSession
-            ? _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.Purpose == "deepseek-plugin" && x.RevokedAt == null && x.ExpiresAt > now)
+        var session = purpose is not null
+            ? _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.Purpose == purpose && x.RevokedAt == null && x.ExpiresAt > now)
             : _db.Queryable<AiUserSession>().First(x => x.TokenHash == tokenHash && x.Purpose == null && x.RevokedAt == null && x.ExpiresAt > now);
         if (session == null) return Task.FromResult<AuthenticatedUser?>(null);
         var user = _db.Queryable<AiUser>().First(x => x.Id == session.UserId && !x.IsDisabled);

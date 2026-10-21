@@ -1,0 +1,449 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-awaiting-human-delivery",
+  "createdAt": "2026-10-21T05:51:49.620Z",
+  "baseCommit": "b332fd37128dedc34e94fcba2810c8a99a27ede0",
+  "objective": "Provider model discovery and persistent public model.json; KunBuddy account-based subscription channel",
+  "userDecisions": {
+    "subscription": "existing AiAgent account and server-authorized models",
+    "billing": false
+  },
+  "validation": {
+    "static": {
+      "typescriptSyntax": {
+        "status": "passed",
+        "files": 17
+      },
+      "utf8RoundTrip": "passed",
+      "gitWhitespace": "passed",
+      "projectXml": "passed"
+    },
+    "typecheck": {
+      "frontend": "passed",
+      "desktop": "passed"
+    },
+    "backendTests": {
+      "passed": 20,
+      "failed": 0
+    },
+    "clientTests": {
+      "pureLogic": {
+        "passed": 11,
+        "failed": 0,
+        "artifact": "client-pure-logic-tests.log",
+        "sha256": "69ae2737379cb52cfaa37e0be912cd8823b9907f4fa038dac3938ccc221051e8"
+      },
+      "ipcIntegration": {
+        "passed": 1,
+        "failed": 0
+      }
+    },
+    "frontendLogic": {
+      "passed": 9,
+      "failed": 0,
+      "artifact": "front-key-retention-logic.log",
+      "sha256": "f850e447103386b5601ce90fedd5d472559b58a080afb92800faa8f32d9abfe0"
+    },
+    "build": {
+      "shared": "passed",
+      "desktopElectron": "passed",
+      "rust": "unchanged; existing isolated host binary reused"
+    },
+    "isolatedStartupAndUi": {
+      "actualDynamicControllers": "passed",
+      "nativeSseToolImageForwarding": "passed",
+      "tokenPurposeAndRevocation": "passed",
+      "webActualComponentsOverHttp": "passed; key-triggered auto-save, visible result, persisted reload",
+      "desktopActualElectron": "passed; dialog login, model import, real agent fixture response, logout",
+      "realProviderCredentials": "not used; no real upstream-provider claim"
+    },
+    "complete": true,
+    "identityAndAgentPolicy": "passed",
+    "apiKeyRetention": {
+      "before": "failed; model-list 401 left stored Key empty",
+      "after": "passed; 401 and empty list both persisted Key, reload retained it, real diagnostics succeeded",
+      "positiveDiscovery": "passed",
+      "frontendLogicPassed": 9
+    },
+    "evidence": [
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/backend-tests.log",
+        "bytes": 6761,
+        "sha256": "f123c5fe122e7785303b7d554b4e10c24c9f41c2a6f0e63e952a1e38c68f23f1"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/client-ipc-test.log",
+        "bytes": 222,
+        "sha256": "fe5d662dcd083042fc12c73a31967e8e1051b5753b4a02acca71bab1e7cab911"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/client-build.log",
+        "bytes": 18589,
+        "sha256": "fd8fe8806308fb6f93e4ac27eae33fce7ffbc955e5ad1c99ac8e8b8925ac2f3e"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/client-typecheck.log",
+        "bytes": 33,
+        "sha256": "d66548006c5c7c54f315f252a8864713f539323f6c6187c23bb7db83274361fa"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/front-typecheck.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/http-test.log",
+        "bytes": 113,
+        "sha256": "763bc354757a669ff4adc1133f57469e271f01191ad435846f7c31a0cbcda48a"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/http-result.json",
+        "bytes": 244,
+        "sha256": "4943ee3fb286c0320eb83aec3353e13d7a420de20cb3db56ce4f74b7d61342fb"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/web-ui-test.log",
+        "bytes": 105,
+        "sha256": "4aa6b2fbf017722208f3a0cb62a56ca2fbdc4be288be1b3723295917952a8459"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/web-ui-result.json",
+        "bytes": 154,
+        "sha256": "fee3a8003a6c33d0184543b43bb20f9bd2e3f9c1f291f56b50710291bdabc63d"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/desktop-ui-test.log",
+        "bytes": 115,
+        "sha256": "38f76f843c406bd12e0e4ab720e2f943ab29a40cd1f94169aaf49b8359df4b1f"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/desktop-ui-result.json",
+        "bytes": 162,
+        "sha256": "dd0953f7856497af9308a2c938922d1d1b102945e72871d7bb20db47ffb4c651"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/model-discovery-ui.png",
+        "bytes": 50465,
+        "sha256": "99cbed58497d1f22ff866729a321d5e3546bd796d2e5da1d146c0fd035b86a0c"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/subscription-login-ui.png",
+        "bytes": 52590,
+        "sha256": "348c29971ea46de6a8d2047315e570e3d003dd6e2e47c4bd3393acb060d55a14"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/subscription-models-ui.png",
+        "bytes": 43939,
+        "sha256": "2a1ed32b2280299567d2b1fe529acb98cfeed444b38f7dac23633813d9f56c4c"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/key-retention-before.log",
+        "bytes": 470,
+        "sha256": "981430ea1b1e72eb74b934b777b778d413afd6c31fc501d7b69c06ae68a8ad13"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/key-retention-after.log",
+        "bytes": 110,
+        "sha256": "660a7a9f040e30b284888661c0f83d5142423cb900c93c1ddba510549eb38491"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/key-retention-empty.log",
+        "bytes": 110,
+        "sha256": "660a7a9f040e30b284888661c0f83d5142423cb900c93c1ddba510549eb38491"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/key-retention-401-ui-result.json",
+        "bytes": 111,
+        "sha256": "d2a6ed897158c74fcad6636597268acd291ef64a67543f6fa34047a0bd2a4b27"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/key-retention-empty-ui-result.json",
+        "bytes": 113,
+        "sha256": "a7a033da142ccec55dd3cf24c3f4887df88b301b77a80567ef4bd9accc2a6630"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/front-key-retention-typecheck.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-subscription/key-retention-success.log",
+        "bytes": 105,
+        "sha256": "4aa6b2fbf017722208f3a0cb62a56ca2fbdc4be288be1b3723295917952a8459"
+      }
+    ]
+  },
+  "delivery": {
+    "committed": false,
+    "pushed": false,
+    "excludedPreexistingChanges": [
+      "backed/Services/CodeRepository/CodeRepositoryAppService.cs",
+      "backed/Services/Git/CodeRepositoryGitService.cs",
+      "backed/Services/Git/GitWorkspaceService.cs",
+      "front/lib/code-repository-api.ts",
+      "scripts/deploy/Build-ServerPackage.ps1",
+      "front/AGENTS.md",
+      "front/CLAUDE.md"
+    ]
+  },
+  "requirements": [
+    {
+      "id": "model-list",
+      "implementation": "backed/Services/Settings/ModelDiscoveryService.cs",
+      "verification": "backed.tests/ModelDiscoveryTests.cs",
+      "status": "passed within documented isolated verification scope"
+    },
+    {
+      "id": "local-model-json",
+      "implementation": "backed/Services/Settings/ModelMetadataStore.cs",
+      "verification": "backed.tests/ModelDiscoveryTests.cs",
+      "status": "passed within documented isolated verification scope"
+    },
+    {
+      "id": "automatic-fill-and-save",
+      "implementation": "front/components/settings/models/ModelDiscoveryPanel.tsx",
+      "status": "passed within documented isolated verification scope"
+    },
+    {
+      "id": "account-login-and-secure-session",
+      "implementation": "client/apps/desktop/electron/main/kunbuddy-subscription.ts",
+      "verification": "client/apps/desktop/test/kunbuddy-subscription.test.mjs",
+      "status": "passed within documented isolated verification scope"
+    },
+    {
+      "id": "authorized-native-model-routing",
+      "implementation": "backed/Services/KunBuddy/KunBuddyGatewayService.cs",
+      "verification": "backed.tests/KunBuddySubscriptionTests.cs",
+      "status": "passed within documented isolated verification scope"
+    },
+    {
+      "id": "subscription-entry",
+      "implementation": "client/apps/desktop/src/components/settings/KunBuddySubscriptionDialog.tsx",
+      "status": "passed within documented isolated verification scope"
+    }
+  ],
+  "fingerprint": "f4c0e22ad722577589b91961472b7bb3b2a6da88a099164511eb75931bd979a2",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 25273,
+      "sha256": "e04472ab2cbd176163ca279b81322c6711d70e0178dc4f0fc18c1871659ae880"
+    },
+    {
+      "path": "README.md",
+      "bytes": 33642,
+      "sha256": "b95e12aa427e882dbab918c2ceb6a391122f8c032942625884acc2d2b34b0036"
+    },
+    {
+      "path": "backed.tests/KunBuddySubscriptionTests.cs",
+      "bytes": 11105,
+      "sha256": "5851d7ca2e22f9116016a49f4171b4b55c49b381349f5698fcb1f0c5a36151fe"
+    },
+    {
+      "path": "backed.tests/ModelDiscoveryTests.cs",
+      "bytes": 7574,
+      "sha256": "2ad847db318559b2323ff301a5d57d66ce314bc6fd79a98a3dce8e4fea9a5396"
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "bytes": 2360,
+      "sha256": "77e737e6d6bed2321b379b95af5d38a7f22f19fe4f57908934f790c23018c3ba"
+    },
+    {
+      "path": "backed/Dtos/Settings/ModelDiscoveryDtos.cs",
+      "bytes": 1413,
+      "sha256": "09d01ff6cf9a17b795672cf4dac69228d1b5149e8a047b99e6f1682f8c3e9808"
+    },
+    {
+      "path": "backed/Models/Settings/ModelCatalog.cs",
+      "bytes": 8429,
+      "sha256": "07be7ad3ff5d9d8342f06a03d796f42854b97d09e621fbb32699112b6c5928fd"
+    },
+    {
+      "path": "backed/Program.cs",
+      "bytes": 15491,
+      "sha256": "b9ae673e398da0729581c9894fd21e1ed8acbc51e6b5a0847979e5ce88793013"
+    },
+    {
+      "path": "backed/Resources/Models/UPSTREAM.md",
+      "bytes": 664,
+      "sha256": "84e0e3913121f6e48188761b4b756555680fcb26e0f635999ca5d9d01597d1b5"
+    },
+    {
+      "path": "backed/Resources/Models/models.dev.json",
+      "bytes": 5598412,
+      "sha256": "77eebbf630c949935ffbda6a368d8f5391a107e1628ddebe26da7265c8adcb87"
+    },
+    {
+      "path": "backed/Services/Auth/AuthAppService.cs",
+      "bytes": 4861,
+      "sha256": "e1a6840d1fc5d977ba1a1152e7cc857f4379c394491f0bbf00f1797e86ead0f2"
+    },
+    {
+      "path": "backed/Services/Auth/AuthService.cs",
+      "bytes": 13950,
+      "sha256": "c3b9e33e1ee8576b207f84486d2923c816362aff559f878a420c40c5f105d23c"
+    },
+    {
+      "path": "backed/Services/KunBuddy/KunBuddyAppService.cs",
+      "bytes": 2000,
+      "sha256": "610b392d762d44cc5826634252a5baeabd6523428ae28097230b360fbfc54d89"
+    },
+    {
+      "path": "backed/Services/KunBuddy/KunBuddyGatewayService.cs",
+      "bytes": 8102,
+      "sha256": "1b893f31c2e6c52b7646c5d6fe52e9269ee8b7cb0c80b0aa41634e97c0501c2f"
+    },
+    {
+      "path": "backed/Services/Settings/ModelCatalogService.cs",
+      "bytes": 25435,
+      "sha256": "399f3dec78815bec9df151fd8112e66729ea9137bdf807a5999e266a300e551a"
+    },
+    {
+      "path": "backed/Services/Settings/ModelDiscoveryAppService.cs",
+      "bytes": 1137,
+      "sha256": "c15b305d4f6fadf11e71b728846fa9cbc08bdde9d57adcc7f6d1375a5e4a769b"
+    },
+    {
+      "path": "backed/Services/Settings/ModelDiscoveryService.cs",
+      "bytes": 10794,
+      "sha256": "dc6ebbd380c9db1730b7e0265f7a23a0b962ed752cc2a6521d3fcdda0cd9dbc7"
+    },
+    {
+      "path": "backed/Services/Settings/ModelMetadataStore.cs",
+      "bytes": 2546,
+      "sha256": "405c51bb83fe83aa71a86d07741a4db08cae6dfa6828e771f1682d94daa9465a"
+    },
+    {
+      "path": "client/README.md",
+      "bytes": 1926,
+      "sha256": "f74170b6b3342460ca28d2f138ba2dc3c083fe12424f8cba8177522a40da49e5"
+    },
+    {
+      "path": "client/README.zh-CN.md",
+      "bytes": 1269,
+      "sha256": "6f73022e6e1643a6ef297227cb5b85659cd6ea902655149a5385617851ab9a87"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/kunbuddy-subscription-ipc.ts",
+      "bytes": 1473,
+      "sha256": "8b99ae136333508bbe9c442324c69bee2a7d1d0a20c6e1fdb2481fd61fc8480b"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/register.ts",
+      "bytes": 15512,
+      "sha256": "111d3e6624cd411c2604d35e44f854fcbe81255dc7c835a2e777da9991a24704"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/kunbuddy-subscription.ts",
+      "bytes": 10986,
+      "sha256": "2b6c99f490aadac5de60b2f5932f8a683d1e9d7ef141c78df2513940460f7fe0"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/KunBuddySubscriptionDialog.tsx",
+      "bytes": 4483,
+      "sha256": "5b8230e00d82dd1024d37480f5d3d917db88ec8a70b945ddc3ca55b3e374aa42"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/ModelConfigPage.tsx",
+      "bytes": 24559,
+      "sha256": "550d4838cf7b29035ff1ace8f94b649e38e536731318ee21efc0a1df4ca5b922"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/ProviderSetupDialog.tsx",
+      "bytes": 25326,
+      "sha256": "762336454355c124f775ba259290938cbb65a31d461d5f419ac77cdfa09bbf42"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/ServiceChooser.tsx",
+      "bytes": 16531,
+      "sha256": "37c853d00e8b149128026b4a61d033c3895723d8b3b552f3a61cbc87aa31c12f"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/ServiceList.tsx",
+      "bytes": 6457,
+      "sha256": "bcb92004ef4beba9478babc6cb1655e4519159c867863651ef45c2695a19a71d"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/service-row-status.ts",
+      "bytes": 5105,
+      "sha256": "2b0efa32846eaa77299aa709f139a1491ab960626bc75c5dbd6b1adf7fdc8670"
+    },
+    {
+      "path": "client/apps/desktop/src/lib/api.ts",
+      "bytes": 72967,
+      "sha256": "f69dd6b87b3ac56d02fcce7e2af049e97ba2aa2beb1626ec3e80b70acfa9a104"
+    },
+    {
+      "path": "client/apps/desktop/src/styles/providers.css",
+      "bytes": 29463,
+      "sha256": "64184be75ff1359833d379cb1af243ad6d76e2e4175d5ec4666079107075cbab"
+    },
+    {
+      "path": "client/apps/desktop/test/kunbuddy-subscription-ipc.test.mjs",
+      "bytes": 1430,
+      "sha256": "e51299af1075c4cb376a74671b8e09a873a52dba6d355e88eb90cc01cd9a2e51"
+    },
+    {
+      "path": "client/apps/desktop/test/kunbuddy-subscription.test.mjs",
+      "bytes": 8730,
+      "sha256": "abd27ef228a6bdede5266d56709e8f66ac8b985eb11f317a0fb4a5b4044cbdd6"
+    },
+    {
+      "path": "client/docs/kunbuddy-migration.md",
+      "bytes": 7927,
+      "sha256": "43f32b0b10a46355724336b7511e331eb3ddfd9b93548cdb43a79fbb4d874555"
+    },
+    {
+      "path": "client/packages/shared/src/protocol.ts",
+      "bytes": 23058,
+      "sha256": "4840a19607985ca533bc81cd230dc310f51ad090f7cdb53cb0db3c7e822a7dff"
+    },
+    {
+      "path": "docs/kunbuddy-subscription-and-model-discovery.md",
+      "bytes": 6891,
+      "sha256": "71b5bd2d0ab7aec79aab557691276f752768ccff5edfe65ae2afe1a33e206c1a"
+    },
+    {
+      "path": "docs/kunbuddy-subscription-model-discovery.verification.md",
+      "bytes": 5147,
+      "sha256": "4ce4c3783ae412655ef6d01804502a7dbd4e64a8efaca096854130fee3af0a38"
+    },
+    {
+      "path": "front/components/settings/SettingsProvider.tsx",
+      "bytes": 12128,
+      "sha256": "2fca1937f42e8fdfe0d1f9245967ba3b97989a47073159411cce36041c35629b"
+    },
+    {
+      "path": "front/components/settings/models/ModelDiscoveryPanel.tsx",
+      "bytes": 6261,
+      "sha256": "2fc7ef2ca439aa01c29dbf54b89abd015c8091865c846af9ac655c787b598823"
+    },
+    {
+      "path": "front/components/settings/models/ModelServiceEditor.tsx",
+      "bytes": 18007,
+      "sha256": "82a673957ff8a496406b0df89e84143d997d04ffa2a3d84a5ad7485a46192e54"
+    },
+    {
+      "path": "front/lib/model-discovery-api.ts",
+      "bytes": 1067,
+      "sha256": "214c1fcb198a34eb51329a83a8cc33273b5e4c0ad01f5073c3cd5fb4be746fc0"
+    },
+    {
+      "path": "front/lib/model-discovery-state.ts",
+      "bytes": 2214,
+      "sha256": "d1802bf358dd61c2767c407f6905822dc56fa6cdc8ddf59585eaf7c2ecf15ecf"
+    },
+    {
+      "path": "front/lib/settings-types.ts",
+      "bytes": 3010,
+      "sha256": "a15dff45a787d5d7cab5643f69406bf259d68c9a41c16138a47976122555144f"
+    },
+    {
+      "path": "front/tests/model-discovery-state.test.mjs",
+      "bytes": 6316,
+      "sha256": "c46514650fe10297a6c098a4db30dbb3cc9d0ee11dee0039f13f88665c212283"
+    }
+  ]
+}

@@ -1342,3 +1342,8 @@
 .provider-endpoint-guidance > span {
   flex: 1 1 260px;
 }
+.kunbuddy-subscription-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.kunbuddy-subscription-body { display: grid; gap: 18px; padding: 20px 24px 24px; }
+.kunbuddy-subscription-description { color: var(--ds-text-secondary); font-size: 12px; line-height: 1.7; margin: 0; }
+.kunbuddy-subscription-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.kunbuddy-subscription-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; }

@@ -33,6 +33,7 @@ import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-co
 import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
+import { KunBuddySubscriptionDialog } from "./KunBuddySubscriptionDialog";
 import { ServiceList } from "./ServiceList";
 import { serviceRowKind } from "./service-row-status";
 import { useVendorAccounts } from "./useVendorAccounts";
@@ -93,6 +94,7 @@ export function ModelConfigPage() {
 
   // null = closed, "" = add flow, provider id = edit flow.
   const [copyDraft, setCopyDraft] = useState<ProviderCopyDraft | null>(null);
+  const [kunBuddyAccount, setKunBuddyAccount] = useState<ProviderPublic | null | undefined>(undefined);
   const [setupFor, setSetupFor] = useState<string | null>(null);
   const [pluginCatalogSetup, setPluginCatalogSetup] = useState<{
     providerId: string;
@@ -163,6 +165,7 @@ export function ModelConfigPage() {
     saved: ProviderPublic,
     models: ModelBinding[],
     imageModelIds?: string[],
+    latestProviders?: ProviderPublic[],
   ) => {
     const selectedImageIds = imageModelIds ?? imageGenerationCandidates
       .filter((entry) => entry.providerId === saved.id)
@@ -224,7 +227,7 @@ export function ModelConfigPage() {
         // A freshly added provider must not take over the app default: whatever
         // the user already picked keeps running — as long as that default's own
         // provider is still runnable — until they change it themselves.
-        const currentProvider = providers.find((provider) => provider.id === settings.defaultProviderId);
+        const currentProvider = (latestProviders ?? providers).find((provider) => provider.enabled && provider.id === settings.defaultProviderId);
         const keepsCurrentDefault = !!currentProvider && providerReady(currentProvider) &&
           chatModelOptions([currentProvider], imageGenerationCandidates).some(
             ({ modelId }) => sameWireId(modelId, settings.defaultModelId ?? ""),
@@ -310,7 +313,8 @@ export function ModelConfigPage() {
   const removeProvider = async (provider: ProviderPublic) => {
     setBusyId(provider.id);
     try {
-      await api.deleteProvider(provider.id);
+      if (provider.authKind === "kunbuddy_subscription") await api.logoutKunBuddySubscription(provider.id);
+      else await api.deleteProvider(provider.id);
       await refreshProviders();
       showToast(t("settings.providerRemoved"), { variant: "success" });
     } catch (error) {
@@ -472,11 +476,12 @@ export function ModelConfigPage() {
                 busyAccountId !== null ||
                 savingAccount ||
                 login !== null
+                || kunBuddyAccount !== undefined
               }
               isRowBusy={(id) => busyId === id || testingId === id || busyAccountId === id}
               testingId={testingId}
               onEdit={(provider) =>
-                serviceRowKind(provider) === "account"
+                provider.authKind === "kunbuddy_subscription" ? setKunBuddyAccount(provider) : serviceRowKind(provider) === "account"
                   ? setEditingAccountId(provider.id)
                   : setSetupFor(provider.id)
               }
@@ -594,6 +599,7 @@ export function ModelConfigPage() {
             // StrictMode would run a mount effect twice and open two browsers.
             startLogin(vendor);
           }}
+          onPickKunBuddy={() => { setSetupFor(null); setCopyDraft(null); setKunBuddyAccount(null); }}
           onPickPluginProvider={(providerId, pluginName) => {
             setPluginCatalogSetup({ providerId, pluginName });
             setCopyDraft(null);
@@ -602,6 +608,12 @@ export function ModelConfigPage() {
           }}
         />
       ) : null}
+
+      {kunBuddyAccount !== undefined && <KunBuddySubscriptionDialog provider={kunBuddyAccount}
+        onClose={() => setKunBuddyAccount(undefined)} onSaved={async (saved, models) => {
+          const latest = await api.listProviders();
+          await afterSaved(saved, models, undefined, latest.providers);
+        }} onDisconnected={refreshProviders} />}
 
       {editingAccount ? (
         <VendorAccountDialog

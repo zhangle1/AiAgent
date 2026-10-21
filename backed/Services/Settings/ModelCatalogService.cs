@@ -128,6 +128,7 @@ public sealed class ModelCatalogService : IModelCatalogService
                 BaseUrl = profileRow.BaseUrl ?? "",
                 ApiKey = DecodeSecret(profileRow.ApiKeyCipher),
                 ApiVersion = profileRow.ApiVersion ?? "",
+                ApiStyle = ReadProfileApiStyle(profileRow.ExtraOptionsJson),
                 ExtraHeaders = DeserializeDictionary(profileRow.ExtraHeadersJson),
                 Proxy = profileRow.ProxyUrl,
                 MaxResults = profileRow.MaxResults,
@@ -250,6 +251,7 @@ public sealed class ModelCatalogService : IModelCatalogService
         row.BaseUrl = profile.BaseUrl;
         row.ApiKeyCipher = EncodeSecret(profile.ApiKey);
         row.ApiVersion = profile.ApiVersion;
+        row.ExtraOptionsJson = WriteProfileApiStyle(row.ExtraOptionsJson, profile.ApiStyle);
         row.AuthType = provider?.AuthType ?? "bearer";
         row.ExtraHeadersJson = JsonSerializer.Serialize(profile.ExtraHeaders ?? new Dictionary<string, string>(), JsonOptions);
         row.ProxyUrl = profile.Proxy;
@@ -295,6 +297,7 @@ public sealed class ModelCatalogService : IModelCatalogService
             row.ModelName = model.Name;
             row.ModelId = model.Model;
             row.ContextWindow = ParseInt(model.ContextWindow);
+            row.ExtraOptionsJson = WriteModelMetadata(model, row.ExtraOptionsJson);
             row.SupportsNativeToolCalling = model.SupportsNativeToolCalling;
             row.Dimension = ParseInt(model.Dimension);
             row.SendDimensions = model.SendDimensions;
@@ -337,12 +340,19 @@ public sealed class ModelCatalogService : IModelCatalogService
 
     private static CatalogModel ToCatalogModel(AiModel row)
     {
+        var metadata = ReadModelMetadata(row.ExtraOptionsJson);
         return new CatalogModel
         {
             Id = row.Id.ToString(),
             Name = row.ModelName,
             Model = row.ModelId,
             ContextWindow = row.ContextWindow?.ToString(),
+            MaxOutputTokens = metadata.MaxOutputTokens,
+            MaxOutputTokensSource = metadata.MaxOutputTokensSource,
+            SupportsImages = metadata.SupportsImages,
+            SupportsTools = metadata.SupportsTools,
+            ContextWindowSource = metadata.ContextWindowSource,
+            ContextWindowDetectedAt = metadata.ContextWindowDetectedAt,
             SupportsNativeToolCalling = row.SupportsNativeToolCalling,
             Dimension = row.Dimension?.ToString(),
             SendDimensions = row.SendDimensions,
@@ -357,6 +367,43 @@ public sealed class ModelCatalogService : IModelCatalogService
             Duration = row.DurationSeconds?.ToString(),
             Resolution = row.Resolution
         };
+    }
+
+    private static CatalogModel ReadModelMetadata(string? json)
+    {
+        try { return string.IsNullOrEmpty(json) ? new() : JsonSerializer.Deserialize<CatalogModel>(json) ?? new(); }
+        catch (JsonException) { return new(); }
+    }
+
+    private static string? ReadProfileApiStyle(string? json)
+    {
+        try { return System.Text.Json.Nodes.JsonNode.Parse(json ?? "{}")?["api_style"]?.GetValue<string>(); }
+        catch (Exception error) when (error is JsonException or InvalidOperationException) { return null; }
+    }
+
+    private static string WriteProfileApiStyle(string? json, string? style)
+    {
+        if (!string.IsNullOrEmpty(style) && style is not ("chat_completions" or "responses" or "anthropic_messages" or "google_generative_ai"))
+            throw new ArgumentException("Unsupported subscription API style.");
+        System.Text.Json.Nodes.JsonObject values;
+        try { values = System.Text.Json.Nodes.JsonNode.Parse(json ?? "{}") as System.Text.Json.Nodes.JsonObject ?? new(); }
+        catch (JsonException) { values = new(); }
+        values["api_style"] = style;
+        return values.ToJsonString();
+    }
+
+    private static string WriteModelMetadata(CatalogModel model, string? existing)
+    {
+        System.Text.Json.Nodes.JsonObject values;
+        try { values = System.Text.Json.Nodes.JsonNode.Parse(existing ?? "{}") as System.Text.Json.Nodes.JsonObject ?? new(); }
+        catch (JsonException) { values = new(); }
+        values["max_output_tokens"] = model.MaxOutputTokens;
+        values["max_output_tokens_source"] = model.MaxOutputTokensSource;
+        values["supports_images"] = model.SupportsImages;
+        values["supports_tools"] = model.SupportsTools;
+        values["context_window_source"] = model.ContextWindowSource;
+        values["context_window_detected_at"] = model.ContextWindowDetectedAt;
+        return values.ToJsonString();
     }
 
     private static ModelCatalog DefaultCatalog() => new()

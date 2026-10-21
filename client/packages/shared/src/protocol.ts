@@ -249,6 +249,10 @@ export const IPC = {
     providersList: "kunbuddy/providers/list",
     providersReorder: "kunbuddy/providers/reorder",
     providersCreate: "kunbuddy/providers/create",
+    kunBuddySubscriptionLogin: "kunbuddy/subscription/login",
+    kunBuddySubscriptionLogout: "kunbuddy/subscription/logout",
+    kunBuddySessionSyncStatus: "kunbuddy/subscription/sessionSyncStatus",
+    kunBuddySessionSyncRetry: "kunbuddy/subscription/sessionSyncRetry",
     providersUpdate: "kunbuddy/providers/update",
     providersDelete: "kunbuddy/providers/delete",
     /**

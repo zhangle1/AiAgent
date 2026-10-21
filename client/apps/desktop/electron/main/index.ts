@@ -32,6 +32,7 @@ import {
   refreshProjectGroups,
 } from "./workspace-roots";
 import { PersistenceOutbox } from "./persistence-outbox";
+import { KunBuddySessionSync } from "./kunbuddy-session-sync";
 import { Logger } from "./logger";
 import { describeError, installMainProcessErrorHandlers } from "./main-process-errors";
 import {
@@ -209,9 +210,11 @@ installMainProcessErrorHandlers({
   },
 });
 
+const subscriptionSessionSync = new KunBuddySessionSync(dataDir, getHost,
+  (code, sessionId) => logger.app("persistence", "warn", "conversation sync status", { code, sessionId }), globalThis.fetch, hasSingleInstanceLock);
 const persistenceOutbox = new PersistenceOutbox(dataDir, (level, message, data) => {
   logger.app("persistence", level, message, { data });
-});
+}, { onMessagePersisted: id => subscriptionSessionSync.mark(id) });
 const steeringReplies = new Set<string>();
 const scheduledRuntime = createScheduledRuntime({
   dataDir,
@@ -692,7 +695,10 @@ const planRuntime = createPlanRuntime({
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting: () => mainState.quitting,
-  onTurnSettled: sessionCollaboration.settle,
+  onTurnSettled: async (sessionId, turnId) => {
+    await subscriptionSessionSync.mark(sessionId);
+    await sessionCollaboration.settle(sessionId, turnId);
+  },
 });
 const {
   finishTurn,
@@ -845,6 +851,7 @@ const liveCallService = createLiveCallService({
 
 function registerIpc() {
   return registerIpcHandlers({
+    subscriptionSessionSync,
     restartForStorage: () => {
       shutdownState.quitConfirmed = true;
       app.relaunch({ args: [...process.argv.slice(1).filter((arg) => arg !== "--kunbuddy-managed-storage"), "--kunbuddy-managed-storage"] });
@@ -1043,6 +1050,7 @@ registerShutdownHandlers({
   persistenceOutbox,
   inflightCheckpointer,
   flushEventPersistence: eventPersistence.flush,
+  closeSubscriptionSync: () => subscriptionSessionSync.close(),
   pluginPanels,
   plugins,
   userMcp,

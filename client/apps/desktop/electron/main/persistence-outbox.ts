@@ -23,6 +23,8 @@ type QuarantinedAppend = MessageAppend & {
 type OutboxLogger = (level: "warn" | "error", message: string, data?: unknown) => void;
 
 type OutboxOptions = {
+  /** Notify observers only after the canonical message is accepted by Rust. */
+  onMessagePersisted?: (sessionId: string) => Promise<void>;
   /** Current time in ms; a test seam for the retry backoff. */
   now?: () => number;
   /** Quarantined appends retained on disk, oldest discarded first. */
@@ -56,6 +58,7 @@ export class PersistenceOutbox {
   private readonly logger: OutboxLogger;
   private readonly now: () => number;
   private readonly maxDeadLetters: number;
+  private readonly onMessagePersisted?: (sessionId: string) => Promise<void>;
   private entries: MessageAppend[] = [];
   private deadLetters: QuarantinedAppend[] = [];
   private flushing: Promise<void> | null = null;
@@ -76,6 +79,7 @@ export class PersistenceOutbox {
     this.logger = logger;
     this.now = options.now ?? Date.now;
     this.maxDeadLetters = options.maxDeadLetters ?? MAX_DEAD_LETTERS;
+    this.onMessagePersisted = options.onMessagePersisted;
     this.loaded = this.load();
   }
 
@@ -220,6 +224,9 @@ export class PersistenceOutbox {
       if (this.entries[0] === current) this.entries.shift();
       this.headRetry = null;
       await this.persist();
+      if (current.message && this.onMessagePersisted) {
+        await this.onMessagePersisted(current.sessionId).catch(() => this.logger("warn", "conversation sync notification failed", { sessionId: current.sessionId }));
+      }
     }
   }
 

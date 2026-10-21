@@ -64,9 +64,9 @@ It is passed to electron-updater as a generic feed. Release notes/feedback links
 the AiAgent repository. Local pnpm dist continues to build installers with --publish never.
 The former standalone release script refuses to tag/publish the parent repository.
 
-No custom server login, AiAgent API transport or new domain plugin is implemented in this
-migration. Those are subsequent client customization tasks, built on the retained plugin SDK,
-host-owned permissions, Electron sandbox, runtime hooks and headless host.
+The original migration did not include a server login or domain plugin. The subsequent
+AiAgent account channel is documented in ../../docs/kunbuddy-subscription-and-model-discovery.md;
+it builds on the retained host credential store, sandbox and native provider transports.
 
 ## Development and plugins
 

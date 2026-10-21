@@ -15,6 +15,10 @@ export type CatalogModel = {
   send_dimensions?: boolean;
   supported_dimensions?: string;
   context_window?: string;
+  max_output_tokens?: string;
+  max_output_tokens_source?: string;
+  supports_images?: boolean;
+  supports_tools?: boolean;
   context_window_source?: string;
   context_window_detected_at?: string;
   supports_native_tool_calling?: boolean;
@@ -37,6 +41,7 @@ export type CatalogProfile = {
   base_url: string;
   api_key: string;
   api_version: string;
+  api_style?: string | null;
   extra_headers?: Record<string, string>;
   proxy?: string | null;
   max_results?: number | null;

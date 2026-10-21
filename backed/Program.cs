@@ -98,6 +98,12 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddSingleton<IModelCatalogService, ModelCatalogService>();
+builder.Services.AddSingleton<ModelMetadataStore>();
+builder.Services.AddSingleton<ModelDiscoveryService>();
+builder.Services.AddSingleton<AiAgent.Backend.Services.KunBuddy.KunBuddyGatewayService>();
+builder.Services.AddSingleton<AiAgent.Backend.Services.KunBuddy.KunBuddySessionService>();
+builder.Services.AddHttpClient("model-discovery").ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = System.Net.DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(10) });
+builder.Services.AddHttpClient("kunbuddy-gateway").ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = System.Net.DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(10) });
 builder.Services.AddSingleton<IAuthService, AuthService>();
 builder.Services.AddSingleton<IProjectAccessService, ProjectAccessService>();
 builder.Services.AddSingleton<IMemoryService, MemoryService>();
@@ -251,7 +257,10 @@ app.Use(async (context, next) =>
     {
         var auth = context.RequestServices.GetRequiredService<IAuthService>();
         var isDeepSeekPluginRequest = context.Request.Path.StartsWithSegments("/api/v1/deepseek-plugin");
-        var user = isDeepSeekPluginRequest
+        var isKunBuddyRequest = context.Request.Path.StartsWithSegments("/api/v1/kunbuddy");
+        var user = isKunBuddyRequest
+            ? await auth.TryGetKunBuddyUserAsync(context, context.RequestAborted)
+            : isDeepSeekPluginRequest
             ? await auth.TryGetPluginUserAsync(context, context.RequestAborted)
             : await auth.TryGetCurrentUserAsync(context, context.RequestAborted);
         if (user == null)
@@ -259,7 +268,7 @@ app.Use(async (context, next) =>
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new
             {
-                message = isDeepSeekPluginRequest
+                message = isKunBuddyRequest ? "坤伴订阅登录已失效，请重新登录。" : isDeepSeekPluginRequest
                     ? "AiAgent 插件登录已失效，请在 DeepSeek Harness 中重新登录。"
                     : "请先登录。"
             }, context.RequestAborted);

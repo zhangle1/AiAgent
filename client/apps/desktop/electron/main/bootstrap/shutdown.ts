@@ -39,6 +39,7 @@ export type ShutdownDependencies = {
   persistenceOutbox: PersistenceOutbox;
   inflightCheckpointer: InflightCheckpointer;
   flushEventPersistence: () => Promise<void>;
+  closeSubscriptionSync?: () => Promise<void>;
   pluginPanels: Pick<PluginPanelHost, "closeAll">;
   plugins: Pick<PluginRuntime, "disposeAll">;
   userMcp: Pick<UserMcpRuntime, "disposeAll">;
@@ -64,6 +65,7 @@ export function registerShutdownHandlers({
   persistenceOutbox,
   inflightCheckpointer,
   flushEventPersistence,
+  closeSubscriptionSync,
   pluginPanels,
   plugins,
   userMcp,
@@ -191,6 +193,7 @@ export function registerShutdownHandlers({
         if (persistenceTimer) clearTimeout(persistenceTimer);
       }
       await persistenceOutbox.flush(getHost);
+      await closeSubscriptionSync?.();
       const hostShutdown = getHost()?.dispose();
       const mcpShutdown = getMcpControl()?.stop();
       updater.dispose();

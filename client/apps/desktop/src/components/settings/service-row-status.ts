@@ -68,6 +68,7 @@ export function serviceRowBadges(
 ): ServiceRowBadge[] {
   const kind = serviceRowKind(provider);
   const badges: ServiceRowBadge[] = [];
+  if (provider.authKind === "kunbuddy_subscription") badges.push({ key: "subscription", label: "坤伴订阅", tone: "neutral" });
   if (context.isDefault) {
     badges.push({ key: "default", label: t("settings.default"), tone: "success" });
   }

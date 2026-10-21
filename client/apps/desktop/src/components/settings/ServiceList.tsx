@@ -96,7 +96,7 @@ export function ServiceList({
         onTest(provider);
       },
     });
-    if (kind === "api") {
+    if (kind === "api" && provider.authKind !== "kunbuddy_subscription") {
       items.push({
         key: "copy",
         label: t("settings.copyProvider"),

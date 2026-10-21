@@ -766,6 +766,12 @@ export const api = {
     invoke<{ providers: ProviderPublic[] }>(IPC.invoke.providersList),
   createProvider: (input: ProviderCreateInput) =>
     invoke<{ provider: ProviderPublic }>(IPC.invoke.providersCreate, input),
+  loginKunBuddySubscription: (input: { baseUrl: string; username: string; password: string }) =>
+    invoke<{ providers: ProviderPublic[]; username: string; expiresAt?: string; baseUrl: string }>(IPC.invoke.kunBuddySubscriptionLogin, input),
+  logoutKunBuddySubscription: (providerId: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.kunBuddySubscriptionLogout, providerId),
+  kunBuddySessionSyncStatus: () => invoke<{ pending: number; sessions: Array<{ id: string; pending: boolean; lastUploaded?: string; error?: string }> }>(IPC.invoke.kunBuddySessionSyncStatus),
+  retryKunBuddySessionSync: () => invoke<{ pending: number; sessions: Array<{ id: string; pending: boolean; lastUploaded?: string; error?: string }> }>(IPC.invoke.kunBuddySessionSyncRetry),
   updateProvider: (input: ProviderUpdateInput) =>
     invoke<{ provider: ProviderPublic | null }>(
       IPC.invoke.providersUpdate,

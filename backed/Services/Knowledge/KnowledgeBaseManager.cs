@@ -117,7 +117,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     public List<KnowledgeBaseDto> ListKnowledgeBases()
     {
         var rows = _db.Queryable<AiKnowledgeBase>()
-            .Where(x => !x.IsDeleted)
+            .Where(x => !x.IsDeleted && x.Name != KnowledgeInternalStores.Sessions)
             .OrderByDescending(x => x.UpdatedAt)
             .OrderByDescending(x => x.CreatedAt)
             .ToList();
@@ -168,6 +168,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     public AiKnowledgeBase CreateKnowledgeBase(string name, string? displayName, string? description, string? provider)
     {
         var normalizedName = _paths.NormalizeName(name);
+        KnowledgeInternalStores.RequirePublic(normalizedName);
         var exists = _db.Queryable<AiKnowledgeBase>().Any(x => x.Name == normalizedName && !x.IsDeleted);
         if (exists)
         {
@@ -582,6 +583,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     private AiKnowledgeBase FindKnowledgeBase(string name)
     {
         var normalizedName = _paths.NormalizeName(name);
+        KnowledgeInternalStores.RequirePublic(normalizedName);
         var kb = _db.Queryable<AiKnowledgeBase>()
             .Where(x => x.Name == normalizedName && !x.IsDeleted)
             .First();
