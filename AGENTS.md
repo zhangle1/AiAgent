@@ -31,6 +31,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 客户端登录首页、登录恢复或过期跳转改动前读 `docs/kunbuddy-account-home.md`：首页与订阅设置共用登录链路，平台会话检查区别于上游模型错误；令牌仍由 Rust 保存，公开账号提示不存凭据。
+
 - 修改订阅会话上传、历史补传或人员目录可见性前读 `docs/kunbuddy-session-sync.md`：持久化确认后确定性导出原始 Markdown，仅按服务端登录身份写入，分片无损追加且重试去重；不调用模型、不自动入解析／编译队列。管理员额外读取范围限他人 sessions 目录，写入和编译仍限本人；普通 Key、远程与原生导入会话不自动上传。
 
 - 模型发现与坤伴订阅改动前先读 `docs/kunbuddy-subscription-and-model-discovery.md`。可用模型以供应商列表为准，容量按端点 → 本地公开 `model.json` 补全，未知留空；公开能力不启用 Native V2。`kunbuddy-client` 会话独立于网页和插件会话，转发仅接受已配置模型和固定协议路径，平台密钥只在服务端补充；登录 IPC 限主窗口。验证使用合成账号与隔离数据。

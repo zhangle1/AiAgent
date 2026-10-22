@@ -4,6 +4,13 @@ export const APP_ID = "com.knowwhy.kunbuddy";
 export const APP_NAME = "KunBuddy";
 export const APP_VERSION = "0.20.1";
 
+export type KunBuddyAccountStatus = {
+  state: "signed_out" | "authenticated" | "expired" | "unavailable";
+  baseUrl: string;
+  username: string;
+  expiresAt?: string;
+};
+
 export const APP_MENU_COMMANDS = [
   "newTask",
   "openProject",
@@ -249,6 +256,7 @@ export const IPC = {
     providersList: "kunbuddy/providers/list",
     providersReorder: "kunbuddy/providers/reorder",
     providersCreate: "kunbuddy/providers/create",
+    kunBuddyAccountStatus: "kunbuddy/account/status",
     kunBuddySubscriptionLogin: "kunbuddy/subscription/login",
     kunBuddySubscriptionLogout: "kunbuddy/subscription/logout",
     kunBuddySessionSyncStatus: "kunbuddy/subscription/sessionSyncStatus",

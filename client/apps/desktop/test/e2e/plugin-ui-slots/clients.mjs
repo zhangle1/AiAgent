@@ -107,6 +107,9 @@ export async function connectRenderer(port) {
   await call("Emulation.setFocusEmulationEnabled", { enabled: true });
   return {
     run,
+    async viewport(width, height) {
+      await call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+    },
     async until(fn, arg, label, timeoutMs = 15_000) {
       const deadline = Date.now() + timeoutMs;
       let last;

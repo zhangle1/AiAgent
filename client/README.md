@@ -38,7 +38,9 @@ Start with examples/ and docs/plugin-development.md. Workspace imports use
 @kunbuddy/plugin-sdk and @kunbuddy/plugin-devkit; the CLI is kunbuddy-plugin.
 Use packages/agent-host and apps/kunbuddy-host for headless hosting.
 Bundled pi.* IDs and .piplug packages retain compatibility with the original wire format.
-Settings → Models → Add AI service → 坤伴订阅 connects an existing AiAgent account.
+The login homepage connects an existing AiAgent account and updates 坤伴订阅 automatically.
+Unauthenticated and expired sessions return home; a valid session restores on restart.
+Settings → Models → Add AI service → 坤伴订阅 uses the same login flow.
 Enter the server URL and account credentials to import its authorized model profiles.
 Provider keys stay on the server; the client stores only an encrypted eight-hour session.
 See [model discovery and subscription](../docs/kunbuddy-subscription-and-model-discovery.md).

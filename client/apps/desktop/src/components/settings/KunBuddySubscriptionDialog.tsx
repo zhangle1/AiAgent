@@ -58,7 +58,7 @@ export function KunBuddySubscriptionDialog({ provider, onClose, onSaved, onDisco
         <Field label="账号"><Input autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} disabled={busy} required /></Field>
         <Field label="密码"><PasswordInput showLabel="显示密码" hideLabel="隐藏密码" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} required /></Field>
         {baseUrl.trim() && !/^https:\/\//i.test(baseUrl.trim()) && <p className="kunbuddy-subscription-description">HTTP 适合可信内网调试；公网部署请使用 HTTPS。</p>}
-        <p className="kunbuddy-subscription-description">登录有效期 8 小时，过期后可在此重新登录。此入口连接现有账号，不包含套餐购买或支付。</p>
+        <p className="kunbuddy-subscription-description">首页与此处共用同一订阅登录。登录有效期 8 小时，检测到过期后自动返回首页重新登录，保留本地会话。</p>
         <p className="kunbuddy-subscription-description">使用坤伴订阅的会话会自动保存到平台“人员 → 我的工作区 → 会话”，每个会话一个 Markdown 文件，持续追加原始记录。同步不调用 LLM，也不自动解析、编译或上传附件文件。</p>
         {provider && syncStatus && <div className="kunbuddy-subscription-description" role="status">
           会话同步：{syncStatus.pending ? `${syncStatus.pending} 个会话等待上传` : "没有待上传记录"}

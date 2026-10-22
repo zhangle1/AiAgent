@@ -4,6 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>AiAgent.Backend</RootNamespace>
+    <!-- Mutable runtime stores are not source or build/publish content. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);data\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

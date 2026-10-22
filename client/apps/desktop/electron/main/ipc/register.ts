@@ -308,7 +308,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     bindingForModel,
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
-  registerKunBuddySubscriptionIpc(registrar, getHost, enrichProvider, dependencies.subscriptionSessionSync);
+  registerKunBuddySubscriptionIpc(registrar, getHost, enrichProvider, dependencies.subscriptionSessionSync, join(dataDir, "kunbuddy-account.json"));
   registerJevIpc({ registrar, logger });
   registerWorktreeIpc({
     registrar,

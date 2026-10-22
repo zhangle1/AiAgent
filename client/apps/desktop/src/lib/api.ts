@@ -766,10 +766,17 @@ export const api = {
     invoke<{ providers: ProviderPublic[] }>(IPC.invoke.providersList),
   createProvider: (input: ProviderCreateInput) =>
     invoke<{ provider: ProviderPublic }>(IPC.invoke.providersCreate, input),
-  loginKunBuddySubscription: (input: { baseUrl: string; username: string; password: string }) =>
-    invoke<{ providers: ProviderPublic[]; username: string; expiresAt?: string; baseUrl: string }>(IPC.invoke.kunBuddySubscriptionLogin, input),
-  logoutKunBuddySubscription: (providerId: string) =>
-    invoke<{ ok: boolean }>(IPC.invoke.kunBuddySubscriptionLogout, providerId),
+  kunBuddyAccountStatus: (force = false) => invoke<import("@kunbuddy/shared").KunBuddyAccountStatus>(IPC.invoke.kunBuddyAccountStatus, force),
+  loginKunBuddySubscription: async (input: { baseUrl: string; username: string; password: string }) => {
+    const result = await invoke<{ providers: ProviderPublic[]; username: string; expiresAt?: string; baseUrl: string }>(IPC.invoke.kunBuddySubscriptionLogin, input);
+    window.dispatchEvent(new Event("kunbuddy-account-changed"));
+    return result;
+  },
+  logoutKunBuddySubscription: async (providerId: string) => {
+    const result = await invoke<{ ok: boolean }>(IPC.invoke.kunBuddySubscriptionLogout, providerId);
+    window.dispatchEvent(new Event("kunbuddy-account-changed"));
+    return result;
+  },
   kunBuddySessionSyncStatus: () => invoke<{ pending: number; sessions: Array<{ id: string; pending: boolean; lastUploaded?: string; error?: string }> }>(IPC.invoke.kunBuddySessionSyncStatus),
   retryKunBuddySessionSync: () => invoke<{ pending: number; sessions: Array<{ id: string; pending: boolean; lastUploaded?: string; error?: string }> }>(IPC.invoke.kunBuddySessionSyncRetry),
   updateProvider: (input: ProviderUpdateInput) =>

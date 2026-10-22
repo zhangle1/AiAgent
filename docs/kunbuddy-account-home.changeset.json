@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-awaiting-human-delivery",
+  "createdAt": "2026-10-22T08:41:01.510Z",
+  "baseCommit": "2b314bc0a74965d9f555c59ca06f543ae08d5381",
+  "objective": "Default KunBuddy login homepage with URL/user/password, shared subscription update and expiry redirects",
+  "authorization": {
+    "implementation": true,
+    "focusedTestsBuildIsolatedUi": "explicitly allowed by user",
+    "commitAndPush": false
+  },
+  "validation": {
+    "complete": true,
+    "tests": {
+      "passed": 28,
+      "failed": 0
+    },
+    "sharedBuild": "passed",
+    "desktopBuild": "passed; existing large-chunk warnings retained",
+    "desktopTypecheck": "passed",
+    "static": {
+      "utf8Roundtrip": "passed",
+      "existingBomAndLineEndings": "preserved",
+      "typescriptSyntax": {
+        "passed": true,
+        "files": 10
+      },
+      "gitWhitespace": "passed",
+      "identity": "passed",
+      "agentPolicy": "passed",
+      "styleTokens": "passed"
+    },
+    "isolatedElectron": {
+      "status": "passed",
+      "freshInstallGate": true,
+      "loginAndSubscriptionSync": true,
+      "wrongPasswordStaysHome": true,
+      "savedLoginRestart": true,
+      "serverRevocationRedirect": true,
+      "localDeadlineRedirect": true,
+      "reloginUpdatesSameProvider": true,
+      "localSessionRetained": true,
+      "temporaryFailureKeepsWorkspace": true,
+      "logoutReturnsHome": true,
+      "narrowWidth": 420,
+      "noRawCredentialHints": true,
+      "modelGenerationRequests": 0
+    },
+    "visualInspection": {
+      "desktopWidth": 1160,
+      "narrowWidth": 420,
+      "status": "passed"
+    },
+    "backendBusinessCode": "unchanged",
+    "rust": "unchanged; existing host binary reused",
+    "realCredentialsAndUserDatabasesUsed": false,
+    "evidence": [
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-shared-build.log",
+        "bytes": 24,
+        "sha256": "f876ec7553e281fa587d8701697920d525b114d9d39b68dbbc592bcfec6b09ce"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-tests.log",
+        "bytes": 2906,
+        "sha256": "d98e9cc72a05dfbd53abfb9891bdc15e28b30803ca9015487797ec635c5c4bd7"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-build.log",
+        "bytes": 18590,
+        "sha256": "fd609c2e7a7e1419a176b4b27ba29a05665024efc21431f3c9b1fcac5f45a837"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-typecheck.log",
+        "bytes": 33,
+        "sha256": "d66548006c5c7c54f315f252a8864713f539323f6c6187c23bb7db83274361fa"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-identity.log",
+        "bytes": 159,
+        "sha256": "1959d812269dcf768fc04bf0597041d9c538332479934eae1292d237706dd5c4"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-policy.log",
+        "bytes": 90,
+        "sha256": "ceed5e1259474472c836f4bcf3579dd3ed56fb7df10e1d3fe3f59e64f0f540d0"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-style.log",
+        "bytes": 17,
+        "sha256": "46e5e0b250c724508aebdd4f278b85592e30cc31c9edb626981af20c4be0ddd6"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-e2e.log",
+        "bytes": 392,
+        "sha256": "b4518e46358a9b344a8302a50836bfb0ed61735f437f99323530c7d7613ef603"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-home/result.json",
+        "bytes": 447,
+        "sha256": "3b61466555a7d5e790396906ca274dcf723281cacc0c7c631abf03c45ea45642"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-home/homepage-desktop.png",
+        "bytes": 56330,
+        "sha256": "c70955dccdfa5986d3bbb5434cf614395dd09dcfa840a431ba7ed8ccf4efab30"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-home/homepage-narrow.png",
+        "bytes": 38047,
+        "sha256": "8d704cb502e46ce1559b0b979d5e06603ee7446fcfa0f0e1e8ada1eede6134b6"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-home/subscription-updated.png",
+        "bytes": 40627,
+        "sha256": "33d8ab948626f16e53a1d0e25771b1948484314fb4437612e7c1b0f964688543"
+      },
+      {
+        "path": "E:/项目/know-why/.codex-verification/kunbuddy-account-home/homepage-expired.png",
+        "bytes": 58005,
+        "sha256": "6830f9f905294b7b7e048174f257784cf54b9dbe899ae9bd843dc6f95f0fb82a"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "freshInstallGate",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "loginAndSubscriptionSync",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "wrongPasswordStaysHome",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "savedLoginRestart",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "serverRevocationRedirect",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "localDeadlineRedirect",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "reloginUpdatesSameProvider",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "localSessionRetained",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "temporaryFailureKeepsWorkspace",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "logoutReturnsHome",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    },
+    {
+      "id": "noRawCredentialHints",
+      "status": "passed",
+      "proof": "actual built Electron + isolated Rust host + synthetic HTTP platform; test driver/result captured"
+    }
+  ],
+  "delivery": {
+    "committed": false,
+    "pushed": false,
+    "excludedPreexistingChanges": [
+      "backed/Services/CodeRepository/CodeRepositoryAppService.cs",
+      "backed/Services/Git/CodeRepositoryGitService.cs",
+      "backed/Services/Git/GitWorkspaceService.cs",
+      "front/lib/code-repository-api.ts",
+      "scripts/deploy/Build-ServerPackage.ps1",
+      "front/AGENTS.md",
+      "front/CLAUDE.md"
+    ]
+  },
+  "fingerprint": "650e4656b6a68072db0243439c2c75e5facaaf5e951f425c946d09a820629722",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 25953,
+      "sha256": "02cc66970545636f515b727065059448b7be64629a1e9a78a6dd3af39e7ffe8c"
+    },
+    {
+      "path": "README.md",
+      "bytes": 34313,
+      "sha256": "54ee876b1f5009d4a08d9931857bd448b16c1dddbae594c35e1c78da1833f2ab"
+    },
+    {
+      "path": "client/README.md",
+      "bytes": 2570,
+      "sha256": "f8909c7cf292ac35c6dddb63314ddee5666ca1e24c3de804a3d1db3cf351f1fc"
+    },
+    {
+      "path": "client/README.zh-CN.md",
+      "bytes": 1840,
+      "sha256": "f956642c96e0622f650fbf07304f9c1721b091357d0767b7d0f56614671e3f05"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/kunbuddy-subscription-ipc.ts",
+      "bytes": 2516,
+      "sha256": "527cbad27b437d7337f9ef80f168555cbed3653820171f90db94f3c0bd1d1d37"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/register.ts",
+      "bytes": 15590,
+      "sha256": "ca3b14d9152542af1764a23a1426fc170d3af6bc785fcb4243ffbae5a85992c3"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/kunbuddy-account.ts",
+      "bytes": 4561,
+      "sha256": "d8ed0ea1ed239be1fc8eb9a5994d1cb3d60f523d0e9c78ceb19b20a1e9d64331"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/kunbuddy-subscription.ts",
+      "bytes": 11456,
+      "sha256": "e9ad81db7c505ceaa979e40a680612a6d0bb605897f77f66954e0eea50a687f7"
+    },
+    {
+      "path": "client/apps/desktop/src/components/KunBuddyHome.tsx",
+      "bytes": 5037,
+      "sha256": "b617752a61c3c831aa95612ef3496ffaf79699d2b5ce912bd8a6ce4b73efe904"
+    },
+    {
+      "path": "client/apps/desktop/src/components/settings/KunBuddySubscriptionDialog.tsx",
+      "bytes": 6076,
+      "sha256": "2dd3ceab0e1b08c8311083898ad3219b2e8d68e77032c3c4a13faddcc465eb06"
+    },
+    {
+      "path": "client/apps/desktop/src/features/app/AppShell.tsx",
+      "bytes": 14611,
+      "sha256": "0e29b7e1704298172e4c5604782ccd292d7a289e6fec4bff1ea7253fc1e5b8cc"
+    },
+    {
+      "path": "client/apps/desktop/src/features/app/useKunBuddyAccount.ts",
+      "bytes": 4010,
+      "sha256": "6dd961330add4f2d19e46fef1d754291eaa86bc096fd4018f55ed2069d8e1757"
+    },
+    {
+      "path": "client/apps/desktop/src/lib/api.ts",
+      "bytes": 73728,
+      "sha256": "06a481e180d44e9394839fa003440fa964684a9558700d5b5e9ddc909f5ba8e4"
+    },
+    {
+      "path": "client/apps/desktop/src/styles/globals.css",
+      "bytes": 1261,
+      "sha256": "a66ddee1e4037bb5c03dcfa3cc45d9b0b90c87c116e23bbe39c89acb5bb65f83"
+    },
+    {
+      "path": "client/apps/desktop/src/styles/kunbuddy-home.css",
+      "bytes": 3849,
+      "sha256": "5b64fbceaa8aa8a224f3239d21e7a6cb9c5ce46fad1f0fbceb7627c6021c312e"
+    },
+    {
+      "path": "client/apps/desktop/test/e2e/plugin-ui-slots/clients.mjs",
+      "bytes": 6649,
+      "sha256": "acafcecaa87946461c97ef94e99cfd2d45992625b7e3cc34bd58f465caa86aa5"
+    },
+    {
+      "path": "client/apps/desktop/test/kunbuddy-account.test.mjs",
+      "bytes": 4428,
+      "sha256": "b0ecb49e45d3bcc13f588a632607ce402b3f4ef57c6d60a444fa46c4c2e4f718"
+    },
+    {
+      "path": "client/apps/desktop/test/kunbuddy-subscription-ipc.test.mjs",
+      "bytes": 1809,
+      "sha256": "f7f65d3e8dae8b77fdd9e6586c951c4776453b7ea9e2405e72d7a10a87d35f57"
+    },
+    {
+      "path": "client/packages/shared/src/protocol.ts",
+      "bytes": 23430,
+      "sha256": "2fc7e63a88542432b96d154f5aadff9710ab153c070b2a36329a423faf3558c5"
+    },
+    {
+      "path": "client/scripts/e2e-kunbuddy-account-home.mjs",
+      "bytes": 10388,
+      "sha256": "787027383137d3055786ca36d5fdad2c9cd89c9c6cde2a13e86a223709c07be1"
+    },
+    {
+      "path": "docs/kunbuddy-account-home.md",
+      "bytes": 3305,
+      "sha256": "c88f5060dab5af189abba4943f1795a521661ce8fa23521168120aaab343d5ee"
+    },
+    {
+      "path": "docs/kunbuddy-subscription-and-model-discovery.md",
+      "bytes": 7139,
+      "sha256": "e6c945f7d15e33fa3dca36ccf5abfed5abc9e283999dfba8a79796cdf5f58507"
+    }
+  ]
+}

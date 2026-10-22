@@ -17,12 +17,20 @@ export function normalizeKunBuddyUrl(input: string): string {
   return url.href.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 }
 
+export class KunBuddyHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; }
+}
+
 async function jsonRequest(fetcher: typeof fetch, url: string, init: RequestInit) {
   let response: Response;
   try { response = await fetcher(url, { ...init, redirect: "error", signal: AbortSignal.timeout(20_000) }); }
   catch { throw new Error("无法连接 AiAgent，请检查服务地址、网络和证书。"); }
-  if (!response.ok) throw new Error(response.status === 401 ? "登录已失效或账号密码不正确，请重新登录坤伴订阅。"
-    : `AiAgent 返回 HTTP ${response.status}，请检查服务版本和账号权限。`);
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new KunBuddyHttpError(response.status, response.status === 401 ? "登录已失效或账号密码不正确，请重新登录坤伴订阅。"
+      : `AiAgent 返回 HTTP ${response.status}，请检查服务版本和账号权限。`);
+  }
   const reader = response.body?.getReader();
   const chunks: Uint8Array[] = []; let total = 0;
   if (!reader) throw new Error("AiAgent 返回了空响应。");
@@ -39,6 +47,10 @@ async function jsonRequest(fetcher: typeof fetch, url: string, init: RequestInit
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   const text = new TextDecoder().decode(bytes);
   try { return JSON.parse(text); } catch { throw new Error("AiAgent 返回的响应不是有效 JSON。"); }
+}
+
+export function readKunBuddyCatalog(root: string, token: string, fetcher: typeof fetch = globalThis.fetch) {
+  return jsonRequest(fetcher, root + "/api/v1/kunbuddy/models", { headers: { Authorization: `Bearer ${token}` } });
 }
 
 const positive = (value: unknown) => {

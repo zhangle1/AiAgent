@@ -22,6 +22,8 @@ import { workPanelLayout } from "../../lib/work-panel-resize";
 import { LiveVoiceStatusHost } from "../voice/live/LiveVoiceStatusHost";
 import { CollapsedTitlebarActions, RoutePending } from "./chrome";
 import { useAppShellRuntime } from "./useAppShellRuntime";
+import { useKunBuddyAccount } from "./useKunBuddyAccount";
+import { KunBuddyHome } from "../../components/KunBuddyHome";
 
 const SettingsPage = lazy(() =>
   import("../../pages/SettingsPage").then((module) => ({
@@ -93,6 +95,8 @@ export function AppShell() {
     workPanelToggleTooltip,
     workPanelWidth,
   } = useAppShellRuntime();
+  const login = useKunBuddyAccount(ready);
+  const requiresLogin = ready && login.account?.state !== "authenticated";
   useCopyTex();
 
   useEffect(() => {
@@ -131,7 +135,9 @@ export function AppShell() {
     );
 
   let shell: ReactNode = null;
-  if (ready) {
+  if (requiresLogin) {
+    shell = <KunBuddyHome account={login.account} checking={login.checking} onLogin={login.login} onRetry={login.refresh} />;
+  } else if (ready) {
     shell = (
       <>
         <PortalVisibilityProvider visible={page !== "settings"}>
@@ -358,9 +364,9 @@ export function AppShell() {
       className={cx(
         "app-shell",
         !ready && "app-shell-boot",
-        page === "settings" && ready && "settings-mode",
+        page === "settings" && ready && !requiresLogin && "settings-mode",
         sidebarCollapsed && "sidebar-collapsed",
-        workPanelMaximized && "work-panel-maximized",
+        workPanelMaximized && !requiresLogin && "work-panel-maximized",
         showSplash && "is-booting",
       )}
       style={{ "--ds-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
@@ -375,7 +381,7 @@ export function AppShell() {
       {(ready && !showSplash) || startupPhase !== "starting" ? (
         <WindowControls />
       ) : null}
-      <ProjectCreateDialog />
+      {!requiresLogin && <ProjectCreateDialog />}
       {splash}
       {startupRecovery}
     </div>

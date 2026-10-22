@@ -18,5 +18,6 @@ test("subscription IPC rejects secondary windows before touching credentials or 
   await assert.rejects(() => handlers.get(IPC.invoke.kunBuddySubscriptionLogout)({ sender: { id: 2 } }, "1"), /PERMISSION_DENIED/);
   await assert.rejects(() => handlers.get(IPC.invoke.kunBuddySessionSyncStatus)({ sender: { id: 2 } }), /PERMISSION_DENIED/);
   await assert.rejects(() => handlers.get(IPC.invoke.kunBuddySessionSyncRetry)({ sender: { id: 2 } }), /PERMISSION_DENIED/);
+  await assert.rejects(() => handlers.get(IPC.invoke.kunBuddyAccountStatus)({ sender: { id: 2 } }, true), /PERMISSION_DENIED/);
   assert.equal(hostLookups, 0);
 });

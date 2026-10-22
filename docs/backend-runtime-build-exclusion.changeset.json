@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-awaiting-human-delivery",
+  "createdAt": "2026-10-22T08:49:55.883Z",
+  "baseCommit": "2b314bc0a74965d9f555c59ca06f543ae08d5381",
+  "objective": "Fix backend MSB3030 by excluding mutable runtime data from SDK default project items",
+  "validation": {
+    "complete": true,
+    "realBuildBefore": {
+      "status": "failed",
+      "code": "MSB3030",
+      "errors": 5
+    },
+    "realBuildAfter": {
+      "status": "passed",
+      "errors": 0,
+      "existingWarnings": 17
+    },
+    "syntheticMsbuildRegression": {
+      "beforeRuntimeItems": 4,
+      "afterRuntimeItems": 0,
+      "requiredContentRetained": true
+    },
+    "freshOutputContainsData": false,
+    "encodingAndNewlines": "preserved",
+    "gitWhitespace": "passed",
+    "businessDatabaseOrServerStarted": false,
+    "temporaryOutputCleanup": "blocked by automatic policy; retained original outputs and verified in a fresh directory",
+    "evidence": [
+      {
+        "path": "E:\\项目\\know-why\\.codex-verification\\backend-build-20261022\\check-runtime-items.cjs",
+        "bytes": 1785,
+        "sha256": "3af112101534f760fe3d15c67078de27b3e554c37a66d25a3f79737e70d1e061"
+      },
+      {
+        "path": "E:\\项目\\know-why\\.codex-verification\\backend-build-20261022\\runtime-items-before.json",
+        "bytes": 430,
+        "sha256": "aa138303cb915766ccb7b9c3b98348e97672359a58e28520870dc826f30a1013"
+      },
+      {
+        "path": "E:\\项目\\know-why\\.codex-verification\\backend-build-20261022\\runtime-items-after.json",
+        "bytes": 102,
+        "sha256": "a0cc18a35f9e2a3c104c93e62bfbabf7a584c1e219f6b80292809ad1b1fa5405"
+      },
+      {
+        "path": "E:\\项目\\know-why\\.codex-verification\\backend-build-20261022\\build-before.log",
+        "bytes": 14853,
+        "sha256": "f04f3d6625b2a1f1a101ffa78631da98e0bb1f4276af3a50b5990772f77b329c"
+      },
+      {
+        "path": "E:\\项目\\know-why\\.codex-verification\\backend-build-20261022\\build-after.log",
+        "bytes": 9994,
+        "sha256": "3d37d5c304eab3a455ddf718e4c805658ddd1855eda765abfb717b7cff998684"
+      }
+    ]
+  },
+  "delivery": {
+    "committed": false,
+    "pushed": false,
+    "scope": [
+      "backed/AiAgent.Backend.csproj",
+      "docs/backend-runtime-build-exclusion.md"
+    ],
+    "otherWorkingTreeChanges": "preserved and excluded"
+  },
+  "fingerprint": "c779e804b068ad74201a50a62e49e3ff7245bd89412d7dff495e3227e182d532",
+  "files": [
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "bytes": 2517,
+      "sha256": "224ad2cbd055d2754d0f0460b9ff4e36bce1f0e9bd70c5ea06eb8ca917d82a7d"
+    },
+    {
+      "path": "docs/backend-runtime-build-exclusion.md",
+      "bytes": 2318,
+      "sha256": "b44208392d87e0e7881365e1c9dcf1be0ea1dd8d80a0158264ba4bb4d3010689"
+    }
+  ]
+}
