@@ -110,6 +110,12 @@ export async function connectRenderer(port) {
     async viewport(width, height) {
       await call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     },
+    async file(selector, filename) {
+      const { root } = await call("DOM.getDocument", { depth: 0 });
+      const { nodeId } = await call("DOM.querySelector", { nodeId: root.nodeId, selector });
+      if (!nodeId) throw new Error(`Missing file input: ${selector}`);
+      await call("DOM.setFileInputFiles", { nodeId, files: [filename] });
+    },
     async until(fn, arg, label, timeoutMs = 15_000) {
       const deadline = Date.now() + timeoutMs;
       let last;

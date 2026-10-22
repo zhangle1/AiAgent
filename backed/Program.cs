@@ -102,6 +102,7 @@ builder.Services.AddSingleton<ModelMetadataStore>();
 builder.Services.AddSingleton<ModelDiscoveryService>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.KunBuddy.KunBuddyGatewayService>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.KunBuddy.KunBuddySessionService>();
+builder.Services.AddSingleton<AiAgent.Backend.Services.KunBuddy.ClientReleaseService>();
 builder.Services.AddHttpClient("model-discovery").ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = System.Net.DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(10) });
 builder.Services.AddHttpClient("kunbuddy-gateway").ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = System.Net.DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(10) });
 builder.Services.AddSingleton<IAuthService, AuthService>();

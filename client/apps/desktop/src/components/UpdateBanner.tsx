@@ -42,8 +42,23 @@ export function UpdateBanner() {
   const [dismissedState, setDismissedState] = useState<string | null>(null);
 
   if (!update?.availableVersion) return null;
-  const stateKey = `${update.availableVersion}:${update.status}`;
+  const stateKey = `${update.sourceKey ?? "legacy"}:${update.availableVersion}:${update.status}`;
   if (stateKey === dismissedState || update.dismissed === true) return null;
+
+  if (update.delivery === "platform-installer") return <div role="status" aria-live="polite" className="update-notice" data-update-status={update.status}>
+    <IconCloudDown className="size-4" />
+    <div className="update-notice-body"><div className="update-notice-title">发现坤伴新版本 {update.availableVersion}</div>
+      <div className="update-notice-message">{update.status === "downloading" ? `正在下载 ${Math.round(update.progressPercent ?? 0)}%` : update.status === "downloaded" ? "安装包已校验。打开后完成安装，Mac 请将应用拖入 Applications 替换。" : update.error ?? "来自当前登录平台的客户端更新。"}</div>
+      {update.releaseNotes && <pre className="update-notice-notes-body">{update.releaseNotes}</pre>}
+      {update.status === "downloading" && <progress aria-label="更新下载进度" max={100} value={update.progressPercent ?? 0} />}
+      <div className="update-notice-actions">
+        {update.status === "available" && <Button variant="primary" size="sm" onClick={() => void api.updatesDownload().catch(() => undefined)}>下载安装包</Button>}
+        {update.status === "downloaded" && <Button variant="primary" size="sm" disabled={!update.canInstall} onClick={() => void api.updatesInstall().catch(() => undefined)}>打开安装包并退出</Button>}
+        {update.status === "error" && <Button size="sm" onClick={() => void api.updatesCheck().catch(() => undefined)}>重新检查</Button>}
+        {update.status === "downloaded" && !update.canInstall && <span className="update-notice-message">开发模式仅验证下载，请在打包后的客户端安装。</span>}
+      </div>
+    </div><TooltipButton tooltip="稍后更新" ariaLabel="稍后更新" className="update-notice-dismiss" onClick={() => void api.updatesDismiss()}><IconClose className="size-3.5" /></TooltipButton>
+  </div>;
 
   const visible =
     update.status === "downloaded" ||

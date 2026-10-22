@@ -4,6 +4,7 @@ import {
   ipcMain,
   powerMonitor,
   session,
+  shell,
 } from "electron";
 import { join } from "node:path";
 import {
@@ -241,9 +242,14 @@ const inflightCheckpointer = new InflightCheckpointer(async (checkpoint) => {
 });
 
 const updater = new AppUpdaterController({
+  platformReleases: {
+    directory: join(dataDir, "platform-updates"), getHost,
+    canInstall: app.isPackaged,
+    install: async path => { const error = await shell.openPath(path); if (error) throw new Error("无法启动安装包。"); app.quit(); },
+  },
   logger,
   send: sendToRenderer,
-  currentVersion: APP_VERSION,
+  currentVersion: app.getVersion(),
   isPackaged: !isDevelopmentBuild,
   getLocale: () => mainState.updaterLocale,
   readUpdateSettings: async () => {

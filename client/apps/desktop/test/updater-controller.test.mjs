@@ -67,6 +67,17 @@ function createController({ updater, settings = {}, persist = async () => {} }) 
   return { controller, sent };
 }
 
+test("platform installer mode replaces even an invalid legacy feed", () => {
+  const controller = new AppUpdaterController({
+    logger: { app: () => {} }, send: () => {}, currentVersion: "0.20.1",
+    updateFeedUrl: "not a feed URL", autoUpdater: new FakeUpdater(),
+    platformReleases: { directory: "unused-in-this-test", getHost: () => null, canInstall: false, install: async () => {} },
+  });
+  assert.equal(controller.getState().delivery, "platform-installer");
+  assert.equal(controller.getState().mode, "disabled");
+  controller.dispose();
+});
+
 test("dismissing an in-app update cancels its download and disables install on quit", async () => {
   const updater = new FakeUpdater();
   const persisted = [];

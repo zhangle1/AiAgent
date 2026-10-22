@@ -57,11 +57,14 @@ Windows ICO, macOS ICNS and Linux PNG derivatives; the source mark is preserved.
 
 ## Update and repository boundary
 
-The imported app cannot discover or install Pi Desktop releases. Build publish is null,
-the upstream app-update.yml is not packaged, and the updater stays disabled without an
-explicit KUNBUDDY_UPDATE_FEED_URL. A future feed must use HTTPS and contain no URL credentials.
-It is passed to electron-updater as a generic feed. Release notes/feedback links belong to
-the AiAgent repository. Local pnpm dist continues to build installers with --publish never.
+The app cannot discover or install Pi Desktop releases. Build publish is null and
+the upstream app-update.yml is not packaged. The desktop now checks installers from
+the authenticated AiAgent platform. Changing the URL/account cancels old requests and
+replaces update authority. Download and installation require explicit user actions.
+See ../../docs/kunbuddy-client-releases.md for packaging and the release contract.
+The optional generic HTTPS feed remains only for standalone updater callers; the
+platform channel takes precedence over KUNBUDDY_UPDATE_FEED_URL in the desktop.
+Release notes/feedback links belong to AiAgent. Local pnpm dist uses --publish never.
 The former standalone release script refuses to tag/publish the parent repository.
 
 The original migration did not include a server login or domain plugin. The subsequent

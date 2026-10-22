@@ -18,4 +18,4 @@ pnpm install --frozen-lockfile
 
 坤伴订阅聊天会自动将原始记录同步到平台“人员 → 我的工作区 → 会话”，一会话一份 Markdown，后续消息追加；启动及重新登录时补传已有订阅会话。上传不调用模型、不自动解析或编译，也不上传附件文件。订阅编辑弹窗可查看待上传数量并重试。普通 API Key 模式不自动上传。详见 [会话同步](../docs/kunbuddy-session-sync.md)。
 
-未配置 KunBuddy 专属 HTTPS 更新源前自动更新关闭，不会安装上游 Pi Desktop 更新包。完整构建命令见 README.md，原项目及 LGPL 许可证说明见 UPSTREAM.md。
+管理员可在 AiAgent 后台上传 Windows EXE、Mac DMG 或应用 ZIP。客户端检查当前登录平台的新版本，用户下载校验后打开安装包；切换 URL 即替换来源。打包、发布与双版本测试见 [客户端发布](../docs/kunbuddy-client-releases.md)。不会安装上游 Pi Desktop 更新包。完整构建命令见 README.md，原项目及 LGPL 许可证说明见 UPSTREAM.md。

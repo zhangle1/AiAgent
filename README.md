@@ -2,6 +2,8 @@
 
 KunBuddy 未登录时默认进入登录首页，填写平台 URL、用户名和密码即可登录，并自动更新“坤伴订阅”模型。检测到登录过期后返回首页，保留本地会话和账号地址；临时网络故障单独处理。详见 [客户端登录首页](docs/kunbuddy-account-home.md)。
 
+管理员可上传 Windows EXE / macOS DMG 或应用 ZIP，客户端按当前登录平台检查新版本，下载校验后显式打开安装包；切换 URL 会替换更新来源。打包与发布步骤见 [坤伴客户端发布](docs/kunbuddy-client-releases.md)。
+
 坤伴订阅会话可自动同步为“人员 → 我的工作区 → 会话”中的原始 Markdown：每个会话一个文件，后续追加、失败重试，superadmin 可查看所有人的会话目录。上传不调用 LLM，不自动解析或编译，后续整理由用户手动触发。详见 [会话原文同步](docs/kunbuddy-session-sync.md)。
 
 模型设置支持输入 API Key 后自动检测可用模型、补全已知上下文容量并保存；服务端保留公开元数据目录 `data/models/model.json`。KunBuddy 的“添加 AI 服务 → 坤伴订阅”可使用 AiAgent 地址和现有账号登录，平台模型密钥留在服务端。协议与验证边界见 [模型发现与坤伴订阅](docs/kunbuddy-subscription-and-model-discovery.md)。

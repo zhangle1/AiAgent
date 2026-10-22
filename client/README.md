@@ -29,8 +29,10 @@ pnpm test:e2e:boot
 
 `pnpm pack` produces a local desktop directory; `pnpm dist` creates installers.
 The application ID is com.knowwhy.kunbuddy and executables/installers are KunBuddy.
-Automatic updates are disabled unless a KunBuddy-owned HTTPS generic feed is
-explicitly configured with KUNBUDDY_UPDATE_FEED_URL; no upstream installer feed is used.
+The desktop checks installers published by the currently authenticated AiAgent
+platform. Switching URL replaces the update source; download and installation are
+explicit. See [packaging and publishing](../docs/kunbuddy-client-releases.md).
+No upstream installer feed is used.
 
 ## Custom plugins
 

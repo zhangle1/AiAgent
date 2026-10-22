@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-user-authorized-delivery",
+  "createdAt": "2026-10-22T09:47:47.229Z",
+  "baseCommit": "2d53aab75770123cb4d3d4eafd4f83bd7b5e8339",
+  "objective": "AiAgent administrator installer publishing and account-bound KunBuddy version/download UI; URL switch replaces update authority",
+  "authorization": {
+    "implementation": true,
+    "focusedTestsBuildIsolatedUi": "explicit user self-test request",
+    "commitAndPush": "explicit user request: 推送上去吧"
+  },
+  "validation": {
+    "complete": true,
+    "backendTests": 4,
+    "desktopTests": 21,
+    "frontTypecheck": "passed",
+    "desktopTypecheck": "passed",
+    "desktopBuild": "passed; existing chunk-size warnings",
+    "identity": "passed",
+    "agentPolicy": "passed",
+    "styleTokens": "passed",
+    "realHttp": "passed: admin/client purpose isolation, upload, SHA256, Range, duplicate, withdrawal, independent URLs",
+    "realNext": "passed: 16 MiB streamed upload, Mac DMG, ordinary-user gate; styled page visually checked",
+    "realPackagedWindows": "passed: actual packaged version, login, banner, download/hash, install button, URL replacement, stale install rejection, logout",
+    "windowsNsis": "built in isolation with signing/resource editing disabled; not a production signed release",
+    "installerExecuted": false,
+    "macNativeExecution": "not run on Windows; DMG/ZIP validation and arm64 client contract covered",
+    "realCredentialsAndUserDataUsed": false,
+    "utf8AndBom": "passed",
+    "gitWhitespace": "passed",
+    "evidenceRoot": "E:/项目/know-why/.codex-verification/client-releases",
+    "evidence": [
+      {
+        "path": "backend-tests-final.log",
+        "bytes": 8374,
+        "sha256": "0dd34ce6cf5d5a4369396de12fb434866585d567796cd3ad8821362e4538606c"
+      },
+      {
+        "path": "client-tests-final.log",
+        "bytes": 2085,
+        "sha256": "cd2ce74592f9ad457df2db06697550b64f0ae5c27d53ec75f937e7cdd5d448e4"
+      },
+      {
+        "path": "front-typecheck-final.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "client-typecheck-final.log",
+        "bytes": 33,
+        "sha256": "d66548006c5c7c54f315f252a8864713f539323f6c6187c23bb7db83274361fa"
+      },
+      {
+        "path": "client-build-final.log",
+        "bytes": 18590,
+        "sha256": "2b7f6cff49b68b4740120b8c83676ee93a365e7a44efd7a69cc67c8f3178bd68"
+      },
+      {
+        "path": "http-result.json",
+        "bytes": 1279,
+        "sha256": "120b24c5db0b211633b695d924ae8dcb39c98efac4011a739678e63b8f3b8ece"
+      },
+      {
+        "path": "web-result.json",
+        "bytes": 162,
+        "sha256": "5f27f93d000b6c03bdf490a10cf6efe51771641e3726b32600da81c7772e5d3a"
+      },
+      {
+        "path": "native-result.json",
+        "bytes": 354,
+        "sha256": "1b3f71bc325960618471da3138a60c9dec3c2ef6cf5f8921f62552f7349f6efc"
+      },
+      {
+        "path": "web-test.log",
+        "bytes": 96,
+        "sha256": "a072375b39810dd6efc34ae97098c47ab3488c2b95e4321f732dcb8a5493de8d"
+      },
+      {
+        "path": "native-test.log",
+        "bytes": 127,
+        "sha256": "241288cfa7d84755b24fd31e1dc75f73ce59a584de125c2829c8fd3ad9a3cc15"
+      },
+      {
+        "path": "package-final.log",
+        "bytes": 3182,
+        "sha256": "906fb8e704d750ceebfcca481d64e8909396abe2851efe115301fca1dc6f1948"
+      },
+      {
+        "path": "verify-http.mjs",
+        "bytes": 4195,
+        "sha256": "d5c485bec6fcf6a71a2180c0393219596c5c2d03bf12e4e2a92cb7eb0b9d238f"
+      },
+      {
+        "path": "verify-web.mjs",
+        "bytes": 3975,
+        "sha256": "60e275243b1ad956f70313f104181e91677856eb304a227da81876c2c1054fbd"
+      },
+      {
+        "path": "verify-native.mjs",
+        "bytes": 5273,
+        "sha256": "785b94cd6bbc89be55a2c6d572a86bea2388ee6b714803b5e1a578b861ef4d75"
+      },
+      {
+        "path": "admin-release-ui.png",
+        "bytes": 65189,
+        "sha256": "7f2aa318ed2f028413f13f7d20a3b15f0aef5fa0c5400f43ee8c30d3b30c5a6d"
+      },
+      {
+        "path": "native-update-available.png",
+        "bytes": 28989,
+        "sha256": "34a22318a8eba400ad3d77afc67e7147082f36ee0f361514e03d97ee440274ba"
+      },
+      {
+        "path": "native-update-downloaded.png",
+        "bytes": 27554,
+        "sha256": "b0f57bcddf695f693dea16efb2c048d95d2c7384f11fa8f08f883569ced9acab"
+      },
+      {
+        "path": "package-final/KunBuddy-Setup-0.20.2.exe",
+        "bytes": 121194338,
+        "sha256": "eb35da924ad148790298c6690ac4fbf9ca757c9ac77a1dc5abfd72429ca66860"
+      }
+    ]
+  },
+  "delivery": {
+    "excludedPreexistingChanges": [
+      "backed/Services/CodeRepository/CodeRepositoryAppService.cs",
+      "backed/Services/Git/CodeRepositoryGitService.cs",
+      "backed/Services/Git/GitWorkspaceService.cs",
+      "front/lib/code-repository-api.ts",
+      "scripts/deploy/Build-ServerPackage.ps1",
+      "front/AGENTS.md",
+      "front/CLAUDE.md"
+    ],
+    "remotes": [
+      "origin (Gitee)",
+      "github (GitHub)"
+    ]
+  },
+  "fingerprint": "5fd5c7a3a78a7ece11245a6b065cf7b69457cdbdf62fa59d8cf86e2890f97c02",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 26313,
+      "sha256": "69e1d1f15d5706dc84c2e8c3ceb41128810e4521016799698b052b0c7ddf43cd"
+    },
+    {
+      "path": "README.md",
+      "bytes": 34581,
+      "sha256": "ef38e6b43cd1208e14a33eafa1f6d4b12bb8cc338a15f976a3d62c2daecc8227"
+    },
+    {
+      "path": "backed.tests/ClientReleaseTests.cs",
+      "bytes": 5081,
+      "sha256": "8cedfdb77921cee797475d77667142a9e4f85c30ccb104fdad0c93e1f1981550"
+    },
+    {
+      "path": "backed/Dtos/KunBuddy/ClientReleaseDto.cs",
+      "bytes": 971,
+      "sha256": "77e003da9c5055b2d061b74786670cddaf3692c80286f38063d37d5b713ae04c"
+    },
+    {
+      "path": "backed/Program.cs",
+      "bytes": 15671,
+      "sha256": "9ddea250a10a152cbae83d5aa661527083518ccc074db590a79bdcfb79ddd3e2"
+    },
+    {
+      "path": "backed/Services/KunBuddy/ClientReleaseAppService.cs",
+      "bytes": 3423,
+      "sha256": "459b872132712960ecee88e938f66ad5642153ee4db43877eabd776729766098"
+    },
+    {
+      "path": "backed/Services/KunBuddy/ClientReleaseService.cs",
+      "bytes": 8943,
+      "sha256": "5bd102bc44e8a07d3e8166ea572c6b24b7191b87566a2bf701a0e66a423486a2"
+    },
+    {
+      "path": "client/README.md",
+      "bytes": 2680,
+      "sha256": "bc66e632c941172fa3928c7d7730d1e279d5075f5cfbc3b3b2cec53772bc7f17"
+    },
+    {
+      "path": "client/README.zh-CN.md",
+      "bytes": 2060,
+      "sha256": "adfab81fc380869affa42652eb90588650c0b020361984df56520e50eeb0085f"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/index.ts",
+      "bytes": 35223,
+      "sha256": "db48bd64a869c17b64d485b25a38e070fd7bef0937fa8759481d579cc3c66d2a"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/app-ipc.ts",
+      "bytes": 8274,
+      "sha256": "268eeb2a39d86a5ba6f047322540d695dc64740a77271215b8aeb1b4b725c784"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/kunbuddy-subscription-ipc.ts",
+      "bytes": 2865,
+      "sha256": "3572c085b8c9c0d96a9906dae26fb89baac087ab4ce8095760b5c2d088257128"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/ipc/register.ts",
+      "bytes": 15638,
+      "sha256": "8aed3a661e84f3a1a09399e8f729ec8af977e83b4c93da3cd3230c190612b42c"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/platform-release-updater.ts",
+      "bytes": 12992,
+      "sha256": "dcfca541115ee8347f9016228df050917c42157d0c0ec92634bb8a91495f6016"
+    },
+    {
+      "path": "client/apps/desktop/electron/main/updater.ts",
+      "bytes": 29166,
+      "sha256": "3b87077338757772fbd95a690dbaf7df1cc2f10fca183c54ad3157277b49dfd7"
+    },
+    {
+      "path": "client/apps/desktop/src/components/UpdateBanner.tsx",
+      "bytes": 6948,
+      "sha256": "6fbbb46b6d46a9be8b9664d15fa655798c3362ec6691c77f8eea6d328769e0e0"
+    },
+    {
+      "path": "client/apps/desktop/src/features/settings/agent-sections.tsx",
+      "bytes": 12300,
+      "sha256": "f846bce4437f5dc21d7f0bf259f15805feed4403dfcb6995405a4ce8941a0fd8"
+    },
+    {
+      "path": "client/apps/desktop/test/e2e/plugin-ui-slots/clients.mjs",
+      "bytes": 6999,
+      "sha256": "c1b2622503276bf7246b7ba8fc38e5a370b39a432fe7297664d889968a2fc9ae"
+    },
+    {
+      "path": "client/apps/desktop/test/kunbuddy-version.test.mjs",
+      "bytes": 1749,
+      "sha256": "c8ae4215cb99cbad9e1b5dc66054a14dff1de392653708bceb2bff99506f972a"
+    },
+    {
+      "path": "client/apps/desktop/test/platform-release-updater.test.mjs",
+      "bytes": 7347,
+      "sha256": "86cd2f05e03ace22f08be8bd0dcfcca88347e17990116641a7d1503c9c99b51f"
+    },
+    {
+      "path": "client/apps/desktop/test/updater-controller.test.mjs",
+      "bytes": 4509,
+      "sha256": "af23e1d0f06893ec69af67126d22861e1edbd5e5de1130e6b296fb524f143b47"
+    },
+    {
+      "path": "client/docs/kunbuddy-migration.md",
+      "bytes": 8139,
+      "sha256": "bf099cebd7312953b5215c39ad809baf3e72d1fe05c6d42d7acd258b1a045465"
+    },
+    {
+      "path": "client/packages/shared/src/types/platform.ts",
+      "bytes": 4814,
+      "sha256": "24990ba46c51276ea813e2f9b912dae32fd83a34ea0474c36e848ea45354f7b5"
+    },
+    {
+      "path": "client/scripts/set-kunbuddy-version.mjs",
+      "bytes": 2058,
+      "sha256": "abcb707a4fd43e579c85b241e5edbb0aaef59ff5fc20d4ca8e7f13d8f117d65e"
+    },
+    {
+      "path": "docs/kunbuddy-client-releases.md",
+      "bytes": 4773,
+      "sha256": "41b0bd35bafdfc227dc0a25714bfd8cecdb68da981f9d75440a0fbef6348827d"
+    },
+    {
+      "path": "front/app/api/v1/admin/client-releases/upload/route.ts",
+      "bytes": 1942,
+      "sha256": "d3efe262b658539c0c4359911ad3450d59c55674c3911b1d4f52498ad81cf711"
+    },
+    {
+      "path": "front/app/settings/admin/client-releases/page.tsx",
+      "bytes": 151,
+      "sha256": "8b31b4fc649aa7e7760c79bc94a7af9a0d8c4cb4824621a0ca8b7f8246e38b5e"
+    },
+    {
+      "path": "front/components/settings/admin/AdminSettingsPages.tsx",
+      "bytes": 15302,
+      "sha256": "0e7559e66648320ee157b9ef9020daba969616a4552d5ef114ac2d0f552c129e"
+    },
+    {
+      "path": "front/components/settings/admin/ClientReleasesPage.tsx",
+      "bytes": 7506,
+      "sha256": "e224fba299b5c3688a85f2da5facaee7d0fa480eba0f7029144112f4b8397224"
+    },
+    {
+      "path": "front/lib/client-release-api.ts",
+      "bytes": 1926,
+      "sha256": "c519d66e20526d99ddbe8add197ed60a4ec19b46590c7be0daa4011112e3c52b"
+    }
+  ]
+}

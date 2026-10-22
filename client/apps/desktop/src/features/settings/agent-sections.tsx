@@ -122,6 +122,7 @@ export function UpdatesRow({
   const disabled = !update || update.mode === "disabled";
   const busy = update?.status === "checking" || update?.status === "downloading";
   const preferenceLocked =
+    update?.delivery === "platform-installer" ||
     !update ||
     update.mode === "disabled" ||
     !settings ||
@@ -133,17 +134,18 @@ export function UpdatesRow({
       <Button
         variant="primary"
         onClick={() => void api.updatesInstall().catch(() => undefined)}
+        disabled={update.delivery === "platform-installer" && !update.canInstall}
       >
-        {t("updates.restart")}
+        {update.delivery === "platform-installer" ? "打开安装包并退出" : t("updates.restart")}
       </Button>
     );
   } else if (update?.status === "available" && update.mode === "manual") {
     action = (
       <Button
         variant="secondary"
-        onClick={() => void api.updatesOpenReleases().catch(() => undefined)}
+        onClick={() => void (update.delivery === "platform-installer" ? api.updatesDownload() : api.updatesOpenReleases()).catch(() => undefined)}
       >
-        {t("updates.viewRelease")}
+        {update.delivery === "platform-installer" ? "下载安装包" : t("updates.viewRelease")}
       </Button>
     );
   } else {
@@ -194,7 +196,7 @@ export function UpdatesRow({
         statusBody = (
           <div className="about-update-status">
             {t("updates.available", { version: update.availableVersion })}
-            {update.mode === "manual" ? ` ${t("updates.manualHint")}` : ""}
+            {update.delivery === "platform-installer" ? " 下载安装包后可打开并替换应用。" : update.mode === "manual" ? ` ${t("updates.manualHint")}` : ""}
           </div>
         );
         break;
@@ -216,7 +218,7 @@ export function UpdatesRow({
               <span>{Math.round(progress)}%</span>
             </div>
             <div className="about-update-hint">
-              {t("updates.backgroundHint")}
+              {update.delivery === "platform-installer" ? "下载完成后校验安装包，再由你确认打开。" : t("updates.backgroundHint")}
             </div>
           </div>
         );
@@ -224,7 +226,7 @@ export function UpdatesRow({
       case "downloaded":
         statusBody = (
           <div className="about-update-status is-ready">
-            {t("updates.downloaded", { version: update.availableVersion })}
+            {update.delivery === "platform-installer" ? `安装包 ${update.availableVersion} 已校验，可打开后完成安装。` : t("updates.downloaded", { version: update.availableVersion })}
           </div>
         );
         break;
@@ -261,7 +263,7 @@ export function UpdatesRow({
             </div>
             <div className="about-update-copy">
               <div className="about-update-title">{t("updates.title")}</div>
-              <div className="about-update-desc">{t("updates.cardDesc")}</div>
+              <div className="about-update-desc">{update?.delivery === "platform-installer" ? "跟随当前登录平台检查版本，校验后打开安装包。" : t("updates.cardDesc")}</div>
             </div>
             <div className="about-update-actions">
               <Button

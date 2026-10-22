@@ -1,10 +1,8 @@
 /**
- * App auto-update via electron-updater against GitHub Releases.
- *
- * The feed (latest*.yml + installers) is attached to each GitHub Release by
- * .github/workflows/release.yml. Discovery always tracks the latest stable
- * release (`allowPrerelease = false`) so RC installs still graduate to newer
- * stables. Delivery mode per install:
+ * The desktop uses account-bound platform installers; see platform-release-updater.
+ * Switching platform replaces update authority, and installation is explicit.
+ * The optional standalone generic HTTPS feed remains for callers that do not
+ * provide platformReleases. Its delivery mode per install:
  *  - Windows NSIS / Linux AppImage / packaged macOS → full in-app flow: silent
  *    background download, "restart to update" prompt, install-on-quit fallback.
  *  - Windows ZIP / legacy portable (`kunbuddyDistribution = "zip"` or
@@ -51,6 +49,8 @@ import {
   type WindowsDistribution,
 } from "./update-policy";
 import { ManualUpdateReminderTracker } from "./manual-update-reminder";
+import { PlatformReleaseUpdater, type PlatformReleaseOptions } from "./platform-release-updater";
+import type { KunBuddyAccountStatus } from "@kunbuddy/shared";
 
 export { resolveUpdateMode } from "./update-policy";
 export type { WindowsDistribution } from "./update-policy";
@@ -88,6 +88,7 @@ export type UpdaterSettings = {
 };
 
 export type UpdaterOptions = {
+  platformReleases?: Omit<PlatformReleaseOptions, "currentVersion" | "send">;
   logger: Logger;
   send: (channel: string, payload: unknown) => void;
   currentVersion: string;
@@ -116,6 +117,7 @@ export type UpdaterOptions = {
 };
 
 export class AppUpdaterController {
+  private readonly platformReleases?: PlatformReleaseUpdater;
   private readonly logger: Logger;
   private readonly send: (channel: string, payload: unknown) => void;
   private readonly getLocale: () => string | null | undefined;
@@ -191,7 +193,7 @@ export class AppUpdaterController {
     this.send = options.send;
     this.getLocale = options.getLocale ?? (() => "en");
     const platform = options.platform ?? process.platform;
-    const updateFeedUrl = options.updateFeedUrl ?? process.env.KUNBUDDY_UPDATE_FEED_URL;
+    const updateFeedUrl = options.platformReleases ? undefined : options.updateFeedUrl ?? process.env.KUNBUDDY_UPDATE_FEED_URL;
     const feed = updateFeedUrl?.trim() ? new URL(updateFeedUrl.trim()) : null;
     if (feed && (feed.protocol !== "https:" || feed.username || feed.password)) {
       throw new Error("KunBuddy update feed must be an HTTPS URL without credentials");
@@ -272,8 +274,11 @@ export class AppUpdaterController {
       currentVersion: options.currentVersion,
       releasesUrl: RELEASES_URL,
     };
-    if (mode !== "disabled") this.attachListeners();
+    if (options.platformReleases) this.platformReleases = new PlatformReleaseUpdater({ ...options.platformReleases, currentVersion: options.currentVersion, send: state => this.send(IPC.event.updatesState, state) });
+    if (mode !== "disabled" && !this.platformReleases) this.attachListeners();
   }
+
+  setPlatformAccount(account: KunBuddyAccountStatus) { this.platformReleases?.setAccount(account); }
 
   /** Localized product notes for a discovered version, if catalogued. */
   private notesFor(version: string | undefined): string | undefined {
@@ -398,6 +403,7 @@ export class AppUpdaterController {
   }
 
   setPreference(preference: UpdatePreference): void {
+    if (this.platformReleases) return;
     if (preference !== "automatic" && preference !== "manual") return;
     this.preferenceRevision += 1;
     this.applyPreference(preference, true);
@@ -409,6 +415,7 @@ export class AppUpdaterController {
    * the pushed `dismissed` flag, so the decision survives restarts.
    */
   async dismiss(): Promise<void> {
+    if (this.platformReleases) return this.platformReleases.dismiss();
     const version = this.state.availableVersion;
     if (!version) return;
     this.dismissedVersion = version;
@@ -587,6 +594,7 @@ export class AppUpdaterController {
   }
 
   getState(): UpdateState {
+    if (this.platformReleases) return this.platformReleases.getState();
     return this.state;
   }
 
@@ -595,6 +603,7 @@ export class AppUpdaterController {
    * banner and Settings → Info stay aligned without a new feed check.
    */
   refreshReleaseNotes(): UpdateState {
+    if (this.platformReleases) return this.platformReleases.getState();
     if (!this.state.availableVersion) return this.state;
     const next = this.notesFor(this.state.availableVersion);
     if (next === this.state.releaseNotes) return this.state;
@@ -604,6 +613,7 @@ export class AppUpdaterController {
 
   /** User- or schedule-triggered check. Resolves with the settled state. */
   async check(options: { manual?: boolean } = {}): Promise<UpdateState> {
+    if (this.platformReleases) return this.platformReleases.check();
     await this.ensureSettingsLoaded();
     if (this.state.mode === "disabled") {
       throw new Error("KunBuddy updates are disabled until a dedicated update feed is configured");
@@ -656,6 +666,7 @@ export class AppUpdaterController {
 
   /** Explicit download for in-app installs when a check was manual-only. */
   async download(): Promise<UpdateState> {
+    if (this.platformReleases) return this.platformReleases.download();
     if (this.state.mode !== "in-app") {
       throw new Error("in-app download is not supported on this install");
     }
@@ -674,11 +685,13 @@ export class AppUpdaterController {
    * must not be deferred — including by the explicit-quit confirmation.
    */
   isInstallingUpdate(): boolean {
+    if (this.platformReleases) return this.platformReleases.installing;
     return this.installRequested;
   }
 
   /** Quit and install a downloaded update (in-app mode). */
-  install(): void {
+  install(): void | Promise<void> {
+    if (this.platformReleases) return this.platformReleases.install();
     if (this.state.mode !== "in-app" || this.state.status !== "downloaded") {
       throw new Error("no downloaded update to install");
     }
@@ -690,11 +703,13 @@ export class AppUpdaterController {
   }
   /** Adopt legacy NSIS cache files before the first update check. */
   reclaimRelocatedUpdateCache(): Promise<void> {
+    if (this.platformReleases) return Promise.resolve();
     if (this.state.mode === "disabled") return Promise.resolve();
     return this.cacheMaintenance.reclaimLegacyCache();
   }
 
   async openReleases(): Promise<void> {
+    if (this.platformReleases) { const url = parseAllowedExternalUrl(this.getState().releasesUrl); if (!url) throw new Error("请先登录平台。"); await shell.openExternal(url); return; }
     const url = parseAllowedExternalUrl(RELEASES_URL);
     if (!url) throw new Error("DISALLOWED_EXTERNAL_URL");
     await shell.openExternal(url);
@@ -706,6 +721,7 @@ export class AppUpdaterController {
    * first window or pin the updater on `checking`.
    */
   startAutoCheck() {
+    if (this.platformReleases) return;
     if (this.autoCheckStarted || this.state.mode === "disabled") return;
     this.autoCheckStarted = true;
     void this.ensureSettingsLoaded().then(() => {
@@ -720,6 +736,7 @@ export class AppUpdaterController {
   }
 
   dispose() {
+    this.platformReleases?.dispose();
     this.disposed = true;
     if (this.initialTimer) clearTimeout(this.initialTimer);
     if (this.intervalTimer) clearInterval(this.intervalTimer);

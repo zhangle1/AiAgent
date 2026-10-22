@@ -57,6 +57,10 @@ export type UpdateStatus =
 
 /** Snapshot pushed on the `updatesState` event and returned by updates IPC. */
 export type UpdateState = {
+  delivery?: "platform-installer";
+  sourceKey?: string;
+  canInstall?: boolean;
+  installerName?: string;
   mode: UpdateMode;
   preference: UpdatePreference;
   defaultPreference: UpdatePreference;

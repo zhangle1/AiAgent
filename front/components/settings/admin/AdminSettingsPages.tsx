@@ -11,6 +11,7 @@ import type { SessionDetail } from "@/lib/session-api";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
 
 const cardItems = [
+  { href: "/settings/admin/client-releases", title: "坤伴客户端发布", description: "上传 Windows / macOS 安装包，发布版本并管理客户端更新。", icon: FileUp },
   { href: "/settings/admin/users", title: "用户管理", description: "创建账号，为每位用户分配可在聊天中选择的项目。", icon: Users },
   { href: "/settings/admin/sessions", title: "历史会话", description: "按用户查看已保存的聊天会话与消息记录。", icon: History },
   { href: "/settings/admin/usage", title: "用户流量", description: "按日、周、月或年汇总注册用户的 Token 消耗。", icon: BarChart3 },

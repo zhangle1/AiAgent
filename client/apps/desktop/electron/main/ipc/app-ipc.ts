@@ -224,18 +224,20 @@ export function registerAppIpc({
     },
   );
 
-  handle(IPC.invoke.updatesGetState, async () => updater.getState());
-  handle(IPC.invoke.updatesCheck, async () => updater.check({ manual: true }));
-  handle(IPC.invoke.updatesDownload, async () => updater.download());
-  handle(IPC.invoke.updatesInstall, async () => {
-    updater.install();
+  handleWithEvent(IPC.invoke.updatesGetState, async event => { registrar.assertMainWindowSender(event); return updater.getState(); });
+  handleWithEvent(IPC.invoke.updatesCheck, async event => { registrar.assertMainWindowSender(event); return updater.check({ manual: true }); });
+  handleWithEvent(IPC.invoke.updatesDownload, async event => { registrar.assertMainWindowSender(event); return updater.download(); });
+  handleWithEvent(IPC.invoke.updatesInstall, async event => {
+    registrar.assertMainWindowSender(event); await updater.install();
     return { ok: true };
   });
-  handle(IPC.invoke.updatesOpenReleases, async () => {
+  handleWithEvent(IPC.invoke.updatesOpenReleases, async event => {
+    registrar.assertMainWindowSender(event);
     await updater.openReleases();
     return { ok: true };
   });
-  handle(IPC.invoke.updatesDismiss, async () => {
+  handleWithEvent(IPC.invoke.updatesDismiss, async event => {
+    registrar.assertMainWindowSender(event);
     await updater.dismiss();
     return { ok: true };
   });
