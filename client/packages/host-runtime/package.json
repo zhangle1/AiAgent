@@ -1,6 +1,6 @@
 {
   "name": "@kunbuddy/host-runtime",
-  "version": "0.20.1",
+  "version": "0.20.3",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

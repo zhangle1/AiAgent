@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "com.knowwhy.kunbuddy";
 export const APP_NAME = "KunBuddy";
-export const APP_VERSION = "0.20.1";
+export const APP_VERSION = "0.20.3";
 
 export type KunBuddyAccountStatus = {
   state: "signed_out" | "authenticated" | "expired" | "unavailable";

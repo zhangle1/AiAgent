@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "createdDate": "2026-10-23",
+  "baseCommit": "9fc534b29d78a16eb88680bf7cebb3795d6e454e",
+  "objective": "将坤伴客户端运行时版本统一为0.20.3，用于安装包更新测试",
+  "status": "validated-user-authorized-delivery",
+  "authorization": "用户明确要求将改完的内容提交推送",
+  "validation": {
+    "versionSurfaces": 16,
+    "expectedVersion": "0.20.3",
+    "onlyVersionReplacements": true,
+    "utf8BomAndNewlines": "preserved; only ASCII version bytes changed",
+    "whitespace": "passed",
+    "compileAndPackage": "not rerun; metadata-only change",
+    "releasePublication": "no tag, installer upload, signing or release-doc preflight claimed"
+  },
+  "fingerprint": "f88573269b7b90f138a854e79d03a3f31f5c8ee6808ebe9f3573312c2ddf0764",
+  "files": [
+    {
+      "path": "client/package.json",
+      "bytes": 7643,
+      "sha256": "51015bda040e344ae8fb3e526a4b7a734e87ba28a4d71bdeba5221871c908d23"
+    },
+    {
+      "path": "client/docs/package.json",
+      "bytes": 399,
+      "sha256": "52e6966446ea20e5ebe61da6f48fb948b152564ef213b9fdeb4c120781ebf8f0"
+    },
+    {
+      "path": "client/apps/desktop/package.json",
+      "bytes": 8762,
+      "sha256": "aa10c3fff2ce172a4cec44ae7d271d4b9ea847dfef2df0fe24e5a472610a7da5"
+    },
+    {
+      "path": "client/apps/kunbuddy-host/package.json",
+      "bytes": 1110,
+      "sha256": "23d304caec255d60c3d639e9e081e5551a2f1360891bf2c167b6ab02534e582d"
+    },
+    {
+      "path": "client/packages/agent-host/package.json",
+      "bytes": 647,
+      "sha256": "d2b7edc974ca6aa974679094d8e79e6646b4fb9bed07e2d27c9f8b70ac025846"
+    },
+    {
+      "path": "client/packages/agent-runtime/package.json",
+      "bytes": 1330,
+      "sha256": "aa83683d5e86a2846b6e140c86a0f0c0f6a440010d01691d9f459d0621748c32"
+    },
+    {
+      "path": "client/packages/host-runtime/package.json",
+      "bytes": 738,
+      "sha256": "2c5c472d669d5bce04e516eb08130a3fabe98103989969c3f46ad2a77a09b3be"
+    },
+    {
+      "path": "client/packages/i18n/package.json",
+      "bytes": 898,
+      "sha256": "2311316df752f6621ef98729b529eb7a407b3724b299a2d41cbcdf9303378e39"
+    },
+    {
+      "path": "client/packages/plugin-devkit/package.json",
+      "bytes": 709,
+      "sha256": "b9b51cfc98af880ab2389ef3a45169b2dddb5efb9f5b63877868d3382464131f"
+    },
+    {
+      "path": "client/packages/plugin-sdk/package.json",
+      "bytes": 603,
+      "sha256": "8709793a855299a7bea55b5a8305cb2571d36048a6b8f6be22052b4016177462"
+    },
+    {
+      "path": "client/packages/racp/package.json",
+      "bytes": 873,
+      "sha256": "7198c1ae83f4071523d3fc4c987db251d4361738788e844bef1e68c52935dacf"
+    },
+    {
+      "path": "client/packages/shared/package.json",
+      "bytes": 923,
+      "sha256": "78d1c180a05688a39aecfe45370b7c856997c7651986478c41465fa22016dc2a"
+    },
+    {
+      "path": "client/packages/voice-runtime/package.json",
+      "bytes": 683,
+      "sha256": "c31d6fb21c0b17361bbb8a0d4a3d29081c0ca4da782d9d31cddde62a20ba131e"
+    },
+    {
+      "path": "client/Cargo.toml",
+      "bytes": 145,
+      "sha256": "f5cc8aed24909a03480690215256203a044c3d6544602effcedfc45ea7052968"
+    },
+    {
+      "path": "client/Cargo.lock",
+      "bytes": 56939,
+      "sha256": "16fdf695bdbf201380945b77e2ccffd47e7c3fce9590fb72b47253f4ef4e93eb"
+    },
+    {
+      "path": "client/packages/shared/src/protocol.ts",
+      "bytes": 23430,
+      "sha256": "1cc314b681beb374ce2623d33cad25c5d2e4d9a7f1bd75265e47b05fe9922b15"
+    }
+  ]
+}
