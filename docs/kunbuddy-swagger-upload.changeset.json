@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-awaiting-user-delivery",
+  "createdDate": "2026-10-23",
+  "baseCommit": "ca782143c8129838302612c3ea31011ff0da5c07",
+  "objective": "修复安装包文件参数标注导致两组Swagger文档HTTP 500",
+  "rootCause": "Swashbuckle rejects [FromForm] on a direct IFormFile parameter",
+  "authorization": {
+    "focusedBackendTests": "explicit user approval",
+    "commitAndPush": false
+  },
+  "validation": {
+    "before": "Settings and v1 HTTP 500; generator exception identifies ClientReleaseAdminAppService.Upload [FromForm] IFormFile",
+    "after": "Settings and v1 HTTP 200; multipart schema exposes binary file and all metadata fields",
+    "passed": 6,
+    "failed": 0,
+    "build": "passed as part of approved focused dotnet test; existing warnings retained",
+    "realDatabaseAndCredentialsUsed": false,
+    "sourceDiff": "single file parameter attribute removed; encoding/BOM/newlines preserved",
+    "utf8": "passed",
+    "whitespace": "passed",
+    "evidenceRoot": "E:/项目/know-why/.codex-verification/swagger-20261023",
+    "evidence": [
+      {
+        "path": "red-http.log",
+        "bytes": 4993,
+        "sha256": "84fdc5b650616011f2761bef9c3499cdbaad5e4c12801caf76bb0c25c0b0f05c"
+      },
+      {
+        "path": "red-detail.log",
+        "bytes": 8909,
+        "sha256": "736d77befc074acab151562040c715b3f3c5661cf08a6bf34e2e8165331b4a8c"
+      },
+      {
+        "path": "green-http.log",
+        "bytes": 8300,
+        "sha256": "a18ca5ac7e99a75808f620af7e2611286197555ddca4051148ab42612236bb5c"
+      },
+      {
+        "path": "green-regression.log",
+        "bytes": 6271,
+        "sha256": "4d5b9e36793aab26fde3f05719edd87043c610e3fc1e5ec27b19b5b52244250b"
+      }
+    ]
+  },
+  "fingerprint": "3a08e5bfee89923163c5eb8bd76238e6aeb1e75da937406252ee0529431207d4",
+  "files": [
+    {
+      "path": "backed/Services/KunBuddy/ClientReleaseAppService.cs",
+      "bytes": 3412,
+      "sha256": "7d412227990b00d52ccd913823c6e263eadf1ef71d2caecf2ada15c7bb7464d4"
+    },
+    {
+      "path": "backed.tests/SwaggerDocumentTests.cs",
+      "bytes": 3974,
+      "sha256": "67bea3d555d80c45f320ead031adea5a1cc7d8643b07d16451698826f1beb6dd"
+    },
+    {
+      "path": "docs/kunbuddy-client-releases.md",
+      "bytes": 5264,
+      "sha256": "990c4588298b1620ebd1a565fd5196ef831feedb9c132fe9cf5dac7ec3f1c840"
+    }
+  ]
+}

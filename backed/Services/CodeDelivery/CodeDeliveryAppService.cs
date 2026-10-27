@@ -120,7 +120,7 @@ public sealed class CodeDeliveryAppService : IDynamicApiController
             var failed = false;
             foreach (var item in items)
             {
-                var result = await _git.CommitAndPushAsync(item.RepositoryName!, row.CommitMessage, token);
+                var result = await _git.CommitAndPushAsync(item.RepositoryName!, row.CommitMessage, token, user.Username);
                 item.DeliveryStatus = result.Ok ? "delivered" : "failed";
                 item.CommitSha = result.CommitSha;
                 item.SafeOutput = Trim(result.Output, 8000);

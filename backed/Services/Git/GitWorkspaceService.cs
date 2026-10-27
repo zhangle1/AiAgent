@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 
 namespace AiAgent.Backend.Services.Git;
 
@@ -21,7 +22,7 @@ public interface IGitWorkspaceService
 {
     Task<List<GitHistoryCommit>> HistoryAsync(string workspaceKey, string rootPath, int skip, CancellationToken cancellationToken);
     Task<string> PrepareMaintenanceAsync(string sourceRoot, string destination, string branch, CancellationToken token, GitWorkspaceCredential? credential = null);
-    Task<GitOperationResult> PushMaintenanceAsync(string root, string branch, string baseHead, string snapshot, string message, CancellationToken token, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> PushMaintenanceAsync(string root, string branch, string baseHead, string snapshot, string message, CancellationToken token, GitWorkspaceCredential? credential = null, string? authorUsername = null);
     Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitWorkspaceDiff> DiffAsync(string workspaceKey, string rootPath, string? comparison, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
@@ -30,7 +31,7 @@ public interface IGitWorkspaceService
     Task<GitOperationResult> CheckoutAsync(string workspaceKey, string rootPath, string branch, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> DiscardChangesAndPullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
     Task<GitOperationResult> PullAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
-    Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null);
+    Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null, string? authorUsername = null);
 }
 
 public sealed class GitDeliveryValidation
@@ -118,9 +119,14 @@ public sealed partial class GitWorkspaceService : IGitWorkspaceService
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _operationGates = new(StringComparer.OrdinalIgnoreCase);
     private readonly AsyncLocal<GitWorkspaceCredential?> _credential = new();
+    private readonly ILogger<GitWorkspaceService>? _logger;
+
+    public GitWorkspaceService() { }
+
+    public GitWorkspaceService(ILogger<GitWorkspaceService> logger) => _logger = logger;
 
     public Task<GitWorkspaceStatus> StatusAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
-        => RunExclusiveAsync(workspaceKey, () => GetStatusAsync(rootPath, cancellationToken), cancellationToken, credential);
+        => RunExclusiveAsync(workspaceKey, () => GetStatusAsync(rootPath, cancellationToken, workspaceKey: workspaceKey), cancellationToken, credential);
 
     public Task<GitWorkspaceBranches> BranchesAsync(string workspaceKey, string rootPath, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
         => RunExclusiveAsync(workspaceKey, () => GetBranchesAsync(rootPath, cancellationToken), cancellationToken, credential);
@@ -206,7 +212,7 @@ public sealed partial class GitWorkspaceService : IGitWorkspaceService
             };
         }, cancellationToken, credential);
 
-    public Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null)
+    public Task<GitOperationResult> CommitAndPushAsync(string workspaceKey, string rootPath, string message, CancellationToken cancellationToken, GitWorkspaceCredential? credential = null, string? authorUsername = null)
         => RunExclusiveAsync(workspaceKey, async () =>
         {
             await RequireRepositoryAsync(rootPath, cancellationToken);
@@ -218,7 +224,7 @@ public sealed partial class GitWorkspaceService : IGitWorkspaceService
             var cached = await RunGitAsync(rootPath, ["diff", "--cached", "--quiet"], cancellationToken);
             if (cached.ExitCode == 1)
             {
-                var commit = await RunGitAsync(rootPath, ["commit", "-m", NormalizeCommitMessage(message)], cancellationToken);
+                var commit = await RunGitAsync(rootPath, ["commit", "-m", GitCommitMessage.WithAuthor(message, authorUsername)], cancellationToken);
                 output.Add(commit.Output);
                 if (commit.ExitCode != 0) return await FailureAsync("push", output, rootPath, cancellationToken);
             }
@@ -273,7 +279,7 @@ public sealed partial class GitWorkspaceService : IGitWorkspaceService
         }
     }
 
-    private async Task<GitWorkspaceStatus> GetStatusAsync(string rootPath, CancellationToken cancellationToken, bool refreshRemoteRefs = true)
+    private async Task<GitWorkspaceStatus> GetStatusAsync(string rootPath, CancellationToken cancellationToken, bool refreshRemoteRefs = true, string? workspaceKey = null)
     {
         if (!Directory.Exists(rootPath)) throw new DirectoryNotFoundException("The selected Git workspace no longer exists.");
         var check = await RunGitAsync(rootPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
@@ -281,7 +287,7 @@ public sealed partial class GitWorkspaceService : IGitWorkspaceService
         {
             return new GitWorkspaceStatus { Output = check.Output };
         }
-        var remoteRefreshError = refreshRemoteRefs ? await RefreshRemoteRefsAsync(rootPath, cancellationToken) : null;
+        var remoteRefreshError = refreshRemoteRefs ? await RefreshRemoteRefsAsync(rootPath, cancellationToken, workspaceKey) : null;
 
         var branch = await RunGitAsync(rootPath, ["branch", "--show-current"], cancellationToken);
         var upstream = await RunGitAsync(rootPath, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cancellationToken);
@@ -480,12 +486,31 @@ public sealed partial class GitWorkspaceService : IGitWorkspaceService
         changes.Add(new GitWorkspaceLocalChange { Path = normalized, Status = status, LastWriteTimeUtc = lastWrite });
     }
 
-    private async Task<string?> RefreshRemoteRefsAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<string?> RefreshRemoteRefsAsync(string rootPath, CancellationToken cancellationToken, string? workspaceKey = null)
     {
         var remotes = await RunGitAsync(rootPath, ["remote"], cancellationToken);
         if (remotes.ExitCode != 0 || ToLines(remotes.Output).Count == 0) return null;
         // Refresh tracking refs so the UI represents the current remote rather than a stale local cache.
-        var fetch = await RunGitAsync(rootPath, ["fetch", "--quiet", "--prune"], cancellationToken);
+        var workspace = workspaceKey ?? "unscoped";
+        var timer = Stopwatch.StartNew();
+        _logger?.LogInformation("[GitStatusTrace] Remote fetch started. Workspace={Workspace} Operation=fetch-prune", workspace);
+        GitProcessResult fetch;
+        try
+        {
+            fetch = await RunGitAsync(rootPath, ["fetch", "--quiet", "--prune"], cancellationToken);
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger?.LogWarning("[GitStatusTrace] Remote fetch cancelled. Workspace={Workspace} ExceptionType={ExceptionType} ElapsedMs={ElapsedMs}", workspace, ex.GetType().Name, timer.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("[GitStatusTrace] Remote fetch failed. Workspace={Workspace} ExceptionType={ExceptionType} StackTrace={StackTrace} ElapsedMs={ElapsedMs}", workspace, ex.GetType().Name, ex.StackTrace, timer.ElapsedMilliseconds);
+            throw;
+        }
+
+        _logger?.LogInformation("[GitStatusTrace] Remote fetch completed. Workspace={Workspace} ExitCode={ExitCode} ElapsedMs={ElapsedMs}", workspace, fetch.ExitCode, timer.ElapsedMilliseconds);
         if (fetch.ExitCode == 0) return null;
         return string.IsNullOrWhiteSpace(fetch.Output) ? "无法刷新远程分支。" : fetch.Output;
     }

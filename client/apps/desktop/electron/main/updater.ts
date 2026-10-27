@@ -1,8 +1,10 @@
 /**
- * The desktop uses account-bound platform installers; see platform-release-updater.
- * Switching platform replaces update authority, and installation is explicit.
- * The optional standalone generic HTTPS feed remains for callers that do not
- * provide platformReleases. Its delivery mode per install:
+ * App auto-update via electron-updater against GitHub Releases.
+ *
+ * The feed (latest*.yml + installers) is attached to each GitHub Release by
+ * .github/workflows/release.yml. Discovery always tracks the latest stable
+ * release (`allowPrerelease = false`) so RC installs still graduate to newer
+ * stables. Delivery mode per install:
  *  - Windows NSIS / Linux AppImage / packaged macOS → full in-app flow: silent
  *    background download, "restart to update" prompt, install-on-quit fallback.
  *  - Windows ZIP / legacy portable (`kunbuddyDistribution = "zip"` or
@@ -193,7 +195,7 @@ export class AppUpdaterController {
     this.send = options.send;
     this.getLocale = options.getLocale ?? (() => "en");
     const platform = options.platform ?? process.platform;
-    const updateFeedUrl = options.platformReleases ? undefined : options.updateFeedUrl ?? process.env.KUNBUDDY_UPDATE_FEED_URL;
+    const updateFeedUrl = options.updateFeedUrl ?? process.env.KUNBUDDY_UPDATE_FEED_URL;
     const feed = updateFeedUrl?.trim() ? new URL(updateFeedUrl.trim()) : null;
     if (feed && (feed.protocol !== "https:" || feed.username || feed.password)) {
       throw new Error("KunBuddy update feed must be an HTTPS URL without credentials");

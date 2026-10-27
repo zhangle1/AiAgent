@@ -24,7 +24,7 @@ public sealed partial class GitWorkspaceService
             return head.Output.Trim();
         }, token, credential);
 
-    public Task<GitOperationResult> PushMaintenanceAsync(string root, string branch, string baseHead, string snapshot, string message, CancellationToken token, GitWorkspaceCredential? credential = null)
+    public Task<GitOperationResult> PushMaintenanceAsync(string root, string branch, string baseHead, string snapshot, string message, CancellationToken token, GitWorkspaceCredential? credential = null, string? authorUsername = null)
         => RunExclusiveAsync("maintenance:" + root, async () =>
         {
             if (!branch.StartsWith("maintenance/", StringComparison.Ordinal)) throw new ArgumentException("Invalid maintenance branch.");
@@ -34,7 +34,7 @@ public sealed partial class GitWorkspaceService
                 throw new InvalidOperationException("编译后代码、基线或远程状态发生变化，禁止推送，请重新执行养护。");
             var add = await RunGitAsync(root, ["add", "--all"], token);
             if (add.ExitCode != 0) throw new InvalidOperationException("暂存养护改动失败：" + add.Output);
-            var commit = await RunGitAsync(root, ["commit", "-m", message], token);
+            var commit = await RunGitAsync(root, ["commit", "-m", GitCommitMessage.WithAuthor(message, authorUsername)], token);
             if (commit.ExitCode != 0) throw new InvalidOperationException("提交养护改动失败：" + commit.Output);
             // A unique branch per run, never force push or change the source branch.
             var push = await RunGitAsync(root, ["push", "origin", "HEAD:refs/heads/" + branch], token);

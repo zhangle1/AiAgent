@@ -41,4 +41,6 @@ Apple Silicon 在 arm64 环境构建，Intel 在 x64 环境构建，确保 Elect
 
 管理员列表/上传/撤回使用网页管理员登录；客户端最新版本及下载使用独立 `kunbuddy-client` 会话，普通网页令牌不能代替。接口为 `/api/v1/admin/client-releases/list`、`upload`、`{id}/withdraw`、`{id}/file`，客户端为 `/api/v1/kunbuddy/releases/latest` 和 `{id}/file`。
 
+上传接口的单个文件参数直接声明 `IFormFile file`，由 ASP.NET Core 推断文件绑定；不要在该参数上添加 `[FromForm]`，否则当前 Swashbuckle 会在生成文档时抛出异常，使 Settings 和 v1 文档返回 500。其他字符串元数据仍使用 `[FromForm]`。`SwaggerDocumentTests` 用隔离后端验证两组文档返回 200，并检查 multipart 中的二进制文件和元数据字段；更新修复后需重新编译并重启正在访问的后端。
+
 应用允许约 2 GiB 的上传体。前端安装包上传使用专用 Node route 流式转发，绕过 Next.js rewrite 默认 10 MiB 克隆上限，仍由后端鉴权及校验。反向代理也须相应配置大小及上传超时。例如 nginx 的 `client_max_body_size 2049m;`；IIS 的 requestFiltering/requestLimits `maxAllowedContentLength` 至少 2148532224。不要把真实安装包、数据目录、证书或构建输出提交 Git。

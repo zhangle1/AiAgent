@@ -32,7 +32,10 @@ async function parseJson<T>(response: Response): Promise<T> {
       payload = JSON.parse(text) as unknown;
     } catch {
       const detail = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-      const suffix = detail && !/^internal server error$/i.test(detail) ? ` 原因：${detail.slice(0, 160)}` : " 服务端未返回详细错误，请查看后端日志。";
+      const isProxyFailure = response.status >= 500 && (!detail || /^internal server error$/i.test(detail));
+      const suffix = isProxyFailure
+        ? " 前端 API 代理没有收到后端的正常响应；请按同一时间检查 Next.js 代理日志和后端 runtime/backend.err.log。"
+        : detail ? ` 原因：${detail.slice(0, 160)}` : " 服务端未返回详细错误，请查看后端日志。";
       throw new Error(`请求失败（HTTP ${response.status}）。${suffix}`);
     }
   }
@@ -317,7 +320,16 @@ export async function readChatConfiguredCodeFile(name: string, path: string): Pr
 export async function writeChatConfiguredCodeFile(name: string, payload: { path: string; content: string; expected_sha256: string }): Promise<{ ok: boolean; path: string; sha256: string }> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/chat-configured-file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })); }
 
 export async function getCodeRepositoryGitStatus(name: string): Promise<GitWorkspaceStatus> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/status`, { cache: "no-store" })); }
-export async function getProjectGitStatus(projectId: number): Promise<ProjectGitStatus> { return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/status`, { cache: "no-store" })); }
+export async function getProjectGitStatus(projectId: number): Promise<ProjectGitStatus> {
+  try {
+    return await parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/status`, { cache: "no-store" }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Git 状态请求未获得 HTTP 响应（项目 ${projectId}）。请检查浏览器到前端的连接；若 Next.js 日志出现 socket hang up，再对照后端 [GitStatusTrace] 日志。`);
+    }
+    throw error;
+  }
+}
 export async function discardProjectGitChangesAndPull(projectId: number, repositoryNames: string[]): Promise<ProjectGitBatchOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/discard-and-pull`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repository_names: repositoryNames }) })); }
 export async function pushProjectGit(projectId: number, repositoryNames: string[], message: string): Promise<ProjectGitBatchOperationResult> { return parseJson(await fetch(`/api/v1/code-repositories/projects/${projectId}/git/commit-and-push`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repository_names: repositoryNames, message }) })); }
 export async function getCodeRepositoryGitBranches(name: string): Promise<GitWorkspaceBranches> { return parseJson(await fetch(`/api/v1/code-repositories/${encodeURIComponent(name)}/git/branches`, { cache: "no-store" })); }

@@ -25,7 +25,7 @@ public sealed class ClientReleaseAdminAppService(ClientReleaseService releases, 
     [HttpPost("upload")]
     [RequestSizeLimit(ClientReleaseService.MaxBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = ClientReleaseService.MaxBytes + 1024 * 1024)]
-    public async Task<IActionResult> Upload([FromForm] IFormFile file, [FromForm] string version, [FromForm] string platform, [FromForm] string architecture, [FromForm] string? notes, CancellationToken ct)
+    public async Task<IActionResult> Upload(IFormFile file, [FromForm] string version, [FromForm] string platform, [FromForm] string architecture, [FromForm] string? notes, CancellationToken ct)
     {
         try { return new OkObjectResult(await releases.Upload((await auth.TryGetCurrentUserAsync(context.HttpContext!, ct))!, file, version, platform, architecture, notes, ct)); }
         catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }

@@ -4,6 +4,8 @@ using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Admin;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Text;
 
 namespace AiAgent.Backend.Services.CodeRepository;
@@ -24,11 +26,12 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     private readonly IAuthService _authService;
     private readonly IProjectAccessService _projectAccess;
     private readonly IProjectAutoGitUpdateService _autoGitUpdates;
+    private readonly ILogger<CodeRepositoryAppService> _logger;
 
     /// <summary>
     /// Creates the code repository API service.
     /// </summary>
-    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git, IHttpContextAccessor httpContextAccessor, IAuthService authService, IProjectAccessService projectAccess, IProjectAutoGitUpdateService autoGitUpdates)
+    public CodeRepositoryAppService(ICodeRepositoryManager manager, ICodeRepositoryIndexService indexService, ICodeRepositoryIndexProgressStore progressStore, ICodeRepositoryGitService git, IHttpContextAccessor httpContextAccessor, IAuthService authService, IProjectAccessService projectAccess, IProjectAutoGitUpdateService autoGitUpdates, ILogger<CodeRepositoryAppService> logger)
     {
         _manager = manager;
         _indexService = indexService;
@@ -38,6 +41,7 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
         _authService = authService;
         _projectAccess = projectAccess;
         _autoGitUpdates = autoGitUpdates;
+        _logger = logger;
     }
 
     [HttpGet("list")]
@@ -281,9 +285,32 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     [HttpGet("projects/{projectId:long}/git/status")]
     public async Task<IActionResult> ProjectGitStatus([FromRoute] long projectId, CancellationToken cancellationToken)
     {
-        var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
-        if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
-        return new OkObjectResult(await _git.ProjectStatusAsync(projectId, cancellationToken));
+        var traceId = _httpContextAccessor.HttpContext?.TraceIdentifier ?? "unknown";
+        var timer = Stopwatch.StartNew();
+        _logger.LogInformation("[GitStatusTrace] Request started. ProjectId={ProjectId} TraceId={TraceId}", projectId, traceId);
+        try
+        {
+            var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
+            if (!_projectAccess.CanAccess(user, projectId))
+            {
+                _logger.LogWarning("[GitStatusTrace] Request forbidden. ProjectId={ProjectId} TraceId={TraceId} ElapsedMs={ElapsedMs}", projectId, traceId, timer.ElapsedMilliseconds);
+                return new ForbidResult();
+            }
+
+            var status = await _git.ProjectStatusAsync(projectId, cancellationToken);
+            _logger.LogInformation("[GitStatusTrace] Request completed. ProjectId={ProjectId} TraceId={TraceId} State={State} RepositoryCount={RepositoryCount} ElapsedMs={ElapsedMs}", projectId, traceId, status.State, status.Repositories.Count, timer.ElapsedMilliseconds);
+            return new OkObjectResult(status);
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.LogWarning("[GitStatusTrace] Request cancelled. ProjectId={ProjectId} TraceId={TraceId} ExceptionType={ExceptionType} ElapsedMs={ElapsedMs}", projectId, traceId, ex.GetType().Name, timer.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("[GitStatusTrace] Request failed. ProjectId={ProjectId} TraceId={TraceId} ExceptionType={ExceptionType} StackTrace={StackTrace} ElapsedMs={ElapsedMs}", projectId, traceId, ex.GetType().Name, ex.StackTrace, timer.ElapsedMilliseconds);
+            throw;
+        }
     }
 
     [HttpPost("projects/{projectId:long}/git/discard-and-pull")]

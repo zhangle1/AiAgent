@@ -3,7 +3,9 @@ using AiAgent.Backend.Entities.Git;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Push;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging;
 using SqlSugar;
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 
@@ -18,7 +20,7 @@ public interface ICodeRepositoryGitService
     Task<GitOperationResult> CheckoutAsync(string repositoryName, string branch, CancellationToken cancellationToken);
     Task<GitOperationResult> DiscardChangesAndPullAsync(string repositoryName, CancellationToken cancellationToken);
     Task<GitOperationResult> PullAsync(string repositoryName, CancellationToken cancellationToken);
-    Task<GitOperationResult> CommitAndPushAsync(string repositoryName, string? message, CancellationToken cancellationToken);
+    Task<GitOperationResult> CommitAndPushAsync(string repositoryName, string? message, CancellationToken cancellationToken, string? authorUsername = null);
     Task<GitDeliveryValidation> ValidateDeliveryAsync(string repositoryName, CancellationToken cancellationToken);
     Task<ProjectGitStatus> ProjectStatusAsync(long projectId, CancellationToken cancellationToken);
     Task<ProjectGitBatchOperationResult> ProjectDiscardChangesAndPullAsync(long projectId, IReadOnlyCollection<string>? repositoryNames, CancellationToken cancellationToken);
@@ -78,6 +80,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
     private readonly IAuthService _authService;
     private readonly IDataProtector _protector;
     private readonly IProjectPushService _pushes;
+    private readonly ILogger<CodeRepositoryGitService> _logger;
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _projectOperationGates = new();
 
     public CodeRepositoryGitService(
@@ -86,7 +89,8 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         IHttpContextAccessor httpContextAccessor,
         IAuthService authService,
         IDataProtectionProvider dataProtectionProvider,
-        IProjectPushService pushes)
+        IProjectPushService pushes,
+        ILogger<CodeRepositoryGitService> logger)
     {
         _db = db;
         _git = git;
@@ -94,6 +98,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         _authService = authService;
         _protector = dataProtectionProvider.CreateProtector("AiAgent.GitAccounts.AccessToken.v1");
         _pushes = pushes;
+        _logger = logger;
     }
 
     public Task<List<GitHistoryCommit>> HistoryAsync(long projectId, string repositoryName, int skip, CancellationToken cancellationToken)
@@ -139,7 +144,7 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         return await _git.PullAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
     }
 
-    public async Task<GitOperationResult> CommitAndPushAsync(string repositoryName, string? message, CancellationToken cancellationToken)
+    public async Task<GitOperationResult> CommitAndPushAsync(string repositoryName, string? message, CancellationToken cancellationToken, string? authorUsername = null)
     {
         var repository = Find(repositoryName);
         var commitMessage = string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message;
@@ -147,7 +152,10 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         var status = await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, credential);
         if (!HasPushWork(status)) return NoPushRequired(status);
 
-        var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, commitMessage, cancellationToken, credential);
+        var user = authorUsername is null
+            ? await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException()
+            : null;
+        var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, commitMessage, cancellationToken, credential, authorUsername ?? user!.Username);
         if (result.Ok && repository.ProjectId.HasValue)
             await QueuePushNotificationAsync(repository, result, commitMessage, cancellationToken);
         return result;
@@ -165,13 +173,20 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         var rows = new List<ProjectGitRepositoryStatus>();
         foreach (var repository in repositories)
         {
+            var timer = Stopwatch.StartNew();
+            var stage = "credential_resolution";
+            _logger.LogInformation("[GitStatusTrace] Repository check started. ProjectId={ProjectId} RepositoryId={RepositoryId} RepositoryName={RepositoryName}", projectId, repository.Id, repository.Name);
             try
             {
-                var status = await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
+                var credential = await ResolveCredentialAsync(repository, cancellationToken);
+                stage = "git_status";
+                var status = await _git.StatusAsync($"repository:{repository.Id}", repository.RootPath, cancellationToken, credential);
                 rows.Add(ToProjectStatus(repository, status));
+                _logger.LogInformation("[GitStatusTrace] Repository check completed. ProjectId={ProjectId} RepositoryId={RepositoryId} RepositoryName={RepositoryName} State={State} RemoteRefreshFailed={RemoteRefreshFailed} ElapsedMs={ElapsedMs}", projectId, repository.Id, repository.Name, rows[^1].State, !string.IsNullOrWhiteSpace(status.RemoteRefreshError), timer.ElapsedMilliseconds);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                _logger.LogError("[GitStatusTrace] Repository check failed. ProjectId={ProjectId} RepositoryId={RepositoryId} RepositoryName={RepositoryName} Stage={Stage} ExceptionType={ExceptionType} StackTrace={StackTrace} ElapsedMs={ElapsedMs}", projectId, repository.Id, repository.Name, stage, ex.GetType().Name, ex.StackTrace, timer.ElapsedMilliseconds);
                 rows.Add(new ProjectGitRepositoryStatus
                 {
                     RepositoryId = repository.Id,
@@ -241,7 +256,9 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
                     if (string.IsNullOrWhiteSpace(status.RemoteBranch)) { results.Repositories.Add(Skipped(repository, "未设置远端跟踪分支，已跳过提交推送。")); continue; }
                     if (status.Behind > 0) { results.Repositories.Add(Skipped(repository, $"远端领先 {status.Behind} 个提交，请先一键重置更新。")); continue; }
                     if (!HasPushWork(status)) { results.Repositories.Add(Skipped(repository, "没有待提交文件或待推送提交，已跳过；不会发送钉钉通知。")); continue; }
-                    var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim(), cancellationToken, await ResolveCredentialAsync(repository, cancellationToken));
+                    var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken)
+                        ?? throw new UnauthorizedAccessException();
+                    var result = await _git.CommitAndPushAsync($"repository:{repository.Id}", repository.RootPath, string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim(), cancellationToken, await ResolveCredentialAsync(repository, cancellationToken), user.Username);
                     results.Repositories.Add(new ProjectGitBatchRepositoryResult { RepositoryId = repository.Id, RepositoryName = repository.Name, DisplayName = repository.DisplayName, Outcome = result.Ok ? "succeeded" : "failed", Message = result.Ok ? "已提交并推送。" : ToSafeOutput(result.Output, "提交推送失败。"), Result = result });
                     if (result.Ok) await QueuePushNotificationAsync(repository, result, message, cancellationToken, operationId);
                 }
@@ -357,13 +374,14 @@ public sealed class CodeRepositoryGitService : ICodeRepositoryGitService
         if (!repository.ProjectId.HasValue) return;
         var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken);
         if (user == null) return;
+        var baseMessage = string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim();
         await _pushes.QueueGitPushSucceededAsync(new ProjectGitPushSucceededEvent(
             repository.ProjectId.Value,
             repository.Id,
             repository.DisplayName,
             result.Status.Branch ?? "未知分支",
             result.CommitSha,
-            string.IsNullOrWhiteSpace(message) ? $"chore: update {repository.DisplayName}" : message.Trim(),
+            GitCommitMessage.WithAuthor(baseMessage, user.Username),
             user.Username,
             operationId ?? Guid.NewGuid().ToString("N")), cancellationToken);
     }

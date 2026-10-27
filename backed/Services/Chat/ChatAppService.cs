@@ -85,6 +85,7 @@ public sealed class ChatAppService : IDynamicApiController
         trace?.Start("auth_session_context");
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
+        request.RuntimeUsername = user.Username;
         await ResolveImageAttachmentsAsync(user, request, cancellationToken);
         await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
         await _projectReferences.ResolveAsync(user, request, cancellationToken);
@@ -136,6 +137,7 @@ public sealed class ChatAppService : IDynamicApiController
         {
             user = await RequireUser(cancellationToken);
             request.RuntimeUserId = user.Id;
+            request.RuntimeUsername = user.Username;
             await ResolveImageAttachmentsAsync(user, request, cancellationToken);
             await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
             await _projectReferences.ResolveAsync(user, request, cancellationToken);

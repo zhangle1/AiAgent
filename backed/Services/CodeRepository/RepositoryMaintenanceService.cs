@@ -256,7 +256,7 @@ public sealed class RepositoryMaintenanceService(
             var root = RepositoryMaintenanceBuildService.SafePath(_root, Path.Combine(run.Id, workspace.RepositoryId.ToString()));
             var repository = db.Queryable<AiCodeRepository>().First(x => x.Id == workspace.RepositoryId && x.ProjectId == run.ProjectId && !x.IsDeleted)
                 ?? throw new InvalidOperationException("仓库已删除或移动。");
-            var result = await git.PushMaintenanceAsync(root, Branch(run), workspace.BaseHead, workspace.Snapshot!, set.CommitMessage!, token, Credential(user, repository));
+            var result = await git.PushMaintenanceAsync(root, Branch(run), workspace.BaseHead, workspace.Snapshot!, set.CommitMessage!, token, Credential(user, repository), user.Username);
             Log(run, workspace.DisplayName + "\n" + result.Output);
             db.Updateable<AiCodeChangeSetRepository>().SetColumns(x => new AiCodeChangeSetRepository { DeliveryStatus = result.Ok ? "delivered" : "failed", CommitSha = result.CommitSha, SafeOutput = RepositoryMaintenanceBuildService.Redact(result.Output), UpdatedAt = DateTime.UtcNow })
                 .Where(x => x.ChangeSetId == set.Id && x.RepositoryId == workspace.RepositoryId).ExecuteCommand();

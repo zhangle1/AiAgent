@@ -1,4 +1,5 @@
 using AiAgent.Backend.Dtos.DashboardApp;
+using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Git;
 
 namespace AiAgent.Backend.Services.DashboardApp;
@@ -7,7 +8,7 @@ public interface IDashboardGitService
 {
     Task<object> StatusAsync(string applicationId, CancellationToken cancellationToken);
     Task<object> PullAsync(string applicationId, CancellationToken cancellationToken);
-    Task<object> CommitAndPushAsync(string applicationId, DashboardGitPushRequest request, CancellationToken cancellationToken);
+    Task<object> CommitAndPushAsync(string applicationId, DashboardGitPushRequest request, AuthenticatedUser user, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -36,10 +37,10 @@ public sealed class DashboardGitService : IDashboardGitService
         return await _git.PullAsync($"dashboard:{app.Id}", app.RootPath, cancellationToken);
     }
 
-    public async Task<object> CommitAndPushAsync(string applicationId, DashboardGitPushRequest request, CancellationToken cancellationToken)
+    public async Task<object> CommitAndPushAsync(string applicationId, DashboardGitPushRequest request, AuthenticatedUser user, CancellationToken cancellationToken)
     {
         var app = await _workspace.GetAsync(applicationId, cancellationToken);
         var message = string.IsNullOrWhiteSpace(request.Message) ? $"feat(dashboard): update {app.Name}" : request.Message;
-        return await _git.CommitAndPushAsync($"dashboard:{app.Id}", app.RootPath, message, cancellationToken);
+        return await _git.CommitAndPushAsync($"dashboard:{app.Id}", app.RootPath, message, cancellationToken, authorUsername: user.Username);
     }
 }

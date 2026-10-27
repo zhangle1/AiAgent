@@ -46,7 +46,7 @@ public sealed class DashboardApplicationAppService : IDynamicApiController
     {
         var user = await auth.TryGetCurrentUserAsync(httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
         if (!user.CanCommitCode) return new ForbidResult();
-        return new OkObjectResult(await git.CommitAndPushAsync(id, request, cancellationToken));
+        return new OkObjectResult(await git.CommitAndPushAsync(id, request, user, cancellationToken));
     }
 }
 

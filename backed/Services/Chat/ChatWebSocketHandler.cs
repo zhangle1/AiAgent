@@ -89,6 +89,7 @@ public sealed class ChatWebSocketHandler
             user = await _authService.TryGetCurrentUserAsync(context, cancellationToken)
                 ?? throw new UnauthorizedAccessException();
             request.RuntimeUserId = user.Id;
+            request.RuntimeUsername = user.Username;
             if (request.AttachmentIds.Count > 0)
             {
                 if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))

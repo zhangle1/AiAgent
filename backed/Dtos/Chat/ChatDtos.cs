@@ -133,6 +133,12 @@ public sealed class ChatCompleteRequest
     [JsonIgnore]
     public string? RuntimeUserId { get; set; }
 
+    /// <summary>
+    /// Authenticated user's account name copied by the server for Git commit guidance. Never accepted from the browser.
+    /// </summary>
+    [JsonIgnore]
+    public string? RuntimeUsername { get; set; }
+
     [JsonIgnore]
     public string? CodexDiagnosticId { get; set; }
 

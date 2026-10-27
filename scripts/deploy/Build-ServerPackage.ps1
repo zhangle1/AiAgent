@@ -119,6 +119,11 @@ GitCommit=$gitCommit
 "@ | Set-Content -LiteralPath (Join-Path $stageRoot "package-info.txt") -Encoding utf8
 
 Write-Host "[4/4] Creating zip package..." -ForegroundColor Cyan
+# Python bytecode is a disposable runtime cache, not a deployment dependency.
+# It can be recreated by Python and may contain paths beyond the legacy Windows
+# path limit; skip cache directories so a stale .pyc cannot break ZIP creation.
+Get-ChildItem -LiteralPath $stageRoot -Directory -Filter "__pycache__" -Recurse -Force -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
 Compress-Archive -LiteralPath $stageRoot -DestinationPath $zipPath -Force
 Write-Host "Package complete: $zipPath" -ForegroundColor Green
