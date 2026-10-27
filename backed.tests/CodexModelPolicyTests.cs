@@ -34,11 +34,11 @@ public sealed class CodexModelPolicyTests
     }
 
     [Fact]
-    public void UpgradeAddsSol61WithoutReenablingOlderModelsOrChangingDefault()
+    public void UpgradeAdds61ModelsWithoutReenablingOlderModelsOrChangingDefault()
     {
         using var db = Database(3);
         var policy = new CodexModelPolicyService(db).GetPolicy();
-        Assert.Equal(new[] { "gpt-5.6-terra", "gpt-6.1-sol" }, policy.AllowedModelIds);
+        Assert.Equal(new[] { "gpt-5.6-terra", "gpt-6.1-sol", "gpt-6.1-terra" }, policy.AllowedModelIds);
         Assert.Equal("gpt-5.6-terra", policy.DefaultModelId);
     }
 
@@ -49,6 +49,24 @@ public sealed class CodexModelPolicyTests
         var service = new CodexModelPolicyService(db);
         Assert.DoesNotContain("gpt-6.1-sol", service.GetPolicy().AllowedModelIds);
         Assert.Throws<InvalidOperationException>(() => service.ResolveModel("gpt-6.1-sol", "medium"));
+    }
+
+    [Fact]
+    public void UpgradeAddsTerra61WithoutReenablingOlderModelsOrChangingDefault()
+    {
+        using var db = Database(4);
+        var policy = new CodexModelPolicyService(db).GetPolicy();
+        Assert.Equal(new[] { "gpt-5.6-terra", "gpt-6.1-terra" }, policy.AllowedModelIds);
+        Assert.Equal("gpt-5.6-terra", policy.DefaultModelId);
+    }
+
+    [Fact]
+    public void CurrentPolicyKeepsTerra61Disabled()
+    {
+        using var db = Database(5);
+        var service = new CodexModelPolicyService(db);
+        Assert.DoesNotContain("gpt-6.1-terra", service.GetPolicy().AllowedModelIds);
+        Assert.Throws<InvalidOperationException>(() => service.ResolveModel("gpt-6.1-terra", "medium"));
     }
 
     [Fact]
@@ -66,6 +84,20 @@ public sealed class CodexModelPolicyTests
     }
 
     [Fact]
+    public void Terra61UsesCompatibleDefaultAndRejectsUnsupportedEfforts()
+    {
+        using var db = Database(4);
+        var service = new CodexModelPolicyService(db);
+        var resolved = service.ResolveModel("gpt-6.1-terra", null);
+        Assert.Equal("gpt-6.1-terra", resolved.AppServerModelId);
+        Assert.Equal("low", resolved.ReasoningEffort);
+        Assert.Equal("max", service.ResolveModel("gpt-6.1-terra", "max").ReasoningEffort);
+        Assert.Throws<InvalidOperationException>(() => service.ResolveModel("gpt-6.1-terra", "none"));
+        Assert.Throws<InvalidOperationException>(() => service.ResolveModel("gpt-6.1-terra", "minimal"));
+        Assert.Throws<InvalidOperationException>(() => service.ResolveModel("gpt-6.1-terra", "ultra"));
+    }
+
+    [Fact]
     public void OlderPolicyGetsBothModelGenerations()
     {
         using var db = Database(2);
@@ -74,5 +106,6 @@ public sealed class CodexModelPolicyTests
         Assert.Contains("gpt-6-sol", policy.AllowedModelIds);
         Assert.Contains("gpt-6-luna", policy.AllowedModelIds);
         Assert.Contains("gpt-6.1-sol", policy.AllowedModelIds);
+        Assert.Contains("gpt-6.1-terra", policy.AllowedModelIds);
     }
 }

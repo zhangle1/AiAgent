@@ -6,6 +6,8 @@ AiAgent 将 Codex 本地代理使用的模型从本机 Codex CLI 默认值中解
 
 首期内置模型：
 
+- `gpt-6.1-sol`：GPT-6.1 Sol，适合复杂编码、长时间任务与 Agent 工作流。
+- `gpt-6.1-terra`：GPT-6.1 Terra，适合日常开发、分析与 Agent 工作流，兼顾速度与质量。
 - `gpt-5.6-sol`：Sol，适合复杂、开放式的编码与分析任务。
 - `gpt-5.6-terra`：Terra，适合日常开发任务，兼顾速度与质量。
 
@@ -82,3 +84,10 @@ Codex 运行租约的缓存键必须包含模型 ID。这样同一个浏览器�
 - 设置页与聊天选择器读取服务端目录。部署新版后端后生效；已有 Codex worker 退出后，新进程使用更新的 CLI。
 - CLI 更新命令：`npm install -g @openai/codex@latest`。实际模型权限仍取决于后端运行账户。
 - 官方资料：[模型规格](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[Codex 模型选择](https://learn.chatgpt.com/docs/models)。
+
+## GPT-6.1 Terra 支持（2026-10-27）
+
+- 新增 `gpt-6.1-terra`，通过 app-server 原样传入模型 ID，支持原生图片输入。
+- 推理等级为 `low/medium/high/xhigh/max`；显式 `none/minimal` 被拒绝。默认等级不兼容时，从管理员允许的兼容等级中选择。
+- 目录版本 5 为旧策略补充启用新模型，保留默认模型、切换权限及已禁用的旧模型；保存版本 5 后禁用新模型不会再次自动启用。
+- 设置页与聊天选择器读取服务端目录，部署新版后端后即可选择 GPT-6.1 Terra。

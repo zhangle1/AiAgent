@@ -51,7 +51,7 @@ public interface ICodexModelPolicyService
 public sealed class CodexModelPolicyService : ICodexModelPolicyService
 {
     private const string SettingKey = "codex_model_policy";
-    private const int BuiltinModelsVersion = 4;
+    private const int BuiltinModelsVersion = 5;
     private static readonly Regex ProfileNamePattern = new("^[A-Za-z0-9_-]{1,64}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly IReadOnlyList<string> SupportedReasoningEfforts = ["minimal", "none", "low", "medium", "high", "xhigh", "max"];
     private static readonly IReadOnlyList<string> AstraReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
@@ -62,6 +62,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
     [
         new("gpt-6-astra", "GPT-6 Astra", "适合高难度端到端编码、推理与复杂工作流。", "gpt-6-astra", null, true, true, true, AstraReasoningEfforts),
         new("gpt-6.1-sol", "GPT-6.1 Sol", "适合复杂编码、长时间任务与 Agent 工作流。", "gpt-6.1-sol", null, true, true, true, Sol61ReasoningEfforts),
+        new("gpt-6.1-terra", "GPT-6.1 Terra", "适合日常开发、分析与 Agent 工作流，兼顾速度与质量。", "gpt-6.1-terra", null, true, true, true, Sol61ReasoningEfforts),
         new("gpt-6-sol", "GPT-6 Sol", "适合复杂编码与 Agent 工作流。", "gpt-6-sol", null, true, true, true, SolLunaReasoningEfforts),
         new("gpt-6-luna", "GPT-6 Luna", "适合高频、范围明确的任务。", "gpt-6-luna", null, true, true, true, SolLunaReasoningEfforts),
         new("gpt-5.6-sol", "GPT-5.6 Sol", "适合复杂、开放式的编码与分析任务。", "gpt-5.6-sol", null, true, true, false, Gpt56ReasoningEfforts),
@@ -195,6 +196,8 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             }
             if (builtinModelsVersion < 4 && !allowed.Contains("gpt-6.1-sol", StringComparer.Ordinal))
                 allowed.Add("gpt-6.1-sol");
+            if (builtinModelsVersion < 5 && !allowed.Contains("gpt-6.1-terra", StringComparer.Ordinal))
+                allowed.Add("gpt-6.1-terra");
             builtinModelsVersion = Math.Max(builtinModelsVersion, BuiltinModelsVersion);
             if (allowed.Count == 0) return fallback;
             var rawEfforts = raw.AllowedReasoningEfforts is { Count: > 0 } ? raw.AllowedReasoningEfforts : SupportedReasoningEfforts;

@@ -74,7 +74,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - Codex 基础诊断默认记录到本人会话；阶段与服务端生成的诊断编号贯穿 CLI、WebSocket/SSE 和历史记录。仅记录固定分类及允许的元数据，运行账号与实际路径只进服务器日志；CLI metadata 警告不决定终态。修改诊断、失败映射或持久化时参见 `docs/codex-runtime-diagnostics.md`，验证脱敏、取消、真实协议终态及用户归属。
 
-- Codex 模型目录与分版本升级由 `CodexModelPolicyService` 管理。新增 `gpt-6.1-sol` 时保留默认模型及已禁用的旧模型；仅支持 `low/medium/high/xhigh/max`，前端从策略接口获取模型与推理等级。
+- Codex 模型目录与分版本升级由 `CodexModelPolicyService` 管理。新增 `gpt-6.1-sol` 或 `gpt-6.1-terra` 时保留默认模型及已禁用的旧模型；仅支持 `low/medium/high/xhigh/max`，前端从策略接口获取模型与推理等级。
 
 - Target framework：`.NET 9`。
 - 使用 Furion Dynamic API；领域入口通常位于 `backed/Services/<Domain>/*AppService.cs`。

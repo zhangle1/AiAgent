@@ -155,7 +155,7 @@ npm run dev
 
 ### 3. 本机 Codex 接管（可选）
 
-Codex 本地代理新增 `gpt-6.1-sol`（GPT-6.1 Sol），支持 `low/medium/high/xhigh/max` 推理等级；升级保留原默认模型。详见 [Codex 模型策略](docs/codex-model-policy.md)。
+Codex 本地代理支持 `gpt-6.1-sol`（GPT-6.1 Sol）和 `gpt-6.1-terra`（GPT-6.1 Terra），支持 `low/medium/high/xhigh/max` 推理等级；升级保留原默认模型。详见 [Codex 模型策略](docs/codex-model-policy.md)。
 
 选择 Codex 本地代理时，点击聊天输入框左下角的图片按钮，或在输入区按 `Ctrl+V`，即可附加截图。默认最多 4 张、单张最大 10 MB，支持 PNG、JPEG、WebP、GIF；未发送图片暂存于后端 `data/chat_attachments`，发送后的图片会迁移到按用户和会话隔离的历史目录，并随聊天记录回显。CodeBuddy 当前未验证图片输入协议，因此不能使用该功能。
 
