@@ -85,6 +85,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ### 主要领域
 
+- 修改变化地图的 Git 采集、快照、过滤、证据或 AI 解读前，读取 `docs/change-atlas.md`。实现位于 `Services/ChangeAtlas/`；验证使用合成仓库和模型替身，检查版本固定、项目/用户隔离与迟到响应处理。
+
 | 领域 | 位置 | 说明 |
 | --- | --- | --- |
 | 设置 | `Services/Settings` | 模型供应商与目录配置 |
