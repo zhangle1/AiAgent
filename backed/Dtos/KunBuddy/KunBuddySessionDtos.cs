@@ -7,6 +7,7 @@ public sealed class KunBuddySessionUpload
     [JsonPropertyName("account")] public string Account { get; set; } = "";
     [JsonPropertyName("client_id")] public string ClientId { get; set; } = "";
     [JsonPropertyName("title")] public string Title { get; set; } = "";
+    [JsonPropertyName("source")] public string Source { get; set; } = "KunBuddy 坤伴订阅";
     [JsonPropertyName("entries")] public List<KunBuddySessionEntry> Entries { get; set; } = [];
 }
 

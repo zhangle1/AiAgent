@@ -1,4 +1,5 @@
 using AiAgent.Backend.Dtos.KunBuddy;
+using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Entities.Auth;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Auth;
@@ -16,6 +17,62 @@ namespace AiAgent.Backend.Tests;
 
 public sealed partial class KnowledgeWorkspaceTests
 {
+    [Fact]
+    public async Task PlatformSessionImportRejectsOversizedBatchInsteadOfSilentlyDroppingSelections()
+    {
+        using var db = Database(); using var files = new SemanticFiles();
+        var service = new KunBuddySessionService(db, files.Paths);
+        var sessions = Enumerable.Range(0, 101).Select(index => "session-" + index).ToArray();
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ImportPlatformSessionsAsync(new("owner", "owner"), sessions, default));
+    }
+
+    [Fact]
+    public async Task PlatformChatSyncAppendsUserAndAssistantMessagesWithoutDuplicatingRetries()
+    {
+        using var db = Database(); using var files = new SemanticFiles();
+        db.CodeFirst.InitTables(typeof(AiChatSession), typeof(AiChatMessage));
+        var service = new KunBuddySessionService(db, files.Paths);
+        var alice = new AuthenticatedUser("alice-id", "alice");
+        db.Insertable(new AiChatSession { Id = "platform-session", UserId = alice.Id, Title = "平台问答" }).ExecuteCommand();
+        db.Insertable(new AiChatMessage { SessionId = "platform-session", Role = "user", Content = "请总结这份资料。" }).ExecuteCommand();
+        db.Insertable(new AiChatMessage { SessionId = "platform-session", Role = "assistant", Content = "这是 AI 的回答。" }).ExecuteCommand();
+
+        Assert.Equal(2, await service.SyncPlatformSessionAsync(alice, "platform-session", default));
+        Assert.Equal(0, await service.SyncPlatformSessionAsync(alice, "platform-session", default));
+        var document = Assert.Single(db.Queryable<AiKnowledgeDocument>().ToList());
+        var raw = await File.ReadAllTextAsync(document.StoragePath);
+        Assert.Contains("## 用户", raw); Assert.Contains("请总结这份资料。", raw); Assert.Contains("## AI", raw); Assert.Contains("这是 AI 的回答。", raw);
+    }
+
+    [Fact]
+    public async Task PlatformSessionImportListsOnlyOwnedSessionsAndAllowsAdministratorsToImportAll()
+    {
+        using var db = Database(); using var files = new SemanticFiles();
+        db.CodeFirst.InitTables(typeof(AiUser), typeof(AiChatSession), typeof(AiChatMessage));
+        var alice = new AiUser { Id = "alice-id", Username = "alice", Role = "user" };
+        var bob = new AiUser { Id = "bob-id", Username = "bob", Role = "user" };
+        var admin = new AiUser { Id = "admin-id", Username = "admin", Role = "admin" };
+        db.Insertable(new[] { alice, bob, admin }).ExecuteCommand();
+        db.Insertable(new[] {
+            new AiChatSession { Id = "alice-session", UserId = alice.Id, Title = "Alice 会话" },
+            new AiChatSession { Id = "bob-session", UserId = bob.Id, Title = "Bob 会话" }
+        }).ExecuteCommand();
+        db.Insertable(new[] {
+            new AiChatMessage { SessionId = "alice-session", Role = "user", Content = "alice" },
+            new AiChatMessage { SessionId = "bob-session", Role = "user", Content = "bob" }
+        }).ExecuteCommand();
+        var service = new KunBuddySessionService(db, files.Paths);
+
+        var own = await service.ListPlatformSessionsAsync(new(alice.Id, alice.Username), 100, default);
+        Assert.True(!own.CanImportAll); Assert.Single(own.Sessions); Assert.Equal("alice-session", own.Sessions[0].Id);
+        var all = await service.ListPlatformSessionsAsync(new(admin.Id, admin.Username, "admin"), 100, default);
+        Assert.True(all.CanImportAll); Assert.Equal(2, all.Sessions.Count);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ImportPlatformSessionsAsync(new(alice.Id, alice.Username), ["bob-session"], default));
+        var imported = await service.ImportPlatformSessionsAsync(new(admin.Id, admin.Username, "admin"), ["alice-session", "bob-session"], default);
+        Assert.Equal(2, imported.ImportedSessions); Assert.Equal(2, imported.AppendedMessages);
+        Assert.Equal(2, db.Queryable<AiKnowledgeDocument>().Count());
+    }
+
     [Fact]
     public async Task KunBuddySessionStoreIsHiddenAndUnavailableThroughSharedKnowledgeSurfaces()
     {

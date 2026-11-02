@@ -1,6 +1,6 @@
 import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 
-import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage, KnowledgeResourceAnswer, KnowledgeResourceImport, KnowledgeResourceNode, KnowledgeResourceRead } from "@/lib/knowledge-types";
+import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage, KnowledgeResourceAnswer, KnowledgeResourceImport, KnowledgeResourceNode, KnowledgeResourceRead, PlatformSessionImportOptions, PlatformSessionImportResult } from "@/lib/knowledge-types";
 
 export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<KnowledgeResourceNode[]> {
   return parseJson(await fetch("/api/v1/knowledge-resources/tree", { cache: "no-store", signal }));
@@ -27,6 +27,12 @@ export async function parseKnowledgeResource(uri: string): Promise<KnowledgeComp
 }
 export async function askKnowledgeResources(uri: string, question: string): Promise<KnowledgeResourceAnswer> {
   return parseJson(await fetch("/api/v1/knowledge-resources/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri, question }) }));
+}
+export async function getPlatformSessionImportOptions(limit = 100): Promise<PlatformSessionImportOptions> {
+  return parseJson(await fetch(`/api/v1/knowledge-resources/platform-sessions?limit=${limit}`, { cache: "no-store" }));
+}
+export async function importPlatformSessions(sessionIds: string[]): Promise<PlatformSessionImportResult> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/platform-sessions/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_ids: sessionIds }) }));
 }
 export function knowledgeResourceFileUrl(uri: string, download = false): string {
   return `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}${download ? "&download=true" : ""}`;

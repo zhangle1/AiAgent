@@ -141,6 +141,23 @@ export type KnowledgeResourceAnswer = {
   model?: string | null;
   truncated: boolean;
 };
+export type PlatformChatSession = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message: string;
+  project_id?: number | null;
+  sort_order: number;
+  priority: string;
+  is_pinned: boolean;
+  user_id: string;
+  username: string;
+  user_alias?: string | null;
+};
+export type PlatformSessionImportOptions = { sessions: PlatformChatSession[]; can_import_all: boolean };
+export type PlatformSessionImportResult = { imported_sessions: number; appended_messages: number; sessions: PlatformChatSession[] };
 export type KnowledgeCompilationJob = {
   knowledge_base_name: string;
   document_name?: string | null;

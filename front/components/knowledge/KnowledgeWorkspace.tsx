@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks, MessageSquarePlus } from "lucide-react";
 import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResource, uploadKnowledgeResources } from "@/lib/knowledge-api";
 import { KnowledgeSemanticPreview } from "./KnowledgeSemanticPreview";
 import { KnowledgeParsedSections } from "./KnowledgeParsedSections";
@@ -13,6 +13,7 @@ import { KnowledgeFileProcessingDialog } from "./KnowledgeFileProcessingDialog";
 import { isGeneratedResource, KnowledgeResourcePicker } from "./KnowledgeResourcePicker";
 import styles from "./knowledge-workspace.module.css";
 import type { KnowledgeCompilationJob, KnowledgeResourceNode, KnowledgeResourceRead } from "@/lib/knowledge-types";
+import { KnowledgeSessionImportDialog } from "./KnowledgeSessionImportDialog";
 
 const ROOTS = [
   { uri: "viking://resources/", label: "资料", hint: "共享资料", icon: Library },
@@ -37,11 +38,21 @@ export function KnowledgeWorkspace() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showResourceDialog, setShowResourceDialog] = useState(false);
+  const [showSessionImport, setShowSessionImport] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [showProcessing, setShowProcessing] = useState(false);
   const [previewMode, setPreviewMode] = useState<"source" | "parsed" | "semantic">("source");
   const [job, setJob] = useState<KnowledgeCompilationJob | null>(null);
   const [showTaskLink, setShowTaskLink] = useState(false);
   const readSequence = useRef(0);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const close = (event: PointerEvent) => { if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) setAddMenuOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [addMenuOpen]);
 
   const children = useMemo(() => {
     const map = new Map<string, KnowledgeResourceNode[]>();
@@ -130,7 +141,7 @@ export function KnowledgeWorkspace() {
           <div className="min-w-0"><div className="text-xs font-semibold text-slate-800">目录</div><div className="mt-0.5 truncate text-[10px] text-slate-400">Viking URI 资源树</div></div>
           <div className="flex shrink-0 items-center gap-1">
             <button type="button" onClick={() => setShowProcessing(true)} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-slate-500 hover:bg-blue-50 hover:text-blue-600"><ListChecks size={14} />文件处理</button>
-            <button type="button" title="添加资源" aria-label="添加资源" onClick={() => setShowResourceDialog(true)} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-600"><Plus size={15} /></button>
+            <div ref={addMenuRef} className="relative"><button type="button" title="添加资源或导入会话" aria-label="添加资源或导入会话" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen(current => !current)} className={`grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-600 ${addMenuOpen ? "bg-blue-50 text-blue-600" : ""}`}><Plus size={15} /></button>{addMenuOpen && <div className="absolute right-0 top-9 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"><button type="button" onClick={() => { setAddMenuOpen(false); setShowResourceDialog(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-blue-50"><Upload size={14} className="text-blue-600" />添加资源</button><button type="button" onClick={() => { setAddMenuOpen(false); setShowSessionImport(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-blue-50"><MessageSquarePlus size={14} className="text-violet-600" />导入平台会话</button></div>}</div>
           </div>
         </div>
         <nav className="min-h-0 flex-1 overflow-auto p-2">{ROOTS.map(root => <TreeRow key={root.uri} node={{ ...root, kind: "directory", name: root.label, uri: root.uri }} depth={0} selectedUri={selectedUri} expanded={expanded} children={children} onToggle={uri => setExpanded(current => { const next = new Set(current); next.has(uri) ? next.delete(uri) : next.add(uri); return next; })} onOpen={uri => void open(uri)} />)}</nav>
@@ -149,6 +160,7 @@ export function KnowledgeWorkspace() {
       terminal={<KnowledgeAgentChatPanel scope={selected?.kind === "file" ? selected.parent_uri ?? selectedUri : selectedUri} nodes={nodes} onOpen={uri => void open(uri)} onQueued={() => { setNotice("编译任务已提交，可在文件处理弹窗和任务中心查看进度。"); setShowTaskLink(true); }} />}
     />
     {showProcessing && <KnowledgeFileProcessingDialog onClose={() => setShowProcessing(false)} onOpen={uri => { setShowProcessing(false); void open(uri); }} />}
+    {showSessionImport && <KnowledgeSessionImportDialog onClose={() => setShowSessionImport(false)} onImported={async result => { setNotice(`已导入 ${result.imported_sessions} 个平台会话，追加 ${result.appended_messages} 条消息。`); setShowSessionImport(false); await loadTree(); }} />}
     {showResourceDialog && <ResourceDialog nodes={nodes.filter(node => !isGeneratedResource(node.uri))} parentUri={selected?.kind === "directory" ? selectedUri : selected?.parent_uri ?? "viking://resources/"} onClose={() => setShowResourceDialog(false)} onUploaded={async (files, targetUri) => { if (await upload(files, targetUri)) setShowResourceDialog(false); }} onDirectoryCreated={async (name, parentUri) => { await createKnowledgeResourceDirectory(parentUri, name); setNotice("目录已创建"); setShowResourceDialog(false); await loadTree(parentUri); }} />}
   </main>;
 }

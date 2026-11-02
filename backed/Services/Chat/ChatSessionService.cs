@@ -4,6 +4,8 @@ using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Admin;
 using AiAgent.Backend.Services.Memory;
+using AiAgent.Backend.Services.KunBuddy;
+using Microsoft.Extensions.Logging;
 using SqlSugar;
 using System.Text.Json;
 
@@ -35,13 +37,17 @@ public sealed class ChatSessionService : IChatSessionService
     private readonly IChatFileAttachmentService _fileAttachments;
     private readonly IProjectAccessService _projectAccess;
     private readonly IMemoryService _memory;
-    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IProjectAccessService projectAccess, IMemoryService memory)
+    private readonly KunBuddySessionService _sessionArchive;
+    private readonly ILogger<ChatSessionService> _logger;
+    public ChatSessionService(ISqlSugarClient db, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IProjectAccessService projectAccess, IMemoryService memory, KunBuddySessionService sessionArchive, ILogger<ChatSessionService> logger)
     {
         _db = db;
         _attachments = attachments;
         _fileAttachments = fileAttachments;
         _projectAccess = projectAccess;
         _memory = memory;
+        _sessionArchive = sessionArchive;
+        _logger = logger;
     }
 
     public Task<ChatSessionSummaryDto> CreateEmptyAsync(AuthenticatedUser user, long projectId, string? title, CancellationToken cancellationToken)
@@ -151,6 +157,14 @@ public sealed class ChatSessionService : IChatSessionService
             })
         }).ExecuteCommand();
         _db.Updateable<AiChatSession>().SetColumns(x => x.UpdatedAt == DateTime.UtcNow).Where(x => x.Id == session.Id).ExecuteCommand();
+        try
+        {
+            await _sessionArchive.SyncPlatformSessionAsync(user, session.Id, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Platform chat session archive failed. SessionId={SessionId} UserId={UserId}", session.Id, user.Id);
+        }
         await _memory.RecordObservationAsync(user, session.CodeProjectId, session.Id, "assistant_message", content, cancellationToken);
     }
 

@@ -1,4 +1,8 @@
 using AiAgent.Backend.Dtos.KunBuddy;
+using AiAgent.Backend.Dtos.Chat;
+using AiAgent.Backend.Dtos.Knowledge;
+using AiAgent.Backend.Entities.Chat;
+using AiAgent.Backend.Entities.Auth;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Knowledge;
@@ -38,7 +42,8 @@ public sealed class KunBuddySessionService(ISqlSugarClient database, IKnowledgeP
             var document = db.Queryable<AiKnowledgeDocument>().First(row => row.ResourceUri == uri && !row.IsDeleted);
             var state = new SessionState();
             var title = OneLine(input.Title);
-            var markdown = $"# {title}\n\n- 来源：KunBuddy 坤伴订阅\n- 用户：{OneLine(user.Username)}\n- 会话：{sessionId}\n\n> 原始会话记录；未调用 LLM、未自动解析或编译。\n\n";
+            var source = OneLine(string.IsNullOrWhiteSpace(input.Source) ? "KunBuddy 坤伴订阅" : input.Source);
+            var markdown = $"# {title}\n\n- 来源：{source}\n- 用户：{OneLine(user.Username)}\n- 会话：{sessionId}\n\n> 原始会话记录；未调用 LLM、未自动解析或编译。\n\n";
             if (document is not null)
             {
                 EnsureSafe(document.StoragePath);
@@ -91,6 +96,155 @@ public sealed class KunBuddySessionService(ISqlSugarClient database, IKnowledgeP
             return Receipt(document, uri, appended);
         }
         finally { _gate.Release(); }
+    }
+
+    public Task<PlatformSessionImportOptionsDto> ListPlatformSessionsAsync(AuthenticatedUser user, int limit, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var db = database.CopyNew();
+        var query = db.Queryable<AiChatSession>().Where(item => !item.IsDeleted);
+        if (!user.IsAdministrator) query = query.Where(item => item.UserId == user.Id);
+        var sessions = query.OrderByDescending(item => item.UpdatedAt).Take(Math.Clamp(limit, 1, 200)).ToList();
+        return Task.FromResult(new PlatformSessionImportOptionsDto
+        {
+            CanImportAll = user.IsAdministrator,
+            Sessions = ToPlatformSummaries(db, sessions)
+        });
+    }
+
+    public async Task<PlatformSessionImportResultDto> ImportPlatformSessionsAsync(AuthenticatedUser requester, IReadOnlyCollection<string> sessionIds, CancellationToken ct)
+    {
+        if (sessionIds is null) throw new ArgumentException("请选择要导入的平台会话。");
+        var normalized = sessionIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        if (normalized.Count == 0) throw new ArgumentException("请至少选择一个平台会话。");
+        if (normalized.Count > 100) throw new ArgumentException("每次最多导入 100 个平台会话，请分批选择。");
+        ct.ThrowIfCancellationRequested();
+        using var db = database.CopyNew();
+        var query = db.Queryable<AiChatSession>().Where(item => normalized.Contains(item.Id) && !item.IsDeleted);
+        if (!requester.IsAdministrator) query = query.Where(item => item.UserId == requester.Id);
+        var sessions = query.ToList();
+        if (sessions.Count != normalized.Count) throw new UnauthorizedAccessException("只能导入当前账号有权限查看的平台会话。");
+        var userIds = sessions.Select(session => session.UserId).Distinct(StringComparer.Ordinal).ToList();
+        var users = db.Queryable<AiUser>().Where(item => userIds.Contains(item.Id)).ToList().ToDictionary(item => item.Id, StringComparer.Ordinal);
+        var messages = LoadMessages(db, sessions);
+        var result = new PlatformSessionImportResultDto();
+        foreach (var session in sessions.OrderBy(item => normalized.IndexOf(item.Id)))
+        {
+            if (!users.TryGetValue(session.UserId, out var owner)) throw new UnauthorizedAccessException("平台会话所属账号不可用。");
+            var ownerUser = new AuthenticatedUser(owner.Id, owner.Username, owner.Role, owner.CanCommitCode, owner.Alias);
+            result.AppendedMessages += await SyncPlatformSessionAsync(requester, ownerUser, session, ct);
+            result.ImportedSessions++;
+            result.Sessions.Add(ToPlatformSummary(session, users, messages.GetValueOrDefault(session.Id) ?? []));
+        }
+        return result;
+    }
+
+    /// <summary>Archives the persisted platform chat into the owner's raw sessions directory.</summary>
+    public async Task<int> SyncPlatformSessionAsync(AuthenticatedUser user, string sessionId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var db = database.CopyNew();
+        var session = db.Queryable<AiChatSession>().First(item => item.Id == sessionId && item.UserId == user.Id && !item.IsDeleted);
+        if (session is null) return 0;
+        return await SyncPlatformSessionAsync(user, user, session, ct);
+    }
+
+    private async Task<int> SyncPlatformSessionAsync(AuthenticatedUser requester, AuthenticatedUser owner, AiChatSession session, CancellationToken ct)
+    {
+        if (!requester.IsAdministrator && requester.Id != owner.Id) throw new UnauthorizedAccessException("只能导入当前账号有权限查看的平台会话。");
+        using var db = database.CopyNew();
+        var messages = db.Queryable<AiChatMessage>().Where(item => item.SessionId == session.Id).OrderBy(item => item.Id).ToList();
+        var entries = messages.SelectMany(ToPlatformEntries).ToList();
+        var appended = 0;
+        foreach (var batch in Batch(entries))
+        {
+            var receipt = await UploadAsync(owner, session.Id, new KunBuddySessionUpload
+            {
+                Account = owner.Username,
+                ClientId = "aiagent-platform",
+                Title = session.Title,
+                Source = "AiAgent 平台聊天",
+                Entries = batch
+            }, ct);
+            appended += receipt.Appended;
+        }
+        return appended;
+    }
+
+    private static List<PlatformChatSessionSummaryDto> ToPlatformSummaries(ISqlSugarClient db, IReadOnlyCollection<AiChatSession> sessions)
+    {
+        var userIds = sessions.Select(session => session.UserId).Distinct(StringComparer.Ordinal).ToList();
+        var users = db.Queryable<AiUser>().Where(item => userIds.Contains(item.Id)).ToList().ToDictionary(item => item.Id, StringComparer.Ordinal);
+        var messages = LoadMessages(db, sessions);
+        return sessions.Select(session => ToPlatformSummary(session, users, messages.GetValueOrDefault(session.Id) ?? [])).ToList();
+    }
+
+    private static Dictionary<string, List<AiChatMessage>> LoadMessages(ISqlSugarClient db, IReadOnlyCollection<AiChatSession> sessions)
+    {
+        var sessionIds = sessions.Select(session => session.Id).ToList();
+        return (sessionIds.Count == 0 ? [] : db.Queryable<AiChatMessage>().Where(item => sessionIds.Contains(item.SessionId)).OrderByDescending(item => item.Id).ToList())
+            .GroupBy(item => item.SessionId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+    }
+
+    private static PlatformChatSessionSummaryDto ToPlatformSummary(AiChatSession session, IReadOnlyDictionary<string, AiUser> users, IReadOnlyCollection<AiChatMessage> messages)
+    {
+        users.TryGetValue(session.UserId, out var owner);
+        return new PlatformChatSessionSummaryDto
+        {
+            Id = session.Id,
+            Title = session.Title,
+            CreatedAt = session.CreatedAt,
+            UpdatedAt = session.UpdatedAt,
+            MessageCount = messages.Count,
+            LastMessage = messages.FirstOrDefault()?.Content ?? string.Empty,
+            ProjectId = session.CodeProjectId,
+            SortOrder = session.SortOrder ?? 0,
+            Priority = session.Priority ?? "normal",
+            IsPinned = session.IsPinned ?? false,
+            UserId = session.UserId,
+            Username = owner?.Username ?? "未知用户",
+            UserAlias = owner?.Alias
+        };
+    }
+
+    private static IEnumerable<KunBuddySessionEntry> ToPlatformEntries(AiChatMessage message)
+    {
+        var role = message.Role.Equals("user", StringComparison.OrdinalIgnoreCase) ? "用户" : message.Role.Equals("assistant", StringComparison.OrdinalIgnoreCase) ? "AI" : message.Role;
+        var text = $"## {role}\n\n{message.Content}\n\n";
+        const int maxBytes = 512 * 1024;
+        if (Encoding.UTF8.GetByteCount(text) <= maxBytes)
+        {
+            yield return new KunBuddySessionEntry { Id = $"chat-{message.Id}", Markdown = text };
+            yield break;
+        }
+        var offset = 0;
+        var chunk = 0;
+        while (offset < text.Length)
+        {
+            var end = Math.Min(text.Length, offset + maxBytes);
+            while (end > offset && Encoding.UTF8.GetByteCount(text[offset..end]) > maxBytes) end--;
+            while (end < text.Length && end > offset && char.IsLowSurrogate(text[end])) end--;
+            if (end <= offset) throw new ArgumentException("平台会话消息无法按 UTF-8 安全分片。");
+            yield return new KunBuddySessionEntry { Id = $"chat-{message.Id}-{chunk++}", Markdown = text[offset..end] };
+            offset = end;
+        }
+    }
+
+    private static IEnumerable<List<KunBuddySessionEntry>> Batch(IReadOnlyList<KunBuddySessionEntry> entries)
+    {
+        var batch = new List<KunBuddySessionEntry>();
+        var bytes = 0;
+        foreach (var entry in entries)
+        {
+            var size = Encoding.UTF8.GetByteCount(entry.Markdown);
+            if (batch.Count > 0 && (batch.Count == 64 || bytes + size > 2 * 1024 * 1024))
+            {
+                yield return batch; batch = []; bytes = 0;
+            }
+            batch.Add(entry); bytes += size;
+        }
+        if (batch.Count > 0) yield return batch;
     }
 
     private void EnsureSafe(string path)
