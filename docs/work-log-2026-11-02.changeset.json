@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "createdDate": "2026-11-02",
+  "reportDate": "2026-11-02",
+  "timezone": "Asia/Shanghai",
+  "baseCommit": "b8df0c6f7487ff1b2f4610162bdbad2b9da2340c",
+  "sourceHead": "2e932ec3c6d04b9956af2477058f746be4ed183c",
+  "featureCommits": [
+    "1057b98cbda0ad9041655935711ed9caaf85012d",
+    "2e932ec3c6d04b9956af2477058f746be4ed183c"
+  ],
+  "objective": "交付研发变化地图、平台会话同步导入及今日工作日志",
+  "status": "validated-user-authorized-delivery",
+  "authorization": "用户明确要求：编译一下没问题就推送上去吧，然后把今天的工作日志发一下",
+  "validation": {
+    "backendReleaseBuild": "passed, 0 errors",
+    "frontendProductionBuild": "passed, webpack and TypeScript",
+    "backendReleaseRegression": {
+      "passed": 106,
+      "failed": 0,
+      "classes": [
+        "ChangeAtlasTests",
+        "KnowledgeWorkspaceTests",
+        "GitHistoryTests",
+        "CodexModelPolicyTests"
+      ]
+    },
+    "frontendUnit": {
+      "passed": 3,
+      "failed": 0
+    },
+    "browser": "passed, synthetic API; navigation, linked scopes, evidence, AI context, stale responses, responsive layouts",
+    "previousFullSuite": {
+      "passed": 286,
+      "failed": 10,
+      "total": 296,
+      "rerunForThisDelivery": false,
+      "note": "Before adding the import batch-limit test; existing statistics/CLI/process test classes; not a passing full-suite claim"
+    },
+    "lineEndings": {
+      "path": "front/components/change-atlas/ChangeAtlasPage.tsx",
+      "normalizedTo": "LF",
+      "transpiledJavaScriptIdentical": true
+    },
+    "utf8": "passed",
+    "whitespace": "checked before commit",
+    "stagedMatchesReviewedSnapshot": true
+  },
+  "excluded": [
+    "local configuration and credentials",
+    "runtime data",
+    "dependencies",
+    "build output",
+    "synthetic test databases and reports"
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 26592,
+      "sha256": "6498570d7aea988d28ff53e02940c4e0d3e9baf3985603cce03d87ff5bb6abf0",
+      "gitBlob": "d89de22923bd0cdfc8f59dc7ecbb6418813dbb9e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 34956,
+      "sha256": "19692a7ea157188841b8f66328f8c7bab627a6f2a35789412972d376d24c1195",
+      "gitBlob": "bbb04af3661b74610e405278614b8668205ba67c"
+    },
+    {
+      "path": "backed.tests/ChangeAtlasTests.cs",
+      "bytes": 17707,
+      "sha256": "489c90ee2d1e4d6029a12bd3b1e08bcab508419018239e55beeee85ec19c429f",
+      "gitBlob": "868d8e1a2008d77bd81c08b863a9a30c59d5faa1"
+    },
+    {
+      "path": "backed.tests/KunBuddySessionSyncTests.cs",
+      "bytes": 16669,
+      "sha256": "dc77055a4d06b1e925ecb0891e182df81af8d17de982eaa738218f339e13ebce",
+      "gitBlob": "18efb604ffc76864bb60f2c0c710e79c08e47719"
+    },
+    {
+      "path": "backed/Dtos/ChangeAtlas/ChangeAtlasDtos.cs",
+      "bytes": 5253,
+      "sha256": "2013c8d4ae994fafc8518859dc4c828af8742d2b750edef542cb8d91fed6ca79",
+      "gitBlob": "8ffab04b9b7d1d455a96e659edc135e930e88c42"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeSessionImportDtos.cs",
+      "bytes": 1164,
+      "sha256": "80b1e29608e85b4f0fc4ce687550c9263d990f0d8416660055275a780a780615",
+      "gitBlob": "d616f2f282f067da8915a992912a203b255a52ab"
+    },
+    {
+      "path": "backed/Dtos/KunBuddy/KunBuddySessionDtos.cs",
+      "bytes": 1069,
+      "sha256": "9df1468d28774d2e4107c195c36c5b5bfefa8dcae21334908509329b26a4abce",
+      "gitBlob": "17e525fe9ecb1703449d97370605a5244e22c2a9"
+    },
+    {
+      "path": "backed/Program.cs",
+      "bytes": 15952,
+      "sha256": "065b2676d9177d3c998d8fbfce0cb8d1ebe7fc9db55eea3d98e2c444dabcf3d3",
+      "gitBlob": "43a418814cefdb912942f57a2627308da16dbdf0"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasAnalysisService.cs",
+      "bytes": 8534,
+      "sha256": "ec8c656dec330381dd2e16a34d5c365d04d8556b9beb3a9d904ddd9c860d212c",
+      "gitBlob": "c35b3179ab7ea41074a97c770c11b3005635a036"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasAppService.cs",
+      "bytes": 2655,
+      "sha256": "697d0d72946971c3e6a8d2ac8b0086f6242dab0a7c4907195dbc5f8a23a2bb99",
+      "gitBlob": "cb760d97bd9cb6eed420c3ab9cbbed8eff30be14"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasGitReader.cs",
+      "bytes": 14724,
+      "sha256": "908e597ccf55e9bcc92fa915730d209e083779ba6165271dd0a32cc4391b3b7a",
+      "gitBlob": "1d9ba3df40676756a69fb20661362c21725208df"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasService.cs",
+      "bytes": 11085,
+      "sha256": "1dbda64b7a2006bf2f1cac3637f1714b0f7c1a757e3b915b888e57f28d2ee88e",
+      "gitBlob": "0a70ceb6d07217615a40c4366cc71c9cecdb1400"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasStore.cs",
+      "bytes": 4564,
+      "sha256": "489675fe9b9548098707abdce26740d7f5d5f7b317ee9d9b0bf4fa37d8881eab",
+      "gitBlob": "f4f5c0922ea95464404741bc1e359b2380b330e9"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "bytes": 25675,
+      "sha256": "3ec270e310359804620a3b1bb26de45a5e08f9790a60cff641d1fa490f209958",
+      "gitBlob": "6f2ababb81dad10d62764d9dd0a50ee90e7b32fd"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceAppService.cs",
+      "bytes": 3064,
+      "sha256": "bf513fabbce8fc42af46be2f39e5248e51fe3d2887516af3f229607c5109c182",
+      "gitBlob": "5115cb19edd59635a4a99ba4853e27f0cabca3c4"
+    },
+    {
+      "path": "backed/Services/KunBuddy/KunBuddySessionService.cs",
+      "bytes": 16589,
+      "sha256": "3d65736fd6a0731c1c9cf5fc2a12ba4845ba814a30c65c660bb8b4208015bb12",
+      "gitBlob": "fff6ca0a8f64d5171ad6b557acc0f827ade47721"
+    },
+    {
+      "path": "docs/change-atlas.md",
+      "bytes": 8382,
+      "sha256": "07ba6819ec18ffa406e91848f3819e21b4bbc6d3119f6939fcb3886373200023",
+      "gitBlob": "be535036a24b0ed4315de3bd970b5f63ae4f1f4e"
+    },
+    {
+      "path": "docs/kunbuddy-session-sync.md",
+      "bytes": 7881,
+      "sha256": "730f84d37c782cd088c3a9ccddef9f034ea496f15d6234649886e1c2d0b69151",
+      "gitBlob": "5266b666332aaf5d73f9cee2a2a8a970991344f4"
+    },
+    {
+      "path": "docs/work-log-2026-11-02.md",
+      "bytes": 6095,
+      "sha256": "d7d8493699f9ae613078bf7a4ef51c0777284414f95edfa5876c8ed5e8181a7a"
+    },
+    {
+      "path": "front/app/change-atlas/page.tsx",
+      "bytes": 387,
+      "sha256": "2f598aba5bebc7f3e44c797152d63dc3419ce4367a322d50c82c9f1974f1f84a",
+      "gitBlob": "4a994ea1ffb9b3f311d6d3a19f8cd505c8ee8003"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasAssistant.tsx",
+      "bytes": 7065,
+      "sha256": "349ddd4fa2ad7f5c247fab35ee711c8854d5614ef72b29feb4ce9c6e13456e56",
+      "gitBlob": "b1074c2d8e62771ef3f4e794be33f8b64576367f"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasViews.tsx",
+      "bytes": 11064,
+      "sha256": "7f79c024dcaf50c2f1a4673278ea5bf128df7fd87793a357e94cd01c65819d9e",
+      "gitBlob": "9f11c6e8c021c81da19de0fea14dfb1242c2971f"
+    },
+    {
+      "path": "front/components/change-atlas/ChangeAtlasPage.tsx",
+      "bytes": 22309,
+      "sha256": "fc9cc8ebfc2ba96ecff2db212889003124e26b98fe15cc9be36b719e930afba6",
+      "gitBlob": "4925ecd3a7ae7a3c0e52ed1e2fdd4ee4ea04524b"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeSessionImportDialog.tsx",
+      "bytes": 6846,
+      "sha256": "9b62c9162d883e674f61ec3242ad6612cfacae4f044acca37a0007cb7d301b18",
+      "gitBlob": "060f4500fdb480bcfd99bf4fc806a2e1eb3554a4"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "bytes": 30035,
+      "sha256": "70676c2b741e0de1c4628e25bb6482f0a5e5792c4838c45f5cbec2bc883213c8",
+      "gitBlob": "fe131ec0629c2cd23639c13b48c713fd290a2ff6"
+    },
+    {
+      "path": "front/components/layout/AppSidebar.tsx",
+      "bytes": 46552,
+      "sha256": "34aa80ddcdde3f44ac7391f6c3f7127995b6687486ec24715420a0d9ea926321",
+      "gitBlob": "a60c0c708cfc96a0dd0bbf33e45b79f7f2ca55a5"
+    },
+    {
+      "path": "front/lib/change-atlas-api.ts",
+      "bytes": 1407,
+      "sha256": "a9393fd9c4615b959041188edb482bc63a951de19c6f88865a4251cc9068d1e7",
+      "gitBlob": "2e6e5263b8e3acd57ed6db3a0cd34ab5b967c358"
+    },
+    {
+      "path": "front/lib/change-atlas-types.ts",
+      "bytes": 1838,
+      "sha256": "c03788b2141f0b1cf4860f288a5288800bfa215a00b9877a7869e7029b105b66",
+      "gitBlob": "8329732784227696a45226f2b1bc61d97fe2a9e7"
+    },
+    {
+      "path": "front/lib/change-atlas.ts",
+      "bytes": 2931,
+      "sha256": "51194dab4cf25554816be0221a3e824717d23c8809e1af664c9ec6b68b21a85f",
+      "gitBlob": "28ef711b6e7acf959582d32a764ffeae6e2c9da9"
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "bytes": 13996,
+      "sha256": "a85b3e9af036ac07efc03684f9d68c07e911201b5211cb8ec8d2e8c73b293c3c",
+      "gitBlob": "ce7ec49846d497203b6cb9b27a723006d10a1ba5"
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "bytes": 7964,
+      "sha256": "9639aa192516a814ff71df6048c5c5a7ec0e204908e675f8d376ef97f02df467",
+      "gitBlob": "abf3a0f4dda48cddc5f5836366bdc22a353ddf50"
+    },
+    {
+      "path": "front/tests/change-atlas.browser.mjs",
+      "bytes": 10936,
+      "sha256": "0399b3bb9bdece9b04f07ab147cf3e06634781a1f39b7dc5543de2f0790589ae",
+      "gitBlob": "ec3441427df8443e25a18ba9bb44581709bc230a"
+    },
+    {
+      "path": "front/tests/change-atlas.test.mjs",
+      "bytes": 2593,
+      "sha256": "fc48f2282298463cb6c5a9390fec36ba565cd5f7e9df3a13b93d92647b70cb26",
+      "gitBlob": "d8d0b0d3d2482a844ce97d333ec015197864d69a"
+    }
+  ],
+  "fingerprint": "5ceb577d1339c3fc00d0e5730bab53c4605ec477944d8a140aee5b4e51bc9fc7"
+}
