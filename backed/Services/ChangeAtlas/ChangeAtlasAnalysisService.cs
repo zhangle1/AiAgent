@@ -70,12 +70,7 @@ public sealed class ChangeAtlasAnalysisService(ChangeAtlasService atlas, ChangeA
     public static AtlasAnalysis Parse(string content, List<AtlasEvidence> evidence, string model)
     {
         if (content.Length > 64000) throw new InvalidOperationException("AI 输出过长，请缩小范围后重试。");
-        var text = content.Trim();
-        if (text.StartsWith("```", StringComparison.Ordinal))
-        {
-            var newline = text.IndexOf('\n');
-            if (newline >= 0 && text.EndsWith("```", StringComparison.Ordinal)) text = text[(newline + 1)..^3].Trim();
-        }
+        var text = ExtractJson(content);
         try
         {
             using var document = JsonDocument.Parse(text);
@@ -101,5 +96,39 @@ public sealed class ChangeAtlasAnalysisService(ChangeAtlasService atlas, ChangeA
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
         { throw new InvalidOperationException("AI 返回的结构或引用未通过校验，未发布解读；请重试或调整模型。"); }
+    }
+
+    // Models sometimes wrap an otherwise valid response in Markdown or a short preface.
+    // Keep the same strict schema validation below, but avoid rejecting transport-level
+    // formatting differences that are already handled by the normal chat renderer.
+    private static string ExtractJson(string content)
+    {
+        var text = content.Trim();
+        if (text.StartsWith("```") && text.EndsWith("```", StringComparison.Ordinal))
+        {
+            var newline = text.IndexOf('\n');
+            if (newline >= 0) text = text[(newline + 1)..^3].Trim();
+        }
+        if (text.StartsWith("{") && text.EndsWith("}")) return text;
+        var start = text.IndexOf('{');
+        if (start < 0) return text;
+        var depth = 0;
+        var quoted = false;
+        var escaped = false;
+        for (var index = start; index < text.Length; index++)
+        {
+            var ch = text[index];
+            if (quoted)
+            {
+                if (escaped) escaped = false;
+                else if (ch == '\\') escaped = true;
+                else if (ch == '"') quoted = false;
+                continue;
+            }
+            if (ch == '"') { quoted = true; continue; }
+            if (ch == '{') depth++;
+            else if (ch == '}' && --depth == 0) return text[start..(index + 1)];
+        }
+        return text;
     }
 }

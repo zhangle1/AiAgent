@@ -5,8 +5,18 @@ async function request<T>(projectId: number, path: string, signal?: AbortSignal,
     method: body === undefined ? "GET" : "POST", cache: "no-store", signal,
     headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const value = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(value?.message || `变化地图服务返回 HTTP ${response.status}`);
+  const raw = await response.text();
+  let value: unknown = null;
+  if (raw.trim()) {
+    try { value = JSON.parse(raw); }
+    catch { throw new Error(`变化地图服务返回了无法识别的响应（HTTP ${response.status}）。`); }
+  }
+  if (!response.ok) {
+    const payload = value && typeof value === "object" ? value as { message?: unknown; detail?: unknown; title?: unknown } : {};
+    const detail = payload.message ?? payload.detail ?? payload.title;
+    throw new Error(typeof detail === "string" && detail.trim() ? detail : `变化地图服务返回 HTTP ${response.status}`);
+  }
+  if (value === null) throw new Error("变化地图服务返回了空响应，请重试。");
   return value as T;
 }
 export const createAtlasSnapshot = (projectId: number, body: AtlasCreateRequest, signal?: AbortSignal) => request<AtlasSnapshot>(projectId, "snapshots", signal, body);
