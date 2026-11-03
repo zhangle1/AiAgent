@@ -1,51 +1,41 @@
 "use client";
 
-import { FileCode2, Folder, GitCommitHorizontal } from "lucide-react";
+import { GitCommitHorizontal } from "lucide-react";
 import { atlasCochange, atlasDay, atlasDays, atlasModuleStats, type AtlasModuleStat } from "@/lib/change-atlas";
 import type { AtlasCommit, AtlasFile, AtlasSnapshot } from "@/lib/change-atlas-types";
+
+import { AtlasTree } from "./AtlasTree";
+import { AtlasModuleTree } from "./AtlasModuleTree";
 
 export type AtlasView = "business" | "structure" | "timeline" | "people";
 type Props = {
   snapshot: AtlasSnapshot; commits: AtlasCommit[]; timeCommits: AtlasCommit[]; stats: AtlasModuleStat[];
-  view: AtlasView; selected: string; authorId: string; until: string; search: string; labels: Record<string, string>;
+  perspective: "delivery" | "developer"; view: AtlasView; selected: string; authorId: string; until: string; search: string; labels: Record<string, string>;
   onModule: (id: string) => void; onFile: (file: AtlasFile) => void;
   onTime: (module: string, day: string) => void; onPerson: (module: string, author: string) => void;
 };
-const heat = (count: number) => count >= 5 ? "bg-blue-200/80 dark:bg-blue-900" : count > 0 ? "bg-blue-50 dark:bg-blue-950" : "bg-white dark:bg-slate-900";
+const heat = (count: number) => count >= 5 ? "bg-blue-200/80" : count > 0 ? "bg-blue-50" : "bg-white";
 
 export function AtlasViews(props: Props) {
   const { snapshot, stats, selected, labels } = props;
   const names = new Map(snapshot.repositories.map(repo => [repo.id, repo.name]));
   const label = (module: AtlasModuleStat) => labels[module.id] || module.name;
-  if (props.view === "business") {
-    const matching = stats.filter(module => `${module.name} ${module.directory} ${labels[module.id] || ""} ${names.get(module.repository_id)}`.toLowerCase().includes(props.search.toLowerCase()));
-    return <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="模块变化地图">
-        {matching.slice(0, 30).map(module => <button type="button" key={module.id} data-atlas-module={module.id} aria-pressed={selected === module.id} onClick={() => props.onModule(module.id)} className={`min-w-0 rounded-xl border p-4 text-left transition hover:border-blue-400 ${heat(module.commits.length)} ${selected === module.id ? "border-blue-500 ring-2 ring-blue-400/40" : "border-slate-200 dark:border-slate-700"}`}>
-          <div className="flex items-center justify-between gap-2"><Folder size={17} className="shrink-0 text-blue-600 dark:text-blue-300"/><span className="text-[11px] text-slate-500 dark:text-slate-400">{labels[module.id] ? "AI 名称候选" : "目录分组"}</span></div>
-          <h3 className="mt-3 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{label(module)}</h3>
-          <p className="mt-1 break-all text-[11px] text-slate-500 dark:text-slate-400">{names.get(module.repository_id)} / {module.directory}</p>
-          <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">{module.commits.length} 提交 · {module.changedFiles.length} 改动文件 · {module.authors} 个署名</p>
-          <div className="mt-3 flex h-5 items-end gap-1" aria-hidden="true">{atlasDays(snapshot).map(day => <span key={day} className="min-w-0 flex-1 rounded-sm bg-blue-500/50" style={{ height: `${Math.min(20, 2 + module.commits.filter(commit => atlasDay(commit.committed_at) === day).length * 5)}px` }}/>)}</div>
-        </button>)}
-      </div>
-      {matching.length === 0 && <p className="py-12 text-center text-sm text-slate-500">没有匹配的模块，请调整关键词。</p>}
-      <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">颜色表示已载入提交频次，灰白色为当前范围无改动。目录自动分组可借助 AI 提出业务名称。{matching.length > 30 && `当前展示前 30 / ${matching.length} 组，可搜索目录定位。`}</p>
-    </div>;
-  }
   const chosen = stats.find(module => module.id === selected);
+  if (props.view === "business") return <div className="space-y-3">
+    <AtlasModuleTree snapshot={snapshot} stats={stats} selected={selected} search={props.search} labels={labels} onModule={props.onModule}/>
+    <p className="text-xs leading-6 text-slate-500">仓库 → 目录 → 模块；点击模块联动改动关系链与 AI 解读。目录分组不是已验证的业务边界。</p>
+    {props.perspective === "delivery" && <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><h3 className="text-sm font-medium">交付关注 · {chosen ? label(chosen) : "选择模块"}</h3><p className="mt-2 text-xs leading-6">{chosen?.commits.length || 0} 次提交涉及 {chosen?.changedFiles.length || 0} 个文件。建议结合以下历史同改模块核对联动场景。</p><div className="mt-2 flex flex-wrap gap-2">{atlasCochange(snapshot, props.commits, selected).slice(0, 8).map(item => <button type="button" key={item.module.id} onClick={() => props.onModule(item.module.id)} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-700">{chosen ? label(chosen) : "当前模块"} ↔ {labels[item.module.id] || item.module.name} · {item.count} 次同改</button>)}</div><p className="mt-2 text-[11px] text-slate-500">同改为非合并提交统计；上线影响和验收结果仍需核对。</p></div>}
+  </div>;
   if (props.view === "structure") {
     const changed = new Set(chosen?.changedFiles.map(file => file.id));
-    const files = snapshot.files.filter(file => file.module_id === selected).sort((a, b) => Number(changed.has(b.id)) - Number(changed.has(a.id)) || a.path.localeCompare(b.path));
+    const files = snapshot.files.filter(file => file.module_id === selected && file.path.toLowerCase().includes(props.search.toLowerCase())).sort((a, b) => Number(changed.has(b.id)) - Number(changed.has(a.id)) || a.path.localeCompare(b.path));
     const repo = snapshot.repositories.find(item => item.id === chosen?.repository_id);
-    return <div className="space-y-4" aria-label="所选模块目录结构">
-      <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">结构固定在 <code>{repo?.head_sha.slice(0, 10) || "无提交"}</code>，日期和人员筛选只改变活动高亮。连线表示目录包含关系。</p>
-      <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-        <div className="min-w-0 self-start rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Folder className="text-blue-600" size={22}/><p className="mt-3 break-all text-sm font-semibold">{chosen ? label(chosen) : "选择模块"}</p><p className="mt-2 break-all font-mono text-xs text-slate-500">{chosen?.directory}</p><p className="mt-3 text-xs text-slate-500">{repo?.name} · {repo?.source === "remote" ? "远端版本" : "本地已提交版本"}</p><p className="mt-1 break-all text-xs text-slate-500">{repo?.ref}</p></div>
-        <div className="min-w-0 space-y-2 border-l border-slate-300 pl-4 dark:border-slate-600">{files.slice(0, 40).map(file => <button type="button" key={file.id} data-atlas-file={file.id} onClick={() => props.onFile(file)} className={`relative flex w-full min-w-0 items-start gap-2 rounded-lg border px-3 py-2.5 text-left before:absolute before:-left-4 before:top-5 before:w-4 before:border-t before:border-slate-300 ${changed.has(file.id) ? "border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"}`}><FileCode2 size={15} className="mt-0.5 shrink-0 text-blue-600"/><span className="min-w-0"><span className="block break-all font-mono text-xs">{file.path}</span><span className="mt-1 block text-[11px] text-slate-500">{!file.at_head ? "所选版本已不存在 · 查看历史改动" : changed.has(file.id) ? "范围内有修改 · 查看提交证据" : "版本上下文 · 当前范围无修改"}</span></span></button>)}</div>
-      </div>
-      {files.length > 40 && <p className="text-xs text-slate-500">当前显示前 40 / {files.length} 个文件，优先展示有改动的文件。</p>}
-      <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800 dark:bg-amber-950 dark:text-amber-200">当前为目录级结构，尚未解析函数调用和运行依赖。</p>
+    return <div className="space-y-3" aria-label="所选模块目录结构">
+      <p className="text-xs leading-6 text-slate-500">{repo?.name} · 结构固定在 <code>{repo?.head_sha.slice(0, 10) || "无提交"}</code>；目录可折叠，蓝色文件为范围内改动，点击读取差异。</p>
+      <AtlasTree files={files.slice(0, 500)} changed={changed} onFile={props.onFile}/>
+      {files.length === 0 && <p className="p-6 text-xs text-slate-500">没有匹配的文件。</p>}
+      {files.length > 500 && <p className="text-xs text-slate-500">展示前 500 / {files.length} 个文件，优先保留改动文件；可输入路径搜索其余文件。</p>}
+      <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">当前为目录包含结构，尚未解析函数调用和运行依赖。</p>
     </div>;
   }
   const top = stats.slice(0, 12);
@@ -63,6 +53,6 @@ export function AtlasViews(props: Props) {
   return <div className="space-y-4">
     <div className="overflow-x-auto"><table className="w-full min-w-[520px] border-separate border-spacing-1 text-xs" aria-label="Git 署名与模块交集"><thead><tr><th className="w-24 text-left font-normal text-slate-500">Git 署名</th>{top.map(module => <th key={module.id} className="max-w-24 break-all font-normal text-slate-500">{label(module)}</th>)}</tr></thead><tbody>{visibleAuthors.map(([authorId, author]) => <tr key={authorId}><th className="max-w-24 break-all py-3 text-left font-normal">{author}<span className="block text-[11px] text-slate-400">身份未绑定</span></th>{top.map(module => { const count = allStats.get(module.id)?.commits.filter(commit => commit.author_id === authorId).length || 0; return <td key={module.id}><button type="button" disabled={!count} aria-label={`${author} ${label(module)} ${count} 次提交`} aria-pressed={props.authorId === authorId && selected === module.id} onClick={() => props.onPerson(module.id, authorId)} className={`min-h-11 w-full rounded-md border disabled:cursor-default ${heat(count)} ${props.authorId === authorId && selected === module.id ? "border-blue-500 ring-1 ring-blue-400" : "border-transparent"}`}>{count || <span className="text-slate-300">·</span>}</button></td>; })}</tr>)}</tbody></table></div>
     <p className="text-xs leading-6 text-slate-500">点选人员和模块，其他视角会同步筛选。Git 署名尚未绑定平台身份，不据此判断岗位或 AI 生成归属。{authors.length > 12 && "这里只显示前 12 个署名，可在顶部人员选择中切换。"}</p>
-    <div className="border-t border-slate-200 pt-3 dark:border-slate-700"><h3 className="text-xs font-medium">当前模块的历史共同修改</h3><div className="mt-2 flex flex-wrap gap-2">{related.map(item => <button type="button" key={item.module.id} onClick={() => props.onModule(item.module.id)} className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-200">{labels[item.module.id] || item.module.name} · {item.count} 次同改</button>)}{related.length === 0 && <span className="text-xs text-slate-400">当前范围没有共同修改记录。</span>}</div><p className="mt-2 text-[11px] text-slate-500">同改按同一非合并提交计算，属于历史统计，不代表调用关系或已发生冲突。</p></div>
+    <div className="border-t border-slate-200 pt-3"><h3 className="text-xs font-medium">当前模块的历史共同修改</h3><div className="mt-2 flex flex-wrap gap-2">{related.map(item => <button type="button" key={item.module.id} onClick={() => props.onModule(item.module.id)} className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-700">{labels[item.module.id] || item.module.name} · {item.count} 次同改</button>)}{related.length === 0 && <span className="text-xs text-slate-400">当前范围没有共同修改记录。</span>}</div><p className="mt-2 text-[11px] text-slate-500">同改按同一非合并提交计算，属于历史统计，不代表调用关系或已发生冲突。</p></div>
   </div>;
 }

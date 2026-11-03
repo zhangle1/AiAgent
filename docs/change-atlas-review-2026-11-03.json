@@ -1,0 +1,81 @@
+{
+  "baseline": "fcb5e171b131491ebb400a8ed9fa4f8bdc893b18",
+  "status": "prepared_for_human_review",
+  "committed": false,
+  "validation": {
+    "backend": "10 ChangeAtlasTests passed (isolated fixtures, model double)",
+    "frontend": "5 node tests passed; TypeScript --noEmit passed",
+    "browser": "Playwright passed: tree, perspectives, graph edge evidence, stale responses, dark media, 320-1440px",
+    "limits": "No live model calls or production proxy validation"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "f86540baec1fdc561a82c69aeeb23ab94b6efe83d83ce445eda4a9a409143010"
+    },
+    {
+      "path": "README.md",
+      "sha256": "996f8a1144941baa9ce461bab0ba6e360cefd08f9f1a95ba24f59d7801c1e780"
+    },
+    {
+      "path": "backed.tests/ChangeAtlasTests.cs",
+      "sha256": "7fbae4130ada166720cf1754df7837188c2b8d0c7b2e7a18e64638833bd737e7"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasAnalysisService.cs",
+      "sha256": "b76b361b5ca2060016afa41a7d2e73ac606e3a3dd537859af04b587b1ce95134"
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasAppService.cs",
+      "sha256": "1f11118d46fade540091d2a64253467063ba548143422652e9c294ee655f0650"
+    },
+    {
+      "path": "docs/change-atlas.md",
+      "sha256": "6f903683e7e4f3a1e11387e21c1698b36716892359bff6ce71d31c91a285363e"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasAssistant.tsx",
+      "sha256": "a52342e4afdfd2805094f9ba6207d1c5eb2960d770c3721693b3be29bcb72c3b"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasViews.tsx",
+      "sha256": "77a95a12f2c2473231e875f49cf06551d8200324cd80848f1d29f363b28d6aa0"
+    },
+    {
+      "path": "front/components/change-atlas/ChangeAtlasPage.tsx",
+      "sha256": "4cc8f8091dd2de9a771f44b10e560e44cf641f2b8419b281f9161703e726af9f"
+    },
+    {
+      "path": "front/lib/change-atlas-api.ts",
+      "sha256": "5629a974069edb921df350bbf7a57223cad82a68107bcd929629c6ce220849ec"
+    },
+    {
+      "path": "front/lib/change-atlas.ts",
+      "sha256": "31e3e1790c2728fdf1965405403187c311f86cbe77952aab45ce751136ddfc51"
+    },
+    {
+      "path": "front/tests/change-atlas.browser.mjs",
+      "sha256": "b44db01dc6450dabab2a263e97953e057a08cd2addc82efe27904aaebe48fe6f"
+    },
+    {
+      "path": "front/tests/change-atlas.test.mjs",
+      "sha256": "e5bc07416b9d3f1d099073e2f17ce4f9a37bb947ae5d0e47aec12a27b3497c13"
+    },
+    {
+      "path": "docs/change-atlas-review.png",
+      "sha256": "bc74e09b5308d7b8bc1124aed8a59d86c51a2398e738765d0b036cf0ec19f57e"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasChangeGraph.tsx",
+      "sha256": "ba9ec17f4742f9997a7d2c4ac7f9a87e5a5ef6dc7db047b5851e45c414bdb03b"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasModuleTree.tsx",
+      "sha256": "641940f055381f7c413efaa89069d75fa6f38fe4fe01af36850aa426e9f28145"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasTree.tsx",
+      "sha256": "366c831d1a80059a74bcf005183f2379924e0fc78e774ef2628cfa97b09da741"
+    }
+  ]
+}

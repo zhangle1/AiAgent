@@ -1,6 +1,27 @@
 import type { AtlasCommit, AtlasFile, AtlasFilters, AtlasModule, AtlasSnapshot } from "./change-atlas-types";
 
 export const atlasDay = (value: string) => value.slice(0, 10);
+export type AtlasTreeNode = { name: string; path: string; file?: AtlasFile; children: AtlasTreeNode[] };
+export function atlasFileTree(files: AtlasFile[]): AtlasTreeNode[] {
+  const roots: AtlasTreeNode[] = [];
+  for (const file of files) {
+    let children = roots;
+    const parts = file.path.split("/").filter(Boolean);
+    parts.forEach((name, index) => {
+      const path = parts.slice(0, index + 1).join("/");
+      let node = children.find(item => item.path === path);
+      if (!node) { node = { name, path, children: [] }; children.push(node); }
+      if (index === parts.length - 1) node.file = file;
+      children = node.children;
+    });
+  }
+  function sort(nodes: AtlasTreeNode[]) {
+    nodes.sort((a, b) => Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name));
+    nodes.forEach(node => sort(node.children));
+  }
+  sort(roots);
+  return roots;
+}
 export function selectAtlasCommits(snapshot: AtlasSnapshot, filters: AtlasFilters): AtlasCommit[] {
   return snapshot.commits.filter(commit => atlasDay(commit.committed_at) <= filters.until && (!filters.daily || atlasDay(commit.committed_at) === filters.until) && (!filters.authorId || commit.author_id === filters.authorId));
 }

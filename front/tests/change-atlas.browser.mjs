@@ -21,7 +21,7 @@ const errors = [], external = [];
 page.on("pageerror", error => errors.push(error.message));
 page.on("request", request => { if (/^https?:/.test(request.url()) && !request.url().startsWith(url)) external.push(request.url()); });
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
-let counter = 0, lastAnalysis, delayAnalysis = false, delayEvidence = false;
+let counter = 0, lastAnalysis, lastEvidence, delayAnalysis = false, delayEvidence = false;
 const answer = data => ({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
 await page.route("**/api/**", async route => {
   const request = route.request(), pathname = new URL(request.url()).pathname;
@@ -39,13 +39,14 @@ await page.route("**/api/**", async route => {
   } else if (pathname.endsWith("/evidence")) {
     if (delayEvidence) { delayEvidence = false; await new Promise(resolve => setTimeout(resolve, 650)); }
     const params = new URL(request.url()).searchParams, file = files.find(file => file.id === params.get("file_id"));
+    lastEvidence = { commit: params.get("commit_id"), file: file.id };
     value = { id: "e1", file_id: file.id, commit_id: params.get("commit_id"), path: file.path, sha: "2".repeat(40), patch: "-qty = required;\n+qty = required * ratio;\n+// <img src=x onerror=window.__atlasInjected=1>", truncated: false, suppressed: false };
-  } else if (pathname.endsWith("/analysis")) {
+  } else if (pathname.endsWith("/analysis/stream")) {
     lastAnalysis = request.postDataJSON(); const delayed = delayAnalysis; delayAnalysis = false;
     if (delayed) await new Promise(resolve => setTimeout(resolve, 650));
     value = { summary: delayed ? "迟到的旧模块解读" : "模型完成换算解读", module_label: "领料业务候选", claims: [{ kind: "inference", text: "建议核对单位换算", evidence_ids: ["e1"] }], checks: ["检查退料场景"], unknowns: ["未关联测试结果"], evidence: [{ id: "e1", file_id: "material-file", commit_id: "c2", path: files[0].path, sha: "2".repeat(40), patch: "+qty = required * ratio;", truncated: false, suppressed: false }], model: "fixture-model", created_at: "2026-11-02T12:00:00Z" };
   }
-  await route.fulfill(answer(value)).catch(() => {});
+  await route.fulfill(pathname.endsWith("/analysis/stream") ? { status: 200, contentType: "text/event-stream", body: `event: status\ndata: {"message":"正在分析证据"}\n\nevent: result\ndata: ${JSON.stringify(value)}\n\n` } : answer(value)).catch(() => {});
 });
 try {
   await page.goto(url + "/change-atlas?project=1");
@@ -53,6 +54,16 @@ try {
   assert.equal(await page.getByRole("link", { name: "变化地图", exact: true }).count(), 1);
   await page.getByRole("tab", { name: "代码结构", exact: true }).click();
   assert.equal(await page.locator("[data-atlas-file]").count(), 2);
+  await page.getByLabel("文件目录树", { exact: true }).locator("summary").first().click();
+  assert.equal(await page.locator('[data-atlas-file="material-file"]').isVisible(), false);
+  await page.getByLabel("文件目录树", { exact: true }).locator("summary").first().click();
+  await page.emulateMedia({ colorScheme: "dark" });
+  assert.equal(await page.locator("main").evaluate(node => getComputedStyle(node).backgroundColor), "rgb(255, 255, 255)");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.getByLabel("提交文件改动关系图").waitFor();
+  await page.getByRole("button", { name: "补齐换算边界 → Services/Material/换算.cs", exact: true }).click();
+  await page.getByLabel("Git 差异证据").waitFor();
+  assert.deepEqual(lastEvidence, { commit: "c2", file: "material-file" });
   await page.locator('[data-atlas-file="material-file"]').click();
   await page.getByLabel("Git 差异证据").waitFor();
   assert.match(await page.getByLabel("Git 差异证据").innerText(), /required \* ratio/);
@@ -73,14 +84,16 @@ try {
   await page.getByLabel("仅看选中当天", { exact: true }).uncheck();
   await page.getByRole("tab", { name: "业务地图", exact: true }).click();
   await page.getByRole("button", { name: "开发视角", exact: true }).click();
+  assert.equal(await page.getByRole("tab", { name: "代码结构", exact: true }).getAttribute("aria-selected"), "true");
   await page.getByRole("button", { name: "解读当前模块", exact: true }).click();
   await page.getByText("模型完成换算解读", { exact: true }).waitFor();
   assert.equal(lastAnalysis.module_id, "material"); assert.equal(lastAnalysis.perspective, "developer"); assert.equal(lastAnalysis.model_id, "fixture-model");
+  await page.getByRole("tab", { name: "业务地图", exact: true }).click();
   assert.equal(await page.getByText("AI 名称候选", { exact: true }).count(), 1);
   await page.getByRole("button", { name: /换算.cs · 2222222/ }).click();
   await page.getByLabel("Git 差异证据").waitFor();
   delayAnalysis = true;
-  const started = page.waitForRequest(request => request.url().endsWith("/analysis") && request.method() === "POST");
+  const started = page.waitForRequest(request => request.url().endsWith("/analysis/stream") && request.method() === "POST");
   await page.getByRole("button", { name: "解读当前模块", exact: true }).click(); await started;
   await page.locator('[data-atlas-module="inventory"]').click();
   await page.waitForTimeout(800);
@@ -103,6 +116,8 @@ try {
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 }); await page.getByRole("tab", { name: "业务地图", exact: true }).click();
+  await page.getByRole("button", { name: "交付视角", exact: true }).click();
+  assert.equal(await page.getByRole("tab", { name: "业务地图", exact: true }).getAttribute("aria-selected"), "true");
   if (process.env.ATLAS_SCREENSHOT) await page.screenshot({ path: process.env.ATLAS_SCREENSHOT, fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   console.log("PASS: workbench navigation, four views, person/time/project/ref scope, immutable structure, evidence escaping, model request, AI citations, stale response cancellation and 1440/1024/736/375/320px layouts.");

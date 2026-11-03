@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Git;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
 using SqlSugar;
 using Xunit;
 
@@ -25,6 +27,12 @@ namespace AiAgent.Backend.Tests;
 public sealed class ChangeAtlasTests
 {
     private static readonly AuthenticatedUser Owner = new("atlas-owner", "owner");
+    public class AtlasAuth : DispatchProxy
+    {
+        public AuthenticatedUser? User = Owner;
+        protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name == nameof(IAuthService.TryGetCurrentUserAsync)
+            ? Task.FromResult(User) : throw new NotSupportedException();
+    }
     private sealed class Access : IProjectAccessService
     {
         public bool Enabled = true;
@@ -36,6 +44,7 @@ public sealed class ChangeAtlasTests
         public int Calls;
         public ChatCompleteRequest? Last;
         public bool InvalidCitation;
+        public bool AnswerOnly;
         public Action? AfterCall;
         public Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AiAgent.Backend.Services.Chat.Agentic.AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
@@ -46,7 +55,8 @@ public sealed class ChangeAtlasTests
             using var bundle = JsonDocument.Parse(request.Message[start..end]);
             var id = bundle.RootElement.GetProperty("evidence")[0].GetProperty("id").GetString();
             AfterCall?.Invoke();
-            return Task.FromResult(new ChatCompleteResponse { Model = "test-model", Content = JsonSerializer.Serialize(new { summary = "数量计算发生变化", module_label = "领料", claims = new[] { new { kind = "inference", text = "建议核对数量换算", evidence_ids = new[] { InvalidCitation ? "invented" : id } } }, checks = new[] { "验证小数比例" }, unknowns = Array.Empty<string>() }) });
+            var content = JsonSerializer.Serialize(new { summary = "数量计算发生变化", module_label = "领料", claims = new[] { new { kind = "inference", text = "建议核对数量换算", evidence_ids = new[] { InvalidCitation ? "invented" : id } } }, checks = new[] { "验证小数比例" }, unknowns = Array.Empty<string>() });
+            return Task.FromResult(new ChatCompleteResponse { Model = "test-model", Content = AnswerOnly ? "" : content, Answer = content });
         }
     }
     private sealed class Fixture : IDisposable
@@ -208,6 +218,48 @@ public sealed class ChangeAtlasTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.AnalyzeAsync(Owner, 1, snapshot.Id, request, CancellationToken.None));
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.AnalyzeAsync(Owner, 1, snapshot.Id, request, CancellationToken.None));
         Assert.Equal(3, model.Calls);
+    }
+
+    [Fact]
+    public async Task StreamPublishesOnlyValidatedResultsAndReturnsErrorsAsEvents()
+    {
+        using var f = new Fixture(); await f.Initialize();
+        var snapshot = await f.Service.CreateAsync(Owner, 1, new(), CancellationToken.None);
+        var model = new Model();
+        var auth = DispatchProxy.Create<IAuthService, AtlasAuth>();
+        var context = new DefaultHttpContext();
+        using var output = new MemoryStream(); context.Response.Body = output;
+        var api = new ChangeAtlasAppService(f.Service, new(f.Service, f.Store, model), auth, new HttpContextAccessor { HttpContext = context });
+        var request = new AtlasAnalysisRequest { ModuleId = snapshot.Modules[0].Id };
+        await api.AnalyzeStream(1, snapshot.Id, request, CancellationToken.None);
+        var success = System.Text.Encoding.UTF8.GetString(output.ToArray());
+        Assert.StartsWith("text/event-stream", context.Response.ContentType);
+        Assert.Contains("event: status", success); Assert.Contains("event: result", success); Assert.DoesNotContain("event: error", success);
+        output.SetLength(0); request.Question = "引用校验失败"; model.InvalidCitation = true;
+        await api.AnalyzeStream(1, snapshot.Id, request, CancellationToken.None);
+        var failure = System.Text.Encoding.UTF8.GetString(output.ToArray());
+        Assert.Contains("event: error", failure); Assert.DoesNotContain("event: result", failure);
+        output.SetLength(0); ((AtlasAuth)auth).User = null;
+        await api.AnalyzeStream(1, snapshot.Id, request, CancellationToken.None);
+        Assert.Equal(401, context.Response.StatusCode); Assert.Empty(output.ToArray());
+    }
+
+    [Fact]
+    public async Task AiReusesRuntimeButNotConversationAndAcceptsAnswerField()
+    {
+        using var f = new Fixture(); await f.Initialize();
+        var snapshot = await f.Service.CreateAsync(Owner, 1, new(), CancellationToken.None);
+        var model = new Model { AnswerOnly = true };
+        var service = new ChangeAtlasAnalysisService(f.Service, f.Store, model);
+        var request = new AtlasAnalysisRequest { ModuleId = snapshot.Modules[0].Id };
+        var statuses = new List<string>();
+        await service.AnalyzeAsync(Owner, 1, snapshot.Id, request, CancellationToken.None, status => { statuses.Add(status); return Task.CompletedTask; });
+        var first = model.Last!;
+        request.Question = "从开发视角说明";
+        await service.AnalyzeAsync(Owner, 1, snapshot.Id, request, CancellationToken.None);
+        Assert.Equal(first.ClientRuntimeId, model.Last!.ClientRuntimeId);
+        Assert.NotEqual(first.SessionId, model.Last.SessionId);
+        Assert.Equal(3, statuses.Count);
     }
 
     [Fact]

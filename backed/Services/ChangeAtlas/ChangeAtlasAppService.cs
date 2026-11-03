@@ -2,6 +2,7 @@ using AiAgent.Backend.Dtos.ChangeAtlas;
 using AiAgent.Backend.Services.Auth;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace AiAgent.Backend.Services.ChangeAtlas;
 
@@ -18,6 +19,47 @@ public sealed class ChangeAtlasAppService(ChangeAtlasService service, ChangeAtla
     public Task<IActionResult> Evidence(long projectId, string snapshotId, [FromQuery(Name = "commit_id")] string commitId, [FromQuery(Name = "file_id")] string fileId, CancellationToken token) => Act(user => service.EvidenceAsync(user, projectId, snapshotId, commitId, fileId, token), token);
     [HttpPost("{projectId:long}/change-atlas/snapshots/{snapshotId}/analysis")]
     public Task<IActionResult> Analyze(long projectId, string snapshotId, [FromBody] AtlasAnalysisRequest request, CancellationToken token) => Act(user => analysis.AnalyzeAsync(user, projectId, snapshotId, request, token), token);
+    [HttpPost("{projectId:long}/change-atlas/snapshots/{snapshotId}/analysis/stream")]
+    public async Task AnalyzeStream(long projectId, string snapshotId, [FromBody] AtlasAnalysisRequest request, CancellationToken token)
+    {
+        var context = http.HttpContext!;
+        var user = await auth.TryGetCurrentUserAsync(context, token);
+        if (user == null) { context.Response.StatusCode = 401; return; }
+        // Check access before opening the stream, just as for the JSON endpoint.
+        var access = await Act(current => service.GetAsync(current, projectId, snapshotId, token), token);
+        if (access is not OkObjectResult) { await access.ExecuteResultAsync(new ControllerContext { HttpContext = context }); return; }
+        var response = context.Response;
+        response.ContentType = "text/event-stream; charset=utf-8";
+        response.Headers.CacheControl = "no-cache, no-transform";
+        response.Headers["X-Accel-Buffering"] = "no";
+        using var writer = new SemaphoreSlim(1, 1);
+        using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        async Task Send(string type, object value, CancellationToken ct)
+        {
+            await writer.WaitAsync(ct);
+            try {
+                await response.WriteAsync($"event: {type}\ndata: {JsonSerializer.Serialize(value)}\n\n", ct);
+                await response.Body.FlushAsync(ct);
+            } finally { writer.Release(); }
+        }
+        async Task Heartbeat()
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            try { while (await timer.WaitForNextTickAsync(heartbeatStop.Token)) await Send("heartbeat", new { }, heartbeatStop.Token); }
+            catch (OperationCanceledException) when (heartbeatStop.IsCancellationRequested) { }
+        }
+        await Send("status", new { message = "正在准备当前范围的 AI 解读…" }, token);
+        var heartbeat = Heartbeat();
+        try {
+            var result = await Act(current => analysis.AnalyzeAsync(current, projectId, snapshotId, request, token,
+                status => Send("status", new { message = status }, token)), token);
+            if (result is OkObjectResult ok) await Send("result", ok.Value!, token);
+            else if (result is ObjectResult error) await Send("error", error.Value!, token);
+            else await Send("error", new { message = "AI 解读未完成，请重试。" }, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally { heartbeatStop.Cancel(); await heartbeat; }
+    }
     private async Task<IActionResult> Act<T>(Func<AuthenticatedUser, Task<T>> action, CancellationToken token)
     {
         var user = await auth.TryGetCurrentUserAsync(http.HttpContext!, token);

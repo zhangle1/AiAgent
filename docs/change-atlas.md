@@ -15,7 +15,11 @@
 | 变化回放 | 按 Git committed_at 的 UTC 日期统计活动，支持累计范围与单日 |
 | 协作交集 | Git 署名 × 模块的去重提交数，以及非合并提交中的共同修改统计 |
 
-首版结构覆盖为 `directory`，不包含 Roslyn/TypeScript 语义调用图。目录包含、历史共改和 AI 推测不能显示成已经解析或运行验证的依赖。交付/开发视角影响 AI 的表达粒度，均可访问四个视图。
+结构覆盖为 `directory`，不包含 Roslyn/TypeScript 语义调用图。目录包含、历史共改和 AI 推测不能显示成已经解析或运行验证的依赖。交付视角切换到业务地图，展示模块目录树及历史同改；开发视角切换到代码结构，展示可折叠文件树。两者均可继续访问四个视图，并影响 AI 的表达粒度。
+
+页面固定使用白色主题，不随系统深色模式切换。目录按实际相对路径逐级分组，重复文件名保留各自父目录。文件树最多展示 500 个匹配文件，优先选入改动文件，搜索可定位其余文件。独立改动关系画布展示最近 8 次提交与最多 16 个所选模块文件，可缩放、滚动，并通过文件或连线打开指定差异；完整已载入证据仍在列表中。蓝线表示 Git 改动，红色虚线表示 head 中已不存在的文件，不表示运行依赖。
+
+交互设计参考开源 [React Arborist](https://github.com/jameskerr/react-arborist) 的目录展开与选择方式，以及 [React Flow](https://github.com/xyflow/xyflow) 的节点连线与画布缩放方式。当前用原生 details、React 与受控 SVG 实现，无新增第三方运行依赖。
 
 ## 事实口径
 
@@ -48,6 +52,8 @@ Git 通过 ArgumentList 传参，读取进程有超时、取消和输出预算�
 
 每次分析使用独立会话 ID、当前登录用户 RuntimeUserId、独立分析工作目录和 `read-only` 模式，不恢复或修改用户现有聊天。只读描述和提示词不构成额外的操作系统读取隔离；执行能力沿用现有 Codex 通道的沙箱和账号配置。
 
+同一用户与快照复用运行连接标识，分析会话 ID 每次独立，避免每次点击新建运行租约累积达到会话上限。回复兼容聊天服务的 Content／Answer 字段，仍严格校验 JSON 和证据引用。页面通过 SSE 接收固定阶段提示、10 秒保活及最终结果，保留聊天服务已脱敏的诊断错误；取消请求会传递到模型，过滤或视角切换后丢弃旧事件。阶段提示不等于进度百分比，模型中间文本不会提前发布。
+
 宿主准备最多 12 条提交元数据、6 份差异；每份最多 7000 字符，携带截断标记、过滤条件和明确的未知信息。文件配置、环境文件及密钥类文件正文被阻止读取。原始差异预览最多 24000 字符；没有可用正文证据时不会调用模型。
 
 模型返回结构化 JSON：summary、module_label、claims、checks、unknowns。claim 的 kind 限 code_observation/inference/suggestion，每条必须引用宿主提供的 evidence ID。结构或引用校验失败时不发布、不缓存；正文由 React 文本节点展示，代码差异使用 pre，不执行模型 HTML。
@@ -65,13 +71,18 @@ POST /api/v1/projects/{projectId}/change-atlas/snapshots
 GET  /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}
 GET  /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/evidence?commit_id=&file_id=
 POST /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/analysis
+POST /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/analysis/stream
 ```
 
 创建请求：`{ repository_id?, days, ref: "HEAD" | 服务端引用列表中的完整ref, refresh_remote }`。分析请求：`{ module_id, author_id?, until?: "yyyy-MM-dd", daily, perspective: "delivery" | "developer", question, model_id?, reasoning_effort? }`。
 
+流式分析沿用相同请求体，身份与快照访问错误在开流前返回 HTTP 状态。开流后使用 `status`（message）、`heartbeat`、`result`（AtlasAnalysis）、`error`（message）事件。仅 `result` 代表解读成功；断流、取消、错误或引用校验失败不得视为完成，旧 JSON 接口继续保留。
+
 未登录 401，无权访问 403，参数无效 400，快照不存在或过期 404，采集/模型/缓存状态错误 409。取消沿用 HTTP 请求取消令牌。
 
 ## 验证与后续
+
+2026-11-03 界面与解读链路优化：后端变化地图专项 10 项、前端统计／树／事件流 5 项、TypeScript 检查及浏览器交互检查通过。后端使用合成 Git 仓库、隔离 SQLite 和模型替身，新增事件流成功／引用失败／401、运行连接复用与 Answer 兼容检查；浏览器覆盖白色主题、目录折叠、视角联动、关系图差异定位、旧响应隔离及 320–1440px 布局。未调用真实模型，未验证用户原始失败请求或生产代理环境。评审截图为合成数据，见 [页面截图](change-atlas-review.png)。
 
 `backed.tests/ChangeAtlasTests.cs` 使用私有临时仓库、合成远端、隔离 SQLite 与模型替身，覆盖脏工作区保留、版本固定、外部推送和强制推送、身份/项目/仓库校验、敏感正文阻止、模型请求、缓存、引用拒绝及权限撤销。没有连接客户真实仓库或消耗真实模型调用。
 

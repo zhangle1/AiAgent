@@ -11,7 +11,7 @@ public sealed class ChangeAtlasAnalysisService(ChangeAtlasService atlas, ChangeA
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new(StringComparer.Ordinal);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    public async Task<AtlasAnalysis> AnalyzeAsync(AuthenticatedUser user, long projectId, string snapshotId, AtlasAnalysisRequest request, CancellationToken token)
+    public async Task<AtlasAnalysis> AnalyzeAsync(AuthenticatedUser user, long projectId, string snapshotId, AtlasAnalysisRequest request, CancellationToken token, Func<string, Task>? onStatus = null)
     {
         if (request.Question == null || string.IsNullOrWhiteSpace(request.Question) || request.Question.Length > 2000 || request.Perspective is not ("delivery" or "developer") || request.ModelId?.Length > 128 || request.ReasoningEffort?.Length > 20 || request.AuthorId?.Length > 64 || request.ModuleId?.Length > 64 || request.Until?.Length > 10)
             throw new ArgumentException("AI 解读参数无效。");
@@ -26,6 +26,7 @@ public sealed class ChangeAtlasAnalysisService(ChangeAtlasService atlas, ChangeA
         {
             var cached = await store.ReadAnalysisAsync(user.Id, snapshotId, cacheKey, token);
             if (cached != null) return cached;
+            if (onStatus != null) await onStatus("正在读取所选提交的差异证据…");
             var files = snapshot.Files.Where(x => x.ModuleId == module.Id).Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
             var evidence = new List<AtlasEvidence>();
             foreach (var commit in commits.Take(5))
@@ -53,13 +54,19 @@ public sealed class ChangeAtlasAnalysisService(ChangeAtlasService atlas, ChangeA
                 "这是一轮独立只读分析。目录结构不是调用图，不能编造依赖、业务正确性、测试通过或已部署。交付视角用业务语言，开发视角说明文件和代码变化。" +
                 "只输出 JSON，不要 Markdown。格式：{\"summary\":\"简短概括\",\"module_label\":\"可选业务名称候选\",\"claims\":[{\"kind\":\"code_observation|inference|suggestion\",\"text\":\"说明\",\"evidence_ids\":[\"下方实际证据id\"]}],\"checks\":[\"验证建议\"],\"unknowns\":[\"未知事项\"]}。" +
                 "每条 claim 必须引用提供的 evidence.id；summary 同样只能概括有引用的内容；业务含义与影响推断使用 inference。module_label 只是候选，不表示人工确认。\n<untrusted_evidence_json>\n" + bundle + "\n</untrusted_evidence_json>";
-            var runtime = "atlas-" + Guid.NewGuid().ToString("N");
+            // Reuse this snapshot's runtime lease, while each analysis keeps its own conversation.
+            // A new lease per click otherwise exhausts the user's active runtime limit.
+            var runtime = "atlas-" + snapshotId;
+            if (onStatus != null) await onStatus("证据已准备，正在连接聊天模型…");
             var reply = await codex.CompleteAsync(new ChatCompleteRequest
             {
-                Agent = "codex", Message = prompt, RuntimeUserId = user.Id, SessionId = runtime, ClientRuntimeId = runtime,
+                Agent = "codex", Message = prompt, RuntimeUserId = user.Id, SessionId = "atlas-" + Guid.NewGuid().ToString("N"), ClientRuntimeId = runtime,
                 MaintenanceWorkspacePath = workspace, CodexSandboxMode = "read-only", CodexModelId = request.ModelId, CodexReasoningEffort = request.ReasoningEffort
-            }, null, token);
-            var analysis = Parse(reply.Content, evidence, reply.Model ?? reply.ModelId ?? "codex");
+            }, onStatus == null ? null : async (evt, _) => {
+                if (evt.Type == "provider_request_started") await onStatus("模型正在分析证据，完成后校验引用…");
+            }, token);
+            if (onStatus != null) await onStatus("正在校验解读结构与证据引用…");
+            var analysis = Parse(string.IsNullOrWhiteSpace(reply.Content) ? reply.Answer : reply.Content, evidence, reply.Model ?? reply.ModelId ?? "codex");
             // Recheck project/repository ownership after a potentially long model call before publication.
             await atlas.GetAsync(user, projectId, snapshotId, token);
             await store.SaveAnalysisAsync(user.Id, snapshotId, cacheKey, analysis, token);
