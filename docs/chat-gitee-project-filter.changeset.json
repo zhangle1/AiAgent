@@ -1,0 +1,30 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Searchable AiAgent project selection",
+  "base_commit": "a4881cd4d6266f3ee1c46a281ed0208589ae7bcd",
+  "platform_change_set_id": null,
+  "note": "User explicitly requested implementation and push. Local snapshot records file fingerprints and checks; it is not a platform approval record.",
+  "checks": {
+    "typescript": "passed",
+    "browser": "passed: 81 projects, filter, empty results, selection, Escape, direct processing, duplicate clicks, retry, legacy linking",
+    "whitespace": "passed"
+  },
+  "files": [
+    {
+      "path": "front/components/tasks/EnterpriseIssuePicker.tsx",
+      "sha256": "8cf2f8e54044e2e2833c221e58274182b437622c1b5d442cbefbf1868ea0ebed"
+    },
+    {
+      "path": "front/components/tasks/SearchableProjectSelect.tsx",
+      "sha256": "382cec9f7d1bd7eac2243af2e2659398adcfdaa1332df97636e8d23b69f8af30"
+    },
+    {
+      "path": "front/tests/chat-gitee-task.browser.mjs",
+      "sha256": "8e5f366aacbfad2f3630fd2cdf0cd88ae0e79de71a672861e07fb08ad02f045e"
+    },
+    {
+      "path": "docs/chat-gitee-task-processing.md",
+      "sha256": "1b40fec30855b11fa9a042d9444a0fe69c52559e127627142376168e36333a28"
+    }
+  ]
+}

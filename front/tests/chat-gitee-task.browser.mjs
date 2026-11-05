@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 const { build } = require('esbuild');
 const bundle = await build({
   stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{EnterpriseIssuePicker}from'./components/tasks/EnterpriseIssuePicker';
-    createRoot(document.getElementById('root')).render(<EnterpriseIssuePicker projects={[{id:7,display_name:'Example'}]} initialProjectId={7} onClose={()=>{}} onLinked={t=>document.querySelector('output').textContent='linked:'+t.id} {...(location.search.includes('legacy')?{}:{onProcess:async t=>{await fetch('/handoff');document.querySelector('output').textContent='processed:'+t.id}})}/>);`, resolveDir: front, loader: 'tsx' },
+    createRoot(document.getElementById('root')).render(<EnterpriseIssuePicker projects={[{id:7,display_name:'Example'},...Array.from({length:80},(_,i)=>({id:i+10,display_name:'Project '+i}))]} initialProjectId={7} onClose={()=>{}} onLinked={t=>document.querySelector('output').textContent='linked:'+t.id} {...(location.search.includes('legacy')?{}:{onProcess:async t=>{await fetch('/handoff');document.querySelector('output').textContent='processed:'+t.id}})}/>);`, resolveDir: front, loader: 'tsx' },
   bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', tsconfig: path.join(front, 'tsconfig.json'),
 });
 let links = 0, fail = false, query = '';
@@ -38,6 +38,23 @@ try {
   const page = await browser.newPage();
   const base = `http://127.0.0.1:${server.address().port}`;
   await page.goto(base);
+  const project = page.getByRole('button', { name: 'AiAgent 项目', exact: true });
+  await project.click();
+  const projectSearch = page.getByRole('textbox', { name: '搜索 AiAgent 项目' });
+  await projectSearch.fill(' project 79 ');
+  assert.equal(await page.getByRole('button', { name: 'Project 79', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Project 78', exact: true }).count(), 0);
+  await projectSearch.fill('no-match');
+  await page.getByText('没有匹配的项目', { exact: true }).waitFor();
+  await projectSearch.press('Escape');
+  assert.equal(await project.getAttribute('aria-expanded'), 'false');
+  assert.equal(await project.textContent(), 'Example');
+  await project.click();
+  await page.getByRole('button', { name: 'Project 79', exact: true }).click();
+  assert.equal(await project.textContent(), 'Project 79');
+  await project.click();
+  await projectSearch.fill('EXAMPLE');
+  await page.getByRole('button', { name: 'Example', exact: true }).click();
   await page.getByPlaceholder('编号、标题、负责人').fill('login');
   await page.getByPlaceholder('编号、标题、负责人').press('Enter');
   await page.getByRole('button', { name: '处理', exact: true }).waitFor();
