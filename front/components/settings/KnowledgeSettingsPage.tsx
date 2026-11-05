@@ -8,6 +8,7 @@ import { checkKnowledgeCompilerChain, checkKnowledgeEnvironment, getKnowledgeCom
 import type { KnowledgeChainCheckResult, KnowledgeCompilerSettings, KnowledgeProvider, KnowledgeProviderConfig } from "@/lib/knowledge-types";
 import { SettingsPageHeader } from "./layout/SettingsShell";
 import { KnowledgeParsingControls } from "../knowledge/KnowledgeParsingControls";
+import { KnowledgeGitSettings } from "./KnowledgeGitSettings";
 
 const inputClass = "mt-2 block w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm";
 type CompilerModelOption = { id: string; label: string };
@@ -80,6 +81,7 @@ export function KnowledgeSettingsPage() {
     <SettingsPageHeader title="知识工作区设置" description="原始资料 → 文档解析 → 语义表示 → 模型检索。目录资源默认保留原文，索引按需启用。" action={<Link href="/knowledge" className="text-sm text-blue-600">返回知识工作区</Link>} />
     {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {message && <p role="status" className="mb-4 rounded bg-green-50 p-3 text-sm text-green-700">{message}</p>}
+    <KnowledgeGitSettings />
     {!compiler && !error && <p role="status">正在加载设置…</p>}
     {compiler && <form className="mb-6 rounded-xl border p-6" onSubmit={(e) => { e.preventDefault(); void perform(async () => { setCompiler(await saveKnowledgeCompilerSettings(compiler)); setMessage("知识设置已保存，下次语义处理和检索生效。"); }); }}>
       <h2 className="text-lg font-semibold">语义表示与模型检索</h2><p className="mt-2 text-sm leading-6 text-zinc-500">上传只保存原始文件，不自动建立向量索引。按需解析文档，再由模型生成带来源证据的语义表示；模型检索会先浏览目录、读取资源，再返回引用。</p>

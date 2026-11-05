@@ -126,6 +126,7 @@ builder.Services.AddSingleton<IPromptTemplateService, PromptTemplateService>();
 builder.Services.AddSingleton<IModelProviderOptionsService, ModelProviderOptionsService>();
 builder.Services.AddSingleton<IModelSchemaInitializer, ModelSchemaInitializer>();
 builder.Services.AddSingleton<IKnowledgePathService, KnowledgePathService>();
+builder.Services.AddTransient<KnowledgeTeamGitService>();
 builder.Services.AddSingleton<IKnowledgeProviderConfigService, KnowledgeProviderConfigService>();
 builder.Services.AddSingleton<IKnowledgeBaseManager, KnowledgeBaseManager>();
 builder.Services.AddSingleton<IKnowledgeProgressHub, KnowledgeProgressHub>();

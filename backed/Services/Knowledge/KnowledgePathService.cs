@@ -71,6 +71,12 @@ public sealed class KnowledgePathService : IKnowledgePathService
     {
         get
         {
+            var configured = _configuration["KnowledgeStorage:RootPath"];
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                if (!Path.IsPathFullyQualified(configured)) throw new InvalidOperationException("KnowledgeStorage:RootPath 必须为绝对路径。");
+                return Path.Combine(Path.GetFullPath(configured), "storage", "knowledge_bases");
+            }
             var dataPath = _configuration["DataPath"];
             if (string.IsNullOrWhiteSpace(dataPath))
             {

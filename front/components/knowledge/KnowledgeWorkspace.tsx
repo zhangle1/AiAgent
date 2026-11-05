@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
+import Link from "next/link";
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks, MessageSquarePlus } from "lucide-react";
 import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResource, uploadKnowledgeResources } from "@/lib/knowledge-api";
 import { KnowledgeSemanticPreview } from "./KnowledgeSemanticPreview";
@@ -133,7 +134,7 @@ export function KnowledgeWorkspace() {
   return <main className={`${styles.workspace} flex h-[calc(100dvh-24px)] min-h-0 flex-col overflow-hidden bg-[#f8fafc] text-slate-900`}>
     <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white pl-20 pr-4 lg:px-5">
       <div className="min-w-0"><div className="flex items-center gap-2 text-[15px] font-semibold"><span className="grid h-7 w-7 place-items-center rounded-lg bg-slate-900 text-white"><Library size={15} /></span>知识工作区</div><p className="mt-0.5 truncate text-[11px] text-slate-500">目录即入口 · 原文、解析正文和 Agent 问答在同一空间完成</p></div>
-      <button type="button" onClick={() => void loadTree()} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-xs hover:border-blue-300"><RefreshCw size={13} className={loading ? "animate-spin" : ""} />刷新</button>
+      <div className="flex shrink-0 items-center gap-2"><Link href="/settings/knowledge#team-git" className="rounded-md border border-slate-200 px-2.5 py-2 text-xs hover:border-blue-300">Git 同步与设置</Link><button type="button" onClick={() => void loadTree()} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-xs hover:border-blue-300"><RefreshCw size={13} className={loading ? "animate-spin" : ""} />刷新</button></div>
     </header>
     <KnowledgeWorkspacePanels
       directory={<aside className="flex min-h-0 min-w-0 flex-col bg-white">
