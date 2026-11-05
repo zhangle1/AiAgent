@@ -239,6 +239,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [readyTaskHandoff, setReadyTaskHandoff] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [visualizationType, setVisualizationType] = useState<DiagramType | null>(null);
   const [visualizationCommits, setVisualizationCommits] = useState<SelectedGitCommit[]>([]);
@@ -406,6 +407,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       if (typeof pending.project_id === "number") setSelectedProjectId(pending.project_id);
       if (Array.isArray(pending.image_attachments)) setImageAttachments(pending.image_attachments.slice(0, 4).filter((attachment) => typeof attachment?.id === "string").map((attachment) => ({ ...attachment, previewUrl: chatImagePreviewUrl(attachment.id) })));
       if (pending.image_warning) setError(pending.image_warning);
+      if (sessionStorage.getItem("aiagent:process-task-handoff") === requestedTemplateHandoff) setReadyTaskHandoff(requestedTemplateHandoff);
     };
     void getProjectTaskChatHandoff(requestedTemplateHandoff).then(apply).catch(() => {
       const raw = sessionStorage.getItem("aiagent:pending-template-turn");
@@ -942,6 +944,16 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       );
     }
   }
+
+  useEffect(() => {
+    if (!readyTaskHandoff || readyTaskHandoff !== requestedTemplateHandoff || requestedSessionId || loading || !catalog || sending || !input.trim()) return;
+    if (selectedAgentId === "codex" && (!codexModelPolicy || !imageOcrPolicy)) return;
+    if (sessionStorage.getItem("aiagent:process-task-handoff") !== readyTaskHandoff) return;
+    // Consume before sending so rerenders and Strict Mode cannot send the task twice.
+    sessionStorage.removeItem("aiagent:process-task-handoff");
+    setReadyTaskHandoff(null);
+    void sendMessage(input.trim());
+  }, [readyTaskHandoff, requestedTemplateHandoff, requestedSessionId, loading, catalog, sending, input, selectedAgentId, codexModelPolicy, imageOcrPolicy, imageAttachments, selectedProjectId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

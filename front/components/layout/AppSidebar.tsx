@@ -11,6 +11,8 @@ import type { AuthStatus } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { archiveSession, getChatSidebarPreference, listProjectSessionPreferences, listSessions, renameSession, updateChatSidebarPreference, updateProjectSessionPreference, updateSessionMetadata, type ChatSidebarPreference, type ProjectListSortMode, type ProjectSessionPreference, type ProjectSessionSortMode, type SessionSummary } from "@/lib/session-api";
+import { EnterpriseIssuePicker } from "@/components/tasks/EnterpriseIssuePicker";
+import { createProjectTaskChatHandoff } from "@/lib/project-task-api";
 import { useChatStreams, type ChatStreamStatus } from "@/components/chat/ChatStreamProvider";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -62,6 +64,7 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
   const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [issuePickerOpen, setIssuePickerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const projectMenuAnchorRef = useRef<HTMLElement | null>(null);
@@ -262,6 +265,7 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
           <button type="button" onClick={() => setSearchOpen(true)} className="grid h-10 w-full place-items-center rounded-xl text-slate-600 transition hover:bg-white hover:text-slate-950" title="搜索项目和会话（Ctrl / ⌘ + K）" aria-label="搜索项目和会话" aria-keyshortcuts="Control+k Meta+k"><Search size={17}/></button>
           <button type="button" onClick={() => { revealPanel(); router.push(newChatPath()); setMobileOpen(false); }} className="grid h-10 w-full place-items-center rounded-xl text-slate-600 transition hover:bg-white hover:text-slate-950" title="新建会话" aria-label="新建会话"><Plus size={18}/></button>
         </nav>
+        {chatActive && compact && <button type="button" onClick={() => setIssuePickerOpen(true)} className="grid h-10 w-full place-items-center rounded-xl text-blue-700 transition hover:bg-blue-50" title="处理码云任务" aria-label="处理码云任务"><CheckSquare size={17}/></button>}
         <div className="mt-3 w-full shrink-0 space-y-1 border-t border-slate-200 pt-2">
           <button type="button" onClick={() => setToolsOpen(true)} className="grid h-10 w-full place-items-center rounded-xl text-slate-600 transition hover:bg-white" title="工具与设置" aria-label="工具与设置"><Settings size={17}/></button>
           <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:onboarding-open"))} className="grid h-9 w-full place-items-center rounded-xl text-slate-500 transition hover:bg-white" title="新手引导" aria-label="新手引导"><CircleHelp size={17}/></button>
@@ -277,6 +281,7 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
         </header>
         {chatActive ? <section aria-label="会话记录" className="flex min-h-0 flex-1 flex-col px-2 pb-2">
           <button type="button" onClick={() => { router.push(newChatPath()); setMobileOpen(false); }} className="mx-1 flex h-9 shrink-0 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"><Edit3 size={15}/>新聊天</button>
+          <button type="button" onClick={() => setIssuePickerOpen(true)} className="mx-1 flex h-9 shrink-0 items-center gap-2 rounded-lg px-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"><CheckSquare size={15}/>处理码云任务</button>
       <div className="workspace-scroll mt-2 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         <label className="relative mx-1 block">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -290,6 +295,12 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
           {panelItems.map((item) => <SidebarLink key={item.href} item={item} active={knowledgeActive || workbenchActive ? isActive(pathname, item.href) : isToolActive(pathname, item.href)} compact={false}/>)}
         </nav>}
       </div>
+    {issuePickerOpen && createPortal(<EnterpriseIssuePicker projects={projects} initialProjectId={Number(searchParams.get("project")) || sessions.find((session) => session.id === searchParams.get("session"))?.project_id} onClose={() => setIssuePickerOpen(false)} onLinked={() => {}} onProcess={async (task) => {
+      const handoff = await createProjectTaskChatHandoff(task.id);
+      sessionStorage.setItem("aiagent:process-task-handoff", handoff.handoff_id);
+      setIssuePickerOpen(false); setMobileOpen(false);
+      router.push(`/chat?${new URLSearchParams({ template_handoff: handoff.handoff_id, new: handoff.handoff_id, project: String(task.project_id) })}`);
+    }}/>, document.body)}
     {toolsOpen && <ToolDialog pathname={pathname} onClose={() => setToolsOpen(false)}/>}
     {searchOpen && (
       <WorkspaceSearchDialog projects={projects} sessions={sessions} onClose={() => setSearchOpen(false)} onSelectProject={(project) => { setSearchOpen(false); setMobileOpen(false); router.push(newChatPath(project.id)); }} onSelectSession={(session) => { setSearchOpen(false); setMobileOpen(false); router.push(`/chat?session=${encodeURIComponent(session.id)}`); }}/>

@@ -1,0 +1,44 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "聊天侧栏直接处理码云任务",
+  "base_commit": "914695b22d94c629936b9c05594f6e1918129977",
+  "platform_change_set_id": null,
+  "note": "用户已明确要求实现并推送；本地快照记录本轮范围与验证，不表示平台审批记录。",
+  "checks": {
+    "typescript": "passed",
+    "production_build": "passed",
+    "browser": "passed: search/direct process/duplicate click/failure retry/legacy link with mock APIs",
+    "regressions": "17 passed",
+    "whitespace": "passed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "7220b0bc4f27d3a52f75c3d9cbe9aac08049d2806e3accb2b86f95a4246834ca"
+    },
+    {
+      "path": "README.md",
+      "sha256": "b2feec24bc449244fd07916804b2e4664a84d3030a55c9a12c84c43ad62ad932"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "bd8a19dacde71f7de719f0dac9eb359841d91c4d64c811bb46cf3f0c2e8cefed"
+    },
+    {
+      "path": "front/components/layout/AppSidebar.tsx",
+      "sha256": "844b1bc5f9157d5dc02f9e5dd57f5154fb2893c6ed928b25a651d211920b06f2"
+    },
+    {
+      "path": "front/components/tasks/EnterpriseIssuePicker.tsx",
+      "sha256": "d69a85a3806f77c3dc86470a89d91e38c07c46e81161d3c39703588a6a94d324"
+    },
+    {
+      "path": "front/tests/chat-gitee-task.browser.mjs",
+      "sha256": "e8d507636693ce7bde53036f74e2c87b3557831ac09e71c2988562a19467a760"
+    },
+    {
+      "path": "docs/chat-gitee-task-processing.md",
+      "sha256": "21460c87424eda5c19099a01d50f5cbfc249e13c74043e3edb51a49e0d665578"
+    }
+  ]
+}
