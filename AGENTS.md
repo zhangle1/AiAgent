@@ -170,3 +170,6 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 管理员用量 Excel 导出入口为 `GET /api/v1/admin/usage/export`，沿用统计查询参数、管理员校验及 `GetUsageReportAsync`；`AdminUsageExcelExporter` 使用 ClosedXML 输出五个分类 Sheet。前端以已加载报表的 UTC 起止日期固定导出范围，用户／项目筛选同时传递；用户和项目名称作为文本写入，统计值为数值，禁止通过汇总跨桶会话数推导全期会话数。
 
 - 聊天 ZIP/RAR/DLL 解析位于 `ChatFileAttachmentService.Binary.cs`；压缩包校验签名、加密、路径、链接、数量和展开大小，条目仅写入随机受控临时路径并清理，不递归展开。DLL 使用 PEReader 静态读取，不 Assembly.Load、不执行；支持 .NET 应用程序集 DLL。沿用当前用户附件归属与不可信文本上下文。见 `docs/chat-binary-attachments.md`。
+
+
+聊天主动技能位于 `backed/Resources/ChatSkills/catalog-v1.json`，仅显式调用，禁止注册到原生自动发现目录或把技能清单放入系统提示词。HTTP／WebSocket 统一经 `ChatSkillCatalog.Apply` 解析服务端正文，保留 `ServerPromptMessage` 与原始消息分离；消息元数据保存完整快照，重试沿用原版本。已发布正文不可覆盖，新增版本须保留旧版本解析。前端多轮选择可结束，切换会话／项目或刷新不自动恢复。改动前读 `docs/chat-explicit-skills.md`，验证未选择不加载、版本篡改、重试、普通聊天结束边界及 `/spec` 兼容。

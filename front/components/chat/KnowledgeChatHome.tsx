@@ -1,5 +1,9 @@
 "use client";
 
+import { getChatSkills } from "@/lib/chat-skill-api";
+import type { ChatSkill, ChatSkillReference } from "@/lib/chat-skill-types";
+import { skillCommand, filterChatSkills } from "@/lib/chat-skill-command";
+import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPicker";
 import { getChatClipboardFiles } from "@/lib/chat-clipboard";
 
 import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -73,6 +77,7 @@ type ChatMessage = {
   documentAttachments?: ChatFileAttachment[];
   markdownDocuments?: CodeProjectMarkdownDocument[];
   projectReferences?: CodeProjectReference[];
+  skillInvocation?: ChatSkillReference;
   debugTrace?: ChatDebugTraceEvent[];
 };
 
@@ -101,6 +106,7 @@ function toHistoryMessages(session: SessionDetail): ChatMessage[] {
       previewUrl: persistedChatImageUrl(session.id, attachment.id),
     })),
     documentAttachments: message.metadata?.document_attachments,
+    skillInvocation: message.metadata?.skill_invocation,
     status: "done",
   }));
 }
@@ -241,6 +247,18 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [readyTaskHandoff, setReadyTaskHandoff] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [chatSkills, setChatSkills] = useState<ChatSkill[]>([]);
+  const [skillError, setSkillError] = useState<string | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<ChatSkill | null>(null);
+  const [previewSkill, setPreviewSkill] = useState<ChatSkill | null>(null);
+  const [skillActiveIndex, setSkillActiveIndex] = useState(0);
+  const [skillMenuDismissed, setSkillMenuDismissed] = useState(false);
+  useEffect(() => {
+    if (embedded) return;
+    const controller = new AbortController();
+    void getChatSkills(controller.signal).then(setChatSkills).catch((ex) => { if (!controller.signal.aborted) setSkillError(ex.message); });
+    return () => controller.abort();
+  }, [embedded]);
   const [visualizationType, setVisualizationType] = useState<DiagramType | null>(null);
   const [visualizationCommits, setVisualizationCommits] = useState<SelectedGitCommit[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -296,6 +314,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
   const activeVisualizationCommits = visualizationCommits.filter((commit) => commit.project_id === effectiveProjectId);
   useEffect(() => { setVisualizationCommits([]); }, [effectiveProjectId, requestedSessionId]);
+  useEffect(() => { if (requestedSessionId && requestedSessionId === pendingSessionIdRef.current) return; setSelectedSkill(null); setPreviewSkill(null); setSkillMenuDismissed(false); }, [effectiveProjectId, requestedSessionId, requestedNewSessionKey]);
+  const skillOptions = filterChatSkills(chatSkills, slashProjectCommand?.query ?? "");
+  const skillMenuOpen = !embedded && !skillMenuDismissed && slashProjectCommand?.kind === "projects" && slashProjectCommand.start === 0;
+  function selectChatSkill(skill: ChatSkill) {
+    const next = slashProjectCommand ? input.replace(/^\/[^\s]*[ \t]?/, "") : input;
+    setSelectedSkill(skill); setVisualizationType(null); setVisualizationCommits([]);
+    setInput(next); setSlashProjectCommand(null); setSkillMenuDismissed(true);
+    focusComposerAt(0);
+  }
   const selectedCodeRepositoryNames = selectedProject?.repositories.map((repository) => repository.name) ?? [];
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
@@ -632,6 +659,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function handleComposerChange(value: string, cursor: number) {
+    setSkillMenuDismissed(false); setSkillActiveIndex(0);
     setInput(value);
     setComposerCursor(cursor);
     setPendingMarkdownDocuments((current) => current.filter((document) => extractMarkdownDocumentReferences(value).some((reference) => markdownDocumentKey(document) === `${reference.repository_name}\u0000${reference.path}`)));
@@ -652,6 +680,14 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLDivElement>, cursor: number) {
+    if (event.nativeEvent.isComposing) return;
+    if (skillMenuOpen) {
+      if (event.key === "Escape") { event.preventDefault(); setSkillMenuDismissed(true); setSlashProjectCommand(null); return; }
+      if (skillOptions.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        event.preventDefault(); setSkillActiveIndex((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + skillOptions.length) % skillOptions.length); return;
+      }
+      if (skillOptions.length && (event.key === "Enter" || event.key === "Tab")) { event.preventDefault(); selectChatSkill(skillOptions[skillActiveIndex] ?? skillOptions[0]); return; }
+    }
     if (!event.nativeEvent.isComposing && event.key === "Backspace") {
       const removable = inlineReferenceBeforeCursor(input, cursor);
       if (removable) {
@@ -797,8 +833,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       documentAttachments?: ChatFileAttachment[];
       markdownDocuments?: CodeProjectMarkdownDocument[];
       projectReferences?: CodeProjectReference[];
+      skillInvocation?: ChatSkillReference | null;
     },
   ) {
+    const typedSkill = !embedded ? skillCommand(query, chatSkills) : undefined;
+    const skillForTurn = options?.retryAssistantId ? options.skillInvocation ?? undefined : typedSkill ?? selectedSkill ?? undefined;
     const attachmentsForTurn = options?.attachments ?? imageAttachments;
     shouldStickToBottomRef.current = true;
     const documentAttachmentsForTurn = options?.documentAttachments ?? documentAttachments;
@@ -847,6 +886,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         {
           id: createClientId(),
           role: "user",
+          skillInvocation: skillForTurn,
           content: messageText,
           attachments: attachmentsForTurn,
           documentAttachments: documentAttachmentsForTurn,
@@ -855,6 +895,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         },
       ]);
       setInput("");
+      if (skillForTurn && "multi_turn" in skillForTurn && skillForTurn.multi_turn) setSelectedSkill(skillForTurn as ChatSkill);
+      else setSelectedSkill(null);
       setSlashProjectCommand(null);
       setComposerExpanded(false);
       setImageAttachments([]);
@@ -904,6 +946,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       const streamId = startStream({
         session_id: sessionId,
         message: outboundMessage,
+        skill_invocation: skillForTurn ? { id: skillForTurn.id, version: skillForTurn.version } : undefined,
         knowledge_base_name: selectedKbNames[0],
         knowledge_base_names: selectedKbNames,
         code_repository_names: selectedCodeRepositoryNames,
@@ -960,6 +1003,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     const query = input.trim();
     // Keep empty submissions and embedded editors on their existing path.
     const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0 || activeVisualizationCommits.length > 0;
+    const typedSkill = embedded ? undefined : skillCommand(query, chatSkills);
+    if ((typedSkill || selectedSkill) && visualizationType) { setError("技能与图形模式请择一使用，先移除技能或关闭图形模式。"); return; }
     await sendMessage(buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType, activeVisualizationCommits));
   }
 
@@ -1200,6 +1245,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                                 documentAttachments: userMessage.documentAttachments,
                                 markdownDocuments: userMessage.markdownDocuments,
                                 projectReferences: userMessage.projectReferences,
+                                skillInvocation: userMessage.skillInvocation ?? null,
                               });
                           }
                         : undefined
@@ -1240,6 +1286,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
+              {!embedded && <div className="flex flex-wrap items-center gap-2 px-3 py-1 text-xs">
+                <button type="button" className="text-blue-600" disabled={sending} onClick={() => { setInput(input.startsWith("/") ? input : `/ ${input}`); setSlashProjectCommand({ start: 0, end: 1, query: "", kind: "projects" }); setSkillMenuDismissed(false); focusComposerAt(1); }}>技能 /</button>
+                {selectedSkill && <><span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">{selectedSkill.name}{selectedSkill.multi_turn ? " · 进行中" : " · 本轮"}</span><button type="button" onClick={() => setPreviewSkill(selectedSkill)}>预览</button><button type="button" onClick={() => setSelectedSkill(null)}>{selectedSkill.multi_turn ? "结束技能" : "移除"}</button></>}
+                {skillError && <span role="alert" className="text-red-600">{skillError} <button type="button" onClick={() => { void getChatSkills().then((items) => { setChatSkills(items); setSkillError(null); }).catch((ex) => setSkillError(ex.message)); }}>重试</button></span>}
+              </div>}
               {!embedded && <VisualizationToolbar key={`${effectiveProjectId}:${requestedSessionId}`} value={visualizationType} onChange={setVisualizationType} disabled={sending || uploadingImages || uploadingFiles} project={selectedProject} commits={activeVisualizationCommits} onCommitsChange={setVisualizationCommits} />}
               {imageAttachments.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
@@ -1271,7 +1322,9 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                   ))}
                 </div>
               )}
-              {slashProjectCommand && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
+              {skillMenuOpen && <ChatSkillPicker anchor={activeComposerRef.current} onProjects={() => setSkillMenuDismissed(true)} items={skillOptions} activeIndex={skillActiveIndex} onActiveIndexChange={setSkillActiveIndex} onSelect={selectChatSkill} onPreview={setPreviewSkill} />}
+              {previewSkill && createPortal(<ChatSkillPreview skill={previewSkill} onClose={() => setPreviewSkill(null)} />, document.body)}
+              {slashProjectCommand && !skillMenuOpen && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
               <div className="flex items-center gap-1 lg:hidden">
                 <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}>
                   <Mic size={18} />
@@ -2345,6 +2398,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
         {isUser ? (
           <>
             <div className="whitespace-pre-wrap break-words">
+              {message.skillInvocation && <span className="mb-1 block text-[11px] opacity-75">技能：/{message.skillInvocation.id}</span>}
               <InlineReferenceText value={message.content} />
             </div>
             {message.attachments && message.attachments.length > 0 && (

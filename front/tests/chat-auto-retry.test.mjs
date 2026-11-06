@@ -78,9 +78,9 @@ function mount(t) {
   return { context, calls, events, advance, settle, fail, records: () => records };
 }
 
-test("failure retries after 20 seconds with the same turn, attachments and model", async (t) => {
+test("failure retries after 20 seconds with the same turn, attachments, model and selected skill version", async (t) => {
   const h = mount(t);
-  const request = { session_id: "session", message: "hello", attachment_ids: ["image"], code_project_id: 3, codex_model_id: "model" };
+  const request = { session_id: "session", message: "hello", attachment_ids: ["image"], code_project_id: 3, codex_model_id: "model", skill_invocation: { id: "grill-me", version: "original-version" } };
   const id = h.context.startStream(request);
   await h.fail();
   assert.equal(h.records()[id].retryAt, 21000);

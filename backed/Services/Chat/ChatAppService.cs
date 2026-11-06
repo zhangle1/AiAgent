@@ -65,6 +65,13 @@ public sealed class ChatAppService : IDynamicApiController
     /// <summary>
     /// 执行一次聊天完成：创建 Agent 上下文、调用工具、调用 LLM，并返回最终回答。
     /// </summary>
+    [HttpGet("skills")]
+    public async Task<object> Skills(CancellationToken cancellationToken)
+    {
+        await RequireUser(cancellationToken);
+        return ChatSkillCatalog.All;
+    }
+
     [HttpPost("complete")]
     public async Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
     {
@@ -91,6 +98,7 @@ public sealed class ChatAppService : IDynamicApiController
         await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
         await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
+        ChatSkillCatalog.Apply(request);
         await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
         request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
         trace?.Complete("auth_session_context");
@@ -143,6 +151,7 @@ public sealed class ChatAppService : IDynamicApiController
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
+            ChatSkillCatalog.Apply(request);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             await WriteSseAsync(response, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);

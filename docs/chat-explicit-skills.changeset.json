@@ -1,0 +1,152 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Chat explicit-only skill selection and 23 Chinese workflows",
+  "base_commit": "ba82bcc36bf564dc91c8b128c05ea3ba2497e601",
+  "platform_change_set_id": null,
+  "authorization": "Current user explicitly requested implementation and push. This local snapshot records validation; it is not a platform approval record.",
+  "checks": {
+    "backend": "passed: 34 tests (11 ChatSkill, 23 CodexDiagnostics/RuntimeExecutionContexts), .NET 10 roll-forward for net9.0 tests; existing unrelated build warnings remain",
+    "frontend": "passed: TypeScript noEmit; 22 selected Node regression tests",
+    "browser": "passed: synthetic API/WebSocket, Chinese search, preview, keyboard selection without send, active flow follow-up, ending clears selection, one-shot clears selection, draft preservation, project/document menu, mobile bounds",
+    "catalog": "23 explicit_only skills; pinned commits, upstream SHA-256, server prompt SHA-256 versions, MIT/Apache-2.0 notices",
+    "encoding": "UTF-8 decoded; existing matched lines retain original BOM/line endings; new content UTF-8",
+    "whitespace": "passed: cached diff --check",
+    "live_model": "not run",
+    "production_build": "not run",
+    "deployment": "not performed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "890131af48ca3c777f54dbb2eac0b0979441deda3d68443ee21ff884daedaff5"
+    },
+    {
+      "path": "README.md",
+      "sha256": "bd178e59030c6bdb63a830990863dd92569df2f25d057be23cbe1e9c059e4773"
+    },
+    {
+      "path": "backed.tests/ChatSkillTests.cs",
+      "sha256": "604fff033e404a207a2d8d61fba6c6601e329925c6bb0cbdd21e16b832d22dbb"
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "a31487feba67317fd353ec16644b9c83aea2322d4f0ec747602aa793481538ef"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "1d462d14845f78f9df0db33f72b0bd6f4bef382174957aef3e898691ff35c140"
+    },
+    {
+      "path": "backed/Resources/ChatSkills/catalog-v1.json",
+      "sha256": "77d4976502cdbb82be05e0e187e2b667b8cda8352b628c8cd3dfae3e5904443a"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "5b3251d14fa11b459ad89f1597cfacdfc641682651f5d0305f5ed38c5833c559"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "ab839e4e3774b6e33c7da5c39829a168461c5773b2ce05eb168b543268a451b5"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSkillCatalog.cs",
+      "sha256": "3a4457589f721efe9c3754205fc20c51c1528b16bd344df160a9df3ee8a6ef7e"
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "2b4017dfc5d4bae4954c81c2a6518b32442a7c985e703a20ff0c3ecd7e775703"
+    },
+    {
+      "path": "backed/Services/Chat/DshChatService.cs",
+      "sha256": "b1a10c09524582de4f638d1785914452edb880cb8e54cc7d65ce2e147e103e45"
+    },
+    {
+      "path": "docs/chat-explicit-skills-proposal.md",
+      "sha256": "724727cef66e0184d7bf50e19aef42c40defbea6207883a0407ae4ff90389c19"
+    },
+    {
+      "path": "docs/chat-explicit-skills.md",
+      "sha256": "063f3c143c37f36151ff947c5ecd8ec0d106a05df1e82e709a39291e919cb4ea"
+    },
+    {
+      "path": "docs/chat-skills-licenses/brand-guidelines/LICENSE.txt",
+      "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+    },
+    {
+      "path": "docs/chat-skills-licenses/canvas-design/LICENSE.txt",
+      "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+    },
+    {
+      "path": "docs/chat-skills-licenses/doc-coauthoring/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "docs/chat-skills-licenses/frontend-design/LICENSE.txt",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": "docs/chat-skills-licenses/internal-comms/LICENSE.txt",
+      "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+    },
+    {
+      "path": "docs/chat-skills-licenses/mattpocock/LICENSE.txt",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    {
+      "path": "docs/chat-skills-licenses/mcp-builder/LICENSE.txt",
+      "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+    },
+    {
+      "path": "docs/chat-skills-licenses/theme-factory/LICENSE.txt",
+      "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+    },
+    {
+      "path": "docs/chat-skills-licenses/webapp-testing/LICENSE.txt",
+      "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362"
+    },
+    {
+      "path": "front/components/chat/ChatSkillPicker.tsx",
+      "sha256": "e1ee5c81bedc4ba2ef9c4b91eef4d14148d31d8b36d67c63ff8934a04b1e946e"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "0dbbe86a739cfa7ffab4145c163bfccc3810f33d24eb403c837fc3ddaf10ed77"
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "d2bd576c296c89da52bee79901f37777ec399dbf39b91508ee3f5cc616fc97d0"
+    },
+    {
+      "path": "front/lib/chat-skill-api.ts",
+      "sha256": "14f550ed1d0e96c17f430c9cc8cf1784fdcd64911822119cfe2f7c9760972477"
+    },
+    {
+      "path": "front/lib/chat-skill-command.ts",
+      "sha256": "48aada79235d8c3c6c5d9cd46edbfec0eac2d29e7512177362391dcf9a79de13"
+    },
+    {
+      "path": "front/lib/chat-skill-types.ts",
+      "sha256": "347cd0bd4935fca8d4e1bd921158f7c1d3a1f3698f5fc2378401d72d10d5cd5b"
+    },
+    {
+      "path": "front/lib/session-api.ts",
+      "sha256": "d56b0055109dc01a1ceaf1117eb0195d926cbc90d9a8ccc494d3efe318021fcf"
+    },
+    {
+      "path": "front/tests/chat-auto-retry.test.mjs",
+      "sha256": "627d50774ff3dd4a10266fe6ffd8c9f390072551223cef6cc8299cfd55c4aec3"
+    },
+    {
+      "path": "front/tests/chat-skills-browser.mjs",
+      "sha256": "2581c538fc4abb542b39fc984abbce263e1cfdfb7ac719249f1756e2e864e19c"
+    },
+    {
+      "path": "front/tests/chat-skills.test.mjs",
+      "sha256": "2b929ff71358af67ef43b03d4abc782a926c5d72b771adfb5505b9d4d5f2659c"
+    },
+    {
+      "path": "scripts/build-chat-skills.mjs",
+      "sha256": "a9d82a8a46ce2eee02e3e9ee727ada540b20cca7837835d2f18653107025fadc"
+    }
+  ]
+}

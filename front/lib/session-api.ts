@@ -2,7 +2,7 @@ import type { KnowledgeCitation } from "@/lib/knowledge-types";
 import type { ChatDebugTraceEvent, ChatFileAttachment, ChatImageAttachment } from "@/lib/chat-api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 
-export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { model_id?: string; model?: string; attachments?: ChatImageAttachment[]; document_attachments?: ChatFileAttachment[] } | null; created_at: string };
+export type SessionMessage = { id: number; role: "user" | "assistant"; content: string; thinking?: string | null; citations?: KnowledgeCitation[] | null; metadata?: { skill_invocation?: import("./chat-skill-types").ChatSkillReference; model_id?: string; model?: string; attachments?: ChatImageAttachment[]; document_attachments?: ChatFileAttachment[] } | null; created_at: string };
 export type SessionPriority = "high" | "normal" | "low";
 export type ProjectSessionSortMode = "updated" | "priority" | "manual";
 export type ProjectListSortMode = "name" | "recent";

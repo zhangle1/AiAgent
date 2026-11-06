@@ -8,6 +8,12 @@ namespace AiAgent.Backend.Dtos.Chat;
 /// </summary>
 public sealed class ChatCompleteRequest
 {
+    [JsonPropertyName("skill_invocation")]
+    public AiAgent.Backend.Services.Chat.ChatSkillReference? SkillInvocation { get; set; }
+
+    [JsonIgnore]
+    public System.Text.Json.JsonElement? ResolvedSkillSnapshot { get; set; }
+
     [JsonPropertyName("debug_trace")]
     public bool DebugTrace { get; set; }
 

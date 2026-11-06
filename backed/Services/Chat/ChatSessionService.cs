@@ -97,6 +97,15 @@ public sealed class ChatSessionService : IChatSessionService
     public async Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
     {
         var session = EnsureSession(user, request);
+        // Native agents can resume their own history. Explicitly close historical skill instructions
+        // when the current request has no selection; do not append any catalog or skill body.
+        if (request.SkillInvocation is null && _db.Queryable<AiChatMessage>()
+            .Where(item => item.SessionId == session.Id && item.Role == "user" && item.MetadataJson != null
+                && item.MetadataJson.Contains("\"skill_snapshot\":{")).Any())
+        {
+            var current = string.IsNullOrWhiteSpace(request.ServerPromptMessage) ? request.Message : request.ServerPromptMessage;
+            request.ServerPromptMessage = $"此前选择的技能流程已结束。本轮是普通聊天，请仅处理当前要求，不延续历史技能指令。\n\n{current}";
+        }
         var attachments = request.AttachmentIds.Count == 0
             ? new List<ResolvedChatImageAttachment>()
             : await _attachments.PersistForSessionAsync(user, session.Id, request.AttachmentIds, cancellationToken);
@@ -109,10 +118,12 @@ public sealed class ChatSessionService : IChatSessionService
             if (extractionIds.TryGetValue(item.Attachment.Id, out var extractionId)) item.Attachment.ExtractionId = extractionId;
         }
         if (attachments.Count > 0) request.LocalImagePaths = attachments.Select(item => item.LocalPath).ToList();
-        var metadata = attachments.Count == 0 && documentAttachments.Count == 0 && request.ResolvedProjectReferences.Count == 0 && request.ResolvedMarkdownDocumentReferences.Count == 0
+        var metadata = request.ResolvedSkillSnapshot is null && attachments.Count == 0 && documentAttachments.Count == 0 && request.ResolvedProjectReferences.Count == 0 && request.ResolvedMarkdownDocumentReferences.Count == 0
             ? null
             : JsonSerializer.Serialize(new
             {
+                skill_invocation = request.SkillInvocation,
+                skill_snapshot = request.ResolvedSkillSnapshot,
                 attachments = attachments.Select(item => item.Attachment).ToList(),
                 document_attachments = documentAttachments.Select(item => item.Attachment).ToList(),
                 project_references = request.ResolvedProjectReferences.Select(item => new { project_id = item.ProjectId, display_name = item.DisplayName }).ToList(),

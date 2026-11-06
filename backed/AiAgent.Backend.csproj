@@ -17,6 +17,7 @@
     </Content>
 
     <EmbeddedResource Include="Services\Knowledge\Skills\llm-wiki\SKILL.md" LogicalName="AiAgent.Backend.Services.Knowledge.Skills.llm-wiki.SKILL.md" />
+    <EmbeddedResource Include="Resources\ChatSkills\catalog-v1.json" LogicalName="AiAgent.ChatSkills.v1" />
     <EmbeddedResource Include="Resources\Models\models.dev.json" LogicalName="AiAgent.Models.models.dev.json" />
 
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
