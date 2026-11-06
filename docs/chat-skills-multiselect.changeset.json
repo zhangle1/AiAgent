@@ -1,0 +1,67 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "聊天技能支持多选、标签移除及菜单收起",
+  "base_commit": "8644c413e84e4bdc9f902da0f8e8e75f5825ebe1",
+  "platform_change_set_id": null,
+  "status": "ready-for-human-review",
+  "note": "本轮技能交互和前后端多选协议快照，保留已有未提交修改。未修改配置和用户数据，未调用真实模型、重启后端、提交或推送。",
+  "checks": {
+    "backend": "passed: 21 ChatSkillTests and SwaggerDocumentTests, including isolated SQLite snapshot persistence and legacy/new history termination",
+    "typescript": "passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "command_tests": "passed: node --test tests/chat-skills.test.mjs (2 cases)",
+    "browser": "passed: synthetic APIs/WebSocket on running Next.js app; multi-select/toggle, individual removal/clear-all, click outside, global Escape, no project-menu fallback, draft/preview, request arrays, mixed skill lifecycle, 390px layout and menu-above-composer bounds",
+    "visual": "passed: desktop and mobile screenshots, both with menu open and closed, inspected",
+    "encoding_and_whitespace": "passed: strict UTF-8 without BOM, LF, git diff --check",
+    "real_provider": "not called; rebuild/restart backend to load the new multi-skill request handling"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "5c03443a5d885d13ba69ffaa084a8fbb2323688c977ed1f7e332396412519354"
+    },
+    {
+      "path": "README.md",
+      "sha256": "34d71cbbadf7391893dd935d3126f3647d4960e34807282d1434503c6a5a124e"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "8ca43ec840cdb0e25ec8025f041075555d3af28dbbc7b616d28c0fd78c9ef15b"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSkillCatalog.cs",
+      "sha256": "9aff7185300b2c6d50780624f4fac29f2f7033773b29c9e81b55569c9903bc03"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "1a160c11d05be8687f55729e3937706e708d78fed3b7f0c3fb4a1beeef7145b0"
+    },
+    {
+      "path": "backed.tests/ChatSkillTests.cs",
+      "sha256": "90af586c5f5b9a8c81f3e84cadaecdff163751ebb8d806c7091ce8a5b116d9ae"
+    },
+    {
+      "path": "front/components/chat/ChatSkillPicker.tsx",
+      "sha256": "5b591fd6b6bd783f6160914af187e7919731d4d544329a0dd3fde643a638ed42"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "03528388e6df2a3e86eb0dd0b0554eddaaa0eeaa9a15b68caf06a1a21979f50d"
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "08c6b8240efdb0ae81f963b2ab82a3c707d35b8f6c1cc8b12dbbc25eaa7c39ea"
+    },
+    {
+      "path": "front/lib/session-api.ts",
+      "sha256": "9d542f2f3a4361a8a9e698b1276d1f6dfe2c989acd382b88d4d354e8a632db40"
+    },
+    {
+      "path": "front/tests/chat-skills-browser.mjs",
+      "sha256": "cbb6e7134dd7deebd029d1786bfe6d27835abd9f608b4565648e14285c69eb7b"
+    },
+    {
+      "path": "docs/chat-explicit-skills.md",
+      "sha256": "031b33f777748ec2b572616dad29f8ffb59ceae9704cf0935cf2e05b19e2b9ee"
+    }
+  ]
+}

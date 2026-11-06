@@ -92,6 +92,8 @@ export type KnowledgeContextNode = {
 };
 
 export type KnowledgeResourceNode = {
+  source_status?: "available" | "missing" | "outside_root" | "invalid_path" | "unsafe_path" | "unreadable" | null;
+  source_message?: string | null;
   source_uri?: string | null;
   parsed_document_id?: number | null;
   section_order?: number | null;

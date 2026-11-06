@@ -1,0 +1,46 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "减少启动索引检查往返并增加阶段耗时日志",
+  "base_commit": "8644c413e84e4bdc9f902da0f8e8e75f5825ebe1",
+  "platform_change_set_id": null,
+  "status": "ready-for-human-review",
+  "note": "只修改代码与文档；未提交、推送或改动真实配置。自动审批拒绝后台启动真实后端进程，返回 blocked by policy；未进行真实数据库初始化或实际启动基准测量。Program.cs 同时含前序请求取消与历史清理注册改动。",
+  "diagnosis": "实际 EnsureIndexes 在合成探针中执行 46 次数据库调用，现按原顺序一次发送 46 段 SQL，共 60 个受存在性判断保护的索引定义。",
+  "checks": {
+    "reproduction": "before: regression test failed with 46 calls; synthetic 5ms per call measured about 725ms",
+    "performance": "after: 1 call, 60 guarded index definitions; synthetic sample measured 7ms, not production startup timing",
+    "schema_equivalence": "passed: 46 SQL blocks and 51 CodeFirst entity types preserve original content and ordering",
+    "tests": "passed: 13 startup, ChatSkill and cleanup HTTP tests",
+    "compile": "passed: dotnet build and dotnet test; existing warnings remain",
+    "whitespace": "passed: git diff --check",
+    "encoding": "passed: strict UTF-8 without BOM and LF",
+    "real_backend_start": "blocked by automatic approval review: blocked by policy",
+    "real_database_benchmark": "not performed; use Visual Studio and stage timings to determine remaining startup latency"
+  },
+  "files": [
+    {
+      "path": "backed/Program.cs",
+      "sha256": "8ee5a7642cb63b433c137f72b222691a4b57ce9ca9d4896f2c76745ede77868c"
+    },
+    {
+      "path": "backed/Services/Settings/ModelSchemaInitializer.cs",
+      "sha256": "4272210839599250969e2ee8f930a0ec214cb23155aebcc2f86edb7bfb01f938"
+    },
+    {
+      "path": "backed.tests/StartupSchemaTests.cs",
+      "sha256": "75475593b3b8a6a3356234fbc93457b4e264bfb9b6c5e94c509437eaa8100b46"
+    },
+    {
+      "path": "docs/backend-startup-diagnostics.md",
+      "sha256": "651de914d1f429ae00056fb8359e6b09444d43724334181458ce985949d5992f"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "5c03443a5d885d13ba69ffaa084a8fbb2323688c977ed1f7e332396412519354"
+    },
+    {
+      "path": "README.md",
+      "sha256": "34d71cbbadf7391893dd935d3126f3647d4960e34807282d1434503c6a5a124e"
+    }
+  ]
+}

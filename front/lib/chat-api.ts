@@ -41,6 +41,7 @@ async function parseJson<T>(response: Response): Promise<T> {
 
 export type ChatCompleteRequest = {
   skill_invocation?: import("./chat-skill-types").ChatSkillReference;
+  skill_invocations?: import("./chat-skill-types").ChatSkillReference[];
   debug_trace?: boolean;
   trace_id?: string;
   session_id?: string;

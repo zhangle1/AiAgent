@@ -218,6 +218,14 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var node = FindNode(uri);
         using var scopeDb = database.CopyNew();
         var ownerRoot = CurrentUserRoot(scopeDb);
+        (AiKnowledgeBase Base, AiKnowledgeDocument Document)? sourceDocument = null;
+        if (node.Kind == "file" && !IsGeneratedUri(node.Uri))
+        {
+            sourceDocument = Resolve(node);
+            var sourceState = KnowledgeSourceFile.Inspect(paths, sourceDocument.Value.Base, sourceDocument.Value.Document);
+            node.SourceStatus = sourceState.Status; node.SourceMessage = sourceState.Message;
+            if (!sourceState.Available) return new() { Node = node, SemanticStatus = "not_applicable" };
+        }
         if (IsParsedUri(node.Uri))
         {
             if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList(), SemanticStatus = "not_applicable" };
@@ -238,7 +246,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             return new() { Node = node, SourceText = generated?.Overview, SemanticContent = generated?.Overview,
                 Model = generated?.Model, SemanticGeneratedAt = generated?.GeneratedAt,
                 SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
-        var (kb, doc) = Resolve(node);
+        var (kb, doc) = sourceDocument ?? Resolve(node);
         var content = ingestion.GetContent(kb, doc);
         string? source = null;
         if (IsText(doc.Extension))
@@ -441,16 +449,10 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
 
     private string SourcePath(AiKnowledgeBase kb, AiKnowledgeDocument doc)
     {
-        var root = Path.GetFullPath(paths.GetKnowledgeBasePath(kb.Name)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var path = Path.GetFullPath(doc.StoragePath);
-        if (!path.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) throw new UnauthorizedAccessException("文件超出资料存储范围。");
-        var current = new FileInfo(path) as FileSystemInfo;
-        while (current is not null)
-        {
-            if ((current.Attributes & FileAttributes.ReparsePoint) != 0) throw new UnauthorizedAccessException("资料路径不能包含符号链接。");
-            current = current is FileInfo file ? file.Directory : (current as DirectoryInfo)?.Parent;
-        }
-        return path;
+        var source = KnowledgeSourceFile.Inspect(paths, kb, doc);
+        if (source.Status == "missing") throw new FileNotFoundException(source.Message);
+        if (!source.Available) throw new UnauthorizedAccessException(source.Message);
+        return source.Path!;
     }
 
     private static bool IsText(string? extension) => extension?.ToLowerInvariant() is ".md" or ".markdown" or ".txt" or ".csv" or ".json" or ".jsonl" or ".xml" or ".yaml" or ".yml" or ".html" or ".htm";

@@ -11,8 +11,14 @@ public sealed class ChatCompleteRequest
     [JsonPropertyName("skill_invocation")]
     public AiAgent.Backend.Services.Chat.ChatSkillReference? SkillInvocation { get; set; }
 
+    [JsonPropertyName("skill_invocations")]
+    public List<AiAgent.Backend.Services.Chat.ChatSkillReference> SkillInvocations { get; set; } = [];
+
     [JsonIgnore]
     public System.Text.Json.JsonElement? ResolvedSkillSnapshot { get; set; }
+
+    [JsonIgnore]
+    public List<System.Text.Json.JsonElement> ResolvedSkillSnapshots { get; set; } = [];
 
     [JsonPropertyName("debug_trace")]
     public bool DebugTrace { get; set; }

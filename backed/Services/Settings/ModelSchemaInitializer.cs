@@ -11,6 +11,7 @@ using AiAgent.Backend.Entities.Push;
 using AiAgent.Backend.Entities.Task;
 using AiAgent.Backend.Entities.WorkCanvas;
 using SqlSugar;
+using System.Diagnostics;
 
 namespace AiAgent.Backend.Services.Settings;
 
@@ -36,10 +37,14 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
     /// </summary>
     public void Initialize()
     {
-        EnsureChatSessionColumns();
-        EnsureChatProjectPreferenceTable();
-        EnsureChatSidebarPreferenceTable();
-        _db.CodeFirst.InitTables(
+        var total = Stopwatch.StartNew();
+        _logger.LogInformation("Database startup initialization started.");
+        RunStage("chat-compatibility", () => {
+            EnsureChatSessionColumns();
+            EnsureChatProjectPreferenceTable();
+            EnsureChatSidebarPreferenceTable();
+        });
+        RunStage("entity-tables", () => _db.CodeFirst.InitTables(
             typeof(AiModelProvider),
             typeof(AiModelProfile),
             typeof(AiModel),
@@ -84,17 +89,33 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiProjectPushBinding),
             typeof(AiPushOutboxMessage),
             typeof(AiPushAuditLog),
-            typeof(AiDingTalkGroupAgentSession));
-        _db.CodeFirst.InitTables(typeof(AiWorkCanvas), typeof(AiWorkCanvasNode), typeof(AiWorkCanvasEdge), typeof(AiCanvasDelivery), typeof(AiWorkCanvasRun), typeof(AiWorkCanvasRunNode));
+            typeof(AiDingTalkGroupAgentSession)));
+        RunStage("canvas-tables", () => _db.CodeFirst.InitTables(typeof(AiWorkCanvas), typeof(AiWorkCanvasNode), typeof(AiWorkCanvasEdge), typeof(AiCanvasDelivery), typeof(AiWorkCanvasRun), typeof(AiWorkCanvasRunNode)));
 
         // InitTables creates the table for a new database. Existing tables need
         // an explicit additive migration because SqlSugar does not reliably add
         // newly introduced columns to legacy tables.
-        EnsureProjectAutoGitUpdateColumns();
-        EnsurePushColumns();
-        EnsureColumns();
-        EnsureIndexes();
-        SeedProviders();
+        RunStage("additive-columns", () => {
+            EnsureProjectAutoGitUpdateColumns();
+            EnsurePushColumns();
+            EnsureColumns();
+        });
+        RunStage("indexes", EnsureIndexes);
+        RunStage("provider-seed", SeedProviders);
+        _logger.LogInformation("Database startup initialization completed in {ElapsedMs}ms.", total.ElapsedMilliseconds);
+    }
+
+    private void RunStage(string stage, Action action)
+    {
+        var timer = Stopwatch.StartNew();
+        _logger.LogInformation("Database startup stage {Stage} started.", stage);
+        try { action(); }
+        catch
+        {
+            _logger.LogWarning("Database startup stage {Stage} failed after {ElapsedMs}ms.", stage, timer.ElapsedMilliseconds);
+            throw;
+        }
+        _logger.LogInformation("Database startup stage {Stage} completed in {ElapsedMs}ms.", stage, timer.ElapsedMilliseconds);
     }
 
     private void EnsureColumns()
@@ -316,134 +337,135 @@ END
 
     private void EnsureIndexes()
     {
-        ExecuteIndexSql("""
+        var statements = new List<string>();
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_sidebar_pref_UserId' AND object_id = OBJECT_ID(N'dbo.ai_chat_sidebar_pref'))
     CREATE UNIQUE INDEX UX_ai_chat_sidebar_pref_UserId ON dbo.ai_chat_sidebar_pref(UserId);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_model_provider_Service_Code' AND object_id = OBJECT_ID(N'dbo.ai_model_provider'))
     CREATE UNIQUE INDEX UX_ai_model_provider_Service_Code ON dbo.ai_model_provider(ServiceType, ProviderCode) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_model_profile_Service_Active' AND object_id = OBJECT_ID(N'dbo.ai_model_profile'))
     CREATE INDEX IX_ai_model_profile_Service_Active ON dbo.ai_model_profile(ServiceType, IsActive) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_model_profile_OneActive' AND object_id = OBJECT_ID(N'dbo.ai_model_profile'))
     CREATE UNIQUE INDEX UX_ai_model_profile_OneActive ON dbo.ai_model_profile(ServiceType) WHERE IsDeleted = 0 AND IsActive = 1;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_model_Profile' AND object_id = OBJECT_ID(N'dbo.ai_model'))
     CREATE INDEX IX_ai_model_Profile ON dbo.ai_model(ProfileId, SortOrder) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_model_Profile_ModelId' AND object_id = OBJECT_ID(N'dbo.ai_model'))
     CREATE UNIQUE INDEX UX_ai_model_Profile_ModelId ON dbo.ai_model(ProfileId, ModelId) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_model_diagnostic_run_Service_Time' AND object_id = OBJECT_ID(N'dbo.ai_model_diagnostic_run'))
     CREATE INDEX IX_ai_model_diagnostic_run_Service_Time ON dbo.ai_model_diagnostic_run(ServiceType, StartedAt DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_setting_snapshot_Key_Time' AND object_id = OBJECT_ID(N'dbo.ai_setting_snapshot'))
     CREATE INDEX IX_ai_setting_snapshot_Key_Time ON dbo.ai_setting_snapshot(SettingKey, AppliedAt DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_prompt_template_Visible' AND object_id = OBJECT_ID(N'dbo.ai_prompt_template'))
     CREATE INDEX IX_ai_prompt_template_Visible ON dbo.ai_prompt_template(IsDeleted, Visibility, Stage, UpdatedAt DESC);
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_prompt_template_user_state_User_Template' AND object_id = OBJECT_ID(N'dbo.ai_prompt_template_user_state'))
     CREATE UNIQUE INDEX UX_ai_prompt_template_user_state_User_Template ON dbo.ai_prompt_template_user_state(UserId, TemplateId);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_knowledge_base_Name' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_base'))
     CREATE UNIQUE INDEX UX_ai_knowledge_base_Name ON dbo.ai_knowledge_base(Name) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_document_Kb_Status' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_document'))
     CREATE INDEX IX_ai_knowledge_document_Kb_Status ON dbo.ai_knowledge_document(KnowledgeBaseId, Status) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_parsed_document_Document' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_parsed_document'))
     CREATE INDEX IX_ai_knowledge_parsed_document_Document ON dbo.ai_knowledge_parsed_document(DocumentId, CreatedAt DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_artifact_Document' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_artifact'))
     CREATE INDEX IX_ai_knowledge_artifact_Document ON dbo.ai_knowledge_artifact(DocumentId, CreatedAt DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_index_version_Kb_Status' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_index_version'))
     CREATE INDEX IX_ai_knowledge_index_version_Kb_Status ON dbo.ai_knowledge_index_version(KnowledgeBaseId, Status, VersionNo DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_chunk_Version' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_chunk'))
     CREATE INDEX IX_ai_knowledge_chunk_Version ON dbo.ai_knowledge_chunk(IndexVersionId, DocumentId, ChunkNo);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_knowledge_job_Kb_Status' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_job'))
     CREATE INDEX IX_ai_knowledge_job_Kb_Status ON dbo.ai_knowledge_job(KnowledgeBaseId, Status, CreatedAt DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_knowledge_context_node_Kb_Uri' AND object_id = OBJECT_ID(N'dbo.ai_knowledge_context_node'))
     CREATE UNIQUE INDEX UX_ai_knowledge_context_node_Kb_Uri ON dbo.ai_knowledge_context_node(KnowledgeBaseId, Uri);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_repository_Name' AND object_id = OBJECT_ID(N'dbo.ai_code_repository'))
     CREATE UNIQUE INDEX UX_ai_code_repository_Name ON dbo.ai_code_repository(Name) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_repository_RootPath' AND object_id = OBJECT_ID(N'dbo.ai_code_repository'))
     CREATE UNIQUE INDEX UX_ai_code_repository_RootPath ON dbo.ai_code_repository(RootPath) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_project_Name' AND object_id = OBJECT_ID(N'dbo.ai_code_project'))
     CREATE UNIQUE INDEX UX_ai_code_project_Name ON dbo.ai_code_project(Name) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_project_RootPath' AND object_id = OBJECT_ID(N'dbo.ai_code_project'))
     CREATE UNIQUE INDEX UX_ai_code_project_RootPath ON dbo.ai_code_project(RootPath) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_code_repository_Project' AND object_id = OBJECT_ID(N'dbo.ai_code_repository'))
     CREATE INDEX IX_ai_code_repository_Project ON dbo.ai_code_repository(ProjectId, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_code_repo_run_Project_Repo_Role' AND object_id = OBJECT_ID(N'dbo.ai_code_repo_run'))
     CREATE UNIQUE INDEX UX_ai_code_repo_run_Project_Repo_Role ON dbo.ai_code_repo_run(ProjectId, RepositoryId, Role);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_code_repo_run_Project_Enabled' AND object_id = OBJECT_ID(N'dbo.ai_code_repo_run'))
     CREATE INDEX IX_ai_code_repo_run_Project_Enabled ON dbo.ai_code_repo_run(ProjectId, IsEnabled, Role);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_Username' AND object_id = OBJECT_ID(N'dbo.ai_user'))
     CREATE UNIQUE INDEX UX_ai_user_Username ON dbo.ai_user(Username);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_code_project_User_Project' AND object_id = OBJECT_ID(N'dbo.ai_user_code_project'))
     CREATE UNIQUE INDEX UX_ai_user_code_project_User_Project ON dbo.ai_user_code_project(UserId, CodeProjectId);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_user_code_project_Project' AND object_id = OBJECT_ID(N'dbo.ai_user_code_project'))
     CREATE INDEX IX_ai_user_code_project_Project ON dbo.ai_user_code_project(CodeProjectId, UserId);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_user_session_TokenHash' AND object_id = OBJECT_ID(N'dbo.ai_user_session'))
     CREATE UNIQUE INDEX UX_ai_user_session_TokenHash ON dbo.ai_user_session(TokenHash);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_session_User_Updated' AND object_id = OBJECT_ID(N'dbo.ai_chat_session'))
     CREATE INDEX IX_ai_chat_session_User_Updated ON dbo.ai_chat_session(UserId, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_session_User_Project_Sort' AND object_id = OBJECT_ID(N'dbo.ai_chat_session'))
     CREATE INDEX IX_ai_chat_session_User_Project_Sort ON dbo.ai_chat_session(UserId, CodeProjectId, SortOrder DESC, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_session_User_Pinned_Priority' AND object_id = OBJECT_ID(N'dbo.ai_chat_session'))
     CREATE INDEX IX_ai_chat_session_User_Pinned_Priority ON dbo.ai_chat_session(UserId, IsPinned DESC, Priority, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_chat_proj_pref_User_Project' AND object_id = OBJECT_ID(N'dbo.ai_chat_proj_pref'))
     CREATE UNIQUE INDEX UX_ai_chat_proj_pref_User_Project ON dbo.ai_chat_proj_pref(UserId, CodeProjectId);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_message_Session_Id' AND object_id = OBJECT_ID(N'dbo.ai_chat_message'))
     CREATE INDEX IX_ai_chat_message_Session_Id ON dbo.ai_chat_message(SessionId, Id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_chat_debug_trace_User_Session_Expiry' AND object_id = OBJECT_ID(N'dbo.ai_chat_debug_trace'))
@@ -453,57 +475,57 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_agent_run_User_Ses
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_agent_run_event_Run_Sequence' AND object_id = OBJECT_ID(N'dbo.ai_agent_run_event'))
     CREATE UNIQUE INDEX UX_ai_agent_run_event_Run_Sequence ON dbo.ai_agent_run_event(RunId, Sequence);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_Scope_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_item'))
     CREATE INDEX IX_ai_memory_item_User_Scope_Status ON dbo.ai_memory_item(UserId, ScopeType, Status, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_item_User_Project_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_item'))
     CREATE INDEX IX_ai_memory_item_User_Project_Status ON dbo.ai_memory_item(UserId, CodeProjectId, Status, IsPinned DESC, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_observation_User_Project_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_observation'))
     CREATE INDEX IX_ai_memory_observation_User_Project_Time ON dbo.ai_memory_observation(UserId, CodeProjectId, CreatedAt DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_observation_Session_Processed_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_observation'))
     CREATE INDEX IX_ai_memory_observation_Session_Processed_Time ON dbo.ai_memory_observation(SessionId, IsProcessed, CreatedAt) WHERE SessionId IS NOT NULL;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_candidate_User_Status_Time' AND object_id = OBJECT_ID(N'dbo.ai_memory_candidate'))
     CREATE INDEX IX_ai_memory_candidate_User_Status_Time ON dbo.ai_memory_candidate(UserId, Status, CreatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_memory_candidate_User_Project_Status' AND object_id = OBJECT_ID(N'dbo.ai_memory_candidate'))
     CREATE INDEX IX_ai_memory_candidate_User_Project_Status ON dbo.ai_memory_candidate(UserId, CodeProjectId, Status, CreatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_User_Time' AND object_id = OBJECT_ID(N'dbo.ai_usage_record'))
     CREATE INDEX IX_ai_usage_record_User_Time ON dbo.ai_usage_record(UserId, CreatedAt DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_usage_record_Provider_Time' AND object_id = OBJECT_ID(N'dbo.ai_usage_record'))
     CREATE INDEX IX_ai_usage_record_Provider_Time ON dbo.ai_usage_record(ProviderKind, ProviderId, CreatedAt DESC);
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_git_account_User_Provider_Username' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))
     CREATE UNIQUE INDEX UX_ai_git_account_User_Provider_Username ON dbo.ai_git_account(UserId, Provider, Username) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_project_task_User_Project_WorkItem' AND object_id = OBJECT_ID(N'dbo.ai_project_task'))
     CREATE UNIQUE INDEX UX_ai_project_task_User_Project_WorkItem ON dbo.ai_project_task(UserId, CodeProjectId, WorkItemId) WHERE IsDeleted = 0 AND WorkItemId IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_project_task_User_Project_Updated' AND object_id = OBJECT_ID(N'dbo.ai_project_task'))
     CREATE INDEX IX_ai_project_task_User_Project_Updated ON dbo.ai_project_task(UserId, CodeProjectId, UpdatedAt DESC) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_git_account_User_Active' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))
     CREATE INDEX IX_ai_git_account_User_Active ON dbo.ai_git_account(UserId, IsActive) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_git_account_OneActive' AND object_id = OBJECT_ID(N'dbo.ai_git_account'))
     CREATE UNIQUE INDEX UX_ai_git_account_OneActive ON dbo.ai_git_account(UserId) WHERE IsDeleted = 0 AND IsActive = 1;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_push_channel_Name' AND object_id = OBJECT_ID(N'dbo.ai_push_channel'))
     CREATE UNIQUE INDEX UX_ai_push_channel_Name ON dbo.ai_push_channel(Name) WHERE IsDeleted = 0;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_push_channel_Enabled' AND object_id = OBJECT_ID(N'dbo.ai_push_channel'))
@@ -511,13 +533,13 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_push_channel_Enabl
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_push_channel_ActiveStreamIdentity' AND object_id = OBJECT_ID(N'dbo.ai_push_channel'))
     CREATE UNIQUE INDEX UX_ai_push_channel_ActiveStreamIdentity ON dbo.ai_push_channel(DingTalkRobotCode, StreamClientId) WHERE IsDeleted = 0 AND IsEnabled = 1 AND StreamEnabled = 1 AND DingTalkRobotCode IS NOT NULL AND StreamClientId IS NOT NULL;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_project_push_binding_Project_Channel_Trigger' AND object_id = OBJECT_ID(N'dbo.ai_project_push_binding'))
     CREATE UNIQUE INDEX UX_ai_project_push_binding_Project_Channel_Trigger ON dbo.ai_project_push_binding(ProjectId, PushChannelId, TriggerType) WHERE IsDeleted = 0;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_project_push_binding_Project_Enabled' AND object_id = OBJECT_ID(N'dbo.ai_project_push_binding'))
     CREATE INDEX IX_ai_project_push_binding_Project_Enabled ON dbo.ai_project_push_binding(ProjectId, TriggerType, IsEnabled) WHERE IsDeleted = 0;
 """);
-        ExecuteIndexSql("""
+        statements.Add("""
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_push_outbox_DedupKey' AND object_id = OBJECT_ID(N'dbo.ai_push_outbox_message'))
     CREATE UNIQUE INDEX UX_ai_push_outbox_DedupKey ON dbo.ai_push_outbox_message(DedupKey);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_push_outbox_Status_Next' AND object_id = OBJECT_ID(N'dbo.ai_push_outbox_message'))
@@ -529,6 +551,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_ai_dingtalk_group_age
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ai_dingtalk_group_agent_session_Status' AND object_id = OBJECT_ID(N'dbo.ai_dingtalk_group_agent_session'))
     CREATE INDEX IX_ai_dingtalk_group_agent_session_Status ON dbo.ai_dingtalk_group_agent_session(Status, CreatedAt);
 """);
+        _db.Ado.ExecuteCommand(string.Join(Environment.NewLine, statements));
     }
 
     private void SeedProviders()

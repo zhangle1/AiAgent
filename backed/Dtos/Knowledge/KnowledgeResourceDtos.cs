@@ -9,6 +9,8 @@ public sealed class KnowledgeResourceNodeDto
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("kind")] public string Kind { get; set; } = "directory";
     [JsonPropertyName("status")] public string Status { get; set; } = "ready";
+    [JsonPropertyName("source_status")] public string? SourceStatus { get; set; }
+    [JsonPropertyName("source_message")] public string? SourceMessage { get; set; }
     [JsonPropertyName("document_id")] public long? DocumentId { get; set; }
     [JsonPropertyName("knowledge_base_name")] public string? KnowledgeBaseName { get; set; }
     [JsonPropertyName("extension")] public string? Extension { get; set; }

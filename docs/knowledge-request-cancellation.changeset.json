@@ -1,0 +1,67 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "修复知识库页面请求取消导致的鉴权未处理异常",
+  "base_commit": "8644c413e84e4bdc9f902da0f8e8e75f5825ebe1",
+  "platform_change_set_id": null,
+  "status": "ready-for-human-review",
+  "note": "本地代码变更及自动校验快照；未提交、推送、部署或重启用户服务。Program.cs 同时含后续失效记录清理服务注册，完整当前快照见 knowledge-stale-record-cleanup.changeset.json。既有 appsettings.example.json 与 next-env.d.ts 改动不包含在变更集。",
+  "diagnosis": "浏览器取消清理请求后，RequireUser 等待已取消的鉴权任务产生 TaskCanceledException。现于清理服务内部识别客户端断开并返回取消结果，控制器映射为 HTTP 499；提交前检查取消并整批回滚。正常鉴权、HTTP 200 JSON 和清理权限保持。",
+  "checks": {
+    "reproduction_before_fix": "3 authentication cases failed with the screenshot stack; 8 of 12 request/auth cases failed with the pass-through boundary",
+    "focused_tests": "passed: 14 cases, including 20 abandoned/fresh request cycles and existing session-scope/expiry/revocation regression",
+    "backend_compile": "passed during dotnet test, isolated output in TEMP; existing compiler warnings remain",
+    "whitespace": "passed: git diff --check",
+    "encoding": "passed: strict UTF-8 without BOM, LF",
+    "real_database_and_provider": "not accessed; synthetic contexts and isolated fixture database only",
+    "live_browser_debugger": "not run; restart a rebuilt backend to verify in the actual browser/debugger",
+    "cleanup_cancellation_reproduction": "Before fix: 4 failed / 3 passed at the screenshot authentication and gate cancellation paths. After fix: all 9 cancellation cases passed, including no TaskCanceledException for pre-cancelled read/write requests.",
+    "cleanup_cancellation_rollback": "passed: cancellation after the SQL soft delete and before commit returns a cancelled result and rolls back the fixture record",
+    "current_backend_regression": "passed: 127 KnowledgeWorkspace, cleanup HTTP/cancellation, AuthCancellation, RequestCancellationMiddleware and Swagger cases; then 10 focused cases passed after adding 3 further cancellation/rollback tests"
+  },
+  "files": [
+    {
+      "path": "backed/Program.cs",
+      "sha256": "8ee5a7642cb63b433c137f72b222691a4b57ce9ca9d4896f2c76745ede77868c"
+    },
+    {
+      "path": "backed/Services/Auth/AuthService.cs",
+      "sha256": "e4532f18e420fe8320ba43db5ecc4f4cf316a33a23a2fae72f27fd06314287f8"
+    },
+    {
+      "path": "backed/Middleware/RequestCancellationMiddleware.cs",
+      "sha256": "40736e361a440b1f3febba44365cb8d18b2220e0684d5a4759c77e7d821a5ebf"
+    },
+    {
+      "path": "backed.tests/AuthCancellationTests.cs",
+      "sha256": "84e2a19574602188d39707a804794aaec3d6d58965a1505156c7e90e1b1eee68"
+    },
+    {
+      "path": "backed.tests/RequestCancellationMiddlewareTests.cs",
+      "sha256": "d77645c008a1bc10f759dda4a9b31cd80a749f198b6352611b22d4ce32b1cd87"
+    },
+    {
+      "path": "docs/knowledge-request-cancellation.md",
+      "sha256": "1b218eb73de7d05f69db399cbbe44d6b7e970a1332bbf31fea7ada0146302576"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceCleanupService.cs",
+      "sha256": "724a29fbfd66191c093296aa3628454c48e3303b81c5c703edbbead885b9bfd6"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceCleanupAppService.cs",
+      "sha256": "74e59076f21e2647a12c760e0681561bde443826e244615aec20e60bcda99cf3"
+    },
+    {
+      "path": "backed.tests/KnowledgeCleanupCancellationTests.cs",
+      "sha256": "a263aa77328c74e77c10d8d7b58993e4079747c0ee1e3cac7c3623e8e2dfe62d"
+    },
+    {
+      "path": "backed.tests/KnowledgeStaleResourceTests.cs",
+      "sha256": "54774288687d9d2d3bb1e97e2c7d38c9afc61fcc00811fb00f99a1795639ac1b"
+    },
+    {
+      "path": "docs/knowledge-stale-record-cleanup.md",
+      "sha256": "03c52b230dabcaad5f52d56baa0941303772d35ba6a3569e2005161f066466b9"
+    }
+  ]
+}

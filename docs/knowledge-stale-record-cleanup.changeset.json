@@ -1,0 +1,128 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "修复知识库旧资料路径异常并增加失效记录清理",
+  "base_commit": "8644c413e84e4bdc9f902da0f8e8e75f5825ebe1",
+  "platform_change_set_id": null,
+  "status": "ready-for-human-review",
+  "note": "包含前一轮请求取消修复和本轮失效历史记录清理的当前代码快照。未修改真实配置、未操作真实知识数据库或删除用户文件，未提交、推送、部署或重启后端。既有 backed/appsettings.example.json 与 front/next-env.d.ts 修改排除。",
+  "diagnosis": "浏览器取消清理请求后，RequireUser 等待已取消的鉴权任务产生 TaskCanceledException。现于清理服务内部识别客户端断开并返回取消结果，控制器映射为 HTTP 499；提交前检查取消并整批回滚。正常鉴权、HTTP 200 JSON 和清理权限保持。",
+  "checks": {
+    "reproduction": "passed: old-root and missing-file cases failed before fix at the original SourcePath guard and pass after fix",
+    "backend_regression": "passed: 117 KnowledgeWorkspace/AuthCancellation/RequestCancellationMiddleware cases",
+    "cleanup_guards": "passed: own/shared scope, other-user denial, active jobs, forged ids, restored files, changed tasks/records, whole-batch rollback, original-file preservation",
+    "frontend_types": "passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "cleanup_browser": "passed: knowledge-cleanup.browser.mjs, including HTTP 404 explanation, rescan recovery, HTTP 409 snapshot rejection, successful cleanup and 390px layout",
+    "existing_layout_browser": "passed: knowledge-layout.browser.mjs",
+    "mobile_visual": "passed: 390px screenshot inspected",
+    "whitespace_and_encoding": "passed: git diff --check; strict UTF-8 without BOM, LF",
+    "real_data_cleanup": "not executed; user reviews and confirms records in the UI after backend restart",
+    "review_files": "SHA-256 verified after writing snapshot",
+    "real_http_cleanup": "passed: KnowledgeCleanupHttpTests starts isolated Furion HTTP host, GET preview -> exact POST URL -> HTTP 200 and fixture soft delete; old declaration reproduced HTTP 404 with cleanup/cleanup route",
+    "route_and_cleanup_regression": "passed: 13 focused cleanup/read and Swagger/HTTP route tests after route fix",
+    "cleanup_cancellation_reproduction": "Before fix: 4 failed / 3 passed at the screenshot authentication and gate cancellation paths. After fix: all 9 cancellation cases passed, including no TaskCanceledException for pre-cancelled read/write requests.",
+    "cleanup_cancellation_rollback": "passed: cancellation after the SQL soft delete and before commit returns a cancelled result and rolls back the fixture record",
+    "current_backend_regression": "passed: 127 KnowledgeWorkspace, cleanup HTTP/cancellation, AuthCancellation, RequestCancellationMiddleware and Swagger cases; then 10 focused cases passed after adding 3 further cancellation/rollback tests"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "5c03443a5d885d13ba69ffaa084a8fbb2323688c977ed1f7e332396412519354"
+    },
+    {
+      "path": "README.md",
+      "sha256": "34d71cbbadf7391893dd935d3126f3647d4960e34807282d1434503c6a5a124e"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "8ee5a7642cb63b433c137f72b222691a4b57ce9ca9d4896f2c76745ede77868c"
+    },
+    {
+      "path": "backed/Services/Auth/AuthService.cs",
+      "sha256": "e4532f18e420fe8320ba43db5ecc4f4cf316a33a23a2fae72f27fd06314287f8"
+    },
+    {
+      "path": "backed/Middleware/RequestCancellationMiddleware.cs",
+      "sha256": "40736e361a440b1f3febba44365cb8d18b2220e0684d5a4759c77e7d821a5ebf"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "632133b9892689ed7355c83ab7f0fea900b517610c6dbce40067b6db8ffd78ee"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeCleanupDtos.cs",
+      "sha256": "ac98940bd206cda98fe734841a1b592e27f46e35f43eee3ea1f7432208a331f4"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "abd0a270bb547d45d2bf26def792e84b843670e01aedbf9feee98340c1c7e8d2"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeSourceFile.cs",
+      "sha256": "73e1f1ba3ce85229f4a53067df1d51f1075074c69298c347a0d1882dfb70f04c"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceCleanupService.cs",
+      "sha256": "724a29fbfd66191c093296aa3628454c48e3303b81c5c703edbbead885b9bfd6"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceCleanupAppService.cs",
+      "sha256": "74e59076f21e2647a12c760e0681561bde443826e244615aec20e60bcda99cf3"
+    },
+    {
+      "path": "backed.tests/AuthCancellationTests.cs",
+      "sha256": "84e2a19574602188d39707a804794aaec3d6d58965a1505156c7e90e1b1eee68"
+    },
+    {
+      "path": "backed.tests/RequestCancellationMiddlewareTests.cs",
+      "sha256": "d77645c008a1bc10f759dda4a9b31cd80a749f198b6352611b22d4ce32b1cd87"
+    },
+    {
+      "path": "backed.tests/KnowledgeStaleResourceTests.cs",
+      "sha256": "54774288687d9d2d3bb1e97e2c7d38c9afc61fcc00811fb00f99a1795639ac1b"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "ac5c02249baf68b5ca6bc23c3538202bb264b328f68ba14cb518b3435f0bef13"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeCleanupDialog.tsx",
+      "sha256": "6b76aa79c9c192c2f494749bf30454ce70f5243f5cdb43ea1f8902eb70a54758"
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "e35593dc8686acab4508fd7009b0c528709d9c3980eabecab1517895cb3e6249"
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "012c06a65572f1c74dd48de09c1dad2ea8bd0ce71c209d669e021e79ce34c69d"
+    },
+    {
+      "path": "front/lib/knowledge-cleanup-types.ts",
+      "sha256": "657546ae1009fcf935d607b64da05381a726ab642c20a59fb4844f7160ef03af"
+    },
+    {
+      "path": "front/tests/knowledge-cleanup.browser.mjs",
+      "sha256": "58f4583ae3c66c4f0d6ab349169cd7dd14cbaeab235dc5a53178daeae2c6e404"
+    },
+    {
+      "path": "docs/knowledge-request-cancellation.md",
+      "sha256": "1b218eb73de7d05f69db399cbbe44d6b7e970a1332bbf31fea7ada0146302576"
+    },
+    {
+      "path": "docs/knowledge-request-cancellation.changeset.json",
+      "sha256": "cfb06f32139a0af759ff046f7d38d5bc37758047cd78819727ca724394be4cfa"
+    },
+    {
+      "path": "docs/knowledge-stale-record-cleanup.md",
+      "sha256": "03c52b230dabcaad5f52d56baa0941303772d35ba6a3569e2005161f066466b9"
+    },
+    {
+      "path": "backed.tests/KnowledgeCleanupHttpTests.cs",
+      "sha256": "b8d3d1e5999ba74bf9c1651cf8552007ac31559ddf090409743561d9f9aefd68"
+    },
+    {
+      "path": "backed.tests/KnowledgeCleanupCancellationTests.cs",
+      "sha256": "a263aa77328c74e77c10d8d7b58993e4079747c0ee1e3cac7c3623e8e2dfe62d"
+    }
+  ]
+}

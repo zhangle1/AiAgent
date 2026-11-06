@@ -1,9 +1,22 @@
 import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
+import type { KnowledgeCleanupPreview, KnowledgeCleanupResult } from "@/lib/knowledge-cleanup-types";
 
 import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage, KnowledgeResourceAnswer, KnowledgeResourceImport, KnowledgeResourceNode, KnowledgeResourceRead, PlatformSessionImportOptions, PlatformSessionImportResult } from "@/lib/knowledge-types";
 
 export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<KnowledgeResourceNode[]> {
   return parseJson(await fetch("/api/v1/knowledge-resources/tree", { cache: "no-store", signal }));
+}
+export async function previewKnowledgeCleanup(signal?: AbortSignal): Promise<KnowledgeCleanupPreview> {
+  return parseJson(await fetch("/api/v1/knowledge-resources/cleanup/preview", { cache: "no-store", signal }));
+}
+export async function cleanupKnowledgeResources(documentIds: number[], snapshot: string): Promise<KnowledgeCleanupResult> {
+  const response = await fetch("/api/v1/knowledge-resources/cleanup", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_ids: documentIds, snapshot_sha256: snapshot }),
+  });
+  if (response.status === 404)
+    throw new Error("清理接口不可用（HTTP 404）。请更新并重启后端，然后点击“重新扫描”重试。");
+  return parseJson(response);
 }
 export async function getKnowledgeResourceProcessing(signal?: AbortSignal): Promise<import("@/lib/knowledge-types").KnowledgeResourceProcessing[]> {
   return parseJson(await fetch("/api/v1/knowledge-resources/processing", { cache: "no-store", signal }));

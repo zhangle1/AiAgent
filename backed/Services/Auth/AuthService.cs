@@ -133,7 +133,8 @@ public sealed class AuthService : IAuthService
 
     private Task<AuthenticatedUser?> TryGetUserAsync(HttpContext context, string? purpose, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        if (cancellationToken.IsCancellationRequested)
+            return Task.FromCanceled<AuthenticatedUser?>(cancellationToken);
         var token = ResolveToken(context);
         if (purpose == "kunbuddy-client" && string.IsNullOrWhiteSpace(token))
             token = context.Request.Headers["x-api-key"].FirstOrDefault() ?? context.Request.Headers["x-goog-api-key"].FirstOrDefault();

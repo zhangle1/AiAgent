@@ -23,10 +23,13 @@ using AiAgent.Backend.Services.WorkCanvas;
 using AiAgent.Backend.Services.AgentRuntime;
 using AiAgent.Backend.Services.TaskCenter;
 using AiAgent.Backend.Services.ChangeAtlas;
+using AiAgent.Backend.Middleware;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.OpenApi.Models;
 using SqlSugar;
+using System.Diagnostics;
 
+var startupTimer = Stopwatch.StartNew();
 var builder = WebApplication.CreateBuilder(args);
 // Kept outside source control for local deployment settings and credentials.
 builder.Configuration.AddJsonFile("appsettings.dev.json", optional: true, reloadOnChange: true);
@@ -143,6 +146,7 @@ builder.Services.AddSingleton<KnowledgeSourceSearchService>();
 builder.Services.AddSingleton<KnowledgeChainDiagnosticsService>();
 builder.Services.AddSingleton<KnowledgeCompilationWorker>();
 builder.Services.AddSingleton<KnowledgeResourceService>();
+builder.Services.AddSingleton<KnowledgeResourceCleanupService>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.Knowledge.KnowAgent.IKnowledgeAgentTools, AiAgent.Backend.Services.Knowledge.KnowAgent.KnowledgeAgentTools>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.Knowledge.KnowAgent.KnowledgeAgentService>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.Knowledge.KnowAgent.KnowledgeAgentChatEngine>();
@@ -219,6 +223,9 @@ builder.Services.AddSingleton<ISqlSugarClient>(_ =>
 });
 
 var app = builder.Build();
+app.Logger.LogInformation("Backend startup services built in {ElapsedMs}ms.", startupTimer.ElapsedMilliseconds);
+app.Lifetime.ApplicationStarted.Register(() =>
+    app.Logger.LogInformation("Backend startup ready after {ElapsedMs}ms.", startupTimer.ElapsedMilliseconds));
 
 if (builder.Configuration.GetValue("Database:CodeFirst", true))
 {
@@ -239,7 +246,10 @@ else
 
 try
 {
+    var administratorTimer = Stopwatch.StartNew();
+    app.Logger.LogInformation("Backend startup administrator check started.");
     await app.Services.GetRequiredService<IAuthService>().EnsureInitialAdministratorAsync(CancellationToken.None);
+    app.Logger.LogInformation("Backend startup administrator check completed in {ElapsedMs}ms.", administratorTimer.ElapsedMilliseconds);
 }
 catch (Exception ex)
 {
@@ -247,6 +257,7 @@ catch (Exception ex)
     throw;
 }
 
+app.UseMiddleware<RequestCancellationMiddleware>();
 app.UseInject();
 
 app.UseSwagger();
