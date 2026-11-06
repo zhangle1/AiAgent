@@ -161,6 +161,28 @@ public sealed class AdminAppService : IDynamicApiController
         }
     }
 
+    [HttpGet("usage/export")]
+    public async Task<IActionResult> ExportUsage([FromQuery] string period = "day", [FromQuery] int days = 365,
+        [FromQuery(Name = "user_id")] string? userId = null, CancellationToken cancellationToken = default,
+        [FromQuery(Name = "start_date")] string? startDate = null, [FromQuery(Name = "end_date")] string? endDate = null,
+        [FromQuery(Name = "project_id")] long? projectId = null)
+    {
+        var administrator = await RequireAdministrator(cancellationToken);
+        try
+        {
+            var report = await _admin.GetUsageReportAsync(administrator, period, days, userId, cancellationToken, startDate, endDate, projectId);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new FileContentResult(AdminUsageExcelExporter.Export(report, userId, projectId), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            {
+                FileDownloadName = $"用户流量_{report.From:yyyy-MM-dd}_{report.To.AddDays(-1):yyyy-MM-dd}.xlsx"
+            };
+        }
+        catch (ArgumentException exception)
+        {
+            return new BadRequestObjectResult(new { message = exception.Message });
+        }
+    }
+
     [HttpGet("uploads")]
     public async Task<List<ChatUploadFileDto>> ListUploads([FromQuery(Name = "user_id")] string? userId, [FromQuery] string? keyword, [FromQuery] string? kind, [FromQuery(Name = "session_id")] string? sessionId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
     {

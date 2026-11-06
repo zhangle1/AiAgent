@@ -34,5 +34,24 @@ export function getAdminUsage(period: "day" | "week" | "month" | "year", days: n
   return request<AdminUsageReport>(`/api/v1/admin/usage?${new URLSearchParams({ period, days: String(days), ...(userId ? { user_id: userId } : {}), ...filters })}`, { signal });
 }
 
+export async function exportAdminUsage(report: AdminUsageReport, userId?: string, projectId?: string) {
+  const endDate = new Date(Date.parse(report.to) - 86400000).toISOString().slice(0, 10);
+  const query = new URLSearchParams({ period: report.period, start_date: report.from.slice(0, 10), end_date: endDate,
+    ...(userId ? { user_id: userId } : {}), ...(projectId ? { project_id: projectId } : {}) });
+  const response = await fetch(`/api/v1/admin/usage/export?${query}`, { cache: "no-store" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(typeof payload.message === "string" ? payload.message : `导出失败（HTTP ${response.status}）`);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `用户流量_${report.from.slice(0, 10)}_${endDate}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function getAdminUploads(filters: { userId?: string; keyword?: string; kind?: string; sessionId?: string } = {}) { return request<ChatUploadFile[]>(`/api/v1/admin/uploads?${new URLSearchParams({ limit: "200", ...(filters.userId ? { user_id: filters.userId } : {}), ...(filters.keyword ? { keyword: filters.keyword } : {}), ...(filters.kind ? { kind: filters.kind } : {}), ...(filters.sessionId ? { session_id: filters.sessionId } : {}) })}`); }
 export function adminChatUploadContentUrl(attachmentId: string, userId: string) { return `/api/v1/admin/uploads/${encodeURIComponent(attachmentId)}/content?user_id=${encodeURIComponent(userId)}`; }

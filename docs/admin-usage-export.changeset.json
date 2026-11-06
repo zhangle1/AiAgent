@@ -1,0 +1,47 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "用户流量按当前筛选导出多 Sheet Excel",
+    "base_commit":  "30309a7ab7aeb7e0b39d5b4f76a10336022097b1",
+    "platform_change_set_id":  null,
+    "note":  "本地可审查变更快照，未提交或推送。",
+    "checks":  {
+                   "backend_admin_usage":  "4 passed (.NET 10 runtime via DOTNET_ROLL_FORWARD=Major; target net9.0)",
+                   "frontend_export":  "1 passed",
+                   "typescript":  "passed",
+                   "whitespace":  "passed"
+               },
+    "files":  [
+                  {
+                      "path":  "AGENTS.md",
+                      "sha256":  "32ad8b17ea8058c86bc0f197330cc3719b05980bc5e9996e2075a07d2145da79"
+                  },
+                  {
+                      "path":  "README.md",
+                      "sha256":  "beeda1c68a333a7b435f955447d6e807dfeb191c2c84bd32a75b62b54c6dc38c"
+                  },
+                  {
+                      "path":  "backed/Services/Admin/AdminAppService.cs",
+                      "sha256":  "e1572d05c7cffdb8430f72cac51d6c1fbe31506eead6a1994f833b4ad183c854"
+                  },
+                  {
+                      "path":  "backed/Services/Admin/AdminUsageExcelExporter.cs",
+                      "sha256":  "36b64d038a7c3fdb19ab8a7afc614e5ccef2083cbb845f1e560f4bc9aa111068"
+                  },
+                  {
+                      "path":  "backed.tests/AdminUsageExcelExporterTests.cs",
+                      "sha256":  "ccd6f1b2a0608470516df7af0dd016e509eb0ecefc2d41b6888bdc9335a1e8b4"
+                  },
+                  {
+                      "path":  "front/components/settings/admin/AdminUsagePage.tsx",
+                      "sha256":  "4d991dd32c350e8cbe82b2df28022bb14ba8c8c98c8c05ab0244366a82489d26"
+                  },
+                  {
+                      "path":  "front/lib/admin-api.ts",
+                      "sha256":  "bcfaed50cb1a00d19f964459420421f471ec4f456fac682490527011d802b395"
+                  },
+                  {
+                      "path":  "front/tests/admin-usage-export.test.mjs",
+                      "sha256":  "a6ffc2864263fba4b02cf3258198b2d1da62fa67279a43712617890a53314225"
+                  }
+              ]
+}

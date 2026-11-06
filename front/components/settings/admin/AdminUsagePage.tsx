@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SettingsPageHeader } from "@/components/settings/layout/SettingsShell";
-import { getAdminUsage, getAdminUsers, type AdminUser } from "@/lib/admin-api";
+import { exportAdminUsage, getAdminUsage, getAdminUsers, type AdminUser } from "@/lib/admin-api";
 import { getAuthStatus } from "@/lib/auth-api";
 import type { AdminUsageReport } from "@/lib/admin-usage-types";
 
@@ -24,6 +24,7 @@ export function AdminUsagePage() {
   const [report, setReport] = useState<AdminUsageReport | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [metric, setMetric] = useState<"sessions" | "turns" | "frequency" | "tokens">("sessions");
   useEffect(() => { let active = true; void getAuthStatus().then(status => { if (active) setAllowed(status.is_admin === true); }).catch(() => { if (active) setAllowed(false); }); return () => { active = false; }; }, []);
@@ -49,11 +50,18 @@ export function AdminUsagePage() {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [allowed, range, month, start, end, period, userId, projectId, refresh]);
+  async function handleExport() {
+    if (!report || loading || exporting) return;
+    setExporting(true); setError("");
+    try { await exportAdminUsage(report, userId || undefined, projectId || undefined); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Excel 导出失败，请重试。"); }
+    finally { setExporting(false); }
+  }
   if (allowed === null) return <p role="status">正在检查权限…</p>;
   if (!allowed) return <p role="alert">没有管理权限。</p>;
   const metricName = { sessions: "活跃会话数", turns: "完成轮次", frequency: "日均轮次", tokens: "Token" }[metric];
   return <section>
-    <SettingsPageHeader title="用户流量" description="按日期、用户和项目查看聊天使用情况与 Token 消耗。" action={<button className={field} onClick={() => setRefresh(value => value + 1)}>刷新</button>} />
+    <SettingsPageHeader title="用户流量" description="按日期、用户和项目查看聊天使用情况与 Token 消耗。" action={<div className="flex flex-wrap gap-2"><button className={`${field} disabled:cursor-not-allowed disabled:opacity-50`} disabled={!report || loading || exporting} onClick={() => void handleExport()}>{exporting ? "正在导出…" : "导出 Excel"}</button><button className={field} onClick={() => setRefresh(value => value + 1)}>刷新</button></div>} />
     <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <label className="grid gap-1 text-xs">聚合维度<select className={field} value={period} onChange={e => setPeriod(e.target.value as typeof period)}><option value="day">按日</option><option value="week">按周</option><option value="month">按月</option><option value="year">按年</option></select></label>
       <label className="grid gap-1 text-xs">时间范围<select className={field} value={range} onChange={e => setRange(e.target.value)}><option value="30">近 30 天</option><option value="90">近 90 天</option><option value="365">近 365 天</option><option value="month">指定月份</option><option value="custom">自定义日期</option></select></label>

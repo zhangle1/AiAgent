@@ -167,4 +167,6 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 管理员用量统计复用 `/api/v1/admin/usage`，日期 start_date/end_date 为 UTC 自然日且结束日包含在内，最多 3650 天；project_id=0 表示未关联／无法归属。通过 UserId + SessionId 左关联当前会话项目，保留软删除会话用量，禁止读取消息正文。会话数按用户和非空会话 ID 去重，日均轮次分母含零活动日；日历桶补零，跨桶会话数不可求和作为全期去重数。
 
+管理员用量 Excel 导出入口为 `GET /api/v1/admin/usage/export`，沿用统计查询参数、管理员校验及 `GetUsageReportAsync`；`AdminUsageExcelExporter` 使用 ClosedXML 输出五个分类 Sheet。前端以已加载报表的 UTC 起止日期固定导出范围，用户／项目筛选同时传递；用户和项目名称作为文本写入，统计值为数值，禁止通过汇总跨桶会话数推导全期会话数。
+
 - 聊天 ZIP/RAR/DLL 解析位于 `ChatFileAttachmentService.Binary.cs`；压缩包校验签名、加密、路径、链接、数量和展开大小，条目仅写入随机受控临时路径并清理，不递归展开。DLL 使用 PEReader 静态读取，不 Assembly.Load、不执行；支持 .NET 应用程序集 DLL。沿用当前用户附件归属与不可信文本上下文。见 `docs/chat-binary-attachments.md`。
