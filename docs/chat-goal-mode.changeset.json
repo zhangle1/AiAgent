@@ -1,0 +1,106 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Chat goal mode with isolated native Codex execution",
+  "base_commit": "69795f3d026bb04d737103b18519305709808fee",
+  "platform_change_set_id": null,
+  "note": "Local review artifact only. No platform approval, Git commit, remote push, deployment or production database migration performed.",
+  "snapshot_sha256": "63850751ae3a6855cec604ea66cda0e47e0d30ec981e390157798415c7771e85",
+  "checks": {
+    "backend": "58 targeted tests passed; SDK 10 with DOTNET_ROLL_FORWARD=Major; goal protocol and ordinary chat regressions",
+    "frontend": "18 tests and tsc --noEmit --incremental false passed",
+    "browser": "isolated Playwright component scenarios passed at mobile width",
+    "native_protocol": "Codex CLI 0.164.0 goal set(paused)/get/clear passed with isolated CODEX_HOME and no inference",
+    "encoding": "UTF-8 and existing BOM preserved; git diff --check passed",
+    "limitations": "Real-model long-task continuation and production migration not exercised; single API instance only"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "18552eb5d5bc26e948da7c87cf7410c77c86f01649b647fad9f41dd81ad8d944"
+    },
+    {
+      "path": "README.md",
+      "sha256": "138ebbf798c9b1315fcdac0c5423b221fc0a59ca8da6188734b1b755b5400515"
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "45f3c964b8cbaa98a6a0faba95a33129d9d36d2ee4f633113d6e06e0ae151895"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "cf93388578bea6df0e365618a647e771fd31f9e0d0adb5ba8c5fe6b50847fd79"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatGoalDtos.cs",
+      "sha256": "0628d17b0037a4bcc25c25ea54f227fbbc10bb880f371dcde41b372d924dc334"
+    },
+    {
+      "path": "backed/Entities/Chat/AiChatSession.cs",
+      "sha256": "b5c4aec7e754306b21d05d629fab976eb2217abde1298ae11a93775f5b361af5"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "a25e309e81d5e057bb2867a492d37def5d3d1d9647cd22a0c3a75e7da31e5be9"
+    },
+    {
+      "path": "backed/Services/Chat/ChatGoalAppService.cs",
+      "sha256": "11b41568915b874a5051409cd2f6a79da888169671083bc119ef0a7e3cc0cfd6"
+    },
+    {
+      "path": "backed/Services/Chat/ChatOrchestrator.cs",
+      "sha256": "a4c565a2a7ccbfc0477c8f704056e1a363705fcd94c456806b5f5fd1a64d0d8c"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "0a40f06d6bc7206cb59cdc1f610198599292f8a73d929f15414fd1dea7f706f8"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Goals.cs",
+      "sha256": "4d7882fb1eb3a4cf6d7ff22c66f7811261489d18846a9a8ffdbbc8acdde67b5f"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "87adb993e6c30b098163f04e03a27cec655ad8be9a6d4c0c71fb808f9cd1f116"
+    },
+    {
+      "path": "backed/Services/Settings/ModelSchemaInitializer.cs",
+      "sha256": "9f9f2d49bf05a5e5fa24f30ca7f7dcd453cba01cd11154aa1b68718c3adba80d"
+    },
+    {
+      "path": "docs/chat-goal-mode.md",
+      "sha256": "caff0edb9fa2674f4be2ff3b1157879982dee34aa34054ec2f00a2b057833c36"
+    },
+    {
+      "path": "front/components/chat/ChatGoalPanel.tsx",
+      "sha256": "e612e83772e2bb161a4be0e4bba05e33d2d94772f839d0174f2b3946f50e46d9"
+    },
+    {
+      "path": "front/components/chat/ChatStreamProvider.tsx",
+      "sha256": "ec61efdb37cd7e94b52027b83abca73c439b7651c410d3dd723b3f320112c8ea"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "74ad7ed5eb89048b5b926cff8c29996a392114b75116b4b59cac37a6ca6f96c4"
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "f9d0d69a3269846b765cafdc035ff60b8bf6f7ada2586321655eb634f376b8ad"
+    },
+    {
+      "path": "front/lib/chat-goal-api.ts",
+      "sha256": "8c1fb4437da1854d7fc3d65eeaca072258d63e2ff2f502fc40ef2ece6c6e6509"
+    },
+    {
+      "path": "front/lib/chat-goal-types.ts",
+      "sha256": "676984126bccc7fa5373ad1424c9ed898a47573b1cd622bab64c3ed2b9a96855"
+    },
+    {
+      "path": "front/tests/chat-auto-retry.test.mjs",
+      "sha256": "bd055e95029b00320631a26179d3d7330b52a6b4292b6ad0371d70b2623eb8a0"
+    },
+    {
+      "path": "front/tests/chat-goal.browser.mjs",
+      "sha256": "4ddef08f2ef6b54e8ad6211190f5eee5aa654c275baf768922df1c2c29d0dbe4"
+    }
+  ]
+}

@@ -4,6 +4,8 @@ import { getChatSkills } from "@/lib/chat-skill-api";
 import type { ChatSkill, ChatSkillReference } from "@/lib/chat-skill-types";
 import { skillCommand, filterChatSkills } from "@/lib/chat-skill-command";
 import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPicker";
+import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
+import type { ChatGoalRequest } from "@/lib/chat-goal-types";
 import { getChatClipboardFiles } from "@/lib/chat-clipboard";
 
 import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -241,6 +243,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [selectedCodexReasoningEffort, setSelectedCodexReasoningEffort] = useState("");
   const [selectedCodexSandboxMode, setSelectedCodexSandboxMode] = useState<CodexSandboxMode>("full-access");
   const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "deepseek-harness" | "codebuddy" | "">("");
+  const [goalRequest, setGoalRequest] = useState<ChatGoalRequest | undefined>();
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
@@ -895,6 +898,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
     const messageText = query || (markdownReferences.length > 0 ? "请基于已选项目文档回答。" : projectReferenceIds.length > 0 ? "请结合已引用项目回答。" : documentAttachmentsForTurn.length > 0 ? "请分析我附上的文件。" : "请分析我附上的图片。");
 
+    if (goalRequest && selectedAgentId === "codex" && (currentCodexModel?.profile_name ||
+      (goalRequest.action === "start" && (!goalRequest.objective?.trim() || goalRequest.token_budget === 0)))) {
+      setError("请填写目标与验收标准，并使用正整数预算和 Codex app-server 模型。");
+      return;
+    }
     const prototypeReferences = extractPrototypeReferenceIds(query);
     const prototypeContext = embeddedPrototypeFiles
       .filter((file) => prototypeReferences.includes(file.id))
@@ -973,6 +981,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
     try {
       const streamId = startStream({
+        goal: selectedAgentId === "codex" && !currentCodexModel?.profile_name ? goalRequest : undefined,
         session_id: sessionId,
         message: outboundMessage,
         skill_invocation: skillsForTurn.length === 1 ? { id: skillsForTurn[0].id, version: skillsForTurn[0].version } : undefined,
@@ -1316,6 +1325,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
+              {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={selectedAgentId === "codex" && Boolean(effectiveProjectId) && !currentCodexModel?.profile_name} sending={sending} onChange={setGoalRequest} />}
               {!embedded && <div className="flex flex-wrap items-center gap-2 px-3 py-1 text-xs">
                 <button type="button" aria-expanded={skillMenuOpen} className="shrink-0 rounded-md px-1 py-1 text-blue-600 hover:bg-blue-50 focus-visible:outline-blue-500" disabled={sending} onClick={event => openSkillPicker(event.currentTarget)}>技能 / {selectedSkills.length > 0 && <span className="text-slate-400">{selectedSkills.length}</span>}</button>
                 {selectedSkills.map(skill => <span key={skill.id} className="inline-flex max-w-full items-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">

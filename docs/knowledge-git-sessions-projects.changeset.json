@@ -4,8 +4,8 @@
   "base_commit": "69795f3d026bb04d737103b18519305709808fee",
   "platform_change_set_id": null,
   "status": "approved-in-session",
-  "snapshot_sha256": "3bc14e8936dbd280011b87a5f7789bc55a6178af7f4e732bf59df68bc6feea0b",
-  "note": "本地变更已由当前会话明确要求拉取远程、合并并提交推送；交付前复核源码指纹。实际 Git 结果以提交记录为准。验证不读取真实知识原文、不连接知识发布远端或调用模型。",
+  "snapshot_sha256": "7c42f5720ec8be23537c01d27f1d948c21cb70292626ff3f510b21ffea6d8491",
+  "note": "已按当前会话要求拉取并合并远端目标模式，保留知识 Git 功能；同时修正合并验证发现的目标接口路由问题。该清单固定本地与远端合并后的源码及文档内容，Git 实际交付结果以提交记录为准。",
   "checks": {
     "backend": "passed: 15 focused cases (14-case regression group plus first local publication test); local bare remote overwrite of ahead/divergent/unrelated histories, absent local HEAD over existing remote, remote/mode fingerprint invalidation, explicit lease rejecting an update during commit, retained-commit retry, shared subset preservation and directory deletion, own-session publication, project names/access/rename, cleanup HTTP, both Swagger groups",
     "typescript": "passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
@@ -18,11 +18,15 @@
   "files": [
     {
       "path": "AGENTS.md",
-      "sha256": "78ee24de68b2401c117b73aa43b54cf298c69064da5b433cedbd07467d9cfd7e"
+      "sha256": "c6d93e47d6781ecfb35765792163c06608040dc2f3c7e0d9e322306cc3ffc937"
     },
     {
       "path": "README.md",
-      "sha256": "ffbdbfe77f9c2763e26074b1df7dd39b3f8a7d280d33bec5aa25692878c197eb"
+      "sha256": "42485c907a7986d939b604288505fa65d1b0e9c9a9e68894487bf301cc66668e"
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "45f3c964b8cbaa98a6a0faba95a33129d9d36d2ee4f633113d6e06e0ae151895"
     },
     {
       "path": "backed.tests/KnowledgeGitPublicationTests.cs",
@@ -33,6 +37,18 @@
       "sha256": "8e89b92b9fc45290fd1345b5b2f190cbbdc4f3d87f7a562be2027351a14a3e26"
     },
     {
+      "path": "backed.tests/SwaggerDocumentTests.cs",
+      "sha256": "4881ee0877d2aea7ef447ca1d5db9db40260999856a325052618d7c83def6b4a"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "56c4be9a52c237ba977fc7f616d7547d87fc144be70a23866afdc446623c2da9"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatGoalDtos.cs",
+      "sha256": "0628d17b0037a4bcc25c25ea54f227fbbc10bb880f371dcde41b372d924dc334"
+    },
+    {
       "path": "backed/Dtos/Knowledge/KnowledgeGitDtos.cs",
       "sha256": "712b4cc22003f487c716b4db8b98b8d4d447d3b68fe5f3590601cfbeb4ee4742"
     },
@@ -41,8 +57,32 @@
       "sha256": "e1beedceea900f4c2013a4cf880a2b702628f55f307d45f486aabaf265e1657a"
     },
     {
+      "path": "backed/Entities/Chat/AiChatSession.cs",
+      "sha256": "881907c2cddfb133656a62d56c1482b0c86f03d7333de69c75f3fa94ba3f84e9"
+    },
+    {
       "path": "backed/Program.cs",
-      "sha256": "67afa59f6c5a80792051125245de9c32a20734ab7af0b20bf701654fbda8d099"
+      "sha256": "b181a274c50061afa9c42a2ff28924694c70e797e1bc6a8f4b523faf49ffcc8d"
+    },
+    {
+      "path": "backed/Services/Chat/ChatGoalAppService.cs",
+      "sha256": "40a1247fc7ca3902c9b31557182a6bb3869640effb077e1dedb6f6f734df6d72"
+    },
+    {
+      "path": "backed/Services/Chat/ChatOrchestrator.cs",
+      "sha256": "699a5f494cfbb4272e0fb9c0d3cbbf14970e373a73ea919e741ec166793352d0"
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "1c4af327862291822570d0baa7966ec43a7fc938a0a638056aaf1ce1adb88523"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Goals.cs",
+      "sha256": "4d7882fb1eb3a4cf6d7ff22c66f7811261489d18846a9a8ffdbbc8acdde67b5f"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "bcf310b7d187175652b6624767ef56d4339a1d2d4f5d1a5cbd09a734c9b56f63"
     },
     {
       "path": "backed/Services/Git/GitWorkspaceService.Team.cs",
@@ -77,8 +117,36 @@
       "sha256": "b6894c4d7c77479f2908b0f83abcc23e43ddcbf98ab42321a5b536b044fd316c"
     },
     {
+      "path": "backed/Services/Settings/ModelSchemaInitializer.cs",
+      "sha256": "796b3ef713b144672a7466b7b691b54bc256738d6bc946ed7bb9076e638957a2"
+    },
+    {
+      "path": "docs/chat-goal-mode-proposal.md",
+      "sha256": "01621074da84c42657ea9950a06d55cd1c2cbb4f2a57ba7ed676d0043ba0c716"
+    },
+    {
+      "path": "docs/chat-goal-mode.changeset.json",
+      "sha256": "3715cccadf1964bc187fb36e11fad7cb372979c73915d1527572658da111ccea"
+    },
+    {
+      "path": "docs/chat-goal-mode.md",
+      "sha256": "f02cfeb84a3b0e119bdaf05a51be89dfe35b6f1493fb320cd7f424e85cf4c8f9"
+    },
+    {
       "path": "docs/knowledge-team-git-implementation.md",
       "sha256": "ab028f512b47636d198acde6011b98d41621c2515e8d377596f73daa8816d300"
+    },
+    {
+      "path": "front/components/chat/ChatGoalPanel.tsx",
+      "sha256": "e612e83772e2bb161a4be0e4bba05e33d2d94772f839d0174f2b3946f50e46d9"
+    },
+    {
+      "path": "front/components/chat/ChatStreamProvider.tsx",
+      "sha256": "aff6b14e57d018f62573f8e98d365d9a9a9b37e3286471acdba2f1c0f537553d"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "5536e5b14385ababdd8a5fb21b79670dd695e6ada5fd1d93837d666b378d0c41"
     },
     {
       "path": "front/components/knowledge/KnowledgeGitDialog.tsx",
@@ -93,6 +161,18 @@
       "sha256": "bc7c47c886580560d604973c8fb0740212d9857225fbae17437652b16e08e0a3"
     },
     {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "68f770716dccec6647800fbf45ebb76fb432ddb32e449e0796550257b598e176"
+    },
+    {
+      "path": "front/lib/chat-goal-api.ts",
+      "sha256": "8c1fb4437da1854d7fc3d65eeaca072258d63e2ff2f502fc40ef2ece6c6e6509"
+    },
+    {
+      "path": "front/lib/chat-goal-types.ts",
+      "sha256": "676984126bccc7fa5373ad1424c9ed898a47573b1cd622bab64c3ed2b9a96855"
+    },
+    {
       "path": "front/lib/knowledge-git-api.ts",
       "sha256": "0b4478e4d53abae02f9420555eb17379b593f67f6837dc80bc2c6c66db4aa71d"
     },
@@ -105,6 +185,14 @@
       "sha256": "a2960f5327f5eb311528ef940d08dc0a4fdd53b0f1b87362cb1b099206db65a7"
     },
     {
+      "path": "front/tests/chat-auto-retry.test.mjs",
+      "sha256": "72da7427ac30130791c762b4c788c6ce7ac300abb7eb4558ccbcaef131193458"
+    },
+    {
+      "path": "front/tests/chat-goal.browser.mjs",
+      "sha256": "4ddef08f2ef6b54e8ad6211190f5eee5aa654c275baf768922df1c2c29d0dbe4"
+    },
+    {
       "path": "front/tests/knowledge-team-git.browser.mjs",
       "sha256": "e6dea858cf15e92476f1bd12430eb3248cc5b231a6fad931db1801e39e09a6eb"
     }
@@ -112,6 +200,16 @@
   "approval": {
     "source": "user-request",
     "request": "拉取远程的合并推送一下",
-    "reviewed_snapshot_sha256": "3bc14e8936dbd280011b87a5f7789bc55a6178af7f4e732bf59df68bc6feea0b"
+    "reviewed_snapshot_sha256": "3bc14e8936dbd280011b87a5f7789bc55a6178af7f4e732bf59df68bc6feea0b",
+    "merge_authorized": true
+  },
+  "merge_validation": {
+    "local_commit": "5c9c6c22f1b709fad242098b8d7a10570ee6bc71",
+    "remote_commit": "71b6a7ad3b53f0debadd5e6390362ea7513995a9",
+    "conflict_resolution": "AGENTS.md: retained both knowledge-Git and chat-goal rules",
+    "route_fix": "Remote goal controller used an implicit GET template that duplicated sessionId and an MVC-reserved action route parameter. Explicit empty GET template, explicit FromRoute bindings and goalAction preserve the advertised GET/pause/end URLs. Real HTTP regression passes.",
+    "backend": "42 focused tests: 39 passed initially; 3 HTTP/Swagger tests exposed the incoming route defect, then passed after correction with added GET/pause/end HTTP and expected_version assertions. Existing compiler warnings remain.",
+    "frontend": "TypeScript passed; 16 chat retry/stream lifecycle tests passed; synthetic knowledge-Git desktop/mobile browser flow passed",
+    "code_delivery": "User explicitly requested fetch, merge and push; final merged source fingerprints verified before commit."
   }
 }

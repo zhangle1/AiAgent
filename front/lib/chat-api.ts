@@ -40,6 +40,7 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export type ChatCompleteRequest = {
+  goal?: import("./chat-goal-types").ChatGoalRequest;
   skill_invocation?: import("./chat-skill-types").ChatSkillReference;
   skill_invocations?: import("./chat-skill-types").ChatSkillReference[];
   debug_trace?: boolean;
@@ -196,7 +197,7 @@ export async function getChatUploadText(attachmentId: string, adminUserId?: stri
 }
 
 export type ChatStreamEvent = {
-  type: "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
+  type: "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
   debug_trace?: ChatDebugTraceEvent | null;
   label?: string | null;
   content?: string;

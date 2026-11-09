@@ -29,6 +29,9 @@ public sealed class AiChatSession
     [SugarColumn(IsNullable = true)]
     public bool? IsPinned { get; set; }
 
+    [SugarColumn(ColumnDataType = "nvarchar(max)", IsNullable = true)]
+    public string? GoalJson { get; set; }
+
     public bool IsArchived { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

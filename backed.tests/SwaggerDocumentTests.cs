@@ -3,6 +3,10 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using AiAgent.Backend.Services.Settings;
+using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Chat;
+using System.Reflection;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -41,6 +45,9 @@ public sealed class SwaggerDocumentTests(ITestOutputHelper output)
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Services.AddControllers().AddApplicationPart(typeof(SettingsAppService).Assembly).AddDynamicApiControllers();
             builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddSingleton(DispatchProxy.Create<IAuthService, KnowledgeWorkspaceTests.TeamAuth>());
+            builder.Services.AddSingleton<IChatGoalControl, GoalRouteFixture>();
             builder.Services.AddSwaggerGen(options =>
             {
                 options.SwaggerDoc("Settings", new OpenApiInfo { Title = "Settings", Version = "Settings" });
@@ -69,8 +76,27 @@ public sealed class SwaggerDocumentTests(ITestOutputHelper output)
             foreach (var field in new[] { "version", "platform", "architecture", "notes" })
                 Assert.True(properties.TryGetProperty(field, out _), $"Missing multipart field: {field}");
             output.WriteLine($"{group}: HTTP 200; {paths.EnumerateObject().Count()} API paths; binary file and all multipart metadata fields present.");
+            using var goalResponse = await client.GetAsync("/api/v1/chat/sessions/route-session/goal");
+            Assert.Equal(HttpStatusCode.OK, goalResponse.StatusCode);
+            using var goal = JsonDocument.Parse(await goalResponse.Content.ReadAsStringAsync());
+            Assert.Equal("route-session", goal.RootElement.GetProperty("goal").GetProperty("session_id").GetString());
+            foreach (var action in new[] { "pause", "end" })
+            {
+                using var control = await client.PostAsync($"/api/v1/chat/sessions/route-session/goal/{action}", new StringContent("{\"expected_version\":7}", Encoding.UTF8, "application/json"));
+                Assert.Equal(HttpStatusCode.OK, control.StatusCode);
+                using var state = JsonDocument.Parse(await control.Content.ReadAsStringAsync());
+                Assert.Equal(action, state.RootElement.GetProperty("goal").GetProperty("action").GetString());
+                Assert.Equal(7, state.RootElement.GetProperty("goal").GetProperty("expected_version").GetInt64());
+            }
             await app.StopAsync();
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    private sealed class GoalRouteFixture : IChatGoalControl
+    {
+        public object GetGoal(string userId, string sessionId) => new { user_id = userId, session_id = sessionId };
+        public object ControlGoal(string userId, string sessionId, string action, long expectedVersion)
+            => new { user_id = userId, session_id = sessionId, action, expected_version = expectedVersion };
     }
 }

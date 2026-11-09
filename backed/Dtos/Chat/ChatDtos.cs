@@ -8,6 +8,13 @@ namespace AiAgent.Backend.Dtos.Chat;
 /// </summary>
 public sealed class ChatCompleteRequest
 {
+    [JsonPropertyName("goal")]
+    public ChatGoalRequest? Goal { get; set; }
+    [JsonIgnore]
+    public ChatGoalState? GoalRuntime { get; set; }
+    [JsonIgnore]
+    public Action<ChatGoalState>? SaveGoal { get; set; }
+
     [JsonPropertyName("skill_invocation")]
     public AiAgent.Backend.Services.Chat.ChatSkillReference? SkillInvocation { get; set; }
 

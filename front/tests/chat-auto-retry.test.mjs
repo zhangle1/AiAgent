@@ -78,6 +78,28 @@ function mount(t) {
   return { context, calls, events, advance, settle, fail, records: () => records };
 }
 
+test("goal failures never replay automatically or through generic retry", async (t) => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "goal-session", message: "work", goal: { action: "start", objective: "outcome" } });
+  await h.fail();
+  assert.equal(h.records()[id].retryAt, undefined);
+  await h.advance(21000);
+  h.context.retryStream(id);
+  await h.settle();
+  assert.equal(h.calls.length, 1);
+});
+
+test("goal error event followed by transport close does not schedule replay", async (t) => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "goal-session", message: "continue", goal: { action: "resume", expected_version: 3 } });
+  h.calls[0].emit({ type: "error", content: "interrupted" });
+  h.calls[0].resolve();
+  await h.settle();
+  await h.advance(21000);
+  assert.equal(h.records()[id].retryAt, undefined);
+  assert.equal(h.calls.length, 1);
+});
+
 test("failure retries after 20 seconds with the same turn, attachments, model and selected skill version", async (t) => {
   const h = mount(t);
   const request = { session_id: "session", message: "hello", attachment_ids: ["image"], code_project_id: 3, codex_model_id: "model", skill_invocation: { id: "grill-me", version: "original-version" } };

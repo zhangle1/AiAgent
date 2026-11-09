@@ -187,7 +187,9 @@ builder.Services.AddSingleton<IProjectReferenceContextService, ProjectReferenceC
 builder.Services.AddSingleton<IMarkdownDocumentReferenceContextService, MarkdownDocumentReferenceContextService>();
 builder.Services.AddSingleton<IProjectAgentMarkdownIndexContextService, ProjectAgentMarkdownIndexContextService>();
 builder.Services.AddSingleton<IImageOcrService, ImageOcrService>();
-builder.Services.AddSingleton<ICodexChatService, CodexChatService>();
+builder.Services.AddSingleton<CodexChatService>();
+builder.Services.AddSingleton<ICodexChatService>(services => services.GetRequiredService<CodexChatService>());
+builder.Services.AddSingleton<IChatGoalControl>(services => services.GetRequiredService<CodexChatService>());
 builder.Services.AddSingleton<IDshChatService, DshChatService>();
 builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 builder.Services.AddSingleton<IUsageStatisticsService, UsageStatisticsService>();
