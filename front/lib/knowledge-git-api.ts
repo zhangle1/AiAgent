@@ -11,5 +11,5 @@ async function request<T>(suffix: string, method = "GET", body?: unknown): Promi
 }
 export const getKnowledgeGit = () => request<KnowledgeGitState>("");
 export const saveKnowledgeGit = (config: KnowledgeGitConfig) => request<KnowledgeGitConfig>("", "PUT", config);
-export const refreshKnowledgeGit = () => request<KnowledgeGitValidation>("/refresh", "POST");
-export const pushKnowledgeGit = (message: string, snapshot: string) => request<KnowledgeGitResult>("/push", "POST", { message, snapshot });
+export const refreshKnowledgeGit = (sessionUris: string[] = [], force = true, resourceUris?: string[]) => request<KnowledgeGitValidation>("/refresh", "POST", { session_uris: sessionUris, resource_uris: resourceUris, force });
+export const pushKnowledgeGit = (message: string, snapshot: string, force = true) => request<KnowledgeGitResult>("/push", "POST", { message, snapshot, force });

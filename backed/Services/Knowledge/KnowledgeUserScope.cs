@@ -30,7 +30,7 @@ public static class KnowledgeUserScope
         return parts.Length >= 2 && parts[1] == "sessions" || includeWorkspaceRoot && parts.Length == 1 && parts[0].Length > 0;
     }
 
-    private static AuthenticatedUser? ResolveUser(ISqlSugarClient db, IHttpContextAccessor? accessor)
+    internal static AuthenticatedUser? ResolveUser(ISqlSugarClient db, IHttpContextAccessor? accessor)
     {
         var context = accessor?.HttpContext;
         string? token = null;

@@ -18,6 +18,7 @@ public sealed class KnowledgeResourceNodeDto
     [JsonPropertyName("source_uri")] public string? SourceUri { get; set; }
     [JsonPropertyName("parsed_document_id")] public long? ParsedDocumentId { get; set; }
     [JsonPropertyName("section_order")] public int? SectionOrder { get; set; }
+    [JsonPropertyName("can_publish")] public bool CanPublish { get; set; }
 }
 
 public sealed class KnowledgeResourceReadDto

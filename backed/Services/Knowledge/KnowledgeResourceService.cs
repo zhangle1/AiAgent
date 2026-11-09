@@ -15,7 +15,8 @@ namespace AiAgent.Backend.Services.Knowledge;
 public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledgePathService paths,
     IKnowledgeIngestionService ingestion, KnowledgeCompilationWorker worker, KnowledgeCompilerSettings settings,
     ILlmChatClient llm, ICodexChatService codex, ILogger<KnowledgeBaseManager> managerLogger,
-    IHttpContextAccessor httpContextAccessor, KnowledgeResourceSemanticService semantic)
+    IHttpContextAccessor httpContextAccessor, KnowledgeResourceSemanticService semantic,
+    KnowledgeProjectDirectoryService? projectDirectories = null)
 {
     public static readonly string[] Roots = ["viking://resources/", "viking://projects/", "viking://user/"];
     private const string StoreName = "resource-store";
@@ -54,6 +55,11 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var allSessions = KnowledgeUserScope.CanReadAllSessions(db, httpContextAccessor);
         foreach (var (root, name) in Roots.Zip(new[] { "资料", "项目", "人员" }))
             nodes[root] = new() { Uri = root, Name = name, Kind = "directory" };
+        var projects = projectDirectories?.List(db, httpContextAccessor);
+        var projectIds = projects?.Select(p => p.Id).ToHashSet();
+        if (projects is not null)
+            foreach (var project in projects)
+                AddDirectory(KnowledgeProjectDirectoryService.UriFor(project.Id), string.IsNullOrWhiteSpace(project.DisplayName) ? project.Name : project.DisplayName);
         AddDirectory(userRoot, "我的工作区");
         AddDirectory(userRoot + "memory/", "记忆");
         AddDirectory(userRoot + "wiki/", "Wiki");
@@ -69,15 +75,16 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
                 AddDirectory(otherRoot + "sessions/", "会话");
             }
         foreach (var row in db.Queryable<AiKnowledgeDirectory>().ToList())
-            if (row.Uri is { } uri && (!uri.StartsWith(Roots[2], StringComparison.Ordinal) || uri.StartsWith(userRoot, StringComparison.Ordinal) || allSessions && KnowledgeUserScope.IsSessionScope(uri))) AddDirectory(uri, row.Name);
+            if (row.Uri is { } uri && VisibleProject(uri) && (!uri.StartsWith(Roots[2], StringComparison.Ordinal) || uri.StartsWith(userRoot, StringComparison.Ordinal) || allSessions && KnowledgeUserScope.IsSessionScope(uri))) AddDirectory(uri, row.Name);
         var bases = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).ToList().ToDictionary(x => x.Id);
-        foreach (var kb in bases.Values.Where(k => k.Name != StoreName && k.Name != KnowledgeInternalStores.Sessions))
+        foreach (var kb in bases.Values.Where(k => k.Name != StoreName && k.Name != KnowledgeInternalStores.Sessions && VisibleProject(LegacyDirectory(k))))
             AddDirectory(LegacyDirectory(kb));
         var documents = db.Queryable<AiKnowledgeDocument>().Where(x => !x.IsDeleted).ToList();
         foreach (var doc in documents)
         {
             if (!bases.TryGetValue(doc.KnowledgeBaseId, out var kb)) continue;
             var uri = DocumentUri(kb, doc);
+            if (!VisibleProject(uri)) continue;
             if (uri.StartsWith(Roots[2], StringComparison.Ordinal) && !uri.StartsWith(userRoot, StringComparison.Ordinal) && !(allSessions && KnowledgeUserScope.IsSessionScope(uri))) continue;
             AddDirectory(Parent(uri));
             nodes[uri] = new() { Uri = uri, ParentUri = Parent(uri), Name = doc.OriginalFileName,
@@ -122,10 +129,17 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         if (semantic is not null)
             foreach (var generated in semantic.WorkspaceNodes(userRoot))
             {
+                if (!VisibleProject(generated.Uri)) continue;
                 AddDirectory(generated.ParentUri!);
                 nodes.TryAdd(generated.Uri, generated);
             }
-        return nodes.Values.OrderBy(x => x.Kind == "directory" ? 0 : 1).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var node in nodes.Values)
+            node.CanPublish = allSessions && (node.Uri.StartsWith(Roots[0], StringComparison.Ordinal) || node.Uri.StartsWith(Roots[1], StringComparison.Ordinal)
+                || node.Uri.StartsWith(userRoot + "sessions/", StringComparison.Ordinal) && !IsGeneratedUri(node.Uri));
+        return nodes.Values.Where(n => VisibleProject(n.Uri))
+            .OrderBy(x => x.Kind == "directory" ? 0 : 1).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+        bool VisibleProject(string uri) => projectIds is null || KnowledgeProjectDirectoryService.IsVisible(uri, projectIds);
 
         void AddDirectory(string uri, string? name = null)
         {
@@ -171,6 +185,8 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         if (IsGeneratedUri(parent)) throw new InvalidOperationException("Generated workspace directories are read-only.");
         var name = ValidateName(request.Name);
         var uri = NormalizeUri(parent + Uri.EscapeDataString(name), true);
+        if (parent == Roots[1] && projectDirectories is not null && !KnowledgeProjectDirectoryService.IsVisible(uri, []))
+            throw new ArgumentException("已登记项目目录由系统管理，请在项目下新建知识目录。");
         if (IsGeneratedUri(uri)) throw new InvalidOperationException("该目录名称保留给系统解析和编译产物。");
         await _mutations.WaitAsync(ct);
         try

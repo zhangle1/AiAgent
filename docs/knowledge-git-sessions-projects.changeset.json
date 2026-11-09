@@ -1,0 +1,117 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "知识工作区目录选择、会话 Git 发布与默认本地优先强制同步",
+  "base_commit": "69795f3d026bb04d737103b18519305709808fee",
+  "platform_change_set_id": null,
+  "status": "approved-in-session",
+  "snapshot_sha256": "3bc14e8936dbd280011b87a5f7789bc55a6178af7f4e732bf59df68bc6feea0b",
+  "note": "本地变更已由当前会话明确要求拉取远程、合并并提交推送；交付前复核源码指纹。实际 Git 结果以提交记录为准。验证不读取真实知识原文、不连接知识发布远端或调用模型。",
+  "checks": {
+    "backend": "passed: 15 focused cases (14-case regression group plus first local publication test); local bare remote overwrite of ahead/divergent/unrelated histories, absent local HEAD over existing remote, remote/mode fingerprint invalidation, explicit lease rejecting an update during commit, retained-commit retry, shared subset preservation and directory deletion, own-session publication, project names/access/rename, cleanup HTTP, both Swagger groups",
+    "typescript": "passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "browser": "passed: front/tests/knowledge-team-git.browser.mjs; synthetic APIs on local Next.js port 3782, page tree selection/partial deselection, push selected, default local-first force, normal-mode blocking, scope/mode invalidation, selected session, failure/retry, output, Escape/focus recovery and desktop/390px layout",
+    "visual": "passed: inspected knowledge-git-tree-selection.png, knowledge-git-desktop.png and knowledge-git-mobile.png in ../.codex-verification/knowledge-git-20261109/browser",
+    "whitespace_and_encoding": "passed: git diff --check and strict UTF-8 decoding",
+    "real_remote": "not contacted; only isolated local bare Git remotes used",
+    "deployment": "rebuild/restart backend to load new requests and team-only force-with-lease publishing"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "78ee24de68b2401c117b73aa43b54cf298c69064da5b433cedbd07467d9cfd7e"
+    },
+    {
+      "path": "README.md",
+      "sha256": "ffbdbfe77f9c2763e26074b1df7dd39b3f8a7d280d33bec5aa25692878c197eb"
+    },
+    {
+      "path": "backed.tests/KnowledgeGitPublicationTests.cs",
+      "sha256": "0f5984f51d5cb05957cedcbe85487d1c32acce54e9323c0b80a5556d45e554de"
+    },
+    {
+      "path": "backed.tests/KnowledgeTeamGitTests.cs",
+      "sha256": "8e89b92b9fc45290fd1345b5b2f190cbbdc4f3d87f7a562be2027351a14a3e26"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeGitDtos.cs",
+      "sha256": "712b4cc22003f487c716b4db8b98b8d4d447d3b68fe5f3590601cfbeb4ee4742"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "e1beedceea900f4c2013a4cf880a2b702628f55f307d45f486aabaf265e1657a"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "67afa59f6c5a80792051125245de9c32a20734ab7af0b20bf701654fbda8d099"
+    },
+    {
+      "path": "backed/Services/Git/GitWorkspaceService.Team.cs",
+      "sha256": "38668e2517953b5b91b31502a25891f9927cdabed1ce3233dd0ed2f484c3800b"
+    },
+    {
+      "path": "backed/Services/Git/GitWorkspaceService.cs",
+      "sha256": "3f7f8f7a408dc99b260f27b61e77cd5b9e05f275ea38289f3214872759290534"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeGitAppService.cs",
+      "sha256": "535378ccd1a6c56345e101d0b3d539f19fef877d018666b6eb8c6804c35ac4b7"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeGitSessionPublication.cs",
+      "sha256": "98acee41fd215635e7893120259d47c9b19b59d113c509d304835547ddef5c9f"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeProjectDirectoryService.cs",
+      "sha256": "8a1a0a28e80911f640c6b9058aae887331ae5638f9c0e769996670b47f98eb40"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "9fa33d8c41e855236fdc1a78ad9b707d9f86241cb440c117fb61b1501b22d45e"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeTeamGitService.cs",
+      "sha256": "d7bd88d601cca3c31b21a39c704d9cc83e7d2ac46e595241c8c88d96fa1b8f40"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeUserScope.cs",
+      "sha256": "b6894c4d7c77479f2908b0f83abcc23e43ddcbf98ab42321a5b536b044fd316c"
+    },
+    {
+      "path": "docs/knowledge-team-git-implementation.md",
+      "sha256": "ab028f512b47636d198acde6011b98d41621c2515e8d377596f73daa8816d300"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeGitDialog.tsx",
+      "sha256": "06d446008d3be3f2093216e956353e3619769ed0bded035b547078c5dbeeda5a"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "e4e563731caa631dd28e7bbf72d35e103e35d913d55897b7b6ee3738990a384a"
+    },
+    {
+      "path": "front/components/settings/KnowledgeGitSettings.tsx",
+      "sha256": "bc7c47c886580560d604973c8fb0740212d9857225fbae17437652b16e08e0a3"
+    },
+    {
+      "path": "front/lib/knowledge-git-api.ts",
+      "sha256": "0b4478e4d53abae02f9420555eb17379b593f67f6837dc80bc2c6c66db4aa71d"
+    },
+    {
+      "path": "front/lib/knowledge-git-types.ts",
+      "sha256": "9c37c69267922dabfaa9e364133dca6cb9cd562d944707518e16fc103dce0b65"
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "a2960f5327f5eb311528ef940d08dc0a4fdd53b0f1b87362cb1b099206db65a7"
+    },
+    {
+      "path": "front/tests/knowledge-team-git.browser.mjs",
+      "sha256": "e6dea858cf15e92476f1bd12430eb3248cc5b231a6fad931db1801e39e09a6eb"
+    }
+  ],
+  "approval": {
+    "source": "user-request",
+    "request": "拉取远程的合并推送一下",
+    "reviewed_snapshot_sha256": "3bc14e8936dbd280011b87a5f7789bc55a6178af7f4e732bf59df68bc6feea0b"
+  }
+}

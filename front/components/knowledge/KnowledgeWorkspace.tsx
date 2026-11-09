@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
-import Link from "next/link";
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks, MessageSquarePlus, Trash2 } from "lucide-react";
 import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResource, uploadKnowledgeResources } from "@/lib/knowledge-api";
 import { KnowledgeSemanticPreview } from "./KnowledgeSemanticPreview";
@@ -16,6 +15,7 @@ import styles from "./knowledge-workspace.module.css";
 import type { KnowledgeCompilationJob, KnowledgeResourceNode, KnowledgeResourceRead } from "@/lib/knowledge-types";
 import { KnowledgeSessionImportDialog } from "./KnowledgeSessionImportDialog";
 import { KnowledgeCleanupDialog } from "./KnowledgeCleanupDialog";
+import { KnowledgeGitDialog } from "./KnowledgeGitDialog";
 
 const ROOTS = [
   { uri: "viking://resources/", label: "资料", hint: "共享资料", icon: Library },
@@ -44,11 +44,32 @@ export function KnowledgeWorkspace() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [showProcessing, setShowProcessing] = useState(false);
   const [showCleanup, setShowCleanup] = useState(false);
+  const [showGit, setShowGit] = useState(false);
+  const [publishSelection, setPublishSelection] = useState<Set<string>>(new Set());
   const [previewMode, setPreviewMode] = useState<"source" | "parsed" | "semantic">("source");
   const [job, setJob] = useState<KnowledgeCompilationJob | null>(null);
   const [showTaskLink, setShowTaskLink] = useState(false);
   const readSequence = useRef(0);
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const publishNodes = useMemo(() => nodes.filter(node => node.can_publish), [nodes]);
+  const effectivePublishSelection = useMemo(() => {
+    const directories = publishNodes.filter(node => node.kind === "directory" && publishSelection.has(node.uri));
+    return new Set(publishNodes.filter(node => publishSelection.has(node.uri) || directories.some(dir => node.uri.startsWith(dir.uri))).map(node => node.uri));
+  }, [publishNodes, publishSelection]);
+  const publishScopes = useMemo(() => publishNodes.filter(node => effectivePublishSelection.has(node.uri)
+    && !publishNodes.some(parent => parent.kind === "directory" && parent.uri !== node.uri && effectivePublishSelection.has(parent.uri) && node.uri.startsWith(parent.uri))), [publishNodes, effectivePublishSelection]);
+  const sharedPublishUris = useMemo(() => effectivePublishSelection.size ? publishScopes.filter(node => !node.uri.startsWith("viking://user/")).map(node => node.uri) : undefined, [effectivePublishSelection, publishScopes]);
+  const sessionPublishUris = useMemo(() => effectivePublishSelection.size ? publishNodes.filter(node => node.kind === "file" && effectivePublishSelection.has(node.uri) && node.uri.startsWith("viking://user/")).map(node => node.uri) : undefined, [effectivePublishSelection, publishNodes]);
+  function togglePublish(node: KnowledgeResourceNode, checked: boolean) {
+    const next = new Set(effectivePublishSelection);
+    for (const item of publishNodes) {
+      if (item.uri === node.uri || node.kind === "directory" && item.uri.startsWith(node.uri)) {
+        if (checked) next.add(item.uri); else next.delete(item.uri);
+      }
+      if (!checked && item.kind === "directory" && node.uri.startsWith(item.uri)) next.delete(item.uri);
+    }
+    setPublishSelection(next);
+  }
 
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -138,7 +159,7 @@ export function KnowledgeWorkspace() {
   return <main className={`${styles.workspace} flex h-[calc(100dvh-24px)] min-h-0 flex-col overflow-hidden bg-[#f8fafc] text-slate-900`}>
     <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white pl-20 pr-4 lg:px-5">
       <div className="min-w-0"><div className="flex items-center gap-2 text-[15px] font-semibold"><span className="grid h-7 w-7 place-items-center rounded-lg bg-slate-900 text-white"><Library size={15} /></span>知识工作区</div><p className="mt-0.5 truncate text-[11px] text-slate-500">目录即入口 · 原文、解析正文和 Agent 问答在同一空间完成</p></div>
-      <div className="flex shrink-0 items-center gap-2"><Link href="/settings/knowledge#team-git" className="rounded-md border border-slate-200 px-2.5 py-2 text-xs hover:border-blue-300">Git 同步与设置</Link><button type="button" onClick={() => void loadTree()} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-xs hover:border-blue-300"><RefreshCw size={13} className={loading ? "animate-spin" : ""} />刷新</button></div>
+      <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => setShowGit(true)} className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-emerald-700 hover:border-emerald-400">Git 提交推送</button><button type="button" onClick={() => void loadTree()} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-xs hover:border-blue-300"><RefreshCw size={13} className={loading ? "animate-spin" : ""} />刷新</button></div>
     </header>
     <KnowledgeWorkspacePanels
       directory={<aside className="flex min-h-0 min-w-0 flex-col bg-white">
@@ -150,12 +171,13 @@ export function KnowledgeWorkspace() {
             <div ref={addMenuRef} className="relative"><button type="button" title="添加资源或导入会话" aria-label="添加资源或导入会话" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen(current => !current)} className={`grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-600 ${addMenuOpen ? "bg-blue-50 text-blue-600" : ""}`}><Plus size={15} /></button>{addMenuOpen && <div className="absolute right-0 top-9 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"><button type="button" onClick={() => { setAddMenuOpen(false); setShowResourceDialog(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-blue-50"><Upload size={14} className="text-blue-600" />添加资源</button><button type="button" onClick={() => { setAddMenuOpen(false); setShowSessionImport(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-blue-50"><MessageSquarePlus size={14} className="text-violet-600" />导入平台会话</button></div>}</div>
           </div>
         </div>
-        <nav className="min-h-0 flex-1 overflow-auto p-2">{ROOTS.map(root => <TreeRow key={root.uri} node={{ ...root, kind: "directory", name: root.label, uri: root.uri }} depth={0} selectedUri={selectedUri} expanded={expanded} children={children} onToggle={uri => setExpanded(current => { const next = new Set(current); next.has(uri) ? next.delete(uri) : next.add(uri); return next; })} onOpen={uri => void open(uri)} />)}</nav>
+        {effectivePublishSelection.size > 0 && <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800"><span className="mr-auto">已选 {publishScopes.length} 项</span><button type="button" onClick={() => setPublishSelection(new Set())} className="rounded px-1 py-1 hover:bg-emerald-100">清空选择</button><button type="button" onClick={() => setShowGit(true)} className="rounded border border-emerald-300 bg-white px-2 py-1">推送所选</button></div>}
+        <nav className="min-h-0 flex-1 overflow-auto p-2">{ROOTS.map(root => <TreeRow key={root.uri} node={nodes.find(node => node.uri === root.uri) ?? { kind: "directory", name: root.label, uri: root.uri }} depth={0} selectedUri={selectedUri} expanded={expanded} children={children} publishSelection={effectivePublishSelection} onPublishSelect={togglePublish} onToggle={uri => setExpanded(current => { const next = new Set(current); next.has(uri) ? next.delete(uri) : next.add(uri); return next; })} onOpen={uri => void open(uri)} />)}</nav>
       </aside>}
       preview={<section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#fbfcfe]">
         <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
           <div title={selectedUri} className="min-w-0 truncate font-mono text-[11px] text-slate-500">{selectedUri}</div>
-          {selected?.kind === "file" && <div className="flex shrink-0 items-center gap-2"><button type="button" disabled={isGeneratedResource(selected.uri) || sourceUnavailable} onClick={() => void parse()} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300 disabled:opacity-40"><RotateCw size={12} />重新解析</button>{!sourceUnavailable && <a href={knowledgeResourceFileUrl(selectedUri, true)} download className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300"><Download size={12} />下载</a>}</div>}
+          {selected?.kind === "file" && <div className="flex shrink-0 items-center gap-2">{selected.can_publish && !isGeneratedResource(selected.uri) && !sourceUnavailable && <button type="button" onClick={() => { setPublishSelection(new Set([selected.uri])); setShowGit(true); }} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 hover:border-emerald-400">提交推送</button>}<button type="button" disabled={isGeneratedResource(selected.uri) || sourceUnavailable} onClick={() => void parse()} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300 disabled:opacity-40"><RotateCw size={12} />重新解析</button>{!sourceUnavailable && <a href={knowledgeResourceFileUrl(selectedUri, true)} download className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300"><Download size={12} />下载</a>}</div>}
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4 xl:p-6">
           {notice && <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700"><span>{notice}</span>{showTaskLink && <a href="/task-center?domain=knowledge" className="font-semibold underline underline-offset-2">查看任务中心</a>}</div>}
@@ -166,15 +188,28 @@ export function KnowledgeWorkspace() {
       terminal={<KnowledgeAgentChatPanel scope={selected?.kind === "file" ? selected.parent_uri ?? selectedUri : selectedUri} nodes={nodes} onOpen={uri => void open(uri)} onQueued={() => { setNotice("编译任务已提交，可在文件处理弹窗和任务中心查看进度。"); setShowTaskLink(true); }} />}
     />
     {showProcessing && <KnowledgeFileProcessingDialog onClose={() => setShowProcessing(false)} onOpen={uri => { setShowProcessing(false); void open(uri); }} />}
+    {showGit && <KnowledgeGitDialog initialResourceUris={sharedPublishUris} initialSessionUris={sessionPublishUris} initialSessionUri={!effectivePublishSelection.size && selected?.kind === "file" && /^viking:\/\/user\/[^/]+\/sessions\//.test(selected.uri) ? selected.uri : undefined} onClose={() => setShowGit(false)} />}
     {showCleanup && <KnowledgeCleanupDialog onClose={() => setShowCleanup(false)} onCleaned={removed => { setShowCleanup(false); setNotice(`已清理 ${removed} 条失效记录，磁盘文件和聊天历史已保留。`); const target = selected?.kind === "file" ? selected.parent_uri ?? "viking://resources/" : selectedUri; void loadTree(target); }} />}
     {showSessionImport && <KnowledgeSessionImportDialog onClose={() => setShowSessionImport(false)} onImported={async result => { setNotice(`已导入 ${result.imported_sessions} 个平台会话，追加 ${result.appended_messages} 条消息。`); setShowSessionImport(false); await loadTree(); }} />}
     {showResourceDialog && <ResourceDialog nodes={nodes.filter(node => !isGeneratedResource(node.uri))} parentUri={selected?.kind === "directory" ? selectedUri : selected?.parent_uri ?? "viking://resources/"} onClose={() => setShowResourceDialog(false)} onUploaded={async (files, targetUri) => { if (await upload(files, targetUri)) setShowResourceDialog(false); }} onDirectoryCreated={async (name, parentUri) => { await createKnowledgeResourceDirectory(parentUri, name); setNotice("目录已创建"); setShowResourceDialog(false); await loadTree(parentUri); }} />}
   </main>;
 }
 
-function TreeRow({ node, depth, selectedUri, expanded, children, onToggle, onOpen }: { node: KnowledgeResourceNode; depth: number; selectedUri: string; expanded: Set<string>; children: Map<string, KnowledgeResourceNode[]>; onToggle: (uri: string) => void; onOpen: (uri: string) => void }) {
+function TreeRow({ node, depth, selectedUri, expanded, children, publishSelection, onPublishSelect, onToggle, onOpen }: { node: KnowledgeResourceNode; depth: number; selectedUri: string; expanded: Set<string>; children: Map<string, KnowledgeResourceNode[]>; publishSelection: Set<string>; onPublishSelect: (node: KnowledgeResourceNode, checked: boolean) => void; onToggle: (uri: string) => void; onOpen: (uri: string) => void }) {
   const isDir = node.kind === "directory"; const isExpanded = expanded.has(node.uri); const items = children.get(node.uri) ?? [];
-  return <div><button type="button" onClick={() => { onOpen(node.uri); if (isDir) onToggle(node.uri); }} className={`flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs ${selectedUri === node.uri ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-50"}`} style={{ paddingLeft: 10 + depth * 16 }}><span className="w-3 shrink-0 text-slate-400">{isDir ? (isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}</span>{isDir ? (isExpanded ? <FolderOpen size={14} className="text-amber-500" /> : <Folder size={14} className="text-amber-500" />) : <FileText size={14} className="text-slate-400" />}<span className="min-w-0 flex-1 truncate">{node.name}</span>{node.kind === "file" && node.status !== "processed" && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />}</button>{isDir && isExpanded && items.map(item => <TreeRow key={item.uri} node={item} depth={depth + 1} selectedUri={selectedUri} expanded={expanded} children={children} onToggle={onToggle} onOpen={onOpen} />)}</div>;
+  const checked = publishSelection.has(node.uri);
+  const mixed = !checked && isDir && [...publishSelection].some(uri => uri.startsWith(node.uri));
+  return <div>
+    <div className={`flex min-w-0 items-center gap-1 rounded-md pr-2 ${selectedUri === node.uri ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-50"}`} style={{ paddingLeft: 10 + depth * 16 }}>
+      <button type="button" onClick={() => { onOpen(node.uri); if (isDir) onToggle(node.uri); }} className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left text-xs">
+        <span className="w-3 shrink-0 text-slate-400">{isDir ? (isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}</span>
+        {isDir ? (isExpanded ? <FolderOpen size={14} className="shrink-0 text-amber-500" /> : <Folder size={14} className="shrink-0 text-amber-500" />) : <FileText size={14} className="shrink-0 text-slate-400" />}
+        <span className="min-w-0 flex-1 truncate">{node.name}</span>{node.kind === "file" && node.status !== "processed" && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />}
+      </button>
+      {node.can_publish && <input type="checkbox" aria-label={`选择推送 ${node.name}`} checked={checked} ref={input => { if (input) input.indeterminate = mixed; }} onChange={event => onPublishSelect(node, event.target.checked)} className="shrink-0 accent-emerald-600" />}
+    </div>
+    {isDir && isExpanded && items.map(item => <TreeRow key={item.uri} node={item} depth={depth + 1} selectedUri={selectedUri} expanded={expanded} children={children} publishSelection={publishSelection} onPublishSelect={onPublishSelect} onToggle={onToggle} onOpen={onOpen} />)}
+  </div>;
 }
 
 function ResourceDialog({ nodes, parentUri, onClose, onUploaded, onDirectoryCreated }: { nodes: KnowledgeResourceNode[]; parentUri: string; onClose: () => void; onUploaded: (files: File[], targetUri: string) => Promise<void>; onDirectoryCreated: (name: string, targetUri: string) => Promise<void> }) {

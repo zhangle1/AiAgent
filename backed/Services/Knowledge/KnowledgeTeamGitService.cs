@@ -9,7 +9,7 @@ using SqlSugar;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
-/// <summary>One administrator-managed shared projection; personal sources never enter this repository.</summary>
+/// <summary>Shared projection plus explicitly published session copies; personal sources are never exported implicitly.</summary>
 public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfiguration configuration,
     KnowledgeResourceService resources, IGitWorkspaceService git, IAuthService auth,
     IHttpContextAccessor context, ISqlSugarClient database, IDataProtectionProvider protection)
@@ -23,10 +23,11 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
 
     public async Task<KnowledgeGitState> StateAsync(CancellationToken ct) => await Locked(async () =>
     {
-        await RequireAdmin(ct);
+        var user = await RequireAdmin(ct);
         CheckPaths();
         var config = await Config(ct);
         return new KnowledgeGitState { RootPath = paths.RootPath, WorkspacePath = Workspace, Config = config,
+            SessionOptions = OwnSessions(user, resources.Tree()).ToList(),
             Status = Directory.Exists(Path.Combine(Workspace, ".git"))
                 ? await git.StatusAsync("team-knowledge", Workspace, ct, await Credential(ct)) : null };
     }, ct);
@@ -41,36 +42,83 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
         return config;
     }, ct);
 
-    public async Task<GitDeliveryValidation> RefreshAsync(CancellationToken ct) => await Locked(async () =>
+    public Task<GitDeliveryValidation> RefreshAsync(CancellationToken ct) => RefreshAsync(new(), ct);
+
+    public async Task<GitDeliveryValidation> RefreshAsync(KnowledgeGitRefresh request, CancellationToken ct) => await Locked(async () =>
     {
-        await RequireAdmin(ct); CheckPaths(); await RequireConfig(ct);
+        var user = await RequireAdmin(ct); CheckPaths(); await RequireConfig(ct);
+        var tree = resources.Tree();
+        var resourceUris = request.ResourceUris?.Distinct(StringComparer.Ordinal).ToList();
+        if (resourceUris?.Count > 500) throw new ArgumentException("每次最多选择 500 个资料或项目入口，请分批操作。");
+        var shared = tree.Where(n => IsShared(n.Uri)).ToDictionary(n => n.Uri, StringComparer.Ordinal);
+        if (resourceUris?.Any(uri => !shared.ContainsKey(uri)) == true)
+            throw new UnauthorizedAccessException("所选资料或项目已不可访问，请刷新目录后重选。");
+        bool SelectedShared(string uri) => resourceUris is null || resourceUris.Any(scope => uri == scope || scope.EndsWith('/') && uri.StartsWith(scope, StringComparison.Ordinal));
+        if (request.SessionUris is null) throw new ArgumentException("请选择有效的会话列表。");
+        var selected = request.SessionUris.Distinct(StringComparer.Ordinal).ToList();
+        if (selected.Count > 100) throw new ArgumentException("每次最多发布 100 个会话，请分批选择。");
+        var available = OwnSessions(user, tree).ToDictionary(n => n.Uri, StringComparer.Ordinal);
+        if (selected.Any(uri => !available.ContainsKey(uri)))
+            throw new UnauthorizedAccessException("只能明确选择本人会话原文发布；不能发布他人的会话或个人产物。");
         // Build a complete projection before publishing. Unrelated files and runtime data cannot be staged.
         var stage = Path.Combine(BasePath, ".team-export-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
         try
         {
-            var manifest = new List<object>();
+            var manifest = new List<KnowledgeGitExportEntry>();
             var exported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var node in resources.Tree().Where(n => n.Uri.StartsWith("viking://resources/", StringComparison.Ordinal) || n.Uri.StartsWith("viking://projects/", StringComparison.Ordinal)))
+            // Already published copies remain fixed until their owner explicitly selects them again.
+            // Refreshing team resources must not silently publish subsequent private conversation turns.
+            var previousManifest = Path.Combine(Workspace, "manifest.json");
+            if (System.IO.File.Exists(previousManifest))
+            {
+                var previous = JsonSerializer.Deserialize<List<KnowledgeGitExportEntry>>(await System.IO.File.ReadAllBytesAsync(previousManifest, ct))
+                    ?? throw new InvalidOperationException("导出清单不可用，请管理员检查工作区。");
+                foreach (var entry in previous.Where(e => e.Path.StartsWith("sessions/", StringComparison.Ordinal) && !selected.Contains(e.Uri)
+                    || IsShared(e.Uri) && !SelectedShared(e.Uri)))
+                {
+                    var relative = IsShared(entry.Uri) ? ExportPath(entry.Uri) : KnowledgeGitSessionPublication.ExportPath(entry.Uri);
+                    if (entry.Path != relative.Replace('\\', '/') || !exported.Add(relative))
+                        throw new InvalidOperationException("发布清单不匹配，请管理员检查工作区。");
+                    var source = Path.Combine(Workspace, relative);
+                    var destination = Path.Combine(stage, relative);
+                    if (entry.Kind == "directory") { Directory.CreateDirectory(destination); manifest.Add(entry); continue; }
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    System.IO.File.Copy(source, destination);
+                    await using var content = System.IO.File.OpenRead(destination);
+                    if (entry.Sha256 != Convert.ToHexString(await SHA256.HashDataAsync(content, ct)))
+                        throw new InvalidOperationException("已发布副本已变化，请重新选择该资料后刷新。");
+                    manifest.Add(entry);
+                }
+            }
+            foreach (var node in shared.Values.Where(n => SelectedShared(n.Uri))
+                         .Concat(selected.Select(uri => available[uri])))
             {
                 ct.ThrowIfCancellationRequested();
-                var relative = ExportPath(node.Uri);
+                var relative = node.Uri.StartsWith("viking://user/", StringComparison.Ordinal)
+                    ? KnowledgeGitSessionPublication.ExportPath(node.Uri) : ExportPath(node.Uri);
                 if (!exported.Add(relative)) throw new InvalidOperationException("导出路径存在大小写冲突，请调整知识目录名称。");
                 var destination = Path.Combine(stage, relative);
-                if (node.Kind == "directory") { Directory.CreateDirectory(destination); continue; }
+                if (node.Kind == "directory")
+                {
+                    Directory.CreateDirectory(destination);
+                    manifest.Add(new() { Uri = node.Uri, Path = relative.Replace('\\', '/'), Name = node.Name, Kind = "directory" });
+                    continue;
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 var source = resources.File(node.Uri);
                 await using (var input = System.IO.File.OpenRead(source.Path))
                 await using (var output = System.IO.File.Create(destination)) await input.CopyToAsync(output, ct);
                 await using var content = System.IO.File.OpenRead(destination);
-                manifest.Add(new { uri = node.Uri, path = relative.Replace('\\', '/'), sha256 = Convert.ToHexString(await SHA256.HashDataAsync(content, ct)) });
+                manifest.Add(new() { Uri = node.Uri, Path = relative.Replace('\\', '/'), Name = node.Name, Sha256 = Convert.ToHexString(await SHA256.HashDataAsync(content, ct)) });
             }
+            manifest = manifest.OrderBy(e => e.Path, StringComparer.Ordinal).ToList();
             await System.IO.File.WriteAllBytesAsync(Path.Combine(stage, "manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest), ct);
             // Publish only managed roots. Roll back all renames if publication fails.
             var moved = new List<(string Target, string? Backup)>();
             try
             {
-                foreach (var name in new[] { "resources", "projects", "manifest.json" })
+                foreach (var name in new[] { "resources", "projects", "sessions", "manifest.json" })
                 {
                     var target = Path.Combine(Workspace, name); var incoming = Path.Combine(stage, name);
                     var backup = Path.Combine(stage, "backup-" + name);
@@ -93,7 +141,7 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
                 }
                 throw;
             }
-            return await git.ValidateTeamAsync(Workspace, ct, await Credential(ct));
+            return await git.ValidateTeamAsync(Workspace, ct, await Credential(ct), request.Force);
         }
         finally { Directory.Delete(stage, true); }
     }, ct);
@@ -103,13 +151,7 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
         var user = await RequireAdmin(ct); CheckPaths(); await RequireConfig(ct);
         if (string.IsNullOrWhiteSpace(request.Message)) throw new ArgumentException("请输入提交说明。");
         var credential = await Credential(ct);
-        var validation = await git.ValidateTeamAsync(Workspace, ct, credential);
-        if (!validation.IsValid || validation.SnapshotSha256 != request.Snapshot)
-            throw new InvalidOperationException("变更已变化或检查未通过，请重新刷新并确认文件列表。");
-        var status = await git.StatusAsync("team-knowledge", Workspace, ct, credential);
-        if (status.Behind > 0 || !string.IsNullOrEmpty(status.RemoteRefreshError))
-            throw new InvalidOperationException("远端领先或检查失败，请管理员处理同步后重试。");
-        return await git.CommitAndPushAsync("team-knowledge", Workspace, request.Message, ct, credential, user.Username);
+        return await git.PushTeamAsync(Workspace, request.Message, request.Snapshot, request.Force, ct, credential, user.Username);
     }, ct);
 
     public static string ExportPath(string uri)
@@ -145,7 +187,7 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
         }
         if (Directory.Exists(Workspace))
             foreach (var entry in Directory.EnumerateFileSystemEntries(Workspace))
-                if (Path.GetFileName(entry) is not (".git" or "resources" or "projects" or "manifest.json"))
+                if (Path.GetFileName(entry) is not (".git" or "resources" or "projects" or "sessions" or "manifest.json"))
                     throw new InvalidOperationException("团队工作区存在非导出文件，请移除后重试。");
     }
     private async Task<AuthenticatedUser> RequireAdmin(CancellationToken ct)
@@ -154,6 +196,13 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
         if (user?.IsAdministrator != true) throw new UnauthorizedAccessException("团队 Git 配置和推送仅限管理员。");
         return user;
     }
+    private static IEnumerable<KnowledgeResourceNodeDto> OwnSessions(AuthenticatedUser user, IEnumerable<KnowledgeResourceNodeDto> tree)
+    {
+        var prefix = KnowledgeUserScope.RootFor(user.Username, user.Id) + "sessions/";
+        return tree.Where(n => n.Kind == "file" && n.DocumentId.HasValue && n.Uri.StartsWith(prefix, StringComparison.Ordinal)
+            && !KnowledgeResourceService.IsGeneratedUri(n.Uri) && string.Equals(n.Extension, ".md", StringComparison.OrdinalIgnoreCase));
+    }
+    private static bool IsShared(string uri) => uri.StartsWith("viking://resources/", StringComparison.Ordinal) || uri.StartsWith("viking://projects/", StringComparison.Ordinal);
     private async Task<GitWorkspaceCredential?> Credential(CancellationToken ct)
     {
         using var db = database.CopyNew();

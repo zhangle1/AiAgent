@@ -31,6 +31,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
+- 修改团队知识 Git 导出、会话发布或项目目录时读 `docs/knowledge-team-git-implementation.md`：页面选择控制导出范围，本人会话仅经显式选择发布副本；默认本地优先，通过独立 `PushTeamAsync` 和绑定远端 SHA 的 lease 覆盖目标分支，快照覆盖内容、远程、分支及推送模式。已登记项目使用稳定 ID URI、按当前身份筛选，名称仅作显示；旧文本分类不按同名绑定授权。
+
 - 修改数据库启动初始化或排查启动耗时时先读 `docs/backend-startup-diagnostics.md`。保留表／补列／索引／种子数据顺序及失败即终止，按阶段记录无敏感内容的耗时；索引 SQL 保持原定义并批量执行，不以关闭 CodeFirst 代替性能修复。
 
 - 修改知识原文件路径检查或历史清理前读 `docs/knowledge-stale-record-cleanup.md`。清理仅软删除经当前身份授权、预览指纹复核且无活动任务的失效来源记录；管理员可管理共享资料，其他人员会话仍只读。保留磁盘文件和聊天／任务历史，使用独立数据库客户端和事务；路径失效返回状态提示，继续执行根边界与链接检查。

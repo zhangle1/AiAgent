@@ -146,6 +146,7 @@ builder.Services.AddSingleton<KnowledgeSourceSearchService>();
 builder.Services.AddSingleton<KnowledgeChainDiagnosticsService>();
 builder.Services.AddSingleton<KnowledgeCompilationWorker>();
 builder.Services.AddSingleton<KnowledgeResourceService>();
+builder.Services.AddSingleton<KnowledgeProjectDirectoryService>();
 builder.Services.AddSingleton<KnowledgeResourceCleanupService>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.Knowledge.KnowAgent.IKnowledgeAgentTools, AiAgent.Backend.Services.Knowledge.KnowAgent.KnowledgeAgentTools>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.Knowledge.KnowAgent.KnowledgeAgentService>();

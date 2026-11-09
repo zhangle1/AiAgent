@@ -12,6 +12,7 @@ public sealed class KnowledgeGitAppService(KnowledgeTeamGitService service) : ID
 {
     [HttpGet("")] public Task<KnowledgeGitState> State(CancellationToken ct) => service.StateAsync(ct);
     [HttpPut("")] public Task<KnowledgeGitConfig> Configure([FromBody] KnowledgeGitConfig request, CancellationToken ct) => service.ConfigureAsync(request, ct);
-    [HttpPost("refresh")] public Task<GitDeliveryValidation> Refresh(CancellationToken ct) => service.RefreshAsync(ct);
+    [HttpPost("refresh")] public Task<GitDeliveryValidation> Refresh([FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] KnowledgeGitRefresh? request, CancellationToken ct)
+        => service.RefreshAsync(request ?? new(), ct);
     [HttpPost("push")] public Task<GitOperationResult> Push([FromBody] KnowledgeGitPush request, CancellationToken ct) => service.PushAsync(request, ct);
 }
