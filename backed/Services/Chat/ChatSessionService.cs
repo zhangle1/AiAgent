@@ -118,10 +118,11 @@ public sealed class ChatSessionService : IChatSessionService
             if (extractionIds.TryGetValue(item.Attachment.Id, out var extractionId)) item.Attachment.ExtractionId = extractionId;
         }
         if (attachments.Count > 0) request.LocalImagePaths = attachments.Select(item => item.LocalPath).ToList();
-        var metadata = request.ResolvedSkillSnapshot is null && request.ResolvedSkillSnapshots.Count == 0 && attachments.Count == 0 && documentAttachments.Count == 0 && request.ResolvedProjectReferences.Count == 0 && request.ResolvedMarkdownDocumentReferences.Count == 0
+        var metadata = request.Goal is null && request.ResolvedSkillSnapshot is null && request.ResolvedSkillSnapshots.Count == 0 && attachments.Count == 0 && documentAttachments.Count == 0 && request.ResolvedProjectReferences.Count == 0 && request.ResolvedMarkdownDocumentReferences.Count == 0
             ? null
             : JsonSerializer.Serialize(new
             {
+                goal = request.Goal,
                 skill_invocation = request.SkillInvocation,
                 skill_snapshot = request.ResolvedSkillSnapshot,
                 skill_invocations = request.SkillInvocations,

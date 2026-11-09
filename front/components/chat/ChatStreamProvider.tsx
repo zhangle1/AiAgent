@@ -130,7 +130,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         observedAt: Date.now(),
         terminalReason: current.status === "error" ? current.terminalReason : current.events.some((event) => event.type === "completed") ? "completed" : "legacy_done",
         unread: true,
-        retryAt: current.status === "error" ? Date.now() + 20_000 : undefined,
+        retryAt: current.status === "error" && !request.goal ? Date.now() + 20_000 : undefined,
       }));
       flushUpdates();
       const completed = streamsRef.current[streamId];
@@ -158,7 +158,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         terminalReason: stopped ? "user_stopped" : idleTimeout ? "idle_timeout" : "transport_error",
         errorMessage: current.errorMessage ?? (stopped ? undefined : message),
         unread: !stopped,
-        retryAt: stopped ? undefined : failedAt + 20_000,
+        retryAt: stopped || request.goal ? undefined : failedAt + 20_000,
         events: stopped || current.events.some((event) => event.type === "error") ? current.events : [...current.events, { type: "error", content: message }],
       }));
       window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped, error: message } }));
@@ -175,7 +175,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const retryStream = useCallback((streamId: string) => {
     const stream = streamsRef.current[streamId];
     const request = requestsRef.current.get(streamId);
-    if (!stream || stream.status !== "error" || !request || controllersRef.current.has(streamId)) return;
+    if (!stream || stream.status !== "error" || !request || request.goal || controllersRef.current.has(streamId)) return;
     cancelRetry(streamId);
     try {
       startStream(request, streamId);

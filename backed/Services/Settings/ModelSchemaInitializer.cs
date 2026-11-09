@@ -256,6 +256,8 @@ END
         ExecuteIndexSql("""
 IF OBJECT_ID(N'dbo.ai_chat_session', N'U') IS NOT NULL
 BEGIN
+    IF COL_LENGTH(N'dbo.ai_chat_session', N'GoalJson') IS NULL
+        ALTER TABLE dbo.ai_chat_session ADD GoalJson NVARCHAR(MAX) NULL;
     IF COL_LENGTH(N'dbo.ai_chat_session', N'CodeProjectId') IS NULL
         ALTER TABLE dbo.ai_chat_session ADD CodeProjectId BIGINT NULL;
     ELSE IF COLUMNPROPERTY(OBJECT_ID(N'dbo.ai_chat_session'), N'CodeProjectId', 'AllowsNull') = 0

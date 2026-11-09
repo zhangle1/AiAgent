@@ -150,6 +150,8 @@ public sealed class ChatOrchestrator : IChatOrchestrator
     private static void EnsureSupportedExternalAgent(ChatCompleteRequest request)
     {
         var agent = request.Agent?.Trim();
+        if (request.Goal != null && !IsCodexRequest(request))
+            throw new InvalidOperationException("目标模式仅支持 Codex app-server。");
         if (string.IsNullOrWhiteSpace(agent) || string.Equals(agent, "codex", StringComparison.OrdinalIgnoreCase) || string.Equals(agent, "deepseek-harness", StringComparison.OrdinalIgnoreCase)) return;
         if (string.Equals(agent, "codebuddy", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("CodeBuddy CLI was detected but its app-server protocol is not yet supported.");

@@ -22,7 +22,7 @@ public interface ICodexChatService
 /// Runs the locally installed Codex app-server for a selected registered project.
 /// The browser never talks to Codex directly; this service owns the JSONL protocol and forwards normalized chat events.
 /// </summary>
-public sealed class CodexChatService : ICodexChatService, IDisposable
+public sealed partial class CodexChatService : ICodexChatService, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ISqlSugarClient _db;
@@ -91,6 +91,8 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         await diagnostics.StepAsync("codex_model_resolution", ct: cancellationToken);
         if (string.IsNullOrWhiteSpace(request.Message)) throw new ArgumentException("Message is required.", nameof(request));
         var model = _modelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
+        if (request.Goal != null && (!_configuration.GetValue("Codex:GoalModeEnabled", true) || !string.IsNullOrWhiteSpace(model.ProfileName)))
+            throw new InvalidOperationException("目标模式已关闭，或当前模型使用 exec Profile；请选择 Codex app-server 模型。");
         request.CodexModelId = model.Id;
         request.CodexReasoningEffort = model.ReasoningEffort;
         var sandboxMode = ResolveSandboxMode(request.CodexSandboxMode);
@@ -129,7 +131,9 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
             {
                 await EmitAsync(onEvent, new AgentStreamEvent { Type = "provider_request_started" }, cancellationToken);
                 await diagnostics.StepAsync("codex_app_server_turn", ct: cancellationToken);
-                result = await lease.RunAsync(request, model, workspacePath, onEvent, cancellationToken);
+                result = request.Goal == null
+                    ? await lease.RunAsync(request, model, workspacePath, onEvent, cancellationToken)
+                    : await RunGoalRequestAsync(request, model, workspacePath, lease, onEvent, cancellationToken);
                 await diagnostics.StepAsync("codex_app_server_turn", "completed", cancellationToken);
             }
             catch (InvalidOperationException exception)
@@ -831,8 +835,16 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         if (string.IsNullOrWhiteSpace(method)) return false;
         var parameters = root.TryGetProperty("params", out var value) ? value : default;
 
+        if (method == "thread/goal/updated" && state.GoalUpdated != null)
+        {
+            await state.GoalUpdated(parameters);
+            return false;
+        }
         if (method == "turn/started")
         {
+            state.ActiveTurn = true;
+            if (parameters.TryGetProperty("turn", out var startedTurn)) state.ActiveTurnId = ReadString(startedTurn, "id");
+            if (state.GoalUpdated != null) state.HasAgentMessageDelta = false;
             await EmitAsync(onEvent, TraceEvent("Codex 已接管项目，开始执行。"), cancellationToken);
             return false;
         }
@@ -865,6 +877,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         }
         if (method == "turn/completed")
         {
+            state.ActiveTurn = false;
             var turn = parameters.TryGetProperty("turn", out var valueTurn) ? valueTurn : default;
             state.TurnStatus = ReadString(turn, "status") ?? "failed";
             state.ErrorMessage = turn.TryGetProperty("error", out var error) ? ReadString(error, "message") : null;
@@ -1143,7 +1156,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
         }
     }
 
-    private sealed class CodexAppServerWorker : IDisposable
+    private sealed partial class CodexAppServerWorker : IDisposable
     {
         private readonly Process _process;
         private readonly StreamReader _stdout;
@@ -1198,6 +1211,7 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
 
         public async Task<CodexRunState> RunAsync(ChatCompleteRequest request, CodexResolvedModel model, string workspacePath, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
         {
+            if (request.GoalRuntime != null) return await RunGoalAsync(request, model, workspacePath, onEvent, cancellationToken);
             if (!IsUsable) throw new InvalidOperationException("Codex app-server worker is unavailable.");
             var state = new CodexRunState();
             using var turnTimeout = new CancellationTokenSource(_turnTimeout);
@@ -1276,6 +1290,10 @@ public sealed class CodexChatService : ICodexChatService, IDisposable
 
     private sealed class CodexRunState
     {
+        public Func<JsonElement, Task>? GoalUpdated { get; set; }
+        public bool ActiveTurn { get; set; }
+        public string? ActiveTurnId { get; set; }
+
         public StringBuilder Answer { get; } = new();
         public HashSet<string> CompletedFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
         public bool HasAgentMessageDelta { get; set; }
