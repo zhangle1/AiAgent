@@ -100,11 +100,11 @@ public sealed partial class CodexChatService : IChatGoalControl
             if ((input.ExpectedVersion ?? 0) != (goal?.Version ?? 0))
                 throw new InvalidOperationException("目标状态已更新，或该启动请求已经处理，请刷新后操作。");
             var objective = input.Objective?.Trim();
-            if (string.IsNullOrWhiteSpace(objective) || objective.Length > 4000 || input.TokenBudget is <= 0)
-                throw new ArgumentException("目标须为 1–4000 字符，Token 预算须为正整数或留空。");
+            if (string.IsNullOrWhiteSpace(objective) || objective.Length > 4000 || input.TokenBudget is <= 0 or > ChatGoalRequest.MaxTokenBudget)
+                throw new ArgumentException("目标须为 1–4000 字符，Token 预算须为正整数且不超过 200 万。");
             if (goal != null && goal.Status is not ("complete" or "ended"))
                 throw new InvalidOperationException("已有目标，请继续或先结束当前目标。");
-            goal = new ChatGoalState { Objective = objective, TokenBudget = input.TokenBudget, Binding = binding, Version = goal?.Version ?? 0 };
+            goal = new ChatGoalState { Objective = objective, TokenBudget = input.TokenBudget ?? ChatGoalRequest.MaxTokenBudget, Binding = binding, Version = goal?.Version ?? 0 };
         }
         else if (input.Action == "resume")
         {

@@ -17,6 +17,28 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class ChatGoalTests
 {
+    [Fact]
+    public async Task NewGoalUsesTwoMillionTokenBudgetWhenRequestOmitsIt()
+    {
+        using var fixture = new Fixture();
+        using var service = fixture.Service();
+        await service.CompleteAsync(fixture.Request(new() { Objective = "budget defaults" }), null, default);
+        Assert.Equal(2_000_000L, fixture.Goal().TokenBudget);
+        Assert.Equal(2_000_000L, fixture.Calls().Single(call => call.GetProperty("method").GetString() == "thread/goal/set").GetProperty("params").GetProperty("tokenBudget").GetInt64());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(2_000_001)]
+    public async Task NewGoalRejectsInvalidOrAboveLimitTokenBudgets(long budget)
+    {
+        using var fixture = new Fixture();
+        using var service = fixture.Service();
+        await Assert.ThrowsAnyAsync<Exception>(() => service.CompleteAsync(fixture.Request(new() { Objective = "budget guard", TokenBudget = budget }), null, default));
+        Assert.Null(fixture.Db.Queryable<AiChatSession>().Single().GoalJson);
+    }
+
     [Theory]
     [InlineData("blocked")]
     [InlineData("budgetLimited")]

@@ -5,6 +5,7 @@ import type { ChatSkill, ChatSkillReference } from "@/lib/chat-skill-types";
 import { skillCommand, filterChatSkills } from "@/lib/chat-skill-command";
 import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPicker";
 import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
+import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
 import { getChatClipboardFiles } from "@/lib/chat-clipboard";
 
@@ -12,7 +13,7 @@ import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMe
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ImagePlus, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
@@ -267,6 +268,9 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [visualizationType, setVisualizationType] = useState<DiagramType | null>(null);
   const [visualizationCommits, setVisualizationCommits] = useState<SelectedGitCommit[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLButtonElement | null>(null);
+  const [goalActivation, setGoalActivation] = useState(0);
+  const [visualizationActivation, setVisualizationActivation] = useState(0);
   const [mobilePicker, setMobilePicker] = useState<"model" | "project" | null>(null);
   const [slashProjectCommand, setSlashProjectCommand] = useState<SlashProjectCommand | null>(null);
   const [projectReferenceOptions, setProjectReferenceOptions] = useState<CodeProjectReference[]>([]);
@@ -319,8 +323,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
   const activeVisualizationCommits = visualizationCommits.filter((commit) => commit.project_id === effectiveProjectId);
   useEffect(() => { setVisualizationCommits([]); }, [effectiveProjectId, requestedSessionId]);
-  useEffect(() => { if (requestedSessionId && requestedSessionId === pendingSessionIdRef.current) return; setSelectedSkills([]); setPreviewSkill(null); setSkillMenuDismissed(false); setSkillPickerRequested(false); setSlashProjectCommand(null); }, [effectiveProjectId, requestedSessionId, requestedNewSessionKey]);
+  useEffect(() => { if (requestedSessionId && requestedSessionId === pendingSessionIdRef.current) return; setSelectedSkills([]); setComposerMenuAnchor(null); setPreviewSkill(null); setSkillMenuDismissed(false); setSkillPickerRequested(false); setSlashProjectCommand(null); }, [effectiveProjectId, requestedSessionId, requestedNewSessionKey]);
   const skillOptions = filterChatSkills(chatSkills, slashProjectCommand?.query ?? "");
+  const goalQuery = (slashProjectCommand?.query ?? "").toLocaleLowerCase();
+  const showGoalOption = !goalQuery || "goal".includes(goalQuery) || "目标".includes(goalQuery);
+  const skillOptionCount = skillOptions.length + (showGoalOption ? 1 : 0);
   const skillMenuOpen = !embedded && (skillPickerRequested || (!skillMenuDismissed && slashProjectCommand?.kind === "projects" && slashProjectCommand.start === 0));
   function dismissSkillMenu() {
     slashMenuDismissedRef.current = true;
@@ -331,6 +338,17 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       .find(element => element.getClientRects().length > 0) ?? activeComposerRef.current;
     slashMenuDismissedRef.current = false;
     setSkillPickerRequested(true); setSkillMenuDismissed(false);
+  }
+  function openComposerMenu(button: HTMLButtonElement) {
+    activeComposerRef.current = Array.from(button.closest("form")?.querySelectorAll<HTMLDivElement>("[contenteditable=true]") ?? []).find(element => element.getClientRects().length > 0) ?? activeComposerRef.current;
+    dismissSkillMenu();
+    setOpenContextPicker(null);
+    setComposerMenuAnchor(current => current === button ? null : button);
+  }
+  function selectGoalCommand() {
+    if (goalDisabledReason) return;
+    const next = slashProjectCommand ? input.replace(/^\/[^\s]*[ \t]?/, "") : input;
+    setInput(next); dismissSkillMenu(); setGoalActivation(value => value + 1);
   }
   function openSkillProjectSearch() {
     slashMenuDismissedRef.current = false;
@@ -356,9 +374,9 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const currentModel = llmModels.find((model) => model.id === selectedModelId) ?? llmModels[0] ?? null;
   const codexModels = codexModelPolicy?.models.filter((model) => codexModelPolicy.allowed_model_ids.includes(model.id)) ?? [];
   const currentCodexModel = codexModels.find((model) => model.id === selectedCodexModelId) ?? codexModels[0] ?? null;
+  const goalDisabledReason = !effectiveProjectId ? "先选择项目后可使用目标模式" : selectedAgentId !== "codex" ? "选择 Codex 本地后可使用" : !currentCodexModel ? "正在读取可用的 Codex 模型" : currentCodexModel.profile_name ? "当前 exec 模型不支持目标模式" : undefined;
   const imageInput = selectedAgentId === "codex" ? (currentCodexModel?.image_input ?? "none") : "none";
   const canAttachImages = imageInput === "native" && imageOcrPolicy?.native_image_input_enabled === true;
-  const imageAttachmentHint = canAttachImages ? "原图直接传给当前模型识别" : "当前模型未启用图片上传";
   const imageInputError = `图片上传未开启：${currentCodexModel?.name || "当前模型"}。${imageInput === "native" ? "请在模型图片设置中开启“允许聊天上传图片”并保存。" : "请在该模型卡片勾选“支持图片上传（原图）”并保存。"}`;
   useEffect(() => {
     if (canAttachImages) setError((current) => current?.startsWith("图片上传未开启：") ? null : current);
@@ -713,10 +731,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     if (event.nativeEvent.isComposing) return;
     if (skillMenuOpen) {
       if (event.key === "Escape") { event.preventDefault(); dismissSkillMenu(); return; }
-      if (skillOptions.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault(); setSkillActiveIndex((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + skillOptions.length) % skillOptions.length); return;
+      if (skillOptionCount && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        event.preventDefault(); setSkillActiveIndex((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + skillOptionCount) % skillOptionCount); return;
       }
-      if (skillOptions.length && (event.key === "Enter" || event.key === "Tab")) { event.preventDefault(); selectChatSkill(skillOptions[skillActiveIndex] ?? skillOptions[0]); return; }
+      if (skillOptionCount && (event.key === "Enter" || event.key === "Tab")) {
+        event.preventDefault();
+        if (showGoalOption && skillActiveIndex === 0) selectGoalCommand();
+        else { const skill = skillOptions[skillActiveIndex - (showGoalOption ? 1 : 0)] ?? skillOptions[0]; if (skill) selectChatSkill(skill); }
+        return;
+      }
     }
     if (!event.nativeEvent.isComposing && event.key === "Backspace") {
       const removable = inlineReferenceBeforeCursor(input, cursor);
@@ -900,7 +923,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
     if (goalRequest && selectedAgentId === "codex" && (currentCodexModel?.profile_name ||
       (goalRequest.action === "start" && (!goalRequest.objective?.trim() || goalRequest.token_budget === 0)))) {
-      setError("请填写目标与验收标准，并使用正整数预算和 Codex app-server 模型。");
+      setError("请填写目标与验收标准，并选择支持目标模式的 Codex 模型。");
       return;
     }
     const prototypeReferences = extractPrototypeReferenceIds(query);
@@ -1325,9 +1348,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
-              {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={selectedAgentId === "codex" && Boolean(effectiveProjectId) && !currentCodexModel?.profile_name} sending={sending} onChange={setGoalRequest} />}
-              {!embedded && <div className="flex flex-wrap items-center gap-2 px-3 py-1 text-xs">
-                <button type="button" aria-expanded={skillMenuOpen} className="shrink-0 rounded-md px-1 py-1 text-blue-600 hover:bg-blue-50 focus-visible:outline-blue-500" disabled={sending} onClick={event => openSkillPicker(event.currentTarget)}>技能 / {selectedSkills.length > 0 && <span className="text-slate-400">{selectedSkills.length}</span>}</button>
+              {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={!goalDisabledReason} sending={sending} onChange={setGoalRequest} activation={goalActivation} />}
+              {!embedded && (selectedSkills.length > 0 || skillError) && <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs">
                 {selectedSkills.map(skill => <span key={skill.id} className="inline-flex max-w-full items-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
                   <button type="button" title={`预览${skill.name}`} aria-label={`预览${skill.name}`} onClick={() => setPreviewSkill(skill)} className="min-w-0 truncate rounded-l-lg px-2 py-1.5 text-left hover:bg-blue-100 focus-visible:outline-blue-500">{skill.name}<span className="ml-1 text-[10px] text-blue-500">{skill.multi_turn ? "进行中" : "本轮"}</span></button>
                   <button type="button" aria-label={`移除技能 ${skill.name}`} title={skill.multi_turn ? "结束此技能" : "移除此技能"} onClick={() => setSelectedSkills(current => current.filter(item => item.id !== skill.id))} className="mr-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md text-blue-500 hover:bg-blue-100 hover:text-blue-800 focus-visible:outline-blue-500"><X size={13} /></button>
@@ -1335,7 +1357,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 {selectedSkills.length > 1 && <button type="button" onClick={() => setSelectedSkills([])} className="shrink-0 rounded px-1 py-1 text-slate-400 hover:text-slate-700">清空技能</button>}
                 {skillError && <span role="alert" className="text-red-600">{skillError} <button type="button" onClick={() => { void getChatSkills().then((items) => { setChatSkills(items); setSkillError(null); }).catch((ex) => setSkillError(ex.message)); }}>重试</button></span>}
               </div>}
-              {!embedded && <VisualizationToolbar key={`${effectiveProjectId}:${requestedSessionId}`} value={visualizationType} onChange={setVisualizationType} disabled={sending || uploadingImages || uploadingFiles} project={selectedProject} commits={activeVisualizationCommits} onCommitsChange={setVisualizationCommits} />}
+              {!embedded && <VisualizationToolbar key={`${effectiveProjectId}:${requestedSessionId}`} value={visualizationType} onChange={setVisualizationType} disabled={sending || uploadingImages || uploadingFiles} project={selectedProject} commits={activeVisualizationCommits} onCommitsChange={setVisualizationCommits} activation={visualizationActivation} compact />}
               {imageAttachments.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
                   {imageAttachments.map((attachment) => (
@@ -1366,32 +1388,21 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                   ))}
                 </div>
               )}
-              {skillMenuOpen && <ChatSkillPicker anchor={activeComposerRef.current} selectedIds={selectedSkills.map(skill => skill.id)} onDismiss={dismissSkillMenu} previewOpen={Boolean(previewSkill)} onProjects={openSkillProjectSearch} items={skillOptions} activeIndex={skillActiveIndex} onActiveIndexChange={setSkillActiveIndex} onSelect={skill => selectChatSkill(skill, true)} onPreview={setPreviewSkill} />}
+              {skillMenuOpen && <ChatSkillPicker anchor={activeComposerRef.current} selectedIds={selectedSkills.map(skill => skill.id)} onDismiss={dismissSkillMenu} previewOpen={Boolean(previewSkill)} goalOption={showGoalOption ? { selected: Boolean(goalRequest), disabledReason: goalDisabledReason, onSelect: selectGoalCommand } : undefined} onProjects={openSkillProjectSearch} items={skillOptions} activeIndex={skillActiveIndex} onActiveIndexChange={setSkillActiveIndex} onSelect={skill => selectChatSkill(skill, true)} onPreview={setPreviewSkill} />}
+              {composerMenuAnchor && <ChatComposerMenu anchor={composerMenuAnchor} onClose={() => setComposerMenuAnchor(null)} filesEnabled={selectedAgentId === "codex"} onFiles={() => { setComposerMenuAnchor(null); fileInputRef.current?.click(); }} onSkills={embedded ? undefined : () => { openSkillPicker(composerMenuAnchor); setComposerMenuAnchor(null); }} onGoal={embedded ? undefined : () => { setComposerMenuAnchor(null); activeComposerRef.current?.focus(); setGoalActivation(value => value + 1); }} goalDisabledReason={goalDisabledReason} onVisualization={embedded ? undefined : () => { setComposerMenuAnchor(null); setVisualizationActivation(value => value + 1); }} />}
               {previewSkill && createPortal(<ChatSkillPreview skill={previewSkill} onClose={() => setPreviewSkill(null)} />, document.body)}
               {slashProjectCommand && !skillMenuOpen && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
-              <div className="flex items-center gap-1 lg:hidden">
-                <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}>
-                  <Mic size={18} />
-                </button>
-                <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 max-w-[102px] shrink-0 items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型">
-                  <span className="truncate">{mobileModelLabel}</span>
-                  <ChevronDown size={13} className="shrink-0" />
-                </button>
-                <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className={`min-w-0 flex-1 px-1 py-2 text-[14px] leading-5 ${composerExpanded ? "min-h-[52px]" : "min-h-9"}`} onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} title={`${imageAttachmentHint}；可添加 PDF、Word、Excel、PowerPoint、HTML 或文本文件`} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")}>
+              <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className="min-h-[56px] w-full px-1 py-2 text-[14px] leading-6 lg:hidden" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
+              <div className="flex items-center gap-1 border-t border-slate-100 pt-2 lg:hidden">
+                <button type="button" onClick={event => openComposerMenu(event.currentTarget)} aria-haspopup="menu" aria-expanded={Boolean(composerMenuAnchor)} disabled={sending || uploadingImages || uploadingFiles} title="添加文件、技能、目标或可视化" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 disabled:opacity-40" aria-label="添加到聊天">
                   {uploadingImages || uploadingFiles ? <Loader2 size={17} className="animate-spin" /> : <Plus size={20} />}
                 </button>
                 {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} mobile />}
-                {composerExpanded &&
-                  (sending ? (
-                    <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成">
-                      <Square size={14} fill="currentColor" />
-                    </button>
-                  ) : (
-                    <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0))} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}>
-                      <ArrowUp size={17} />
-                    </button>
-                  ))}
+                <div className="min-w-0 flex-1" />
+                <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 min-w-0 max-w-[140px] items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0" /></button>
+                <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18} /></button>
+                {sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor" /></button>
+                  : <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && activeVisualizationCommits.length > 0)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17} /></button>}
               </div>
               {composerExpanded && (
                 <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
@@ -1429,8 +1440,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       fileInputRef.current = element;
                     }}
                   />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || uploadingImages || uploadingFiles || selectedAgentId !== "codex"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("chat.addAttachment")} title={`${imageAttachmentHint}；可添加文档、文本、ZIP/RAR 压缩包或 DLL（文档单文件最多 20 MB）`}>
-                    {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={17} />}
+                  <button type="button" onClick={event => openComposerMenu(event.currentTarget)} aria-haspopup="menu" aria-expanded={Boolean(composerMenuAnchor)} disabled={sending || uploadingImages || uploadingFiles} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label="添加到聊天" title={"添加文件、技能、目标或可视化"}>
+                    {uploadingImages || uploadingFiles ? <Loader2 size={16} className="animate-spin" /> : <Plus size={19} />}
                   </button>
                   {selectedAgentId === "codex" && <CodexExecutionPermissionControl mode={selectedCodexSandboxMode} onChange={setSelectedCodexSandboxMode} />}
                 </div>

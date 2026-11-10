@@ -1,0 +1,92 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "聊天输入区统一加号入口、斜杠目标选择和隐藏的200万预算",
+  "date": "2026-11-10",
+  "base_commit": "8256fd68ca0b871df87830d087f346a52948072c",
+  "platform_change_set_id": null,
+  "status": "approved-in-session",
+  "snapshot_sha256": "b4b0af64f1696632a1e308d093b4009e09df1b2253f611d03f4e8d615fb017a5",
+  "note": "当前会话已明确要求提交推送；交付前复核全部源码指纹，Gitee/GitHub main 均与本地基线一致。验证未操作真实模型、配置、账号或业务数据，后台预算上限需重新编译启动后端后生效。实际交付结果以 Git 提交记录为准。",
+  "checks": {
+    "backend": "passed: 32 ChatGoalTests/ChatSkillTests/SwaggerDocumentTests; default native budget 2000000, rejects -1/0/2000001, lower explicit budget and resumed goal behavior preserved",
+    "frontend_tests": "passed: 18 chat-auto-retry/chat-stream-lifecycle/chat-skills tests",
+    "typescript": "passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "browser_integration": "passed: chat-composer-menu.browser.mjs on actual Next.js page with synthetic APIs; plus menu, unsupported-goal explanation, Escape/focus, goal via plus and Chinese/English slash, explicit enable/cancel, no implicit send, sent budget 2000000, file chooser/upload, skill and visualization entry, desktop and 390px layout",
+    "browser_goal": "passed: chat-goal.browser.mjs; compact initial state, dialog objective validation, fixed hidden budget, cancel, session reset, versioned resume/end",
+    "browser_skills": "passed: chat-skills-browser.mjs; multi-select/toggle, preview, normal draft retention, keyboard, complete selected request, single/multi-turn lifecycle, project search, mobile bounds",
+    "visual": "passed: inspected desktop composer/menu, mobile menu/selected goal and goal setup screenshots in ../.codex-verification/chat-composer-20261110/browser",
+    "whitespace": "passed: git diff --check",
+    "real_services": "no model calls, real backend data or production process restarts"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "22727ec8831caa37ec49ebd0bb1061efd4b7571ce15cc5a11377109aeebd2f35"
+    },
+    {
+      "path": "README.md",
+      "sha256": "3cb0866cef143d2bf8c699a814f7992eb61cb8d8754e23f75110cbcbbd3b87a1"
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "c0524b8ed88b45ba74086e124a8e4624e343f9b44e714b0d549add6175239282"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatGoalDtos.cs",
+      "sha256": "bee538464d4cb757da87cc60af4111952fc834f9c2306531aa99305cb06cdd29"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Goals.cs",
+      "sha256": "16e9983784e8ef5dd9152ae0507d5668f6358bb56b14ba3ed456ef65102ab9f5"
+    },
+    {
+      "path": "docs/chat-explicit-skills.md",
+      "sha256": "cf84e923b193dceca7cd36637a840f2df847489fdcf6310daf6890bde084d7ca"
+    },
+    {
+      "path": "docs/chat-goal-mode.md",
+      "sha256": "9d67156e7f6bbbe201e3b5d2751d17f4b93d5bb8299af6f5cb2362c1091dc8dc"
+    },
+    {
+      "path": "front/components/chat/ChatComposerMenu.tsx",
+      "sha256": "37ece2569a3d38b52bd6be8303da2d625bd7648dad3906934221bbec7ba485d1"
+    },
+    {
+      "path": "front/components/chat/ChatGoalPanel.tsx",
+      "sha256": "23fc8a2e5709039bd5a55ff5eb88126462a69d0c47f38c0fb10ed726de83e43e"
+    },
+    {
+      "path": "front/components/chat/ChatSkillPicker.tsx",
+      "sha256": "a0a7d151a8313a88942a44bcd3a7256c4b9dea4457c378ac213a75607cd79f57"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "fa2bd1145acb4adde6c74965061316b440a45d7051a8aea9b9ce918e0cec2182"
+    },
+    {
+      "path": "front/components/chat/visualization/VisualizationToolbar.tsx",
+      "sha256": "b30de033b84008fdd6673989955f0e22410c183350514cab86f6ca73fb400fb4"
+    },
+    {
+      "path": "front/lib/chat-goal-types.ts",
+      "sha256": "982d9e9bcb4d4e75d300564f0c7b1c865a780408e8b2d0220d10357bbb00f249"
+    },
+    {
+      "path": "front/tests/chat-composer-menu.browser.mjs",
+      "sha256": "33ea0484689ee7004acc1be72fdfbc2dcd4cf5616c449f518311ef9e8adddccb"
+    },
+    {
+      "path": "front/tests/chat-goal.browser.mjs",
+      "sha256": "c8e0c71094a4f6e33a93084d4233e2f8f20639164f38cab00fcb398744b88078"
+    },
+    {
+      "path": "front/tests/chat-skills-browser.mjs",
+      "sha256": "2d46f0b7358aebf7ed613a6d33dc4b42910b18f11fe6ff324648b7c878a1dd05"
+    }
+  ],
+  "approval": {
+    "source": "user-request",
+    "request": "先推送上去吧",
+    "reviewed_snapshot_sha256": "b4b0af64f1696632a1e308d093b4009e09df1b2253f611d03f4e8d615fb017a5"
+  }
+}

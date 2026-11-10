@@ -37,7 +37,7 @@ try{
  const editor=page.locator('[contenteditable=true]:visible').first();
  const menu=page.getByRole('listbox',{name:'主动调用技能'});
  const remove=name=>page.getByRole('button',{name:`移除技能 ${name}`,exact:true});
- const open=async()=>{if(!await menu.isVisible())await page.getByRole('button',{name:/^技能 \//}).click();};
+ const open=async()=>{if(!await menu.isVisible()){await page.getByRole('button',{name:'添加到聊天',exact:true}).click();await page.getByRole('menuitem',{name:/^技能/}).click();}};
  async function menuAboveComposer(){await page.waitForFunction(()=>{
    const menu=document.querySelector('[aria-label="主动调用技能"]');
    const editor=Array.from(document.querySelectorAll('[contenteditable=true]')).find(element=>element.getClientRects().length>0);

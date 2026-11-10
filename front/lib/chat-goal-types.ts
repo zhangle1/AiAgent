@@ -1,3 +1,5 @@
+export const CHAT_GOAL_TOKEN_BUDGET = 2_000_000;
+
 export type ChatGoalRequest = {
   action: "start" | "resume";
   objective?: string;

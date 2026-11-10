@@ -2,14 +2,16 @@
 import type { ChatSkill } from "@/lib/chat-skill-types";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, X } from "lucide-react";
+import { Check, Target, X } from "lucide-react";
 
-export function ChatSkillPicker({ items, selectedIds, activeIndex, onSelect, onPreview, onActiveIndexChange, anchor, onProjects, onDismiss, previewOpen }: {
+export function ChatSkillPicker({ items, selectedIds, activeIndex, onSelect, onPreview, onActiveIndexChange, anchor, onProjects, onDismiss, previewOpen, goalOption }: {
+  goalOption?: { selected: boolean; disabledReason?: string; onSelect: () => void };
   items: ChatSkill[]; activeIndex: number; onSelect: (skill: ChatSkill) => void;
   onPreview: (skill: ChatSkill) => void; onActiveIndexChange: (index: number) => void;
   anchor: HTMLDivElement | null; onProjects: () => void; selectedIds: string[];
   onDismiss: () => void; previewOpen: boolean;
 }) {
+  const offset = goalOption ? 1 : 0;
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 16, bottom: 80, width: 380, maxHeight: 360 });
   useEffect(() => {
@@ -42,13 +44,14 @@ export function ChatSkillPicker({ items, selectedIds, activeIndex, onSelect, onP
   }, [anchor]);
   return createPortal(<div ref={menu} style={{ position: "fixed", ...position }} className="z-[80] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" role="listbox" aria-multiselectable="true" aria-label="主动调用技能">
     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
-      <div className="text-xs text-slate-500"><span className="font-medium text-slate-700">技能 · 可多选</span>{selectedIds.length > 0 && <span className="ml-2 text-blue-600">已选 {selectedIds.length} 项</span>}<p className="mt-1 text-[10px]">↑↓ 选择，Enter / Tab 添加 · Esc 收起</p></div>
+      <div className="text-xs text-slate-500"><span className="font-medium text-slate-700">技能与目标 · 技能可多选</span>{selectedIds.length > 0 && <span className="ml-2 text-blue-600">已选 {selectedIds.length} 项</span>}<p className="mt-1 text-[10px]">↑↓ 选择，Enter / Tab 添加 · Esc 收起</p></div>
       <button type="button" aria-label="收起技能菜单" onClick={() => { onDismiss(); anchor?.focus(); }} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={15} /></button>
     </div>
     <div className="min-h-0 overflow-y-auto p-2">
-    {items.length === 0 && <div className="p-2 text-xs text-slate-500">没有匹配技能，可继续使用下方项目搜索。</div>}
-    {items.map((skill, index) => <div key={skill.id} className={`flex items-center gap-2 rounded-lg ${index === activeIndex ? "bg-blue-50" : ""}`}>
-      <button type="button" role="option" aria-selected={selectedIds.includes(skill.id)} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => onActiveIndexChange(index)} onClick={() => onSelect(skill)} className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left">
+    {goalOption && <button type="button" role="option" aria-selected={goalOption.selected} disabled={Boolean(goalOption.disabledReason)} onMouseDown={event => event.preventDefault()} onMouseEnter={() => onActiveIndexChange(0)} onClick={goalOption.onSelect} className={`mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left disabled:opacity-50 ${activeIndex === 0 ? "bg-blue-50" : "hover:bg-slate-50"}`}><Target size={16} className="mt-0.5 shrink-0 text-blue-600" /><span><span className="block text-sm text-slate-800">目标模式 <span className="text-xs text-slate-400">/goal · 目标</span></span><span className="block text-xs text-slate-500">{goalOption.disabledReason || "设置目标与验收标准，发送后持续推进"}</span></span></button>}
+    {items.length === 0 && !goalOption && <div className="p-2 text-xs text-slate-500">没有匹配技能或目标，可继续使用下方项目搜索。</div>}
+    {items.map((skill, index) => <div key={skill.id} className={`flex items-center gap-2 rounded-lg ${index + offset === activeIndex ? "bg-blue-50" : ""}`}>
+      <button type="button" role="option" aria-selected={selectedIds.includes(skill.id)} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => onActiveIndexChange(index + offset)} onClick={() => onSelect(skill)} className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left">
         <span aria-hidden="true" className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border ${selectedIds.includes(skill.id) ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300"}`}>{selectedIds.includes(skill.id) && <Check size={12} />}</span>
         <span className="min-w-0"><span className="block text-sm text-slate-800">{skill.name} <span className="text-xs text-slate-400">/{skill.id} · {skill.category}</span></span>
         <span className="block text-xs text-slate-500">{skill.description}</span></span>
