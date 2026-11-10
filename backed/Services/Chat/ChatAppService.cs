@@ -327,6 +327,13 @@ public sealed class ChatAppService : IDynamicApiController
         request.ServerAttachmentContext = await _fileAttachments.ExtractContextAsync(attachments, cancellationToken);
     }
 
+    [HttpGet("codex/quota")]
+    public async Task<CodexQuotaResponse> GetCodexQuota(CancellationToken cancellationToken)
+    {
+        await RequireUser(cancellationToken);
+        return await _codex.ReadQuotaAsync(cancellationToken);
+    }
+
     private async Task<AuthenticatedUser> RequireUser(CancellationToken cancellationToken) => await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
 
     private static async Task WriteSseAsync(HttpResponse response, AgentStreamEvent streamEvent, CancellationToken cancellationToken)

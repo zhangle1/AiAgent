@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, Check, CheckSquare, ChevronDown, CircleHelp, Code2, Edit3, Ellipsis, FolderGit2, GitBranch, LayoutDashboard, Library, ListTodo, LogOut, MessageSquare, Palette, PanelLeftClose, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
+import { Archive, Check, CheckSquare, ChevronDown, Code2, Edit3, Ellipsis, FolderGit2, GitBranch, LayoutDashboard, Library, ListTodo, LogOut, MessageSquare, Palette, PanelLeftClose, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { logout } from "@/lib/auth-api";
 import type { AuthStatus } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { archiveSession, getChatSidebarPreference, listProjectSessionPreferences, listSessions, renameSession, updateChatSidebarPreference, updateProjectSessionPreference, updateSessionMetadata, type ChatSidebarPreference, type ProjectListSortMode, type ProjectSessionPreference, type ProjectSessionSortMode, type SessionSummary } from "@/lib/session-api";
+import { CodexQuotaButton } from "@/components/layout/CodexQuotaButton";
 import { EnterpriseIssuePicker } from "@/components/tasks/EnterpriseIssuePicker";
 import { createProjectTaskChatHandoff } from "@/lib/project-task-api";
 import { useChatStreams, type ChatStreamStatus } from "@/components/chat/ChatStreamProvider";
@@ -267,8 +268,8 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
         </nav>
         {chatActive && compact && <button type="button" onClick={() => setIssuePickerOpen(true)} className="grid h-10 w-full place-items-center rounded-xl text-blue-700 transition hover:bg-blue-50" title="处理码云任务" aria-label="处理码云任务"><CheckSquare size={17}/></button>}
         <div className="mt-3 w-full shrink-0 space-y-1 border-t border-slate-200 pt-2">
+          <CodexQuotaButton />
           <button type="button" onClick={() => setToolsOpen(true)} className="grid h-10 w-full place-items-center rounded-xl text-slate-600 transition hover:bg-white" title="工具与设置" aria-label="工具与设置"><Settings size={17}/></button>
-          <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:onboarding-open"))} className="grid h-9 w-full place-items-center rounded-xl text-slate-500 transition hover:bg-white" title="新手引导" aria-label="新手引导"><CircleHelp size={17}/></button>
           <div className="grid h-10 w-full place-items-center" tabIndex={0} title={`${userDisplayName}（${userSubtitle}）`} aria-label={`当前登录用户：${userDisplayName}，${userSubtitle}`}><span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">{userInitial}</span></div>
           <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="grid h-9 w-full place-items-center rounded-xl text-slate-500 transition hover:bg-red-50 hover:text-red-600" title="退出登录" aria-label="退出登录"><LogOut size={16}/></button>
         </div>
@@ -406,7 +407,7 @@ function ToolDialog({ pathname, onClose }: { pathname: string; onClose: () => vo
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
-  return createPortal(<div className="fixed inset-0 z-[80] bg-slate-950/30" onMouseDown={onClose}><div role="dialog" aria-modal="true" aria-label="工具与设置" className="absolute bottom-4 left-2 w-72 max-w-[calc(100vw-1rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:left-16" onClick={(event) => { if ((event.target as HTMLElement).closest("a")) { onClose(); window.dispatchEvent(new Event("aiagent:mobile-drawer-close")); } }} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={15}/></button></div><div className="space-y-1">{toolItems.map((item) => <SidebarLink key={item.href} item={item} active={isToolActive(pathname, item.href)} compact={false}/>)}</div><div className="mt-2 border-t border-slate-100 pt-2"><button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event("aiagent:onboarding-open")); }} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"><CircleHelp size={16}/>新手引导</button></div></div></div>, document.body);
+  return createPortal(<div className="fixed inset-0 z-[80] bg-slate-950/30" onMouseDown={onClose}><div role="dialog" aria-modal="true" aria-label="工具与设置" className="absolute bottom-4 left-2 w-72 max-w-[calc(100vw-1rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:left-16" onClick={(event) => { if ((event.target as HTMLElement).closest("a")) { onClose(); window.dispatchEvent(new Event("aiagent:mobile-drawer-close")); } }} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between px-2 pb-2"><span className="text-sm font-semibold text-slate-900">工具与设置</span><button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={15}/></button></div><div className="space-y-1">{toolItems.map((item) => <SidebarLink key={item.href} item={item} active={isToolActive(pathname, item.href)} compact={false}/>)}</div></div></div>, document.body);
 }
 
 function isActive(pathname: string, href: string) {

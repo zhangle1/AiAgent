@@ -1,0 +1,79 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "approved-in-session",
+  "created_at": "2026-11-10T07:13:48.382Z",
+  "base_commit": "dbffcfc90946c704862f3d8b6a6fb7895a4d7b95",
+  "authorization": "Current user explicitly requested implementation and push on completion.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "2d32cfbcf25df5883844ed0a5cff89ab56d0f2db1d2dd660c8e680c40cc7c26e"
+    },
+    {
+      "path": "README.md",
+      "sha256": "4a3ea48fb4283c1d857d41c7e3eb9b6fb23acaf4e663f80125ef0b0840ac4e09"
+    },
+    {
+      "path": "backed.tests/ChangeAtlasTests.cs",
+      "sha256": "2ac864e7ca7c70de7c4bda6663be7ca4298029de51fe1609311a249f4c06cadd"
+    },
+    {
+      "path": "backed.tests/KnowledgeWorkspaceTests.cs",
+      "sha256": "3637a7e2637ec48c5ef03ce1d6f3eecb3207c7f3ffd71e6f25e8286b1d610a07"
+    },
+    {
+      "path": "backed.tests/CodexQuotaTests.cs",
+      "sha256": "8bdaf7f49bee922ba2a65a7fe2fd576e64e6b5dd08fc1321493f9eb929876179"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "987ed2a69b58c0ee496e4bb44ab02a8c3cf13893d9d08f0392cc8adfdfb46628"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "cca1d5c5bc27bf70467c37e0b10fcf822a28615d625f72d789c8d353d59a9d15"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Quota.cs",
+      "sha256": "11631a9bb8e559de674def4e2c99ab9ef6adbc0ce4b2b1c0ffe6ee2ea6dd6535"
+    },
+    {
+      "path": "front/components/auth/AuthGate.tsx",
+      "sha256": "098f47bb8a47d9769b3ea08bc4d8e20f16d534e0057b46467c688a85f7ed8da0"
+    },
+    {
+      "path": "front/components/layout/AppSidebar.tsx",
+      "sha256": "d709d7d6242a59e63ccaeb99871876c8bfda89146f37821be9c6b9df39137a93"
+    },
+    {
+      "path": "front/components/layout/CodexQuotaButton.tsx",
+      "sha256": "c1d311283362c8ba4243a61a54cb835f8a90b3434a8df64f0e151af6bf2a9f98"
+    },
+    {
+      "path": "front/lib/codex-quota-api.ts",
+      "sha256": "54ef33f3434a86390abb912a39708f81c7f82288c8fccb8d005f87bb17c2d6a3"
+    },
+    {
+      "path": "front/lib/codex-quota-types.ts",
+      "sha256": "0eb0ca0a4dd74b5512f5f8d74822078fdfaa98fdc512b08bee59fcaa42dbe6d8"
+    },
+    {
+      "path": "front/tests/codex-quota.browser.mjs",
+      "sha256": "d2bea196e3bb57099ed24d3921774fcf5805d38fda89591fb9251a04e5ee8de3"
+    },
+    {
+      "path": "docs/codex-local-quota.md",
+      "sha256": "f6c9f11420202a101859a26213655764a7188e9767ccbc2d0383a41237b88870"
+    }
+  ],
+  "snapshot_sha256": "a3c9eab7e48681df54ba2fc4de889851ca8e7aeec5dc477112aed4d8befacbf9",
+  "checks": {
+    "backend_build": "passed; existing nullable warnings",
+    "backend_tests": "38 passed (quota, diagnostics, model policy, change atlas); final quota suite 5 passed after account hint change",
+    "runtime": "net9.0 target; .NET 10 SDK and DOTNET_ROLL_FORWARD=Major for tests",
+    "typescript": "passed: tsc --noEmit --incremental false",
+    "browser": "passed: synthetic API, quota display, no eager/repeated reads, signed-out, Escape, mobile",
+    "whitespace": "passed"
+  },
+  "scope": "No real model/account/credential/database calls. Existing Graphify files and prior onboarding review snapshot excluded. Quota is fetched on demand and cached for 30 minutes, not an idle background timer."
+}

@@ -15,6 +15,7 @@ namespace AiAgent.Backend.Services.Chat;
 public interface ICodexChatService
 {
     Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken);
+    Task<CodexQuotaResponse> ReadQuotaAsync(CancellationToken cancellationToken);
     Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken);
 }
 
@@ -1207,6 +1208,13 @@ public sealed partial class CodexChatService : ICodexChatService, IDisposable
                 worker.Dispose();
                 throw;
             }
+        }
+
+        public async Task<JsonElement> ReadAccountAsync(string method, CancellationToken token)
+        {
+            var id = NextRequestId();
+            await SendAsync(_process, new { method, id, @params = new { } }, token);
+            return await ReadResponseAsync(_stdout, id, new CodexRunState(), null, TimeSpan.FromSeconds(15), token);
         }
 
         public async Task<CodexRunState> RunAsync(ChatCompleteRequest request, CodexResolvedModel model, string workspacePath, AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)

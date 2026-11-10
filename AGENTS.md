@@ -106,6 +106,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
+- Codex 额度入口为 `CodexQuotaButton`，读取已登录接口 `/api/v1/chat/codex/quota`；服务端通过独立只读 app-server 调用 account/read 与 account/rateLimits/read，不启动 thread/turn，不读取认证文件。额度属于后端运行账号，内存缓存成功结果 30 分钟、错误 1 分钟，并发查询串行复用；不得混同网页用户的个人用量或输出原始账号／凭据。见 `docs/codex-local-quota.md`。
+
 - 聊天输入区入口集中在 `ChatComposerMenu` 的「+」菜单，未选择时收起技能、目标和可视化面板；`/` 共用技能／目标选择，选择不发送。目标设置用弹窗和已选标签，新建请求预算固定 200 万，后端同设默认和上限；恢复已有目标沿用原预算。切换项目／会话关闭旧菜单，激活序号只响应当前组件内的显式操作。修改时同步 `docs/chat-goal-mode.md` 与 `docs/chat-explicit-skills.md`。
 
 - 聊天侧栏码云任务处理复用 `EnterpriseIssuePicker` 的可选 `onProcess`、工作项关联与聊天交接接口；使用 Portal 避免侧栏裁剪。仅显式处理产生的单次浏览器标记可自动发送，等待交接与聊天配置准备完成，普通关联／模板预填仍由用户发送。参见 `docs/chat-gitee-task-processing.md`。

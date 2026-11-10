@@ -300,6 +300,7 @@ public sealed partial class KnowledgeWorkspaceTests : IDisposable
         {
             Requests.Add(request); return Task.FromResult(new ChatCompleteResponse { Content = Replies.Count > 0 ? Replies.Dequeue() : "{}", Model = "cli-model" });
         }
+        public Task<CodexQuotaResponse> ReadQuotaAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken) => Task.CompletedTask;
     }
     private sealed class Llm : ILlmChatClient

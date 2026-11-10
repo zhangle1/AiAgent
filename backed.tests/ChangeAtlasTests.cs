@@ -46,6 +46,7 @@ public sealed class ChangeAtlasTests
         public bool InvalidCitation;
         public bool AnswerOnly;
         public Action? AfterCall;
+        public Task<CodexQuotaResponse> ReadQuotaAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task HeartbeatAsync(AuthenticatedUser user, CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, AiAgent.Backend.Services.Chat.Agentic.AgentStreamEventHandler? onEvent, CancellationToken cancellationToken)
         {
