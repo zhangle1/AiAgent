@@ -7,7 +7,7 @@ const source = ts.transpileModule(fs.readFileSync(new URL("../components/chat/Ch
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 
-function mount(t) {
+function mount(t, pointers = []) {
   let now = 1000;
   let records = {};
   const timers = new Map();
@@ -38,6 +38,7 @@ function mount(t) {
     CHAT_STREAM_QUIET_AFTER_MS: 30000,
     getChatRuntimeId: () => "test-runtime",
     heartbeatCodexRuntime: async () => {},
+    cancelChatCommand: async () => ({ accepted: true }),
     streamCompleteChat(request, emit, signal) {
       return new Promise((resolve, reject) => {
         calls.push({ request, emit, resolve, reject });
@@ -49,6 +50,7 @@ function mount(t) {
   new Function("require", "module", "exports", source)((name) => {
     if (name === "react") return react;
     if (name === "react/jsx-runtime") return { jsx: (_, props) => props.value };
+    if (name === "@/lib/chat-command-recovery") return { readRecoveryPointers: () => pointers, saveRecoveryPointer() {}, removeRecoveryPointer() {} };
     return api;
   }, module, module.exports);
   const context = module.exports.ChatStreamProvider({ children: null });
@@ -111,6 +113,7 @@ test("failure retries after 20 seconds with the same turn, attachments, model an
   await h.advance(1);
   assert.equal(h.calls.length, 2);
   assert.deepEqual(h.calls[1].request, h.calls[0].request);
+  assert.equal(h.calls[0].request.command_id, id);
   assert.deepEqual(Object.keys(h.records()), [id]);
   assert.equal(h.records()[id].status, "streaming");
 });
@@ -164,26 +167,29 @@ test("an error event followed by normal transport close is failed, not completed
   h.calls[0].resolve();
   await h.settle();
   assert.equal(h.records()[id].status, "error");
-  assert.equal(h.records()[id].retryAt, 21000);
+  assert.equal(h.records()[id].retryAt, undefined);
   assert.ok(h.events.includes("aiagent:chat-stream-failed"));
   assert.ok(!h.events.includes("aiagent:chat-stream-complete"));
 });
 
-test("transport errors preserve the model error and repeated failures restart the countdown", async (t) => {
+test("a server error plus transport failure stops replaying an uncertain command", async (t) => {
   const h = mount(t);
   const id = h.context.startStream({ session_id: "session", message: "hello" });
-  h.calls[0].emit({ type: "error", content: "Selected model is at capacity." });
+  h.calls[0].emit({ type: "error", content: "Result unknown" });
   await h.fail();
-  await h.advance(19940);
-  assert.equal(h.calls.length, 2);
-  h.calls[1].emit({ type: "error", content: "Model overloaded" });
-  h.calls[1].reject(new Error("Chat stream ended before completion."));
-  await h.settle();
-  await h.advance(60);
-  assert.equal(h.records()[id].errorMessage, "Model overloaded");
-  assert.equal(h.records()[id].retryAt, 41000);
-  await h.advance(19940);
-  assert.equal(h.calls.length, 3);
+  await h.advance(21000);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.records()[id].retryAt, undefined);
+  assert.equal(h.records()[id].errorMessage, "Result unknown");
+});
+
+test("refresh restores only the original command identity without resending the message", async (t) => {
+  const h = mount(t, [{ command_id: "accepted", session_id: "session", saved_at: 1000 }]);
+  await h.advance(1);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].request.command_id, "accepted");
+  assert.equal(h.calls[0].request.recover_only, true);
+  assert.equal(h.calls[0].request.message, "");
 });
 
 test("success and other sessions cannot trigger or cancel the failed session's retry", async (t) => {
