@@ -76,6 +76,12 @@ public sealed class ChatWebSocketHandler
         ChatCompleteRequest request = null!;
         AuthenticatedUser user = null!;
         var providerRequestStarted = false;
+        ChatCommandStore.Lease? command = null;
+        async Task Emit(AgentStreamEvent value, CancellationToken token)
+        {
+            command?.Append(value);
+            await SendEventAsync(socket, value, token);
+        }
 
         try
         {
@@ -90,6 +96,14 @@ public sealed class ChatWebSocketHandler
                 ?? throw new UnauthorizedAccessException();
             request.RuntimeUserId = user.Id;
             request.RuntimeUsername = user.Username;
+            command = (request.RecoverOnly || (request.Goal == null && !string.IsNullOrWhiteSpace(request.CommandId))) ? context.RequestServices.GetRequiredService<ChatCommandStore>().Begin(request, user) : null;
+            if (command is { IsOwner: false })
+            {
+                await command.ReplayAsync((value, token) => SendEventAsync(socket, value, token), cancellationToken);
+                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "recovered", CancellationToken.None);
+                return;
+            }
+            cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
             if (request.AttachmentIds.Count > 0)
             {
                 if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
@@ -115,7 +129,7 @@ public sealed class ChatWebSocketHandler
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
             ChatSkillCatalog.Apply(request);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
-            await SendEventAsync(socket, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
+            await Emit(new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             await SendTraceAsync(socket, trace?.Complete("auth_session_context"), cancellationToken);
             var content = new StringBuilder();
@@ -147,7 +161,7 @@ public sealed class ChatWebSocketHandler
                 if (streamEvent.Type == "sources") citations = streamEvent.Citations;
                 modelId ??= streamEvent.ModelId;
                 model ??= streamEvent.Model;
-                await SendEventAsync(socket, streamEvent, token);
+                await Emit(streamEvent, token);
             }, cancellationToken);
             await SendTraceAsync(socket, trace?.CompleteProvider(), cancellationToken);
             providerRequestStarted = false;
@@ -162,7 +176,7 @@ public sealed class ChatWebSocketHandler
             await SendTraceAsync(socket, trace?.Complete("frontend_push"), cancellationToken);
             await SendTraceAsync(socket, trace?.Complete("request_completed"), cancellationToken);
             await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            await SendEventAsync(socket, new AgentStreamEvent { Type = "completed" }, cancellationToken);
+            await Emit(new AgentStreamEvent { Type = "completed" }, cancellationToken);
 
             if (socket.State == WebSocketState.Open)
             {
@@ -193,7 +207,7 @@ public sealed class ChatWebSocketHandler
             if (providerRequestStarted) await SendTraceAsync(socket, trace?.FailProvider("request_failed"), CancellationToken.None);
             await SendTraceAsync(socket, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
             if (user != null && request != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            await SendEventAsync(socket, new AgentStreamEvent
+            await Emit(new AgentStreamEvent
             {
                 Type = "error",
                 Content = ToClientError(clientException, request)
@@ -206,6 +220,7 @@ public sealed class ChatWebSocketHandler
         }
         finally
         {
+            command?.Dispose();
             cancellationSource.Cancel();
             if (clientCloseMonitor != null)
             {

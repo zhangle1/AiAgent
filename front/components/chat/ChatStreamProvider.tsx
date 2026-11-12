@@ -1,7 +1,9 @@
 "use client";
 
+import { readRecoveryPointers, saveRecoveryPointer, removeRecoveryPointer } from "@/lib/chat-command-recovery";
+
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CHAT_STREAM_QUIET_AFTER_MS, getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
+import { cancelChatCommand, CHAT_STREAM_QUIET_AFTER_MS, getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 
 export type ChatStreamStatus = "streaming" | "done" | "stopped" | "error";
 export type ChatStreamHealth = "connecting" | "active" | "quiet";
@@ -90,7 +92,9 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
 
     const streamId = retryId ?? createStreamId();
     if (controllersRef.current.has(streamId)) return streamId;
+    request = request.goal ? request : { ...request, command_id: request.command_id ?? streamId };
     requestsRef.current.set(streamId, request);
+    if (!request.goal) saveRecoveryPointer(streamId, request);
     const controller = new AbortController();
     controllersRef.current.set(streamId, controller);
     const streamRequest = { ...request, client_runtime_id: getChatRuntimeId() };
@@ -130,10 +134,11 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         observedAt: Date.now(),
         terminalReason: current.status === "error" ? current.terminalReason : current.events.some((event) => event.type === "completed") ? "completed" : "legacy_done",
         unread: true,
-        retryAt: current.status === "error" && !request.goal ? Date.now() + 20_000 : undefined,
+        retryAt: current.status === "error" && !request.goal && !request.command_id ? Date.now() + 20_000 : undefined,
       }));
       flushUpdates();
       const completed = streamsRef.current[streamId];
+      if (completed?.status === "done") removeRecoveryPointer(streamId);
       if (completed?.status === "error") {
         window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped: false, error: completed.errorMessage } }));
         window.dispatchEvent(new Event("aiagent:sessions-updated"));
@@ -158,7 +163,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         terminalReason: stopped ? "user_stopped" : idleTimeout ? "idle_timeout" : "transport_error",
         errorMessage: current.errorMessage ?? (stopped ? undefined : message),
         unread: !stopped,
-        retryAt: stopped || request.goal ? undefined : failedAt + 20_000,
+        retryAt: stopped || request.goal || (request.command_id && current.events.some((event) => event.type === "error")) ? undefined : failedAt + 20_000,
         events: stopped || current.events.some((event) => event.type === "error") ? current.events : [...current.events, { type: "error", content: message }],
       }));
       window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped, error: message } }));
@@ -166,6 +171,16 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     }).finally(() => controllersRef.current.delete(streamId));
     return streamId;
   }, [flushUpdates, update]);
+
+  useEffect(() => {
+    // Defer until after the development StrictMode setup/cleanup cycle.
+    const timer = window.setTimeout(() => {
+      for (const pointer of readRecoveryPointers()) {
+        try { startStream({ ...pointer, message: "", recover_only: true }, pointer.command_id); } catch { /* active session wins */ }
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [startStream]);
 
   const cancelRetry = useCallback((streamId: string) => {
     update(streamId, (current) => ({ ...current, retryAt: undefined }));
@@ -194,7 +209,12 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [retryStream]);
 
-  const cancelStream = useCallback((streamId: string) => controllersRef.current.get(streamId)?.abort(), []);
+  const cancelStream = useCallback((streamId: string) => {
+    const request = requestsRef.current.get(streamId);
+    if (request?.command_id && request.session_id && !request.goal)
+      void cancelChatCommand(request.command_id, request.session_id).catch(() => {});
+    controllersRef.current.get(streamId)?.abort();
+  }, []);
   const markSessionViewed = useCallback((sessionId: string) => {
     const current = streamsRef.current;
     const changed = Object.values(current).some((stream) => stream.sessionId === sessionId && stream.unread);

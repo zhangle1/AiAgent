@@ -1,5 +1,7 @@
 # AiAgent 开发与 Agent 协作说明
 
+普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
+
 ## 项目边界
 
 AiAgent 是前后端分离的内网 AI 工作台。

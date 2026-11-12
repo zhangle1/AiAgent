@@ -8,6 +8,10 @@ namespace AiAgent.Backend.Dtos.Chat;
 /// </summary>
 public sealed class ChatCompleteRequest
 {
+    [JsonPropertyName("command_id")]
+    public string? CommandId { get; set; }
+    [JsonPropertyName("recover_only")]
+    public bool RecoverOnly { get; set; }
     [JsonPropertyName("goal")]
     public ChatGoalRequest? Goal { get; set; }
     [JsonIgnore]

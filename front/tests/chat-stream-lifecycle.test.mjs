@@ -11,6 +11,15 @@ globalThis.window = {
 
 const { streamCompleteChat } = await import("../lib/chat-api.ts");
 
+test("a durable command waits for persistence completion instead of treating model done as success", async () => {
+  installSocket((socket) => queueMicrotask(() => {
+    socket.onmessage?.({ data: JSON.stringify({ type: "done", content: "answer" }) });
+    socket.onclose?.();
+  }));
+  await assert.rejects(streamCompleteChat({ command_id: "durable", session_id: "s", message: "test" }, () => {}),
+    (error) => error.name === "ChatStreamError");
+});
+
 function installSocket(onSend) {
   globalThis.WebSocket = class FakeWebSocket {
     constructor() {

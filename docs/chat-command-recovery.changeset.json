@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-user-authorized-delivery",
+  "createdAt": "2026-11-11T08:00:17.577Z",
+  "baseCommit": "b0cacec06c390e95ae959e2f556eea0cfa231dc4",
+  "objective": "Deduplicate ordinary chat commands and recover durable output without replaying execution",
+  "hashSource": "git-index-bytes; snapshot excludes itself",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "f7d74e2552b6cc9a54a10d61e1aa38a846ad8b0d7a9b7c58ededfb3ad3bbc12f"
+    },
+    {
+      "path": "README.md",
+      "sha256": "d3733dda2c79404c977b734188c384f4a9886214fe8ebb16f6b7d6d1e1244e1c"
+    },
+    {
+      "path": "backed.tests/ChatCommandTests.cs",
+      "sha256": "14bd23cf62de926db3b281827e95d4fc5f35a6e01fe4f0147e517537b83463e4"
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "5158c0d5161080560e84a162640b0058773616c2da67c7dc46e55db6e0bbbbf2"
+    },
+    {
+      "path": "backed/Entities/Chat/AiChatCommand.cs",
+      "sha256": "b525dc1bea2e8e4dfbd45dbe7ef2bc8b6ad76b874a43208b57f19e428daed886"
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "fcdf24b5e27fc5bf8e9380f4de6d69a9d6346f6e434f32f7cee2279240dd2c03"
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "26fbe2454e9ba4df0bd248876c72c46a2f3a9cd76082e6d0a9314cede32f9a08"
+    },
+    {
+      "path": "backed/Services/Chat/ChatCommandStore.cs",
+      "sha256": "07b7dda5b54f1257be15c9469627a5a8d1a3e457afe48cc8ee193da76d517677"
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "8635148cc396c07909efeae273614d07e5a3636d4ff626996d25794f70bd82e4"
+    },
+    {
+      "path": "backed/Services/Settings/ModelSchemaInitializer.cs",
+      "sha256": "6a8295a24cdca90ab2c0f0ee9aa1917733ed662cd8ea6e98376bd1e1c7d643b1"
+    },
+    {
+      "path": "docs/chat-command-recovery.md",
+      "sha256": "564937cfd974256370a81c6996c0d5b5e34e431e35923d60869cb8ccb7211ea7"
+    },
+    {
+      "path": "front/components/chat/ChatStreamProvider.tsx",
+      "sha256": "2774d8e8b1e6dc679b68b66b0103ba679364446401d03af97833225b0d4c89e4"
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "e4a176150b274427472193492a24c69a657b569549c0c5fd86f4820b390927d4"
+    },
+    {
+      "path": "front/lib/chat-command-recovery.ts",
+      "sha256": "642e141c1381c1b5b8186cd5e84bd742a88cff218aa643e4dcfe6bba0cf96ac5"
+    },
+    {
+      "path": "front/tests/chat-auto-retry.test.mjs",
+      "sha256": "1bf9e3c96524eeb85f2976c1a09f370c9ca03b291acddaa42388813f06b36694"
+    },
+    {
+      "path": "front/tests/chat-command-recovery.test.mjs",
+      "sha256": "3714a1ccc4f12a7a70a8ea243bb03fb5de153b1ff078c054da1e852b40e66694"
+    },
+    {
+      "path": "front/tests/chat-stream-lifecycle.test.mjs",
+      "sha256": "c8592a0485b18a99ef29495526be60d381c8d83990d4fab54496667ec53e9e5b"
+    }
+  ],
+  "validation": {
+    "backendBuild": "passed; net9 target using SDK 10",
+    "backendRegression": "62 passed on .NET 9 runtime",
+    "frontendTests": "20 passed",
+    "typescript": "passed",
+    "gitWhitespace": "passed",
+    "productionModelOrDatabaseUsed": false
+  },
+  "deliveryAuthorization": "Current user explicitly requested implementation, validation and push; no application approval record is claimed",
+  "limitations": [
+    "Single API instance; interrupted execution is not automatically resumed",
+    "Production database latency and real-browser network switching not measured"
+  ],
+  "excludedExistingFiles": [
+    "design/graphify-code-atlas/",
+    "docs/agent-run-recovery-capabilities-changesets-design.md",
+    "docs/sidebar-onboarding-icon.changeset.json",
+    "docs/t3code-principles-and-aiagent-reference.md"
+  ]
+}

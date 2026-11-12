@@ -40,6 +40,8 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export type ChatCompleteRequest = {
+  command_id?: string;
+  recover_only?: boolean;
   goal?: import("./chat-goal-types").ChatGoalRequest;
   skill_invocation?: import("./chat-skill-types").ChatSkillReference;
   skill_invocations?: import("./chat-skill-types").ChatSkillReference[];
@@ -67,6 +69,12 @@ export type ChatCompleteRequest = {
   document_attachment_ids?: string[];
   client_runtime_id?: string;
 };
+
+export async function cancelChatCommand(commandId: string, sessionId: string): Promise<{ accepted: boolean }> {
+  return parseJson(await fetch(`/api/v1/chat/commands/${encodeURIComponent(commandId)}/cancel?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "POST", credentials: "include",
+  }));
+}
 
 export type ChatImageAttachment = {
   id: string;
@@ -227,10 +235,11 @@ export async function streamCompleteChat(
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  let received = false;
   try {
-    await streamCompleteChatWs(payload, onEvent, signal);
+    await streamCompleteChatWs(payload, (event) => { received = true; onEvent(event); }, signal);
   } catch (error) {
-    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || (error instanceof Error && error.name === "ChatStreamError")) throw error;
+    if (received || signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || (error instanceof Error && error.name === "ChatStreamError")) throw error;
     await streamCompleteChatSse(payload, onEvent, signal);
   }
 }
@@ -349,7 +358,7 @@ async function streamCompleteChatWs(
           finish();
           return;
         }
-        if (event.type === "done") scheduleLegacyDoneCompletion();
+        if (event.type === "done" && !payload.command_id) scheduleLegacyDoneCompletion();
       } catch (ex) {
         fail(chatStreamError(ex instanceof SyntaxError ? "聊天服务返回了无法识别的流事件，本次执行已停止。" : "聊天流事件处理失败，本次执行已停止。"));
       }
@@ -416,7 +425,7 @@ async function streamCompleteChatSse(
     if (event) handleEvent(event);
   }
 
-  if (!completed && !sawDone) throw new Error("Chat stream ended before completion.");
+  if (!completed && (payload.command_id || !sawDone)) throw new Error("Chat stream ended before completion.");
 }
 
 async function openSseResponse(payload: ChatCompleteRequest, signal?: AbortSignal): Promise<Response> {

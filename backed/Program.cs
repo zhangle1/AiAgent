@@ -176,6 +176,7 @@ builder.Services.AddSingleton<INativeTurnRunner, NativeTurnRunner>();
 builder.Services.AddSingleton<IRuntimeEngine, NativeAgentRuntime>();
 builder.Services.AddSingleton<IRuntimeRequestFactory, RuntimeRequestFactory>();
 builder.Services.AddSingleton<IAgentRunStore, AgentRunStore>();
+builder.Services.AddSingleton<ChatCommandStore>();
 builder.Services.AddSingleton<IRunCoordinator, RunCoordinator>();
 builder.Services.AddSingleton<IAgentProviderEnvironmentService, AgentProviderEnvironmentService>();
 builder.Services.AddSingleton<ICodexModelPolicyService, CodexModelPolicyService>();

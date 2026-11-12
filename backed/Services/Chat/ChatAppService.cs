@@ -87,6 +87,7 @@ public sealed class ChatAppService : IDynamicApiController
 
     private async Task<ChatCompleteResponse> CompleteCore(ChatCompleteRequest request, CancellationToken cancellationToken)
     {
+        if (!string.IsNullOrWhiteSpace(request.CommandId)) throw new InvalidOperationException("Command IDs require the streaming endpoint.");
         var trace = ChatDebugTrace.Create(request);
         trace?.Complete("backend_received");
         trace?.Start("auth_session_context");
@@ -140,12 +141,25 @@ public sealed class ChatAppService : IDynamicApiController
         string? modelId = null;
         string? model = null;
         var providerRequestStarted = false;
+        ChatCommandStore.Lease? command = null;
+        async Task Emit(AgentStreamEvent value, CancellationToken token)
+        {
+            command?.Append(value);
+            await WriteSseAsync(response, value, token);
+        }
 
         try
         {
             user = await RequireUser(cancellationToken);
             request.RuntimeUserId = user.Id;
             request.RuntimeUsername = user.Username;
+            command = (request.RecoverOnly || (request.Goal == null && !string.IsNullOrWhiteSpace(request.CommandId))) ? _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatCommandStore>().Begin(request, user) : null;
+            if (command is { IsOwner: false })
+            {
+                await command.ReplayAsync((value, token) => WriteSseAsync(response, value, token), cancellationToken);
+                return;
+            }
+            cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
             await ResolveImageAttachmentsAsync(user, request, cancellationToken);
             await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
@@ -153,7 +167,7 @@ public sealed class ChatAppService : IDynamicApiController
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
             ChatSkillCatalog.Apply(request);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
-            await WriteSseAsync(response, new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
+            await Emit(new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
             await WriteTraceAsync(response, trace?.Start("request_started"), cancellationToken);
@@ -179,7 +193,7 @@ public sealed class ChatAppService : IDynamicApiController
                 if (streamEvent.Type == "sources") citations = streamEvent.Citations;
                 modelId ??= streamEvent.ModelId;
                 model ??= streamEvent.Model;
-                await WriteSseAsync(response, streamEvent, token);
+                await Emit(streamEvent, token);
             }, cancellationToken);
             await WriteTraceAsync(response, trace?.CompleteProvider(), cancellationToken);
             providerRequestStarted = false;
@@ -194,7 +208,7 @@ public sealed class ChatAppService : IDynamicApiController
             await WriteTraceAsync(response, trace?.Complete("frontend_push"), cancellationToken);
             await WriteTraceAsync(response, trace?.Complete("request_completed"), cancellationToken);
             if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            await WriteSseAsync(response, new AgentStreamEvent { Type = "completed" }, cancellationToken);
+            await Emit(new AgentStreamEvent { Type = "completed" }, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -215,12 +229,21 @@ public sealed class ChatAppService : IDynamicApiController
             if (providerRequestStarted) await WriteTraceAsync(response, trace?.FailProvider("request_failed"), CancellationToken.None);
             await WriteTraceAsync(response, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
             if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            await WriteSseAsync(response, new AgentStreamEvent
+            await Emit(new AgentStreamEvent
             {
                 Type = "error",
                 Content = ToClientError(clientException, request)
             }, cancellationToken);
         }
+        finally { command?.Dispose(); }
+    }
+
+    [HttpPost("commands/{commandId}/cancel")]
+    public async Task<object> CancelCommand(string commandId, [FromQuery(Name = "session_id")] string sessionId, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        var store = _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatCommandStore>();
+        return new { accepted = store.Cancel(new ChatCompleteRequest { CommandId = commandId, SessionId = sessionId, RuntimeUserId = user.Id }, user) };
     }
 
     [HttpPost("attachments/images")]
