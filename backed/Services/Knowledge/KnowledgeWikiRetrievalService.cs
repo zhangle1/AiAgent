@@ -10,13 +10,19 @@ public sealed class KnowledgeWikiRetrievalService(KnowledgeWorkspaceService work
 {
     public bool Enabled => settings.Get().RetrievalMode == "wiki";
 
-    public async Task<KnowledgeSearchResponse> SearchAsync(string name, string query, int topK, CancellationToken cancellationToken)
+    public Task<KnowledgeSearchResponse> SearchAsync(string name, string query, int topK, CancellationToken cancellationToken) =>
+        SearchAsync(name, query, topK, null, cancellationToken);
+
+    public async Task<KnowledgeSearchResponse> SearchAsync(string name, string query, int topK, IReadOnlySet<long>? scopeDocumentIds, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(query) || query.Length > 4000) throw new ArgumentException("Query must contain 1-4000 characters.");
         var config = settings.Get();
         KnowledgeCompilerSettings.Validate(config);
-        var pages = workspace.ListPages(name).Where(p => !string.IsNullOrWhiteSpace(p.Content)).ToList();
+        var pages = workspace.ListPages(name)
+            .Where(p => !string.IsNullOrWhiteSpace(p.Content))
+            .Where(p => scopeDocumentIds is null || p.DocumentId is { } documentId && scopeDocumentIds.Contains(documentId))
+            .ToList();
         if (pages.Count == 0)
         {
             const string message = "尚无知识表示层，请先在原始文件中点击「解析文档」；无需创建索引。";

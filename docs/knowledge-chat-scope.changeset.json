@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "ready-for-human-review",
+  "createdAt": "2026-11-12T04:22:35.3865748Z",
+  "baseCommit": "a0713c34a455b74198f4bf2a867b8e63199d91eb",
+  "objective": "Add an optional knowledge folder Scope to chat retrieval without changing the existing Codex CLI code-editing flow",
+  "hashSource": "working-tree-bytes; snapshot excludes itself",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "71bf7156bb1060c016031b4b1e38e6f49c6a94d388c3b64bee1e9e38a4f41daa",
+      "bytes": 33107
+    },
+    {
+      "path": "README.md",
+      "sha256": "0fe054644b9bc22d5ed7e36b6f240e07e4eaee2cef9673ec2bd5eace196b1f68",
+      "bytes": 39540
+    },
+    {
+      "path": "backed.tests/KnowledgeScopeContextTests.cs",
+      "sha256": "21daf09cb6498dcad1eed66b151fecd083e9c541a0c2c218b0a2af4c572444fa",
+      "bytes": 821
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "9c99ff3d003ac81ad77f2b536dd9ff6430c6eecb4cb9617fc84c4db36e009def",
+      "bytes": 16627
+    },
+    {
+      "path": "backed/Services/AgentRuntime/NativeAgentRuntime.cs",
+      "sha256": "1dd76158a2a5f8e68bca3f90aad361f954fe3650ef7661ab8ffc3c688535c5e5",
+      "bytes": 9049
+    },
+    {
+      "path": "backed/Services/AgentRuntime/RuntimeContracts.cs",
+      "sha256": "f4c84a1b5168229a7225b525fe01e8710f93ea2491865d055acb4610becfa5af",
+      "bytes": 2957
+    },
+    {
+      "path": "backed/Services/AgentRuntime/RuntimeRequestFactory.cs",
+      "sha256": "38cd195de1213180d0eb7acb793b1ff96c50a3863c5b6ddd3243001adf8063d8",
+      "bytes": 1644
+    },
+    {
+      "path": "backed/Services/Chat/Agentic/AgentContext.cs",
+      "sha256": "729f6d87f42035fea4bfb9252f23f90d287b187c416a3fb6a011f5257b67a778",
+      "bytes": 8742
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "879674303457a4107bec11804ca1ffa38b5749b92156788c69241983c796d746",
+      "bytes": 27034
+    },
+    {
+      "path": "backed/Services/Chat/Prompting/ChatPromptBuilder.cs",
+      "sha256": "8a0d99b49853a588fd8d231155be46ae1bff943ca9ecd4be36ed74d60bcd9436",
+      "bytes": 13598
+    },
+    {
+      "path": "backed/Services/Chat/Retrieval/KnowledgeRetrievalService.cs",
+      "sha256": "b5304b2fdb70f9acd471f8bdd1e26844223b4645acdfc7da52604ba4d15c442c",
+      "bytes": 13372
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeWikiRetrievalService.cs",
+      "sha256": "86fd91a38d72c92c4ad9890b1271728c2d0f631c6d94182bfd5e51b1211ae303",
+      "bytes": 4229
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "6e1090258306c2bb57f0f36cc910b718222f02ec3c48ab81d28a8cdfd0ce89a0",
+      "bytes": 1869
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "955d594f909c2bbfd3bd3c8af718c7827b1c8332ae85501c905ffff363773bed",
+      "bytes": 171483
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "f703ec7dddff6fc133d872363a675dac955fa1e92f14ee5449ad56846a099822",
+      "bytes": 17082
+    }
+  ],
+  "validation": {
+    "backend_scope_context": "passed: 2",
+    "backend_regression": "passed: 124 existing filtered tests plus 2 Scope context tests",
+    "frontend_typescript": "passed",
+    "frontend_stream_tests": "passed: 20",
+    "browser": "not run: front browser tests require the Playwright package, which is not installed in this workspace",
+    "git_whitespace": "passed"
+  },
+  "deliveryAuthorization": "No commit or push requested yet; awaiting human review."
+}

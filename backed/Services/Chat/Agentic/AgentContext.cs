@@ -34,6 +34,9 @@ public sealed class AgentContext
     /// </summary>
     public List<string> KnowledgeBaseNames { get; set; } = [];
 
+    /// <summary>Optional server-visible knowledge folder scope for this turn.</summary>
+    public string? KnowledgeScopeUri { get; set; }
+
     /// <summary>
     /// Selected code repositories reserved for code retrieval and diagnostics tools.
     /// </summary>
@@ -106,6 +109,7 @@ public sealed class AgentContext
             Mode = string.IsNullOrWhiteSpace(request.Mode) ? "chat" : request.Mode.Trim(),
             KnowledgeBaseNames = knowledgeBaseNames,
             KnowledgeBaseName = knowledgeBaseNames.FirstOrDefault(),
+            KnowledgeScopeUri = NormalizeScope(request.KnowledgeScopeUri),
             CodeRepositoryNames = dashboardApplicationId is null ? NormalizeNames(request.CodeRepositoryNames, null) : [],
             DashboardApplicationId = dashboardApplicationId,
             DashboardFilePath = string.IsNullOrWhiteSpace(request.DashboardFilePath) ? null : request.DashboardFilePath.Trim(),
@@ -127,6 +131,12 @@ public sealed class AgentContext
             .Select(value => value.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static string? NormalizeScope(string? value)
+    {
+        var scope = value?.Trim();
+        return string.IsNullOrWhiteSpace(scope) ? null : scope;
     }
 }
 

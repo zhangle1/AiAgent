@@ -164,6 +164,7 @@ public sealed class ChatPromptBuilder : IChatPromptBuilder
         builder.AppendLine(context.UserMessage);
         builder.AppendLine();
         builder.AppendLine($"Selected knowledge bases: {(context.KnowledgeBaseNames.Count > 0 ? string.Join(", ", context.KnowledgeBaseNames) : "(none)")}");
+        builder.AppendLine($"Selected knowledge folder scope: {context.KnowledgeScopeUri ?? "(all selected knowledge base folders)"}");
         builder.AppendLine($"Selected code repositories: {(context.CodeRepositoryNames.Count > 0 ? string.Join(", ", context.CodeRepositoryNames) : "(none)")}");
         builder.AppendLine($"Dashboard workspace: {context.DashboardApplicationId ?? "(none)"}");
         builder.AppendLine($"Dashboard current file: {context.DashboardFilePath ?? "(none)"}");

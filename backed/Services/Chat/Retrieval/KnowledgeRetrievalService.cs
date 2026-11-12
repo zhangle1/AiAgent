@@ -34,15 +34,17 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
     private readonly ISqlSugarClient _db;
     private readonly IRagService _ragService;
     private readonly KnowledgeWikiRetrievalService _wikiRetrieval;
+    private readonly KnowledgeResourceService? _resources;
 
     /// <summary>
     /// 初始化知识库检索服务。
     /// </summary>
-    public KnowledgeRetrievalService(ISqlSugarClient db, IRagService ragService, KnowledgeWikiRetrievalService wikiRetrieval)
+    public KnowledgeRetrievalService(ISqlSugarClient db, IRagService ragService, KnowledgeWikiRetrievalService wikiRetrieval, KnowledgeResourceService? resources = null)
     {
         _db = db;
         _ragService = ragService;
         _wikiRetrieval = wikiRetrieval;
+        _resources = resources;
     }
 
     /// <summary>
@@ -61,9 +63,10 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
         }
 
         var kb = FindKnowledgeBase(context.KnowledgeBaseName);
+        var scopeDocumentIds = ResolveScopeDocumentIds(context, kb.Name);
         if (_wikiRetrieval.Enabled)
         {
-            var wiki = await _wikiRetrieval.SearchAsync(kb.Name, query, topK, cancellationToken);
+            var wiki = await _wikiRetrieval.SearchAsync(kb.Name, query, topK, scopeDocumentIds, cancellationToken);
             return new ToolResult { Success = true, Content = wiki.Content, Citations = wiki.Citations,
                 Metadata = { ["tool"] = AgentToolNames.RagSearch, ["provider"] = wiki.Provider } };
         }
@@ -88,6 +91,7 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
 
         var citations = result.Citations
             .Where(x => !string.IsNullOrWhiteSpace(x.Text))
+            .Where(x => scopeDocumentIds is null || CitationBelongsToScope(x.Metadata, scopeDocumentIds))
             .Select(x => new KnowledgeCitationDto
             {
                 Score = x.Score,
@@ -95,6 +99,11 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
                 Metadata = x.Metadata
             })
             .ToList();
+
+        if (scopeDocumentIds is not null && citations.Count == 0)
+        {
+            return ToolResult.Failed("当前知识目录范围内没有可用的检索证据。");
+        }
 
         return new ToolResult
         {
@@ -120,6 +129,7 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
         }
 
         var kb = FindKnowledgeBase(context.KnowledgeBaseName);
+        var scopeDocumentIds = ResolveScopeDocumentIds(context, kb.Name);
         var version = FindActiveVersion(kb);
         if (version is null)
         {
@@ -137,7 +147,8 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
             .Where(x => x.KnowledgeBaseId == kb.Id
                 && x.IndexVersionId == version.Id
                 && x.PageNo >= pageStart
-                && x.PageNo <= pageEnd)
+                && x.PageNo <= pageEnd
+                && (scopeDocumentIds == null || scopeDocumentIds.Contains(x.DocumentId)))
             .OrderBy(x => x.PageNo)
             .OrderBy(x => x.ChunkNo)
             .ToList();
@@ -202,6 +213,7 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
             {
                 KnowledgeBaseName = knowledgeBaseName,
                 KnowledgeBaseNames = [knowledgeBaseName],
+                KnowledgeScopeUri = context.KnowledgeScopeUri,
                 TopK = context.TopK,
                 Stats = context.Stats
             };
@@ -245,6 +257,35 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
             .Where(x => x.Name == normalized && !x.IsDeleted)
             .First();
         return kb ?? throw new InvalidOperationException($"Knowledge base '{kbName}' does not exist.");
+    }
+
+    private HashSet<long>? ResolveScopeDocumentIds(AgentContext context, string knowledgeBaseName)
+    {
+        if (string.IsNullOrWhiteSpace(context.KnowledgeScopeUri)) return null;
+        var scope = KnowledgeResourceService.NormalizeUri(context.KnowledgeScopeUri, true);
+        if (_resources is null) throw new InvalidOperationException("知识目录 Scope 解析器未注册。");
+        var tree = _resources.Tree();
+        if (!tree.Any(node => node.Uri == scope && node.Kind == "directory"))
+            throw new KeyNotFoundException("选择的知识目录不存在或无权访问。");
+
+        var ids = tree
+            .Where(node => node.Kind == "file" && node.DocumentId.HasValue
+                && string.Equals(node.KnowledgeBaseName, knowledgeBaseName, StringComparison.OrdinalIgnoreCase)
+                && (node.Uri == scope || node.Uri.StartsWith(scope, StringComparison.Ordinal)))
+            .Select(node => node.DocumentId!.Value)
+            .ToHashSet();
+        return ids;
+    }
+
+    private static bool CitationBelongsToScope(Dictionary<string, object?> metadata, IReadOnlySet<long> documentIds)
+    {
+        if (!metadata.TryGetValue("document_id", out var value) || value is null) return false;
+        if (value is JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var number)) return documentIds.Contains(number);
+            if (element.ValueKind == JsonValueKind.String && long.TryParse(element.GetString(), out number)) return documentIds.Contains(number);
+        }
+        return long.TryParse(value.ToString(), out var parsed) && documentIds.Contains(parsed);
     }
 
     private AiKnowledgeIndexVersion? FindActiveVersion(AiKnowledgeBase kb)

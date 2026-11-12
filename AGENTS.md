@@ -2,6 +2,8 @@
 
 普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
 
+聊天知识目录 Scope 是可选的资源文件夹范围，不是单一本书模型。`knowledge_scope_uri` 为空时必须保留原有聊天、检索和 Codex CLI 流程；只有非 Codex 的知识检索路径解析该 URI，并按服务端可见资源树过滤文档。Scope 不能改变代码工作区、Codex 参数、工具权限或补丁/测试流程。契约见 `docs/knowledge-chat-scope.md`。
+
 ## 项目边界
 
 AiAgent 是前后端分离的内网 AI 工作台。

@@ -59,6 +59,13 @@ public sealed class ChatCompleteRequest
     public List<string> KnowledgeBaseNames { get; set; } = [];
 
     /// <summary>
+    /// Optional folder URI inside the knowledge resource tree. Empty keeps the
+    /// legacy whole-knowledge-base retrieval behavior.
+    /// </summary>
+    [JsonPropertyName("knowledge_scope_uri")]
+    public string? KnowledgeScopeUri { get; set; }
+
+    /// <summary>
     /// Code repositories selected as the current chat context. Source inspection tools consume this field in later phases.
     /// </summary>
     [JsonPropertyName("code_repository_names")]
