@@ -13,6 +13,7 @@ public sealed record AtlasRawCommit(string Sha, string? Parent, bool IsMerge, st
 public sealed record AtlasGitCapture(string Head, string Ref, string Source, List<string> Refs, List<string> Paths, List<AtlasRawCommit> Commits, List<string> Warnings);
 public interface IChangeAtlasGit
 {
+    Task<string?> SourceAsync(string cache, string sha, string path, CancellationToken token) => Task.FromResult<string?>(null);
     Task<AtlasGitCapture> CaptureAsync(string source, string cache, string snapshotId, string requestedRef, bool refreshRemote, DateTime since, GitWorkspaceCredential? credential, CancellationToken token);
     Task<(string Patch, bool Truncated)> PatchAsync(string cache, string sha, string? parent, string path, CancellationToken token);
 }
@@ -94,6 +95,19 @@ public sealed class ChangeAtlasGitReader : IChangeAtlasGit
             return new(head, selected == "refs/atlas/local-head" ? localBranch : selected, selected.StartsWith("refs/remotes/", StringComparison.Ordinal) ? "remote" : "local", refs, selectedPaths, commits, warnings);
         }
         finally { gate.Release(); }
+    }
+
+    public async Task<string?> SourceAsync(string cache, string sha, string path, CancellationToken token)
+    {
+        if (!Sha.IsMatch(sha) || !ValidPath(path) || ChangeAtlasService.Sensitive(path)) throw new ArgumentException("无效的源码文件。");
+        var entry = await Run(cache, ["--literal-pathspecs", "ls-tree", "-z", sha, "--", path], token, raw: true);
+        if (entry.Code != 0 || !entry.Text.StartsWith("100644 blob ", StringComparison.Ordinal) && !entry.Text.StartsWith("100755 blob ", StringComparison.Ordinal)) return null;
+        var blob = entry.Text.Split(' ', '\t')[2];
+        if (!Sha.IsMatch(blob)) return null;
+        var size = await Run(cache, ["cat-file", "-s", blob], token);
+        if (!long.TryParse(size.Text, out var bytes) || bytes > 262144) return null;
+        var result = await Run(cache, ["cat-file", "blob", blob], token, maxChars: 262144, allowTruncate: true, raw: true);
+        return result.Code == 0 && !result.Truncated && !result.Text.Contains('\0') ? result.Text : null;
     }
 
     public async Task<(string Patch, bool Truncated)> PatchAsync(string cache, string sha, string? parent, string path, CancellationToken token)

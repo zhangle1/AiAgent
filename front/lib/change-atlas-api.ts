@@ -60,3 +60,6 @@ export async function analyzeAtlas(projectId: number, snapshotId: string, body: 
   });
   return readAtlasAnalysisStream(response, onStatus);
 }
+
+export const readAtlasImports = (projectId: number, snapshotId: string, repositoryId: number, signal?: AbortSignal) =>
+  request<import('./change-atlas-types').AtlasImportGraph>(projectId, `snapshots/${encodeURIComponent(snapshotId)}/imports?repository_id=${repositoryId}`, signal);

@@ -1,0 +1,80 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "变化地图文件导入候选探索试点",
+    "base_commit":  "a0713c34a455b74198f4bf2a867b8e63199d91eb",
+    "platform_change_set_id":  null,
+    "note":  "Local review manifest only. No commit or push. Existing untracked design and unrelated documents excluded.",
+    "checks":  {
+                   "typescript":  "passed",
+                   "browser":  "not run",
+                   "backend_build":  "passed with existing warnings",
+                   "frontend":  "7 passed",
+                   "backend_tests":  "13 passed; net9.0 target executed on local .NET 10 with DOTNET_ROLL_FORWARD=Major; native .NET 9 not verified"
+               },
+    "files":  [
+                  {
+                      "sha256":  "6ce3a2813550d3c0af3e3d5391a32fad86db2782b426feded005ce5508fba8d9",
+                      "path":  "AGENTS.md"
+                  },
+                  {
+                      "sha256":  "52c8874ed5c8799233c29e5002655c83eaabd1bc820f511e0dc8a337fd3ea19d",
+                      "path":  "README.md"
+                  },
+                  {
+                      "sha256":  "92da7a2430d75cbbfea6531f89631630f9d8e4acbb2b2fecac6cb78a011d51f7",
+                      "path":  "docs/change-atlas.md"
+                  },
+                  {
+                      "sha256":  "8dc55269e8aabc947386fab930aac20638effb1d26efc53d7a045827dbbdecbf",
+                      "path":  "backed.tests/AtlasImportsTests.cs"
+                  },
+                  {
+                      "sha256":  "7a50a72424fead6d70f79bea821944664161671824613059795f6a5267a02565",
+                      "path":  "backed.tests/ChangeAtlasTests.cs"
+                  },
+                  {
+                      "sha256":  "9ce93491b7b2e454121ceaf1824b6c433b80437cbb94c399dcba7947f482378f",
+                      "path":  "backed/Dtos/ChangeAtlas/AtlasImportDtos.cs"
+                  },
+                  {
+                      "sha256":  "dd0383aa5e595fc1485f25073765b1196cf920b510a57c32552802f388951dee",
+                      "path":  "backed/Services/ChangeAtlas/ChangeAtlasAppService.cs"
+                  },
+                  {
+                      "sha256":  "a2cd1583bb0b7f6ec69e737cc9328fdb1294ece336d7fda24f1d67d04423a15f",
+                      "path":  "backed/Services/ChangeAtlas/ChangeAtlasGitReader.cs"
+                  },
+                  {
+                      "sha256":  "45fc5b54cb85adf0ad9da8ac4aa8c81530438c698724dc9995fefd1297515a09",
+                      "path":  "backed/Services/ChangeAtlas/ChangeAtlasService.cs"
+                  },
+                  {
+                      "sha256":  "bcd71dd72dd11814d354fcc586998e87de97901acfb1b4f9bed165778c9523d3",
+                      "path":  "backed/Services/ChangeAtlas/ChangeAtlasService.Imports.cs"
+                  },
+                  {
+                      "sha256":  "c88a41306bfa37266c69595f8b285a9235a8a1b2bb852563a0f9f99dff95818a",
+                      "path":  "front/components/change-atlas/AtlasDependencyView.tsx"
+                  },
+                  {
+                      "sha256":  "04dbf326a9c2d2743c8f6e780228019177ec15de8beed82e0f4771533afb348a",
+                      "path":  "front/components/change-atlas/ChangeAtlasPage.tsx"
+                  },
+                  {
+                      "sha256":  "78bb109612fde107ed599f917169e20e61d0751fff4b93066d1ba35c2126e39c",
+                      "path":  "front/lib/atlas-imports.ts"
+                  },
+                  {
+                      "sha256":  "9274e1feaf8f227eff9c34c4c391dfe221d71299d4c55fc5710f4a87a771ed15",
+                      "path":  "front/lib/change-atlas-api.ts"
+                  },
+                  {
+                      "sha256":  "96cf37dd9c9160a153b0320b71ff09047be24fc7c01e32c8d285ca8a508cc4e1",
+                      "path":  "front/lib/change-atlas-types.ts"
+                  },
+                  {
+                      "sha256":  "fe280898a948bcef1081ea67532de988a5415ba4ea4af6f537453cd589536633",
+                      "path":  "front/tests/atlas-imports.test.mjs"
+                  }
+              ]
+}

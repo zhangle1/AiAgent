@@ -93,3 +93,15 @@ POST /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/analysis/s
 2026-11-02 本轮验证：前后端编译、TypeScript 检查、新增后端 8 项、前端聚合 3 项与浏览器交互检查通过。全量后端 296 项中 286 项通过、10 项失败，集中于现有 UsageStatisticsServiceTests 的 SQLite 夹具以及 CodexDiagnosticsTests / ChatRuntimeTests 的 Windows CLI/进程执行；这些文件本轮未修改。排除上述三个测试类后，其余 259 项全部通过，不能据此声称全量测试通过。
 
 后续阶段可增加有授权的后台采集与清理、稳定业务映射编辑、语义结构和双版本净变化、平台操作身份关联，以及持续工具式 AI 追问。当前功能不执行代码维护或 Git 交付。
+
+## 文件导入探索试点（2026-11-12）
+
+按 `design/graphify-code-atlas/solution.md` 实现第一批真实数据链路。在原四视图上方点击「打开依赖探索 / 候选影响分析」，选择单仓库、文件及 1–2 跳；正向查看导入目标，反向查看使用方。列表按真实路径搜索，蓝框表示当前日期/人员筛选内的改动。点击关系查看固定 head 的源码行，原 Git 差异与 AI 解读保持独立，AI 尚不消费新图。
+
+当前是 `lexical-imports-v1` 试点，不是 Graphify 已集成或 P1 全部完成。只提取 JS/TS/TSX/JSX 单行相对 import/export 候选，不覆盖 C#、别名、动态 import、require、多行语句或调用。词法匹配可能误判模板文本和复杂注释，所有路径均为候选，不是编译器绑定或实际影响。无匹配不证明无依赖；删除文件需要基线图。不安装 Graphify、不执行仓库脚本、不请求模型或网络解析服务。
+
+新增登录接口：`GET /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/imports?repository_id=…`。从当前用户 bare 缓存读取固定 Git tree 的普通 blob，拒绝符号链接、子模块、敏感路径、二进制及超过 256 KiB 的文件；发布前重查项目/仓库授权，继承快照 24 小时有效期。只处理快照已载入文件。每次同步请求预算 300 个支持文件、800 万字符、3000 条关系、60 秒；不持久化图、不提供任务轮询。前端显式启动，关闭/切换取消请求并丢弃迟到结果；关系遍历期间限制 60 节点/120 边。
+
+覆盖数字分别表示实际扫描、跳过/未覆盖文件与未解析相对导入，不作完整覆盖率。后续仍需 Graphify 锁版本与许可验证、AST 适配器、C#、任务去重/存储、源码证据 ID、服务端图查询、图 AI 及浏览器验收；本轮不能当作完整 Graphify 交付。
+
+本轮验证：后端变化地图及导入专项 13 项通过（合成 Git 仓库、隔离数据库，含固定版本、用户隔离与撤权）；前端相关测试 7 项通过，TypeScript 检查与 `git diff --check` 通过。后端构建成功，保留现有警告。测试目标为 net9.0，但本机缺少 .NET 9 x64 运行时，使用本地 .NET 10 配合 `DOTNET_ROLL_FORWARD=Major` 运行；未做 .NET 9 原生运行时、浏览器或真实模型验收。评审快照见 `change-atlas-imports.changeset.json`。

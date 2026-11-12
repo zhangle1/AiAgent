@@ -10,3 +10,6 @@ export type AtlasAnalysisRequest = { module_id: string; author_id?: string; unti
 export type AtlasClaim = { kind: "code_observation" | "inference" | "suggestion"; text: string; evidence_ids: string[] };
 export type AtlasAnalysis = { summary: string; module_label: string | null; claims: AtlasClaim[]; checks: string[]; unknowns: string[]; evidence: AtlasEvidence[]; model: string; created_at: string };
 export type AtlasFilters = { until: string; daily: boolean; authorId: string };
+
+export type AtlasImportEdge = { id: string; source: string; target: string; line: number; text: string };
+export type AtlasImportGraph = { snapshot_id: string; head_sha: string; files: AtlasFile[]; edges: AtlasImportEdge[]; scanned: number; skipped: number; unresolved: number; warnings: string[] };

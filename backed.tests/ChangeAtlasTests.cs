@@ -102,6 +102,27 @@ public sealed class ChangeAtlasTests
     }
 
     [Fact]
+    public async Task ImportsUsePinnedObjectsAndRecheckAccess()
+    {
+        using var f = new Fixture(); await f.Initialize();
+        await File.WriteAllTextAsync(Path.Combine(f.Source, "a.ts"), "import {b} from './b';\n");
+        await File.WriteAllTextAsync(Path.Combine(f.Source, "b.ts"), "export const b = 1;\n");
+        await Commit(f.Source, "合成导入夹具");
+        var snapshot = await f.Service.CreateAsync(Owner, 1, new AtlasCreateRequest { Days = 7, Ref = "HEAD" }, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(f.Source, "a.ts"), "import './missing';\n");
+        var graph = await f.Service.ImportsAsync(Owner, 1, snapshot.Id, f.RepositoryId, CancellationToken.None);
+        var edge = Assert.Single(graph.Edges);
+        Assert.Equal("import {b} from './b';", edge.Text);
+        Assert.Equal("a.ts", graph.Files.Single(x => x.Id == edge.Source).Path);
+        Assert.Equal("b.ts", graph.Files.Single(x => x.Id == edge.Target).Path);
+        Assert.Null(await f.Git.SourceAsync(f.Store.Cache(Owner.Id, f.RepositoryId), graph.HeadSha, "missing.ts", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.ImportsAsync(Owner, 1, snapshot.Id, -1, CancellationToken.None));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.ImportsAsync(new("other", "other"), 1, snapshot.Id, f.RepositoryId, CancellationToken.None));
+        f.Access.Enabled = false;
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.ImportsAsync(Owner, 1, snapshot.Id, f.RepositoryId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task SnapshotAndEvidenceStayPinnedAndNeverChangeDirtyWorktree()
     {
         using var f = new Fixture(); await f.Initialize();

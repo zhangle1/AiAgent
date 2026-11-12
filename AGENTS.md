@@ -187,3 +187,5 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 
 聊天主动技能位于 `backed/Resources/ChatSkills/catalog-v1.json`，仅显式调用，禁止注册到原生自动发现目录或把技能清单放入系统提示词。HTTP／WebSocket 统一经 `ChatSkillCatalog.Apply` 解析服务端正文，保留 `ServerPromptMessage` 与原始消息分离；`skill_invocations` 多选按顺序解析、去重，保留旧单项字段兼容，任意无效项或版本冲突拒绝整次请求。消息元数据保存完整快照数组，重试沿用原消息全部版本；结束边界同时识别旧单项和新数组快照。已发布正文不可覆盖，新增版本须保留旧版本解析。前端多轮选择可结束，切换会话／项目或刷新不自动恢复。改动前读 `docs/chat-explicit-skills.md`，验证未选择不加载、版本篡改、重试、普通聊天结束边界及 `/spec` 兼容。
+
+- 变化地图文件导入试点使用固定 head 的普通 Git blob，保持敏感文件阻止与用户/项目授权。`lexical-imports-v1` 只展示 JS/TS 单行相对导入候选，禁止标成 AST/Graphify/运行验证；新关系不混入旧 Git 改动或 AI 证据。入口显式触发，取消与迟到响应隔离、读取/遍历预算及覆盖缺口见 `docs/change-atlas.md`。
