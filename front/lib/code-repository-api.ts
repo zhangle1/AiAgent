@@ -142,12 +142,26 @@ export async function resolveProjectDocumentReference(projectId: number, referen
 
 export async function downloadProjectDocumentReference(projectId: number, reference: string): Promise<void> {
   const file = await resolveProjectDocumentReference(projectId, reference);
-  const response = await fetch(projectMarkdownDocumentDownloadUrl(projectId, file.repository_name, file.path), { cache: "no-store" });
+  await downloadDocumentBlob(projectMarkdownDocumentDownloadUrl(projectId, file.repository_name, file.path), file.name);
+}
+
+export async function downloadProjectPackage(projectId: number, href: string): Promise<void> {
+  const route = `/api/v1/code-repositories/projects/${projectId}/markdown-documents/download`;
+  if (!href.startsWith(`${route}?`)) throw new Error("请选择当前项目中的交付包。");
+  const params = new URL(href, "https://aiagent.invalid").searchParams;
+  const path = params.get("path") ?? "";
+  const repository = params.get("repository_name");
+  if (!repository || !/\.zip$/i.test(path)) throw new Error("交付包地址无效。");
+  await downloadDocumentBlob(projectMarkdownDocumentDownloadUrl(projectId, repository, path), path.split("/").at(-1)!);
+}
+
+async function downloadDocumentBlob(href: string, name: string): Promise<void> {
+  const response = await fetch(href, { cache: "no-store" });
   if (!response.ok) throw new Error(`下载失败（${response.status}），请确认文件仍存在且有访问权限。`);
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = file.name;
+  anchor.download = name;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

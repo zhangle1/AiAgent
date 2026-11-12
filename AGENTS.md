@@ -1,5 +1,7 @@
 # AiAgent 开发与 Agent 协作说明
 
+聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。
+
 普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
 
 ## 项目边界

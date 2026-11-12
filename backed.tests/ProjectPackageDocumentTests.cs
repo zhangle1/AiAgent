@@ -4,10 +4,55 @@ using AiAgent.Backend.Services.CodeRepository;
 
 public sealed class ProjectPackageDocumentTests
 {
+    [Fact]
+    public void ProjectRootPackageWorksWithoutRegisteredRepository()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aiagent-root-package-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "download"));
+        using var db = new SqlSugar.SqlSugarScope(new SqlSugar.ConnectionConfig
+        {
+            DbType = SqlSugar.DbType.Sqlite, ConnectionString = "Data Source=:memory:",
+            IsAutoCloseConnection = false, InitKeyType = SqlSugar.InitKeyType.Attribute,
+            ConfigureExternalServices = new SqlSugar.ConfigureExternalServices
+            {
+                EntityService = (_, column) => {
+                    if (column.IsIdentity) column.DataType = "INTEGER";
+                    if (column.DataType == "nvarchar(max)") column.DataType = "text";
+                }
+            }
+        });
+        try
+        {
+            db.CodeFirst.InitTables<AiAgent.Backend.Entities.CodeRepository.AiCodeProject,
+                AiAgent.Backend.Entities.CodeRepository.AiCodeRepository,
+                AiAgent.Backend.Entities.CodeRepository.AiProjectMarkdownDocument>();
+            db.Insertable(new AiAgent.Backend.Entities.CodeRepository.AiCodeProject { Id = 1, Name = "fixture", RootPath = root }).ExecuteCommand();
+            var file = Path.Combine(root, "download", "package.zip");
+            File.WriteAllBytes(file, [80, 75, 3, 4]);
+            var manager = new CodeRepositoryManager(db, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<CodeRepositoryManager>.Instance, null!);
+            var item = Assert.Single(manager.ListProjectMarkdownDocuments(1, null));
+            Assert.Equal("__project_root__", item.RepositoryName);
+            Assert.Equal("download/package.zip", item.Path);
+            var resolved = manager.ResolveProjectFileReference(1, file);
+            Assert.NotNull(resolved);
+            Assert.Equal(item.RepositoryName, resolved.RepositoryName);
+            Assert.Equal(file, manager.GetProjectDocumentFile(1, item.RepositoryName, item.Path).FilePath);
+            Assert.ThrowsAny<Exception>(() => manager.GetProjectDocumentFile(1, item.RepositoryName, "../outside.zip"));
+            Assert.ThrowsAny<Exception>(() => manager.GetProjectDocumentFile(2, item.RepositoryName, item.Path));
+            Assert.Null(manager.ResolveProjectFileReference(1, Path.Combine(Path.GetTempPath(), "outside.zip")));
+            db.Insertable(new AiAgent.Backend.Entities.CodeRepository.AiCodeRepository { ProjectId = 1, Name = "repo", RootPath = root }).ExecuteCommand();
+            Assert.Equal("repo", Assert.Single(manager.ListProjectMarkdownDocuments(1, null)).RepositoryName);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private static object Invoke(string method, string path) => typeof(CodeRepositoryManager)
         .GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [path])!;
 
     [Theory]
+    [InlineData("download/app.zip")]
+    [InlineData("app.zip")]
     [InlineData("artifacts/aiagent-packages/v1/app.zip")]
     [InlineData("artifacts/aiagent-packages/v2/交付包.ZIP")]
     public void PackageHasDownloadOnlyMetadata(string path)
@@ -18,7 +63,7 @@ public sealed class ProjectPackageDocumentTests
     }
 
     [Theory]
-    [InlineData("other/app.zip")]
+    [InlineData("../app.zip")]
     [InlineData("artifacts/aiagent-packages/../secret.zip")]
     [InlineData("artifacts/aiagent-packages/.git/app.zip")]
     [InlineData("artifacts/aiagent-packages/app.exe")]
@@ -26,7 +71,7 @@ public sealed class ProjectPackageDocumentTests
         => Assert.Throws<TargetInvocationException>(() => Invoke("NormalizeProjectDocumentPath", path));
 
     [Fact]
-    public void DocumentTreeIncludesPackageWithoutExposingCodeOrArbitraryArchives()
+    public void DocumentTreeIncludesProjectZipWithoutExposingCode()
     {
         var root = Path.Combine(Path.GetTempPath(), "aiagent-package-test-" + Guid.NewGuid().ToString("N"));
         var output = Path.Combine(root, "artifacts", "aiagent-packages", "v1");
@@ -40,7 +85,8 @@ public sealed class ProjectPackageDocumentTests
             File.WriteAllText(Path.Combine(root, "other.zip"), "test");
             var files = ((IEnumerable<string>)Invoke("EnumerateProjectDocumentFiles", root)).ToArray();
             Assert.Contains(package, files);
-            Assert.Equal(2, files.Length);
+            Assert.Contains(Path.Combine(root, "other.zip"), files);
+            Assert.Equal(3, files.Length);
         }
         finally { Directory.Delete(root, recursive: true); }
     }

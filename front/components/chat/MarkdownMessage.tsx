@@ -1,9 +1,10 @@
 "use client";
 
 import { isValidElement, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import { Check, Copy, Download, PackageOpen } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { ChatDocumentCard } from "@/components/chat/ChatDocumentCard";
-import { packageDownloadFromHref } from "@/lib/chat-packaging";
+import { localZipReference, packageDownloadFromHref } from "@/lib/chat-packaging";
+import { ChatPackageDownload } from "@/components/chat/ChatPackageDownload";
 import { runtimeTestFromHref } from "@/lib/chat-runtime";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -210,6 +211,7 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       urlTransform={(url) => {
+        if (projectId && (localZipReference(url) || packageDownloadFromHref(url, projectId))) return url;
         const documentReference = documentDownloadReference(url, projectId);
         if (documentReference) return `aiagent://code-file?path=${encodeURIComponent(documentReference)}`;
         const candidate = codeReferenceFromHref(url);
@@ -238,6 +240,8 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
         td: (props) => <td className="border-b border-zinc-100 px-3 py-2 align-top" {...domProps(props)} />,
         code: ({ className, children, ...props }) => {
           const codeText = readChildrenText(children).trim();
+          const zip = !className ? localZipReference(codeText) : null;
+          if (zip && projectId) return <ChatPackageDownload key={`${projectId}:${zip}`} projectId={projectId} reference={zip} name={zip.replace(/\\/g, "/").split("/").at(-1)!}/>;
           const sourceReference = !className ? codeReferenceFromText(codeText) : null;
           const markdownDocumentReference = !className ? markdownDocumentReferenceFromText(codeText) : null;
           const code = <code className={`${className ?? ""} rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.92em]`} {...domProps(props)}>{children}</code>;
@@ -256,7 +260,9 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
           const runtimeTest = runtimeTestFromHref(href, projectId);
           if (runtimeTest) return <a href={runtimeTest} target="_blank" rel="noopener noreferrer" className="my-2 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800 hover:bg-emerald-100">↗ 在新窗口测试功能</a>;
           const packageDownload = packageDownloadFromHref(href, projectId);
-          if (packageDownload) return <a href={packageDownload.href} download className="my-2 inline-flex max-w-full items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 hover:bg-blue-100"><PackageOpen size={24} className="shrink-0"/><span className="min-w-0"><span className="block truncate font-semibold">{packageDownload.name}</span><span className="block text-xs">ZIP 交付包 · 点击下载</span></span><Download size={18} className="shrink-0"/></a>;
+          if (packageDownload && projectId) return <ChatPackageDownload key={`${projectId}:${href}`} projectId={projectId} href={packageDownload.href} name={packageDownload.name}/>;
+          const zip = localZipReference(href);
+          if (zip && projectId) return <ChatPackageDownload key={`${projectId}:${zip}`} projectId={projectId} reference={zip} name={zip.replace(/\\/g, "/").split("/").at(-1)!}/>;
           // Only local references become cards; external links retain their original destination.
           const linkText = readChildrenText(children).trim();
           const sourceReference = codeReferenceFromHref(href) ?? (!href ? codeReferenceFromText(linkText) : null);
