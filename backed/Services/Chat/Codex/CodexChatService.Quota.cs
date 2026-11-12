@@ -14,8 +14,7 @@ public sealed record CodexQuotaResponse(
     [property: JsonPropertyName("primary")] CodexQuotaWindow? Primary,
     [property: JsonPropertyName("secondary")] CodexQuotaWindow? Secondary,
     [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
-    [property: JsonPropertyName("next_refresh_at")] DateTimeOffset NextRefreshAt,
-    [property: JsonPropertyName("account_hint")] string? AccountHint = null);
+    [property: JsonPropertyName("next_refresh_at")] DateTimeOffset NextRefreshAt);
 
 public sealed partial class CodexChatService
 {
@@ -35,7 +34,6 @@ public sealed partial class CodexChatService
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
             var now = DateTimeOffset.UtcNow;
-            string? accountHint = null;
             try
             {
                 using var worker = await CodexAppServerWorker.CreateAsync(command, AppContext.BaseDirectory, null,
@@ -45,9 +43,6 @@ public sealed partial class CodexChatService
                     return Save("not_logged_in", null, null, null, 30);
                 if (ReadString(identity, "type") != "chatgpt")
                     return Save("unsupported", null, null, null, 30);
-                var email = ReadString(identity, "email");
-                var at = email?.IndexOf('@') ?? -1;
-                if (at > 0 && email!.Length <= 254) accountHint = email[..1] + "***" + email[at..];
                 var result = await worker.ReadAccountAsync("account/rateLimits/read", linked.Token);
                 var limits = result.GetProperty("rateLimits");
                 return Save("available", ReadString(limits, "planType"), Window(limits, "primary"), Window(limits, "secondary"), 30);
@@ -62,7 +57,7 @@ public sealed partial class CodexChatService
             CodexQuotaResponse Save(string status, string? plan, CodexQuotaWindow? primary, CodexQuotaWindow? secondary, int minutes)
             {
                 _quotaCommand = command;
-                return _quotaCache = new(status, plan, primary, secondary, now, now.AddMinutes(minutes), accountHint);
+                return _quotaCache = new(status, plan, primary, secondary, now, now.AddMinutes(minutes));
             }
         }
         finally { _quotaLock.Release(); }

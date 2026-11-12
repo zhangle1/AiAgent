@@ -42,10 +42,9 @@ export function CodexQuotaButton() {
     {open && createPortal(<div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/30 p-4" onMouseDown={() => setOpen(false)}>
       <div role="dialog" aria-modal="true" aria-labelledby="codex-quota-title" className="max-h-[80vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between"><h2 id="codex-quota-title" className="font-semibold">Codex 额度</h2><button type="button" autoFocus onClick={() => setOpen(false)} aria-label="关闭" className="rounded p-1 hover:bg-slate-100"><X size={18}/></button></div>
-        <p className="mt-2 text-xs text-slate-500">账号来源：后端本地 Codex 登录账号。所有使用此后端的用户共享该额度。</p>
+        <p className="mt-2 text-xs text-slate-500">本地来源账号</p>
         {failed ? <p className="mt-4 text-sm text-red-600">额度读取失败，请稍后重新打开。</p> : !quota ? <p className="mt-4 text-sm">正在读取…</p> : <>
           {quota.status !== "available" ? <p className="mt-4 text-sm">{messages[quota.status]}</p> : <div className="mt-4 space-y-4">
-            {quota.account_hint && <p className="text-sm">当前账号：{quota.account_hint}</p>}
             {quota.plan && <p className="text-sm">订阅：{quota.plan}</p>}
             <QuotaWindow label="主要额度窗口" value={quota.primary}/>
             <QuotaWindow label="次要额度窗口" value={quota.secondary}/>
@@ -61,8 +60,11 @@ export function CodexQuotaButton() {
 
 function QuotaWindow({ label, value }: { label: string; value: CodexQuotaWindow | null }) {
   if (!value) return null;
-  return <div><div className="flex justify-between text-sm"><span>{label}{value.window_minutes ? ` · ${value.window_minutes >= 60 ? `${value.window_minutes / 60} 小时` : `${value.window_minutes} 分钟`}` : ""}</span><span>已用 {value.used_percent}%</span></div>
-    <progress value={value.used_percent} max={100} className="mt-2 h-2 w-full accent-blue-600" aria-label={label}/>
+  const remaining = Number((100 - Math.min(100, Math.max(0, value.used_percent))).toFixed(2));
+  const title = value.window_minutes === 10080 ? "每周额度" : value.window_minutes
+    ? `${value.window_minutes >= 60 ? `${value.window_minutes / 60} 小时` : `${value.window_minutes} 分钟`}额度` : label;
+  return <div><div className="flex justify-between gap-3 text-sm"><span>{title}</span><span className="shrink-0 tabular-nums">剩余 {remaining}%</span></div>
+    <progress value={remaining} max={100} className="mt-2 h-2 w-full accent-blue-600" aria-label={`${title}剩余`} aria-valuetext={`剩余 ${remaining}%`}/>
     {value.resets_at != null && <p className="mt-1 text-xs text-slate-500">重置：{new Date(value.resets_at * 1000).toLocaleString()}</p>}
   </div>;
 }

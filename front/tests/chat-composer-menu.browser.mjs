@@ -11,7 +11,7 @@ const artifacts = process.env.CHAT_TEST_ARTIFACTS ?? path.join(os.tmpdir(), "cha
 await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-const errors = []; const sent = []; let uploads = 0;
+const errors = []; const sent = []; let uploads = 0; let goalState = null;
 page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
 await page.route("**/api/**", async route => {
@@ -29,14 +29,19 @@ await page.route("**/api/**", async route => {
   else if (name === "/api/v1/code-repositories/projects") body = [{ id: 11, name: "fixture", display_name: "测试项目", root_path: "fixture", repositories: [], repository_count: 0 }];
   else if (name.endsWith("/git/status")) body = { project_id: 11, repositories: [], state: "ready", message: "" };
   else if (name === "/api/v1/code-runtime/projects/11") body = { project_id: 11, profiles: [], runs: [] };
-  else if (/\/sessions\/[^/]+\/goal$/.test(name)) body = { goal: null };
+  else if (/\/sessions\/[^/]+\/goal\/end$/.test(name)) {
+    assert.equal(route.request().postDataJSON().expected_version, goalState.version);
+    goalState={...goalState,status:"ended",version:goalState.version+1}; body={goal:goalState};
+  }
+  else if (/\/sessions\/[^/]+\/goal$/.test(name)) body = { goal: goalState };
   else if (/\/sessions\/[^/]+$/.test(name)) body = { id: name.split("/").at(-1), title: "Fixture", messages: [], preferences: { agent: "codex", codex_model_id: "fixture" }, project_id: 11 };
   else if (name === "/api/v1/chat/attachments/files" && route.request().method() === "POST") { uploads++; body = { id: "fixture-document", file_name: "说明.md", content_type: "text/markdown", size_bytes: 12, kind: "document", extraction_status: "ready" }; }
   else if (name.startsWith("/api/v1/chat/attachments/files/")) body = { ok: true };
   await route.fulfill({ json: body });
 });
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(message => {
-  sent.push(JSON.parse(String(message)));
+  const request=JSON.parse(String(message)); sent.push(request);
+  if(request.goal) goalState={id:"fixture-goal",objective:request.goal.objective,status:"complete",tokensUsed:19649,timeUsedSeconds:11,version:2,running:false,stopReason:null,tokenBudget:2000000};
   socket.send(JSON.stringify({ type: "content", content: "合成响应" }));
   socket.send(JSON.stringify({ type: "completed" }));
 }));
@@ -85,6 +90,17 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("合成响应"));
   assert.equal(sent.length, 1); assert.equal(sent[0].goal.action, "start"); assert.equal(sent[0].goal.token_budget, 2_000_000); assert.equal(sent[0].goal.objective, "通过斜杠选择目标");
   assert.deepEqual(sent[0].document_attachment_ids, ["fixture-document"]);
+  await page.getByRole("button", {name:"取消目标模式",exact:true}).waitFor({state:"detached"});
+  await page.waitForTimeout(2200);
+  assert.equal(await page.getByRole("button",{name:/目标.*已完成/}).count(),0);
+  await open(); await menu().getByRole("menuitem",{name:/^目标模式/}).click(); await setup.waitFor();
+  await setup.getByText("已完成：通过斜杠选择目标",{exact:true}).waitFor();
+  await page.screenshot({path:path.join(artifacts,"goal-completed-delete-desktop.png")});
+  await setup.getByRole("button",{name:"删除目标",exact:true}).click(); await setup.waitFor({state:"detached"});
+  await editor().fill("下一条普通聊天"); await editor().press("Enter");
+  await page.waitForFunction(()=>document.body.innerText.includes("下一条普通聊天"));
+  assert.equal(sent.length,2); assert.equal(sent[1].goal,undefined,"next ordinary message has no goal payload");
+  goalState=null;
   await page.goto(`${base}?project=11&new=mobile`);
   await page.setViewportSize({ width: 390, height: 844 });
   await editor().waitFor(); await editor().fill("手机上的草稿");
@@ -108,6 +124,6 @@ try {
   assert.equal(await page.getByRole("textbox", { name: "目标 Token 预算" }).count(), 0);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   assert.deepEqual(errors, []);
-  console.log(`Passed: compact plus menu, disabled goal explanation, Escape/focus, goal via plus and Chinese/English slash, hidden fixed budget in sent request, file chooser/upload, skill menu, visualization dialog, no implicit sends, desktop/mobile layout. Screenshots: ${artifacts}`);
+  console.log(`Passed: compact plus menu, disabled goal explanation, Escape/focus, goal via plus and Chinese/English slash, hidden fixed budget in sent request, file chooser/upload, skill menu, visualization dialog, one-shot goal clearing, completed goal hidden and deleted in dialog, next ordinary request has no goal, no implicit sends, desktop/mobile layout. Screenshots: ${artifacts}`);
 } catch (error) { await page.screenshot({ path: path.join(artifacts, "failure.png") }); throw error; }
 finally { await browser.close(); }

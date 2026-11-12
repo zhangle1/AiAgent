@@ -7,4 +7,4 @@ export type KnowledgeGitState = {
   session_options: KnowledgeResourceNode[];
 };
 export type KnowledgeGitValidation = { snapshot_sha256: string; is_valid: boolean; files: string[]; checks: { name: string; passed: boolean; message: string }[] };
-export type KnowledgeGitResult = { ok: boolean; output: string; commit_sha?: string };
+export type KnowledgeGitResult = { ok: boolean; output: string; commit_sha?: string; status?: KnowledgeGitState["status"] };

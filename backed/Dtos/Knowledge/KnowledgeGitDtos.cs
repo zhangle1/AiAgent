@@ -19,6 +19,7 @@ public sealed class KnowledgeGitState
 public sealed class KnowledgeGitRefresh
 {
     [JsonPropertyName("session_uris")] public List<string> SessionUris { get; set; } = [];
+    [JsonPropertyName("include_own_sessions")] public bool IncludeOwnSessions { get; set; }
     [JsonPropertyName("resource_uris")] public List<string>? ResourceUris { get; set; }
     [JsonPropertyName("force")] public bool Force { get; set; } = true;
 }

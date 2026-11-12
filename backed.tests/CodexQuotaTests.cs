@@ -21,7 +21,9 @@ public sealed class CodexQuotaTests
         var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => service.ReadQuotaAsync(default)));
         Assert.All(results, item => { Assert.Equal("available", item.Status); Assert.Equal(42, item.Primary!.UsedPercent); Assert.Equal(30, (item.NextRefreshAt - item.UpdatedAt).TotalMinutes); });
         Assert.Equal(new[] { "initialize", "initialized", "account/read", "account/rateLimits/read" }, fixture.Calls());
-        Assert.DoesNotContain("private@example.invalid", JsonSerializer.Serialize(results));
+        var json = JsonSerializer.Serialize(results);
+        Assert.DoesNotContain("account_hint", json);
+        Assert.DoesNotContain("example.invalid", json);
         // Expiry must query again, rather than perpetually serving the first result.
         typeof(CodexChatService).GetField("_quotaCache", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(service, results[0] with { NextRefreshAt = DateTimeOffset.UtcNow.AddSeconds(-1) });
         await service.ReadQuotaAsync(default);

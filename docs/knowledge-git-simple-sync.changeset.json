@@ -1,0 +1,169 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "知识 Git 会话自动同步及项目分组、目标管理与额度隐私",
+  "date": "2026-11-10",
+  "base_commit": "b0cacec06c390e95ae959e2f556eea0cfa231dc4",
+  "platform_change_set_id": null,
+  "status": "ready-for-human-review",
+  "snapshot_sha256": "d90974e49c3975e6c0d56c1830cc26a7f66c2abc27e0968edd2969826c7ac40e",
+  "note": "累计本地改动：知识 Git 下拉及共享资料／项目／本人会话自动检测，目标选择一次发送后消费、完成隐藏及弹窗删除，额度显示剩余且移除邮箱字段。新增 include_own_sessions 默认 false 保持旧 API，网页固定 true 并由服务端解析当前身份；其他人会话和个人产物排除。保留快照、lease、目标版本和聊天历史。未提交推送，未读取真实配置／知识数据，未调用真实模型或操作真实远端。 本轮追加：会话导出为 sessions/用户/项目名-ID/，未关联项目兜底；按所有者和既有 SessionIdentity 批量匹配平台项目，manifest 保存项目快照，旧平铺文件验证路径和哈希后迁移，不改原始 URI 或聊天历史；后端须重新启动后同步生效。",
+  "checks": {
+    "typescript": "passed after goal/session code changes: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "browser": "passed: knowledge-team-git.browser.mjs with synthetic APIs; automatic shared/project/own-session scope, two new session paths plus manifest, real pending counts and rename parsing, no push on open, fresh snapshot retry, unchanged/pending commits, errors/busy guards, desktop/mobile",
+    "visual": "passed: actual desktop completed-goal delete dialog and mobile setup, knowledge dropdown desktop/mobile at ../.codex-verification/auto-session-goal-20261111; component-only screenshots are behavioral evidence without app CSS",
+    "whitespace": "passed: git diff --check",
+    "backend": "passed: 14 filtered TeamGit/KnowledgeTeamGit/CodexQuotaTests plus 1 AutomaticOwnSessions test; two own exports, update/deletion, 103 sessions without truncation, stable unchanged manifest, personal/other-owner exclusion and explicit unauthorized rejection; isolated artifacts, EnableDefaultContentItems=false, DOTNET_ROLL_FORWARD=Major; existing unrelated warnings",
+    "real_services": "no real knowledge data, model calls or remote publishing operations",
+    "merge": "passed: fast-forward to origin/main b0cacec0; local sources restored without conflicts; only README and AGENTS merged with remote additions; TypeScript and synthetic browser regression passed again on combined tree",
+    "quota_browser": "passed: codex-quota.browser.mjs; red-first screenshot fixture 80/69 used now renders 20/31 remaining and matching progress, 0/100 and decimal remaining, actual window duration and missing secondary, local source account label, unchanged cache polling, signed-out, Escape and desktop/390px layout; rerun after removing account display passed",
+    "quota_visual": "passed: desktop and 390px mobile privacy screenshots inspected at ../.codex-verification/codex-quota-private-20261110/browser",
+    "quota_privacy": "passed: browser with legacy masked-email fixture renders only local-source label and contains no email, domain or identifier; backend serialized quota response contains no account_hint or synthetic email domain",
+    "goal_component": "passed: chat-goal.browser.mjs; required goal and budget, single-use consumption, completed hidden, draft deletion without API, versioned resume/end, deletion 409 recovery, active target guard, session reset",
+    "goal_page": "passed: chat-composer-menu.browser.mjs on real Next.js pages with synthetic API/WebSocket; plus/slash selection, consumed after submit including immediate completion, completed label hidden, delete in dialog using expected version, next ordinary message has no goal, attachments/skills/visualization and desktop/mobile",
+    "session_project_backend": "passed: 12 TeamGit/AutomaticOwnSessions/TeamExport tests, grouping test recompiled/repassed after nullable tuple warning fix, plus 9 KunBuddySession/PlatformChatSync tests; duplicate project labels separated by ID, unassigned fallback, owner-filtered project lookup, legacy flat migration without refreshing unselected content, preserved other-owner snapshots, stable repeated sync, rename/separator safety, corrupted copy protection; isolated output and config copy disabled",
+    "session_project_browser": "passed: knowledge-team-git.browser.mjs with project-grouped session file paths in pending list; screenshot inspected at ../.codex-verification/session-projects-20261111/browser/knowledge-git-session-projects.png"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "operation": "modify",
+      "sha256": "43c71477372374f88db71e3a11eda3bd4392387c83d6c951e39abd6196d2473e"
+    },
+    {
+      "path": "README.md",
+      "operation": "modify",
+      "sha256": "9452bc7745b163d8ce1164cad575cc1742126fc549a5cf0625308a2e16e4e2cb"
+    },
+    {
+      "path": "backed.tests/CodexQuotaTests.cs",
+      "operation": "modify",
+      "sha256": "f62ac02f7e6731ea3035b7a8b628959089bfec88096731246428e1cdf5d3fe01"
+    },
+    {
+      "path": "backed.tests/KnowledgeGitPublicationTests.cs",
+      "operation": "modify",
+      "sha256": "3a65bf761c19e4b7f94f267fdea050b11d19d3ae79f27ff39654514c11ff322d"
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeGitDtos.cs",
+      "operation": "modify",
+      "sha256": "386ab79c614155062573eb5683803caf4b5cd8d0f80e4b375a3fa0e3891df139"
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Quota.cs",
+      "operation": "modify",
+      "sha256": "286713178a5c8413b5bb7a9de7fce2764a98b0ddb176c71c8af4aff6854ede58"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeGitSessionPublication.cs",
+      "operation": "modify",
+      "sha256": "1adb8a7db9999c2e908f9c725dbeb3ba59cb8407462e6984b5fd30dd79d9aff9"
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeTeamGitService.cs",
+      "operation": "modify",
+      "sha256": "9a989e5a11831daf03044b40e6a3de8cb010764a91a1963e62d8e48b489b8b00"
+    },
+    {
+      "path": "backed/Services/KunBuddy/KunBuddySessionService.cs",
+      "operation": "modify",
+      "sha256": "d4794b023c7ac24797a2fe301ae3fa5def368477da2ab5861afc668943903588"
+    },
+    {
+      "path": "docs/chat-explicit-skills.md",
+      "operation": "modify",
+      "sha256": "8db76172f4011b8f53ad77b912a909c0af62a68fbe368459277f0926198a91ac"
+    },
+    {
+      "path": "docs/chat-goal-mode.md",
+      "operation": "modify",
+      "sha256": "2f599926aa3b68967232273fb213e9e138e05ca05bce245a5f0b318bad3cbb6b"
+    },
+    {
+      "path": "docs/codex-local-quota.md",
+      "operation": "modify",
+      "sha256": "3994cc2a90b40295edf72529338e8292d732fb0b5ae840f468e8f94ef77f239c"
+    },
+    {
+      "path": "docs/knowledge-team-git-implementation.md",
+      "operation": "modify",
+      "sha256": "404db231df595056ab6c06850115611ec68c47b3635ca7efad5c9be3bfd05ce6"
+    },
+    {
+      "path": "front/components/chat/ChatGoalPanel.tsx",
+      "operation": "modify",
+      "sha256": "9813c220c1ecd3ad3691e6feae2c012a1921a5cd8c557526c3f718e4460a08dc"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "operation": "modify",
+      "sha256": "afa4c4e982949564f6a4c5ef2d49b1f34438b7c24f3a2b55ebfb02db3865ed06"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeGitDialog.tsx",
+      "operation": "delete",
+      "sha256": null
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeGitMenu.tsx",
+      "operation": "add",
+      "sha256": "26c7fa7c3a364efcf97a50a4f4b34ce464e3d731afeaa0025063f4fec9219488"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeGitSync.tsx",
+      "operation": "add",
+      "sha256": "4545a930b8fbae03f7364023feae8a230afd153e69b7c5a752bc4bba94330cb2"
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "operation": "modify",
+      "sha256": "2fea363049e0215d150e5c60699c6e75b1a2d86cd583386689e1e0a1c69d31d7"
+    },
+    {
+      "path": "front/components/layout/CodexQuotaButton.tsx",
+      "operation": "modify",
+      "sha256": "9b4d34c86816f4616aa7323b69064e824e337bb0f26b3c8f19c042318d798c13"
+    },
+    {
+      "path": "front/components/settings/KnowledgeGitSettings.tsx",
+      "operation": "modify",
+      "sha256": "e9e4a842978bc07c3320ac3a897c35855504dd229da620a8bf08375845d5eb17"
+    },
+    {
+      "path": "front/lib/codex-quota-types.ts",
+      "operation": "modify",
+      "sha256": "8af37b3ff14ebcf2ccca79080d8ad13cd5d2a5cd4b2b54eb492f66f58e93fff6"
+    },
+    {
+      "path": "front/lib/knowledge-git-api.ts",
+      "operation": "modify",
+      "sha256": "ff156fb47dff1bc21124e5338181295cd24fffd57ce377e46e25b8c362a2bdb7"
+    },
+    {
+      "path": "front/lib/knowledge-git-types.ts",
+      "operation": "modify",
+      "sha256": "827a4ea532e77265cc9ea2c418c4cf36acffcde65ba3c031dbf0b1cadb45cc04"
+    },
+    {
+      "path": "front/tests/chat-composer-menu.browser.mjs",
+      "operation": "modify",
+      "sha256": "74c6b3cb9c90787b31838761fe901001ea16d77b123cfb478024fc1704b368f3"
+    },
+    {
+      "path": "front/tests/chat-goal.browser.mjs",
+      "operation": "modify",
+      "sha256": "f37509c760d473fb0a2373459bf3af905e16d473a2c40ca1abea45b7e148af76"
+    },
+    {
+      "path": "front/tests/codex-quota.browser.mjs",
+      "operation": "modify",
+      "sha256": "787d6fbc38f1ebd9a1ac11d615a7ea723b66ccbb88c4d7fe0f781ae3d6a27fdf"
+    },
+    {
+      "path": "front/tests/knowledge-team-git.browser.mjs",
+      "operation": "modify",
+      "sha256": "7be6894a5a8a9aa4cd4fe1da9b7fd7f87273109e7b672b2a2ff7dc0e082a699f"
+    }
+  ],
+  "updated_date": "2026-11-11"
+}

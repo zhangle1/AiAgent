@@ -245,6 +245,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [selectedCodexSandboxMode, setSelectedCodexSandboxMode] = useState<CodexSandboxMode>("full-access");
   const [selectedAgentId, setSelectedAgentId] = useState<"codex" | "deepseek-harness" | "codebuddy" | "">("");
   const [goalRequest, setGoalRequest] = useState<ChatGoalRequest | undefined>();
+  const [goalSubmission, setGoalSubmission] = useState(0);
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
@@ -1003,8 +1004,9 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     }
 
     try {
+      const goalForTurn = selectedAgentId === "codex" && !currentCodexModel?.profile_name ? goalRequest : undefined;
       const streamId = startStream({
-        goal: selectedAgentId === "codex" && !currentCodexModel?.profile_name ? goalRequest : undefined,
+        goal: goalForTurn,
         session_id: sessionId,
         message: outboundMessage,
         skill_invocation: skillsForTurn.length === 1 ? { id: skillsForTurn[0].id, version: skillsForTurn[0].version } : undefined,
@@ -1029,6 +1031,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         debug_trace: debugTraceEnabled || undefined,
         trace_id: debugTraceEnabled ? createClientId().replaceAll("-", "") : undefined,
       });
+      if (goalForTurn) { setGoalRequest(undefined); setGoalSubmission(value => value + 1); }
       setMessages((items) => {
         const streamMessageId = `stream:${streamId}`;
         return items.some((message) => message.id === streamMessageId) ? items.filter((message) => message.id !== assistantId) : items.map((message) => (message.id === assistantId ? { ...message, id: streamMessageId } : message));
@@ -1348,7 +1351,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
-              {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={!goalDisabledReason} sending={sending} onChange={setGoalRequest} activation={goalActivation} />}
+              {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={!goalDisabledReason} sending={sending} onChange={setGoalRequest} activation={goalActivation} submission={goalSubmission} />}
               {!embedded && (selectedSkills.length > 0 || skillError) && <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs">
                 {selectedSkills.map(skill => <span key={skill.id} className="inline-flex max-w-full items-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
                   <button type="button" title={`预览${skill.name}`} aria-label={`预览${skill.name}`} onClick={() => setPreviewSkill(skill)} className="min-w-0 truncate rounded-l-lg px-2 py-1.5 text-left hover:bg-blue-100 focus-visible:outline-blue-500">{skill.name}<span className="ml-1 text-[10px] text-blue-500">{skill.multi_turn ? "进行中" : "本轮"}</span></button>

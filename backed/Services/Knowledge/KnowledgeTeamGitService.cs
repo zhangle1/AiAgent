@@ -2,6 +2,9 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Git;
+using AiAgent.Backend.Entities.Chat;
+using AiAgent.Backend.Entities.CodeRepository;
+using AiAgent.Backend.Services.KunBuddy;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Git;
 using Microsoft.AspNetCore.DataProtection;
@@ -9,7 +12,7 @@ using SqlSugar;
 
 namespace AiAgent.Backend.Services.Knowledge;
 
-/// <summary>Shared projection plus explicitly published session copies; personal sources are never exported implicitly.</summary>
+/// <summary>Shared projection and authorized own-session sync; other personal sources remain excluded.</summary>
 public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfiguration configuration,
     KnowledgeResourceService resources, IGitWorkspaceService git, IAuthService auth,
     IHttpContextAccessor context, ISqlSugarClient database, IDataProtectionProvider protection)
@@ -60,6 +63,9 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
         var available = OwnSessions(user, tree).ToDictionary(n => n.Uri, StringComparer.Ordinal);
         if (selected.Any(uri => !available.ContainsKey(uri)))
             throw new UnauthorizedAccessException("只能明确选择本人会话原文发布；不能发布他人的会话或个人产物。");
+        var ownSessionRoot = KnowledgeUserScope.RootFor(user.Username, user.Id) + "sessions/";
+        if (request.IncludeOwnSessions) selected = available.Keys.ToList();
+        var sessionProjects = SessionProjects(user, available.Keys);
         // Build a complete projection before publishing. Unrelated files and runtime data cannot be staged.
         var stage = Path.Combine(BasePath, ".team-export-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
@@ -67,21 +73,28 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
         {
             var manifest = new List<KnowledgeGitExportEntry>();
             var exported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            // Already published copies remain fixed until their owner explicitly selects them again.
-            // Refreshing team resources must not silently publish subsequent private conversation turns.
+            // Full own-session sync also removes deleted own sources; other published owners stay fixed.
             var previousManifest = Path.Combine(Workspace, "manifest.json");
             if (System.IO.File.Exists(previousManifest))
             {
                 var previous = JsonSerializer.Deserialize<List<KnowledgeGitExportEntry>>(await System.IO.File.ReadAllBytesAsync(previousManifest, ct))
                     ?? throw new InvalidOperationException("导出清单不可用，请管理员检查工作区。");
                 foreach (var entry in previous.Where(e => e.Path.StartsWith("sessions/", StringComparison.Ordinal) && !selected.Contains(e.Uri)
+                    && !(request.IncludeOwnSessions && e.Uri.StartsWith(ownSessionRoot, StringComparison.Ordinal))
                     || IsShared(e.Uri) && !SelectedShared(e.Uri)))
                 {
-                    var relative = IsShared(entry.Uri) ? ExportPath(entry.Uri) : KnowledgeGitSessionPublication.ExportPath(entry.Uri);
-                    if (entry.Path != relative.Replace('\\', '/') || !exported.Add(relative))
+                    var sharedEntry = IsShared(entry.Uri);
+                    var previousPath = sharedEntry ? ExportPath(entry.Uri) : KnowledgeGitSessionPublication.ExportPath(entry.Uri, entry.ProjectId, entry.ProjectName);
+                    var legacyPath = sharedEntry ? previousPath : KnowledgeGitSessionPublication.LegacyExportPath(entry.Uri);
+                    if (entry.Path != previousPath.Replace('\\', '/') && entry.Path != legacyPath.Replace('\\', '/'))
                         throw new InvalidOperationException("发布清单不匹配，请管理员检查工作区。");
-                    var source = Path.Combine(Workspace, relative);
+                    var project = sessionProjects.GetValueOrDefault(entry.Uri, (Id: entry.ProjectId, Name: entry.ProjectName));
+                    var relative = sharedEntry ? previousPath : KnowledgeGitSessionPublication.ExportPath(entry.Uri, project.Id, project.Name);
+                    if (!exported.Add(relative)) throw new InvalidOperationException("导出路径存在大小写冲突，请调整知识目录名称。");
+                    var source = Path.Combine(Workspace, entry.Path.Replace('/', Path.DirectorySeparatorChar));
                     var destination = Path.Combine(stage, relative);
+                    entry.Path = relative.Replace('\\', '/');
+                    if (!sharedEntry) { entry.ProjectId = project.Id; entry.ProjectName = project.Name; }
                     if (entry.Kind == "directory") { Directory.CreateDirectory(destination); manifest.Add(entry); continue; }
                     Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                     System.IO.File.Copy(source, destination);
@@ -95,8 +108,9 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
                          .Concat(selected.Select(uri => available[uri])))
             {
                 ct.ThrowIfCancellationRequested();
+                var project = sessionProjects.GetValueOrDefault(node.Uri);
                 var relative = node.Uri.StartsWith("viking://user/", StringComparison.Ordinal)
-                    ? KnowledgeGitSessionPublication.ExportPath(node.Uri) : ExportPath(node.Uri);
+                    ? KnowledgeGitSessionPublication.ExportPath(node.Uri, project.Id, project.Name) : ExportPath(node.Uri);
                 if (!exported.Add(relative)) throw new InvalidOperationException("导出路径存在大小写冲突，请调整知识目录名称。");
                 var destination = Path.Combine(stage, relative);
                 if (node.Kind == "directory")
@@ -110,7 +124,7 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
                 await using (var input = System.IO.File.OpenRead(source.Path))
                 await using (var output = System.IO.File.Create(destination)) await input.CopyToAsync(output, ct);
                 await using var content = System.IO.File.OpenRead(destination);
-                manifest.Add(new() { Uri = node.Uri, Path = relative.Replace('\\', '/'), Name = node.Name, Sha256 = Convert.ToHexString(await SHA256.HashDataAsync(content, ct)) });
+                manifest.Add(new() { Uri = node.Uri, Path = relative.Replace('\\', '/'), Name = node.Name, ProjectId = project.Id, ProjectName = project.Name, Sha256 = Convert.ToHexString(await SHA256.HashDataAsync(content, ct)) });
             }
             manifest = manifest.OrderBy(e => e.Path, StringComparer.Ordinal).ToList();
             await System.IO.File.WriteAllBytesAsync(Path.Combine(stage, "manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest), ct);
@@ -203,6 +217,25 @@ public sealed class KnowledgeTeamGitService(IKnowledgePathService paths, IConfig
             && !KnowledgeResourceService.IsGeneratedUri(n.Uri) && string.Equals(n.Extension, ".md", StringComparison.OrdinalIgnoreCase));
     }
     private static bool IsShared(string uri) => uri.StartsWith("viking://resources/", StringComparison.Ordinal) || uri.StartsWith("viking://projects/", StringComparison.Ordinal);
+    private Dictionary<string, (long? Id, string? Name)> SessionProjects(AuthenticatedUser user, IEnumerable<string> uris)
+    {
+        var scope = uris.ToHashSet(StringComparer.Ordinal);
+        if (scope.Count == 0) return [];
+        using var db = database.CopyNew();
+        var root = KnowledgeUserScope.RootFor(user.Username, user.Id) + "sessions/";
+        var sessions = db.Queryable<AiChatSession>().Where(s => s.UserId == user.Id && !s.IsDeleted && s.CodeProjectId != null)
+            .Select(s => new { s.Id, s.CodeProjectId }).ToList()
+            .Select(s => new { Uri = root + KunBuddySessionService.SessionIdentity("aiagent-platform", s.Id) + ".md", ProjectId = s.CodeProjectId })
+            .Where(s => scope.Contains(s.Uri)).ToList();
+        var ids = sessions.Select(s => s.ProjectId!.Value).Distinct().ToList();
+        var projects = ids.Count == 0 ? new Dictionary<long, AiCodeProject>() : db.Queryable<AiCodeProject>()
+            .Where(p => !p.IsDeleted && ids.Contains(p.Id)).ToList().ToDictionary(p => p.Id);
+        return sessions.ToDictionary(s => s.Uri, s =>
+        {
+            var project = projects.GetValueOrDefault(s.ProjectId!.Value);
+            return (Id: s.ProjectId, Name: (string?)(project is null ? "项目" : string.IsNullOrWhiteSpace(project.DisplayName) ? project.Name : project.DisplayName));
+        }, StringComparer.Ordinal);
+    }
     private async Task<GitWorkspaceCredential?> Credential(CancellationToken ct)
     {
         using var db = database.CopyNew();

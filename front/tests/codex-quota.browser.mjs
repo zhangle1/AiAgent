@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import path from 'node:path';
+import {mkdir} from 'node:fs/promises';
 const require=createRequire(path.resolve(process.env.GOAL_TEST_TOOLS ?? '../goal-browser-tmp','package.json'));
 const {chromium}=require('playwright');
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,...(process.env.GOAL_TEST_BROWSER ? {executablePath:process.env.GOAL_TEST_BROWSER} : {channel:'msedge'})});
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
-let status='available', requests=0;
+let status='available', requests=0, used=80, secondaryUsed=69, duration=300;
+const artifacts=process.env.QUOTA_TEST_ARTIFACTS;
+const errors=[];page.on('pageerror',error=>errors.push(error.message));
 await page.route('**/api/**',async route=>{
  const name=new URL(route.request().url()).pathname;let body=[];
  if(name.endsWith('/auth/status'))body={authenticated:true,user_id:'fixture',username:'fixture',role:'admin'};
@@ -13,7 +16,7 @@ await page.route('**/api/**',async route=>{
  else if(name.endsWith('/sessions/list'))body={sessions:[]};
  else if(name.endsWith('/sessions/project-preferences'))body={preferences:[]};
  else if(name.endsWith('/sessions/sidebar-preference'))body={project_sort_mode:'recent'};
- else if(name.endsWith('/codex/quota')){requests++;body={status,plan:'plus',account_hint:'p***@example.invalid',primary:{used_percent:42,window_minutes:300,resets_at:1800000000},secondary:null,updated_at:new Date().toISOString(),next_refresh_at:new Date(Date.now()+1800000).toISOString()};}
+ else if(name.endsWith('/codex/quota')){requests++;body={status,plan:'plus',account_hint:'p***@example.invalid',primary:{used_percent:used,window_minutes:duration,resets_at:1800000000},secondary:secondaryUsed==null ? null : {used_percent:secondaryUsed,window_minutes:10080,resets_at:1800600000},updated_at:new Date().toISOString(),next_refresh_at:new Date(Date.now()+1800000).toISOString()};}
  await route.fulfill({json:body});
 });
 try{
@@ -22,15 +25,37 @@ try{
  assert.equal(await page.getByRole('dialog',{name:'3 步开始使用坤伴'}).count(),0);
  assert.equal(requests,0);
  await button.click();const dialog=page.getByRole('dialog',{name:'Codex 额度',exact:true});
- await dialog.getByText('已用 42%',{exact:true}).waitFor();
- assert.match(await dialog.innerText(),/p\*\*\*@example.invalid/);
+ await dialog.getByText('剩余 20%',{exact:true}).waitFor({timeout:3000});
+ await dialog.getByText('剩余 31%',{exact:true}).waitFor();
+ await dialog.getByText('5 小时额度',{exact:true}).waitFor();
+ await dialog.getByText('每周额度',{exact:true}).waitFor();
+ assert.equal(await dialog.getByRole('progressbar',{name:'5 小时额度剩余',exact:true}).evaluate(element=>element.value),20);
+ assert.equal(await dialog.getByRole('progressbar',{name:'每周额度剩余',exact:true}).evaluate(element=>element.value),31);
+ await dialog.getByText('本地来源账号',{exact:true}).waitFor();
+ assert.doesNotMatch(await dialog.innerText(),/example\.invalid|p\*\*\*|@/);
+ assert.equal(await dialog.getByText(/已用/).count(),0);
+ if(artifacts){await mkdir(artifacts,{recursive:true});await dialog.screenshot({path:path.join(artifacts,'codex-quota-remaining-desktop.png')});}
  await page.waitForTimeout(500);assert.equal(requests,1);
  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
+ used=100;secondaryUsed=0;await button.click();
+ await dialog.getByText('剩余 0%',{exact:true}).waitFor();
+ await dialog.getByText('剩余 100%',{exact:true}).waitFor();
+ assert.equal(await dialog.getByRole('progressbar',{name:'5 小时额度剩余',exact:true}).evaluate(element=>element.value),0);
+ assert.equal(await dialog.getByRole('progressbar',{name:'每周额度剩余',exact:true}).evaluate(element=>element.value),100);
+ await page.keyboard.press('Escape');
+ used=69.9;secondaryUsed=null;duration=90;await button.click();
+ await dialog.getByText('剩余 30.1%',{exact:true}).waitFor();
+ await dialog.getByText('1.5 小时额度',{exact:true}).waitFor();
+ assert.equal(await dialog.getByRole('progressbar').count(),1);
+ await page.keyboard.press('Escape');
  status='not_logged_in';await button.click();await dialog.getByText('后端本地 Codex 尚未登录。',{exact:true}).waitFor();
  await page.keyboard.press('Escape');
  await page.setViewportSize({width:390,height:844});
  await page.evaluate(()=>window.dispatchEvent(new Event('aiagent:mobile-drawer-toggle')));
- await button.click();await dialog.waitFor();
+ status='available';used=80;secondaryUsed=69;duration=300;await button.click();await dialog.getByText('剩余 20%',{exact:true}).waitFor();
  const box=await dialog.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390);
- console.log('PASS: quota icon, onboarding removed, quota rendering, no eager/repeated reads, signed-out state, Escape and mobile layout');
+ assert.equal(await dialog.evaluate(element=>element.scrollWidth>element.clientWidth+1),false);
+ if(artifacts)await dialog.screenshot({path:path.join(artifacts,'codex-quota-remaining-mobile.png')});
+ assert.deepEqual(errors,[]);
+ console.log('PASS: local source account label, screenshot values 80/69 used render 20/31 remaining with matching bars, zero/full and decimal remaining, actual window durations, cache polling unchanged, signed-out state, Escape and desktop/mobile layout');
 }finally{await browser.close();}

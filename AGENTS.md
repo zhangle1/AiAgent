@@ -31,7 +31,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 后端约定
 
-- 修改团队知识 Git 导出、会话发布或项目目录时读 `docs/knowledge-team-git-implementation.md`：页面选择控制导出范围，本人会话仅经显式选择发布副本；默认本地优先，通过独立 `PushTeamAsync` 和绑定远端 SHA 的 lease 覆盖目标分支，快照覆盖内容、远程、分支及推送模式。已登记项目使用稳定 ID URI、按当前身份筛选，名称仅作显示；旧文本分类不按同名绑定授权。
+- 修改团队知识 Git 导出、会话发布或项目目录时读 `docs/knowledge-team-git-implementation.md`：`KnowledgeGitMenu` 展开后由 `KnowledgeGitSync` 全量刷新共享投影及本人会话并显示真实 Git 变更数；目录仅浏览。强推前重新刷新快照，固定 force=true 和自动说明；网页固定传 include_own_sessions=true，后端按当前身份取本人原始会话并同步新增／更新／删除；其他所有者已发布副本保持，记忆和产物排除。会话导出按用户／项目名-ID 分组；平台关联按所有者查询 AiChatSession 并复用 SessionIdentity，缺省未分配项目。旧平铺副本须经路径与哈希验证迁移，保留未选字节及 manifest 项目快照。旧显式选择 API 保持兼容。配置在设置页；后端沿用 `PushTeamAsync` 的身份、范围、快照和远端 SHA lease 校验。项目使用稳定 ID URI 并按当前身份筛选。
 
 - 聊天目标模式仅在显式 `goal` 请求中启用，普通聊天保持临时 thread 和原取消语义。原生 Codex 独占续跑调度，禁止另加 `turn/start` 循环；等待终态目标及活动轮结束后再返回。目标和绑定保存在会话独立可空 `GoalJson` 字段，当前只支持单 API 实例；恢复校验用户、会话、项目、工作区、模型与权限快照和单调版本。断线／暂停先 interrupt，超时回收 worker，保存部分回答；目标请求禁止通用自动／手动重发，必须读取状态后显式继续。目标 worker 用完丢弃，避免旧订阅进入普通聊天。见 `docs/chat-goal-mode.md`。
 
@@ -106,9 +106,9 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## 前端约定
 
-- Codex 额度入口为 `CodexQuotaButton`，读取已登录接口 `/api/v1/chat/codex/quota`；服务端通过独立只读 app-server 调用 account/read 与 account/rateLimits/read，不启动 thread/turn，不读取认证文件。额度属于后端运行账号，内存缓存成功结果 30 分钟、错误 1 分钟，并发查询串行复用；不得混同网页用户的个人用量或输出原始账号／凭据。见 `docs/codex-local-quota.md`。
+- Codex 额度入口为 `CodexQuotaButton`，读取已登录接口 `/api/v1/chat/codex/quota`；服务端通过独立只读 app-server 调用 account/read 与 account/rateLimits/read，不启动 thread/turn，不读取认证文件。前端将 used_percent 转为剩余百分比与剩余进度条，按真实窗口长度命名；账号只显示固定文案“本地来源账号”；响应及缓存不含邮箱或脱敏账号字段。额度属于后端运行账号，内存缓存成功结果 30 分钟、错误 1 分钟，并发查询串行复用；不得混同网页用户的个人用量或输出原始账号／凭据。见 `docs/codex-local-quota.md`。
 
-- 聊天输入区入口集中在 `ChatComposerMenu` 的「+」菜单，未选择时收起技能、目标和可视化面板；`/` 共用技能／目标选择，选择不发送。目标设置用弹窗和已选标签，新建请求预算固定 200 万，后端同设默认和上限；恢复已有目标沿用原预算。切换项目／会话关闭旧菜单，激活序号只响应当前组件内的显式操作。修改时同步 `docs/chat-goal-mode.md` 与 `docs/chat-explicit-skills.md`。
+- 聊天输入区入口集中在 `ChatComposerMenu` 的「+」菜单，未选择时收起技能、目标和可视化面板；`/` 共用技能／目标选择，选择不发送。目标设置用弹窗和已选标签；每次成功 startStream 后以 submission 序号消费本次选择，完成／结束状态隐藏标签；弹窗可删除草稿或通过既有 end 结束目标，保留历史和版本，活动目标须先暂停。新建请求预算固定 200 万，后端同设默认和上限；恢复已有目标沿用原预算。切换项目／会话关闭旧菜单，激活序号只响应当前组件内的显式操作。修改时同步 `docs/chat-goal-mode.md` 与 `docs/chat-explicit-skills.md`。
 
 - 聊天侧栏码云任务处理复用 `EnterpriseIssuePicker` 的可选 `onProcess`、工作项关联与聊天交接接口；使用 Portal 避免侧栏裁剪。仅显式处理产生的单次浏览器标记可自动发送，等待交接与聊天配置准备完成，普通关联／模板预填仍由用户发送。参见 `docs/chat-gitee-task-processing.md`。
 

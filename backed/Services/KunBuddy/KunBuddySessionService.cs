@@ -32,7 +32,7 @@ public sealed class KunBuddySessionService(ISqlSugarClient database, IKnowledgeP
             if (Encoding.UTF8.GetByteCount(entry.Markdown) > 512 * 1024 || total > 2 * 1024 * 1024) throw new ArgumentException("Conversation batch is too large.");
         }
         var owner = KnowledgeUserScope.RootFor(user.Username, user.Id);
-        var identity = Hash(Encoding.UTF8.GetBytes(input.ClientId + "\n" + sessionId));
+        var identity = SessionIdentity(input.ClientId, sessionId);
         var uri = owner + "sessions/" + identity + ".md";
         await _gate.WaitAsync(ct);
         try
@@ -262,6 +262,7 @@ public sealed class KunBuddySessionService(ISqlSugarClient database, IKnowledgeP
     }
     private static string OneLine(string value) => string.Join(' ', value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)).Trim() is { Length: > 0 } title ? title : "未命名会话";
     private static string SafeTitle(string value) => string.Concat(value.Take(96).Select(c => char.IsControl(c) || Path.GetInvalidFileNameChars().Contains(c) || c is '/' or '\\' or ':' or '?' or '#' or '%' ? '_' : c));
+    internal static string SessionIdentity(string clientId, string sessionId) => Hash(Encoding.UTF8.GetBytes(clientId + "\n" + sessionId));
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     private static KunBuddySessionReceipt Receipt(AiKnowledgeDocument doc, string uri, int appended) => new() { Uri = uri, DocumentId = doc.Id, Appended = appended, Sha256 = doc.FileHash ?? "" };
     public sealed class SessionState { public Dictionary<string, HashSet<string>> Messages { get; set; } = []; }
