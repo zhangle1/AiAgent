@@ -11,6 +11,7 @@ import type { AtlasAnalysis, AtlasCommit, AtlasEvidence, AtlasFile, AtlasSnapsho
 import { AtlasViews, type AtlasView } from "./AtlasViews";
 import { AtlasChangeGraph } from "./AtlasChangeGraph";
 import { AtlasAssistant } from "./AtlasAssistant";
+import { AtlasDependencyView } from "./AtlasDependencyView";
 
 const field = "min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800";
 const tabs = [{ id: "business", name: "业务地图", icon: MapIcon }, { id: "structure", name: "代码结构", icon: Network }, { id: "timeline", name: "变化回放", icon: History }, { id: "people", name: "协作交集", icon: Users }] as const;
@@ -137,6 +138,7 @@ export function ChangeAtlasPage({ initialProjectId }: { initialProjectId?: numbe
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500"><span>{commits.length} 次已载入提交</span><span>{changedFileCount} 个改动文件</span><span>{new Set(commits.map(commit => commit.author_id)).size} 个 Git 署名</span><span className="rounded bg-blue-50 px-2 py-1 text-blue-700">目录级结构</span><span className="ml-auto">活动统计 · UTC · {new Date(snapshot.created_at).toLocaleString()} 生成</span></div>
         <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0 space-y-4">
+            {projectId && <AtlasDependencyView key={snapshot.id} projectId={projectId} snapshot={snapshot} commits={commits}/>}
             <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="flex flex-wrap gap-x-5 border-b border-slate-200 px-4" role="tablist" aria-label="变化维度">{tabs.map(tab => <button type="button" id={`atlas-tab-${tab.id}`} key={tab.id} role="tab" aria-selected={view === tab.id} aria-controls="atlas-view" onClick={() => setView(tab.id)} className={`inline-flex items-center gap-1.5 border-b-2 py-3 text-xs ${view === tab.id ? "border-blue-600 font-medium text-blue-600" : "border-transparent text-slate-500"}`}><tab.icon size={15}/>{tab.name}</button>)}</div>
               <div className="flex flex-wrap items-center gap-2 px-4 pt-4">{(view === "business" || view === "structure") && <input aria-label="查找模块" placeholder="查找模块 / 目录" value={search} onChange={event => setSearch(event.target.value)} className={`${field} flex-1`}/>}<select aria-label="聚焦模块" value={selected} onChange={event => setSelected(event.target.value)} className={`${field} max-w-full sm:max-w-[230px]`}>{stats.map(module => <option key={module.id} value={module.id}>{labels[module.id] || module.name} · {module.commits.length} 次 · {module.directory}</option>)}</select><div className="flex rounded-lg bg-slate-100 p-1" aria-label="阅读视角">{(["delivery", "developer"] as const).map(value => <button type="button" key={value} aria-pressed={perspective === value} onClick={() => { setPerspective(value); setView(value === "developer" ? "structure" : "business"); setSearch(""); }} className={`rounded-md px-2 py-1 text-[11px] ${perspective === value ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}>{value === "delivery" ? "交付视角" : "开发视角"}</button>)}</div></div>

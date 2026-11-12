@@ -11,7 +11,7 @@ using SqlSugar;
 
 namespace AiAgent.Backend.Services.ChangeAtlas;
 
-public sealed class ChangeAtlasService(ISqlSugarClient database, IProjectAccessService access, IChangeAtlasGit git, ChangeAtlasStore store, IDataProtectionProvider protection)
+public sealed partial class ChangeAtlasService(ISqlSugarClient database, IProjectAccessService access, IChangeAtlasGit git, ChangeAtlasStore store, IDataProtectionProvider protection)
 {
     private readonly IDataProtector _protector = protection.CreateProtector("AiAgent.GitAccounts.AccessToken.v1");
 

@@ -19,6 +19,8 @@ public sealed class ChangeAtlasAppService(ChangeAtlasService service, ChangeAtla
     public Task<IActionResult> Evidence(long projectId, string snapshotId, [FromQuery(Name = "commit_id")] string commitId, [FromQuery(Name = "file_id")] string fileId, CancellationToken token) => Act(user => service.EvidenceAsync(user, projectId, snapshotId, commitId, fileId, token), token);
     [HttpPost("{projectId:long}/change-atlas/snapshots/{snapshotId}/analysis")]
     public Task<IActionResult> Analyze(long projectId, string snapshotId, [FromBody] AtlasAnalysisRequest request, CancellationToken token) => Act(user => analysis.AnalyzeAsync(user, projectId, snapshotId, request, token), token);
+    [HttpGet("{projectId:long}/change-atlas/snapshots/{snapshotId}/imports")]
+    public Task<IActionResult> Imports(long projectId, string snapshotId, [FromQuery(Name = "repository_id")] long repositoryId, CancellationToken token) => Act(user => service.ImportsAsync(user, projectId, snapshotId, repositoryId, token), token);
     [HttpPost("{projectId:long}/change-atlas/snapshots/{snapshotId}/analysis/stream")]
     public async Task AnalyzeStream(long projectId, string snapshotId, [FromBody] AtlasAnalysisRequest request, CancellationToken token)
     {
@@ -69,6 +71,7 @@ public sealed class ChangeAtlasAppService(ChangeAtlasService service, ChangeAtla
         catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
         catch (KeyNotFoundException ex) { return new NotFoundObjectResult(new { message = ex.Message }); }
         catch (InvalidOperationException ex) { return new ConflictObjectResult(new { message = ex.Message }); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new ConflictObjectResult(new { message = "关系读取超过时间预算，请缩小仓库范围后重试。" }); }
         catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException) { return new ConflictObjectResult(new { message = "地图缓存暂不可读取，请刷新地图后重试。" }); }
     }
 }
