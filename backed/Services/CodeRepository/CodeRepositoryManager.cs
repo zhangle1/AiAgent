@@ -493,7 +493,6 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         var repositories = _db.Queryable<AiCodeRepository>()
             .Where(item => item.ProjectId == projectId && !item.IsDeleted)
             .ToList();
-        if (repositories.Count == 0) return null;
 
         var parsed = ParseFileReference(reference);
         if (string.IsNullOrWhiteSpace(parsed.Path)) return null;
@@ -523,6 +522,16 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             .Select(group => group.First())
             .Take(2)
             .ToList();
+        if (distinct.Count == 0)
+        {
+            var match = TryResolveFileInRepository(project.RootPath, project.RootPath, parsed.Path);
+            if (match is not null)
+            {
+                var relative = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(project.RootPath)), match).Replace('\\', '/');
+                NormalizeProjectDocumentPath(relative);
+                return new CodeRepositoryFileReferenceDto { RepositoryName = "__project_root__", FilePath = relative, Line = parsed.Line };
+            }
+        }
         if (distinct.Count != 1) return null;
 
         var resolved = distinct[0];
@@ -536,16 +545,19 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
 
     public List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query)
     {
-        FindProject(projectId);
+        var project = FindProject(projectId);
         var term = query?.Trim();
         var repositories = _db.Queryable<AiCodeRepository>()
             .Where(item => item.ProjectId == projectId && !item.IsDeleted)
             .ToList();
+        repositories.Add(new AiCodeRepository { Name = "__project_root__", RootPath = project.RootPath });
         var documents = new List<CodeProjectMarkdownDocumentDto>();
+        var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var repository in repositories)
         {
             foreach (var file in EnumerateProjectDocumentFiles(repository.RootPath))
             {
+                if (!seenFiles.Add(file)) continue;
                 var path = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(repository.RootPath)), file).Replace('\\', '/');
                 if (!string.IsNullOrWhiteSpace(term)
                     && !path.Contains(term, StringComparison.OrdinalIgnoreCase)
@@ -602,10 +614,12 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         {
             return ReadStoredProjectMarkdownDocument(projectId, repositoryName, path);
         }
-        FindProject(projectId);
-        var repository = _db.Queryable<AiCodeRepository>()
-            .Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted)
-            .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
+        var project = FindProject(projectId);
+        var repository = repositoryName == "__project_root__"
+            ? new AiCodeRepository { Name = repositoryName, RootPath = project.RootPath }
+            : _db.Queryable<AiCodeRepository>()
+                .Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted)
+                .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
         var repositoryRoot = GetResolvedPath(new DirectoryInfo(repository.RootPath));
         var normalizedPath = NormalizeMarkdownDocumentPath(path);
         var candidate = Path.GetFullPath(Path.Combine(repositoryRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
@@ -622,10 +636,12 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             || string.Equals(repositoryName, AgentIndexRepositoryName, StringComparison.OrdinalIgnoreCase))
             return ReadStoredProjectMarkdownDocument(projectId, repositoryName, path);
 
-        FindProject(projectId);
-        var repository = _db.Queryable<AiCodeRepository>()
-            .Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted)
-            .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
+        var project = FindProject(projectId);
+        var repository = repositoryName == "__project_root__"
+            ? new AiCodeRepository { Name = repositoryName, RootPath = project.RootPath }
+            : _db.Queryable<AiCodeRepository>()
+                .Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted)
+                .First() ?? throw new FileNotFoundException("The referenced project document is unavailable.");
         var repositoryRoot = GetResolvedPath(new DirectoryInfo(repository.RootPath));
         var normalizedPath = NormalizeProjectDocumentPath(path);
         var candidate = Path.GetFullPath(Path.Combine(repositoryRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar)));
@@ -988,14 +1004,16 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             return (markdownPath, entity.DisplayName, "text/markdown; charset=utf-8");
         }
 
-        var repository = _db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted).First()
-            ?? throw new FileNotFoundException("The referenced project document is unavailable.");
-        var root = GetResolvedPath(new DirectoryInfo(repository.RootPath));
+        var projectRoot = FindProject(projectId).RootPath;
+        var rootPath = string.Equals(repositoryName, "__project_root__", StringComparison.Ordinal)
+            ? projectRoot
+            : (_db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted).First()
+                ?? throw new FileNotFoundException("The referenced project document is unavailable.")).RootPath;
+        var root = GetResolvedPath(new DirectoryInfo(rootPath));
+        if (!IsPathWithin(GetResolvedPath(new DirectoryInfo(projectRoot)), root)) throw new InvalidOperationException("The referenced project document is unavailable.");
         var normalizedPath = NormalizeProjectDocumentPath(path);
         if (Path.GetExtension(normalizedPath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
         {
-            if (!normalizedPath.StartsWith("artifacts/aiagent-packages/", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The package must be inside artifacts/aiagent-packages.");
             var current = root;
             foreach (var segment in normalizedPath.Split('/'))
             {
@@ -1485,8 +1503,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
 
     private static bool IsProjectDocumentFile(string path) => ProjectDocumentExtensions.Contains(Path.GetExtension(path))
         || IsLegacyProjectDocument(path)
-        || (Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase)
-            && ("/" + path.Replace('\\', '/')).Contains("/artifacts/aiagent-packages/", StringComparison.OrdinalIgnoreCase));
+        || Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsLegacyProjectDocument(string path) => Path.GetExtension(path).ToLowerInvariant() is ".doc" or ".xls" or ".ppt" or ".rtf";
 

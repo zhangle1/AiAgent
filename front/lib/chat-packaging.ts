@@ -2,6 +2,14 @@ import { buildWorkflowPrompt } from "./chat-workflow";
 
 export const PACKAGE_DIRECTORY = "artifacts/aiagent-packages";
 
+export function localZipReference(href: string | undefined): string | null {
+  if (!href || href.startsWith("//") || (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^\/?[a-z]:[\\/]/i.test(href))) return null;
+  try {
+    const path = decodeURIComponent(href).replace(/^\/([a-z]:[\\/])/i, "$1");
+    return /\.zip$/i.test(path) && !/[\x00-\x1f?#]/.test(path) ? path : null;
+  } catch { return null; }
+}
+
 export type PackagePromptOptions = { targetPath?: string; targetPaths?: string[]; automatic?: boolean; instructions?: string; reuseWorkflow?: boolean };
 
 export function normalizePackageTarget(path: string): string {
@@ -83,7 +91,7 @@ export function packageDownloadFromHref(href: string | undefined, projectId?: nu
   try {
     const url = new URL(href, "https://aiagent.invalid");
     const path = url.searchParams.get("path") ?? "";
-    if (!url.searchParams.get("repository_name") || !path.startsWith(`${PACKAGE_DIRECTORY}/`) || !/\.zip$/i.test(path)
+    if (!url.searchParams.get("repository_name") || !/\.zip$/i.test(path)
       || path.split("/").some((part) => !part || part === "." || part === "..") || /[\\\x00-\x1f]/.test(path)) return null;
     return { href, name: path.split("/").at(-1)! };
   } catch { return null; }

@@ -65,6 +65,17 @@ test("permission failure is surfaced instead of saving an error response", async
   await assert.rejects(api.downloadProjectDocumentReference(7, "方案.pptx"), /403/);
 });
 
+test("package downloads stay on current-project API and surface permission errors", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url) => { requests.push(url); return json({}, 403); });
+  const route = "/api/v1/code-repositories/projects/7/markdown-documents/download";
+  await assert.rejects(api.downloadProjectPackage(7, `${route}?repository_name=__project_root__&path=download%2Fapp.zip`), /403/);
+  assert.equal(requests.length, 1);
+  await assert.rejects(api.downloadProjectPackage(8, `${route}?repository_name=repo&path=app.zip`), /当前项目/);
+  await assert.rejects(api.downloadProjectPackage(7, `https://evil.test${route}?repository_name=repo&path=app.zip`), /当前项目/);
+  assert.equal(requests.length, 1);
+});
+
 
 test("root HTML and DOC references resolve with canonical Windows paths", async (t) => {
   for (const ext of ["html", "doc"]) {

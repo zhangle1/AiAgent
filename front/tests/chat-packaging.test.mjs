@@ -60,6 +60,7 @@ test("Markdown renderer preserves package URLs and emits a download card", () =>
   new Function("require", "exports", compiled)((name) => {
     if (name === "@/lib/chat-packaging") return module.exports;
     if (name === "@/lib/chat-runtime") return { runtimeTestFromHref: () => null };
+    if (name === "@/components/chat/ChatPackageDownload") return { ChatPackageDownload: "PackageDownload" };
     if (name === "react" || name === "react/jsx-runtime") return require(name);
     if (name === "react-markdown") return { default: "markdown", defaultUrlTransform: (url) => url };
     return {};
@@ -68,10 +69,15 @@ test("Markdown renderer preserves package URLs and emits a download card", () =>
   const markdown = exports.MarkdownMessage({ content: `[Download](${href})`, projectId: 7 });
   assert.equal(markdown.props.urlTransform(href), href);
   const card = markdown.props.components.a({ href, children: "Download" });
-  assert.equal(card.type, "a");
+  assert.equal(card.type, "PackageDownload");
   assert.equal(card.props.href, href);
-  assert.equal(card.props.download, true);
-  assert.ok(card.props.className.includes("rounded-xl"));
+  assert.equal(card.props.projectId, 7);
+  for (const path of ["download/app.zip", "/D:/work/download/app.zip"]) {
+    assert.equal(markdown.props.urlTransform(path), path);
+    const local = markdown.props.components.a({ href: path, children: "Download" });
+    assert.equal(local.type, "PackageDownload");
+    assert.equal(local.props.reference, path.replace(/^\/([a-z]:)/i, "$1"));
+  }
 });
 
 test("prompt carries project/repository context, iteration, verification and Git exclusion", () => {
@@ -85,6 +91,12 @@ test("download card accepts encoded Unicode ZIP paths for the current project", 
 });
 
 test("download card rejects cross-project, external, traversal and non-package links", () => {
-  for (const href of [url("artifacts/aiagent-packages/v1/a.zip", 8), "https://evil.invalid" + url("artifacts/aiagent-packages/a.zip"), "//evil.invalid/a.zip", url("artifacts/aiagent-packages/../secret.zip"), url("artifacts/aiagent-packages/a\\b.zip"), url("other/a.zip"), url("artifacts/aiagent-packages/a.md"), url("artifacts/aiagent-packages//a.zip")]) assert.equal(packageDownloadFromHref(href, 7), null, href);
+  for (const href of [url("artifacts/aiagent-packages/v1/a.zip", 8), "https://evil.invalid" + url("artifacts/aiagent-packages/a.zip"), "//evil.invalid/a.zip", url("artifacts/aiagent-packages/../secret.zip"), url("artifacts/aiagent-packages/a\\b.zip"), url("artifacts/aiagent-packages/a.md"), url("artifacts/aiagent-packages//a.zip")]) assert.equal(packageDownloadFromHref(href, 7), null, href);
   assert.equal(packageDownloadFromHref(url("artifacts/aiagent-packages/a.zip"), null), null);
 });
+
+ test("local ZIP references preserve paths without allowing external URLs", () => {
+ const {localZipReference}=module.exports;
+ for(const path of ["download/交付 包.zip", "app.zip", "/D:/work/download/app.zip", "D:\\work\\app.zip"]) assert.ok(localZipReference(path));
+ for(const path of ["https://evil.test/a.zip", "//evil.test/a.zip", "javascript:a.zip", "bad%00.zip"]) assert.equal(localZipReference(path),null);
+ });

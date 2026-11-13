@@ -1,0 +1,59 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Download project-root ZIP packages within chat",
+  "base_commit": "e1bffabead775942e074aebabc0c0ff0680d5075",
+  "authorization": "Current user explicitly requested implementation and push",
+  "checks": {
+    "frontend": "38 passed",
+    "backend": "18 passed (.NET 10 roll-forward)",
+    "typescript": "passed",
+    "whitespace": "passed",
+    "browser": "not run"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "ccf02d6027157ffd651ecda58cebce2b011e16b50a4268bedf992ff9cbeba170"
+    },
+    {
+      "path": "README.md",
+      "sha256": "98601257751a00f77669a6257722322a480d82dfb4dd7993a941dfab1a5a8148"
+    },
+    {
+      "path": "backed.tests/ProjectPackageDocumentTests.cs",
+      "sha256": "f506afc19be478e76ffb2250512049b2f28a9592b726c193f64d921e49c9a66d"
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryManager.cs",
+      "sha256": "083c4a55bbbaec5a919df1be9933c3e4139251df8511b39382781828e4b75810"
+    },
+    {
+      "path": "front/components/chat/MarkdownMessage.tsx",
+      "sha256": "acdc83fcb2b3cc026ff3bc29aa06312eafe4bb0e252c4455518c8a262b098261"
+    },
+    {
+      "path": "front/lib/chat-packaging.ts",
+      "sha256": "d6ef00b4c1f981a701fa34b206a450db1c9d70cb5170445ad99174b832e14a6f"
+    },
+    {
+      "path": "front/lib/code-repository-api.ts",
+      "sha256": "ffc882c7ff361a64908591292cb1421863e7cf3cdaf7ebd5e787fa8f5223e7f0"
+    },
+    {
+      "path": "front/tests/chat-document-download.test.mjs",
+      "sha256": "3ec24ae171436220217c253a6f443be6ae432f634529f65584560e972ef33684"
+    },
+    {
+      "path": "front/tests/chat-packaging.test.mjs",
+      "sha256": "66f22b451fb0a8557c3dba6b37e4d7705ef08799535525100cfa86dc142b9c1e"
+    },
+    {
+      "path": "front/components/chat/ChatPackageDownload.tsx",
+      "sha256": "51c99faf0cb7a0b5c6d0ff89e218344de6654d0ef116f80fd725d923f579df88"
+    },
+    {
+      "path": "docs/chat-project-zip-download.md",
+      "sha256": "56d92c0ba610a0b823f11315dab19712686177103c909f07cc4ed7e02ec1d48a"
+    }
+  ]
+}
