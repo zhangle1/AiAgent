@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-user-authorized-delivery",
+  "createdAt": "2026-11-13T08:19:52.571Z",
+  "baseCommit": "d8c1edc4e918646789477b7a822bb8fc64c1f867",
+  "objective": "Move ontology workbench to chat right workspace tabs",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "c3e8d644fb9ff917cc4e62ddf80402fe0eb3428351ed09d866816ddab84558ed"
+    },
+    {
+      "path": "README.md",
+      "sha256": "b84a3dcde121e94459bbb4c1c2ae67dcb9cb1b064f63a1905cdc413bb5b797a1"
+    },
+    {
+      "path": "design/customer-ontology/phase-1.md",
+      "sha256": "413bc42464276da7aa082237457f6526e7dec5191b07f54d4e29f9fc53b4e0e5"
+    },
+    {
+      "path": "front/components/chat/ChatInspectorPanel.tsx",
+      "sha256": "53f9746bbf18c256b2f489321f9a7bed61b7587b50ead089a222a01013a0f122"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "3ce7c89be4cd5ce046bb3a423c9980d5efaace78c37b38b49ba4bdd1fafb6075"
+    },
+    {
+      "path": "front/components/ontology/OntologyWorkbench.tsx",
+      "sha256": "6a03cc55e520cbb6e0450722a2edc1435488d0ce8b6668ef4791c693dde484e6"
+    },
+    {
+      "path": "front/tests/ontology.browser.mjs",
+      "sha256": "3c1d66528cf10243c889d0b98ef913babc7901174a97acca07cf3bdc0197fafa"
+    }
+  ],
+  "validation": {
+    "typescript": "passed",
+    "browser": "passed: model selection, atomic save, password clearing, context insertion, inline region without dialog, close",
+    "whitespace": "passed"
+  },
+  "authorization": "Current user explicitly requested implementation and push",
+  "limitations": [
+    "ETL definition only; no database connectivity or execution"
+  ]
+}

@@ -45,6 +45,6 @@ try{
  assert.doesNotMatch(await page.getByLabel('上下文预览',{exact:true}).inputValue(),/synthetic-secret/);
  await page.getByRole('button',{name:'填入聊天草稿',exact:true}).click();
  assert.equal(await page.locator('output').textContent(),'合成模型上下文；无密码');
- await page.getByRole('button',{name:'打开',exact:true}).click();await page.locator('dialog[open]').waitFor();await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'detached'});
- assert.deepEqual(errors,[]);console.log('PASS: model selection, connection and DAG save, password clearing, context preview and draft insertion, Escape');
+ await page.getByRole('button',{name:'打开',exact:true}).click();await page.getByRole('region',{name:"本体模型工作区"}).waitFor();assert.equal(await page.locator('dialog').count(),0);await page.getByRole('button',{name:"关闭本体模型"}).click();await page.getByRole('region',{name:"本体模型工作区"}).waitFor({state:'detached'});
+ assert.deepEqual(errors,[]);console.log('PASS: model selection, connection and DAG save, password clearing, context preview and draft insertion, inline workspace and close');
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
