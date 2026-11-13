@@ -1,0 +1,33 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-13T01:14:24.917662+00:00",
+  "baseCommit": "73194b6b0555dcdded95734dbb9faf771ce2afc0",
+  "objective": "Fix scope picker closing on inside clicks and losing checkbox drafts",
+  "cause": "Parent context-picker outside-click listener treated the knowledge panel as outside; trigger and panel also shared one ref.",
+  "files": [
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "09713275cde738da70d9353d2089de8dab3b28c843d7c5be6218eb0a39e205ef",
+      "bytes": 178761
+    },
+    {
+      "path": "front/tests/knowledge-scope-picker.browser.mjs",
+      "sha256": "66f354b1a5a4a72ce97c1bcc3ee9b5844dc44fb59a9565cda445014d2a902452",
+      "bytes": 9455
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "16f15d860841128ea004d68bcd7ffe12c22617913f9c7bc1488fb61549b90745",
+      "bytes": 2622
+    }
+  ],
+  "fingerprint": "fabda1c8e57329396822480e794a94c1eb08423a95353c1633d227a7c5562af8",
+  "validation": {
+    "browser": "Failed on original checkbox click; passes on fixed actual chat page, synthetic APIs only: desktop/mobile multi-select, expand/collapse, draft across parent rerender, search hidden descendants, Enter prevention, confirm, clear/cancel, outside/Escape and Codex request fields.",
+    "typescript": "passed",
+    "visual": "desktop and mobile screenshots inspected",
+    "whitespace": "passed"
+  },
+  "delivery": "User requested fix then fetch/merge. Local commit for preservation; no remote push."
+}

@@ -604,7 +604,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }, [activeSessionId, displayMessages, sending]);
 
   useEffect(() => {
-    if (!openContextPicker) return;
+    // KnowledgeScopePicker owns its trigger/panel boundary and draft cancellation.
+    if (openContextPicker !== "project") return;
     const closeWhenOutside = (event: PointerEvent) => {
       if (contextPickerRef.current && !contextPickerRef.current.contains(event.target as Node)) {
         setOpenContextPicker(null);
@@ -2271,6 +2272,7 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
   onApply: (uris: string[]) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [draftUris, setDraftUris] = useState<string[]>(selectedUris);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -2292,14 +2294,14 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
   const selectedSet = useMemo(() => new Set(draftUris), [draftUris]);
   const flatRows = useMemo(() => {
     const rows: Array<{ node: KnowledgeResourceNode; depth: number }> = [];
+    const query = searchTerm.trim().toLocaleLowerCase();
     const walk = (parent: string, depth: number) => {
       for (const node of children.get(parent) ?? []) {
         rows.push({ node, depth });
-        if (expanded.has(node.uri)) walk(node.uri, depth + 1);
+        if (query || expanded.has(node.uri)) walk(node.uri, depth + 1);
       }
     };
     walk("", 0);
-    const query = searchTerm.trim().toLocaleLowerCase();
     return query ? rows.filter(({ node }) => `${node.name} ${node.uri}`.toLocaleLowerCase().includes(query)) : rows;
   }, [children, expanded, searchTerm]);
 
@@ -2320,9 +2322,10 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
   }, [open, selectedUris, directories, directorySet, children]);
 
   useEffect(() => {
-    if (!open || mobile) return;
+    if (!open) return;
     const outside = (event: PointerEvent) => {
-      if (!panelRef.current?.contains(event.target as Node)) onCancel();
+      const target = event.target as Node;
+      if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) onCancel();
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onCancel(); }
@@ -2341,12 +2344,12 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
     return next;
   });
   const body = (
-    <div ref={panelRef} className={mobile ? "flex max-h-[82dvh] w-full flex-col rounded-t-3xl bg-white p-4 shadow-2xl" : "absolute bottom-10 right-0 z-40 w-[360px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.2)]"}>
+    <div ref={panelRef} role="dialog" aria-label="选择知识目录" aria-modal={mobile || undefined} className={mobile ? "flex max-h-[82dvh] w-full flex-col rounded-t-3xl bg-white p-4 shadow-2xl" : "absolute bottom-10 right-0 z-40 w-[360px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.2)]"}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0"><p className="text-sm font-semibold text-slate-900">知识目录</p><p className="mt-0.5 text-[11px] text-slate-500">可多选文件夹，确定后才应用到本轮聊天</p></div>
         <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-800">已选 {draftUris.length}</span>
       </div>
-      <label className="relative mt-3 block"><Search size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="搜索目录" className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-xs outline-none focus:border-blue-300 focus:bg-white" /></label>
+      <label className="relative mt-3 block"><Search size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="搜索目录" aria-label="搜索知识目录" onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }} className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-xs outline-none focus:border-blue-300 focus:bg-white" /></label>
       <div className="mt-2 min-h-0 max-h-[52dvh] flex-1 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/60 p-1">
         {flatRows.length === 0 ? <p className="px-3 py-8 text-center text-xs text-slate-500">暂无可用知识目录</p> : flatRows.map(({ node, depth }) => {
           const hasChildren = (children.get(node.uri)?.length ?? 0) > 0;
@@ -2362,7 +2365,7 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
   );
 
   if (mobile) return createPortal(<div className="fixed inset-0 z-[160] flex items-end bg-slate-950/55 lg:hidden" onMouseDown={onCancel}><div className="w-full" onMouseDown={event => event.stopPropagation()}>{body}</div></div>, document.body);
-  return <div ref={panelRef} className="relative"><button type="button" disabled={disabled} onClick={onOpen} className={`inline-flex h-8 max-w-[180px] items-center gap-1.5 rounded-lg border px-2 text-[12px] transition ${selectedUris.length > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50"} disabled:cursor-not-allowed disabled:text-slate-400`} aria-haspopup="dialog" aria-expanded={open}><FolderSearch size={15} className="shrink-0" /><span className="truncate">{selectedUris.length > 0 ? `知识目录 · ${selectedUris.length}` : "知识目录"}</span><ChevronDown size={14} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} /></button>{open && body}</div>;
+  return <div className="relative"><button ref={triggerRef} type="button" disabled={disabled} onClick={onOpen} className={`inline-flex h-8 max-w-[180px] items-center gap-1.5 rounded-lg border px-2 text-[12px] transition ${selectedUris.length > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50"} disabled:cursor-not-allowed disabled:text-slate-400`} aria-haspopup="dialog" aria-expanded={open}><FolderSearch size={15} className="shrink-0" /><span className="truncate">{selectedUris.length > 0 ? `知识目录 · ${selectedUris.length}` : "知识目录"}</span><ChevronDown size={14} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} /></button>{open && body}</div>;
 }
 
 type MobileOption = {
