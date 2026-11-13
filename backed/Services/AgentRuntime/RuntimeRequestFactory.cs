@@ -35,7 +35,8 @@ public sealed class RuntimeRequestFactory : IRuntimeRequestFactory
                 context.ProjectReferenceContext,
                 context.MarkdownDocumentContext,
                 context.ProjectAgentMarkdownIndexContext,
-                context.KnowledgeScopeUri),
+                context.KnowledgeScopeUri,
+                context.KnowledgeScopeUris.ToArray()),
             new Dictionary<string, object?>(context.Metadata))
         {
             TurnId = Guid.NewGuid().ToString("N")

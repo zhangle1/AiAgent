@@ -385,6 +385,7 @@ public sealed class ChatSessionService : IChatSessionService
         var preferences = DeserializeObject(existing);
         preferences["knowledge_base_names"] = request.KnowledgeBaseNames;
         preferences["knowledge_scope_uri"] = request.KnowledgeScopeUri;
+        preferences["knowledge_scope_uris"] = request.KnowledgeScopeUris;
         preferences["code_project_id"] = request.CodeProjectId;
         preferences["code_repository_names"] = request.CodeRepositoryNames;
         preferences["model_id"] = request.ModelId;

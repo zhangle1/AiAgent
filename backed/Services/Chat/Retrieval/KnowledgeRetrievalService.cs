@@ -214,6 +214,7 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
                 KnowledgeBaseName = knowledgeBaseName,
                 KnowledgeBaseNames = [knowledgeBaseName],
                 KnowledgeScopeUri = context.KnowledgeScopeUri,
+                KnowledgeScopeUris = context.KnowledgeScopeUris.ToList(),
                 TopK = context.TopK,
                 Stats = context.Stats
             };
@@ -261,17 +262,20 @@ public sealed class KnowledgeRetrievalService : IKnowledgeRetrievalService
 
     private HashSet<long>? ResolveScopeDocumentIds(AgentContext context, string knowledgeBaseName)
     {
-        if (string.IsNullOrWhiteSpace(context.KnowledgeScopeUri)) return null;
-        var scope = KnowledgeResourceService.NormalizeUri(context.KnowledgeScopeUri, true);
+        var scopeUris = context.KnowledgeScopeUris.Count > 0
+            ? context.KnowledgeScopeUris
+            : string.IsNullOrWhiteSpace(context.KnowledgeScopeUri) ? [] : [context.KnowledgeScopeUri];
+        if (scopeUris.Count == 0) return null;
         if (_resources is null) throw new InvalidOperationException("知识目录 Scope 解析器未注册。");
         var tree = _resources.Tree();
-        if (!tree.Any(node => node.Uri == scope && node.Kind == "directory"))
+        var scopes = scopeUris.Select(uri => KnowledgeResourceService.NormalizeUri(uri, true)).Distinct(StringComparer.Ordinal).ToList();
+        if (scopes.Any(scope => !tree.Any(node => node.Uri == scope && node.Kind == "directory")))
             throw new KeyNotFoundException("选择的知识目录不存在或无权访问。");
 
         var ids = tree
             .Where(node => node.Kind == "file" && node.DocumentId.HasValue
                 && string.Equals(node.KnowledgeBaseName, knowledgeBaseName, StringComparison.OrdinalIgnoreCase)
-                && (node.Uri == scope || node.Uri.StartsWith(scope, StringComparison.Ordinal)))
+                && scopes.Any(scope => node.Uri == scope || node.Uri.StartsWith(scope, StringComparison.Ordinal)))
             .Select(node => node.DocumentId!.Value)
             .ToHashSet();
         return ids;

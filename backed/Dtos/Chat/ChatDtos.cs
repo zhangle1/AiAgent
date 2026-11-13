@@ -65,6 +65,10 @@ public sealed class ChatCompleteRequest
     [JsonPropertyName("knowledge_scope_uri")]
     public string? KnowledgeScopeUri { get; set; }
 
+    /// <summary>Optional folder URI list. Retrieval uses the union of all selected folders.</summary>
+    [JsonPropertyName("knowledge_scope_uris")]
+    public List<string> KnowledgeScopeUris { get; set; } = [];
+
     /// <summary>
     /// Code repositories selected as the current chat context. Source inspection tools consume this field in later phases.
     /// </summary>

@@ -13,7 +13,7 @@ import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMe
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, Copy, Database, Eye, FileCode2, FileText, FolderSearch, Globe2, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, ChevronRight, Copy, Eye, FileCode2, FileText, FolderSearch, Globe2, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
@@ -232,7 +232,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [codeProjects, setCodeProjects] = useState<CodeProject[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [selectedKbNames, setSelectedKbNames] = useState<string[]>([]);
-  const [selectedKnowledgeScopeUri, setSelectedKnowledgeScopeUri] = useState<string | null>(null);
+  const [selectedKnowledgeScopeUris, setSelectedKnowledgeScopeUris] = useState<string[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(embeddedProjectId ?? requestedProjectId);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(requestedSessionId);
   const [debugTraceEnabled, setDebugTraceEnabled] = useState(false);
@@ -240,7 +240,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [storedDiagnostics, setStoredDiagnostics] = useState<ChatDebugTraceRecord[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRunSummary[]>([]);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
-  const [openContextPicker, setOpenContextPicker] = useState<"knowledge" | "knowledge-scope" | "project" | null>(null);
+  const [openContextPicker, setOpenContextPicker] = useState<"knowledge-scope" | "project" | null>(null);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedCodexModelId, setSelectedCodexModelId] = useState("");
   const [selectedCodexReasoningEffort, setSelectedCodexReasoningEffort] = useState("");
@@ -318,17 +318,18 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     setDebugTraceEnabled(sessionStorage.getItem(chatDebugStorageKey(activeSessionId)) === "1");
   }, [activeSessionId]);
 
-  const readyKnowledgeBases = knowledgeBases;
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
-  const currentKnowledgeBase = readyKnowledgeBases.find((kb) => kb.name === selectedKbNames[0]);
   const knowledgeScopeItems = useMemo(() => knowledgeResourceNodes
     .filter((node) => node.kind === "directory" && node.uri.endsWith("/") && !["viking://resources/", "viking://projects/", "viking://user/"].includes(node.uri))
     .map((node) => ({ id: node.uri, label: node.name, description: node.uri }))
     .slice(0, 300), [knowledgeResourceNodes]);
-  const selectedKnowledgeScope = knowledgeScopeItems.find((item) => item.id === selectedKnowledgeScopeUri);
+  const selectedKnowledgeScopes = knowledgeScopeItems.filter((item) => selectedKnowledgeScopeUris.includes(item.id));
   useEffect(() => {
-    if (selectedKnowledgeScopeUri && knowledgeResourceNodes.length > 0 && !selectedKnowledgeScope) setSelectedKnowledgeScopeUri(null);
-  }, [knowledgeResourceNodes.length, selectedKnowledgeScope, selectedKnowledgeScopeUri]);
+    if (knowledgeResourceNodes.length > 0) {
+      const available = new Set(knowledgeScopeItems.map((item) => item.id));
+      setSelectedKnowledgeScopeUris(current => current.filter(uri => available.has(uri)));
+    }
+  }, [knowledgeResourceNodes.length, knowledgeScopeItems]);
   // 嵌入式场景由宿主页面统一选择项目，发送时不能依赖异步状态同步。
   const effectiveProjectId = embedded && embeddedProjectLocked ? embeddedProjectId ?? null : selectedProjectId;
   const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
@@ -523,7 +524,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       setActiveSessionId(null);
       const defaultKnowledgeBase = knowledgeBases.find((kb) => kb.is_default);
       setSelectedKbNames(defaultKnowledgeBase ? [defaultKnowledgeBase.name] : []);
-      setSelectedKnowledgeScopeUri(null);
+      setSelectedKnowledgeScopeUris([]);
       setMessages([]);
       setInput("");
       setVisualizationType(null);
@@ -549,7 +550,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
           ? session.preferences.knowledge_base_names.filter((name): name is string => typeof name === "string")
           : [];
         setSelectedKbNames(savedKnowledgeBases);
-        setSelectedKnowledgeScopeUri(typeof session.preferences.knowledge_scope_uri === "string" ? session.preferences.knowledge_scope_uri : null);
+        const savedScopes = Array.isArray(session.preferences.knowledge_scope_uris)
+          ? session.preferences.knowledge_scope_uris.filter((uri): uri is string => typeof uri === "string")
+          : typeof session.preferences.knowledge_scope_uri === "string" ? [session.preferences.knowledge_scope_uri] : [];
+        setSelectedKnowledgeScopeUris(savedScopes);
         setSelectedProjectId(session.project_id ?? null);
         setMessages(toHistoryMessages(session));
         setInput(draft?.content ?? "");
@@ -1026,7 +1030,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         skill_invocations: skillsForTurn.length ? skillsForTurn.map(({ id, version }) => ({ id, version })) : undefined,
         knowledge_base_name: selectedKbNames[0],
         knowledge_base_names: selectedKbNames,
-        knowledge_scope_uri: selectedKnowledgeScopeUri || undefined,
+        knowledge_scope_uri: selectedKnowledgeScopeUris[0] || undefined,
+        knowledge_scope_uris: selectedKnowledgeScopeUris.length > 0 ? selectedKnowledgeScopeUris : undefined,
         code_repository_names: selectedCodeRepositoryNames,
         code_project_id: effectiveProjectId ?? undefined,
         project_references: projectReferenceIds.map((project_id) => ({
@@ -1257,8 +1262,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             <h1 className="truncate text-sm font-semibold text-slate-950">{activeSessionId ? "当前会话" : t("chat.newChat")}</h1>
             <p className="hidden text-[11px] text-slate-400 lg:block">AI 工作台</p>
           </div>
-          {currentKnowledgeBase && <span className="hidden rounded-full bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 sm:inline-flex">{currentKnowledgeBase.display_name || currentKnowledgeBase.name}</span>}
-          {selectedKnowledgeScope && <span className="hidden max-w-[220px] items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 sm:inline-flex"><FolderSearch size={12} className="shrink-0" /><span className="truncate">{selectedKnowledgeScope.label}</span></span>}
+          {selectedKnowledgeScopes.length > 0 && <span className="hidden max-w-[260px] items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 sm:inline-flex"><FolderSearch size={12} className="shrink-0" /><span className="truncate">知识目录 · {selectedKnowledgeScopes.length}</span></span>}
           {selectedProject && (
             <span className="hidden items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 sm:inline-flex">
               <Braces size={12} />
@@ -1426,7 +1430,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
                   <button type="button" disabled={knowledgeScopeItems.length === 0} onClick={() => setMobilePicker("knowledge-scope")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-amber-50 px-2.5 text-left text-[12px] text-amber-800 disabled:opacity-50">
                     <FolderSearch size={14} className="shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{selectedKnowledgeScope?.label || "选择知识目录"}</span>
+                    <span className="min-w-0 flex-1 truncate">{selectedKnowledgeScopes.length > 0 ? `知识目录 · ${selectedKnowledgeScopes.length}` : "选择知识目录"}</span>
                     <ChevronDown size={13} className="shrink-0" />
                   </button>
                   {!embeddedProjectLocked && <button type="button" onClick={() => setMobilePicker("project")} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-left text-[12px] text-slate-600">
@@ -1470,35 +1474,18 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 </div>
 
                 <div className="flex min-w-0 items-center gap-2">
-                  <ContextMultiSelect
-                    icon={<Database size={15} />}
-                    label={t("knowledge.knowledgeBases")}
-                    items={readyKnowledgeBases.map((kb) => ({
-                      id: kb.name,
-                      label: kb.display_name || kb.name,
-                      description: kb.engine_type,
-                    }))}
-                    selectedIds={selectedKbNames}
-                    open={openContextPicker === "knowledge"}
-                    disabled={loading || readyKnowledgeBases.length === 0}
-                    emptyText={loading ? t("knowledge.loading") : t("chat.noKnowledge")}
-                    onToggleOpen={() => setOpenContextPicker((current) => (current === "knowledge" ? null : "knowledge"))}
-                    onToggle={(name) => setSelectedKbNames((current) => toggleSelection(current, name))}
-                  />
-                  <ContextMultiSelect
-                    icon={<FolderSearch size={15} />}
-                    label="知识目录"
-                    items={knowledgeScopeItems}
-                    selectedIds={selectedKnowledgeScopeUri ? [selectedKnowledgeScopeUri] : []}
+                  <KnowledgeScopePicker
+                    nodes={knowledgeResourceNodes}
+                    selectedUris={selectedKnowledgeScopeUris}
                     open={openContextPicker === "knowledge-scope"}
-                    searchable
-                    disabled={loading || knowledgeScopeItems.length === 0}
-                    emptyText={loading ? "正在读取知识目录…" : "暂无可用知识目录"}
-                    onToggleOpen={() => setOpenContextPicker((current) => (current === "knowledge-scope" ? null : "knowledge-scope"))}
-                    onToggle={(uri) => {
-                      setSelectedKnowledgeScopeUri((current) => (current === uri ? null : uri));
+                    disabled={loading || knowledgeResourceNodes.length === 0}
+                    onOpen={() => setOpenContextPicker((current) => (current === "knowledge-scope" ? null : "knowledge-scope"))}
+                    onCancel={() => setOpenContextPicker(null)}
+                    onApply={(uris) => {
+                      setSelectedKnowledgeScopeUris(uris);
+                      setOpenContextPicker(null);
                       const scopedKnowledgeBases = knowledgeResourceNodes
-                        .filter((node) => node.kind === "file" && node.knowledge_base_name && (node.uri === uri || node.uri.startsWith(uri)))
+                        .filter((node) => node.kind === "file" && node.knowledge_base_name && uris.some(uri => node.uri === uri || node.uri.startsWith(uri)))
                         .map((node) => node.knowledge_base_name as string)
                         .filter((name, index, names) => names.findIndex((item) => item.toLocaleLowerCase() === name.toLocaleLowerCase()) === index);
                       if (scopedKnowledgeBases.length > 0) setSelectedKbNames(scopedKnowledgeBases);
@@ -1596,9 +1583,27 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} runs={agentRuns} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
         {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)} />}
       </div>
+      <KnowledgeScopePicker
+        mobile
+        nodes={knowledgeResourceNodes}
+        selectedUris={selectedKnowledgeScopeUris}
+        open={mobilePicker === "knowledge-scope"}
+        disabled={knowledgeResourceNodes.length === 0}
+        onOpen={() => setMobilePicker("knowledge-scope")}
+        onCancel={() => setMobilePicker(null)}
+        onApply={(uris) => {
+          setSelectedKnowledgeScopeUris(uris);
+          setMobilePicker(null);
+          const scopedKnowledgeBases = knowledgeResourceNodes
+            .filter((node) => node.kind === "file" && node.knowledge_base_name && uris.some(uri => node.uri === uri || node.uri.startsWith(uri)))
+            .map((node) => node.knowledge_base_name as string)
+            .filter((name, index, names) => names.findIndex((item) => item.toLocaleLowerCase() === name.toLocaleLowerCase()) === index);
+          if (scopedKnowledgeBases.length > 0) setSelectedKbNames(scopedKnowledgeBases);
+        }}
+      />
       <MobileOptionSheet
-        open={mobilePicker !== null}
-        title={mobilePicker === "model" ? "选择模型" : mobilePicker === "knowledge-scope" ? "选择知识目录" : "选择项目"}
+        open={mobilePicker === "model" || mobilePicker === "project"}
+        title={mobilePicker === "model" ? "选择模型" : "选择项目"}
         items={
           mobilePicker === "model"
             ? selectedAgentId === "codex"
@@ -1622,9 +1627,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     badge: "推理",
                   })),
                 ]
-            : mobilePicker === "knowledge-scope"
-              ? knowledgeScopeItems.map((item) => ({ ...item, badge: "知识目录" }))
-              : [
+            : [
                 {
                   id: "",
                   label: "不绑定项目",
@@ -1637,19 +1640,12 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 })),
               ]
         }
-        selectedId={mobilePicker === "model" ? (selectedAgentId === "codex" ? selectedCodexModelId : selectedModelId) : mobilePicker === "knowledge-scope" ? selectedKnowledgeScopeUri ?? "" : selectedProjectId ? String(selectedProjectId) : ""}
+        selectedId={mobilePicker === "model" ? (selectedAgentId === "codex" ? selectedCodexModelId : selectedModelId) : selectedProjectId ? String(selectedProjectId) : ""}
         onClose={() => setMobilePicker(null)}
         onSelect={(id) => {
           if (mobilePicker === "model") {
             if (selectedAgentId === "codex") { setSelectedCodexModelId(id); onEmbeddedCodexModelChange?.(id); }
             else setSelectedModelId(id);
-          } else if (mobilePicker === "knowledge-scope") {
-            setSelectedKnowledgeScopeUri(id || null);
-            const scopedKnowledgeBases = knowledgeResourceNodes
-              .filter((node) => node.kind === "file" && node.knowledge_base_name && (node.uri === id || node.uri.startsWith(id)))
-              .map((node) => node.knowledge_base_name as string)
-              .filter((name, index, names) => names.findIndex((item) => item.toLocaleLowerCase() === name.toLocaleLowerCase()) === index);
-            if (scopedKnowledgeBases.length > 0) setSelectedKbNames(scopedKnowledgeBases);
           } else setSelectedProjectId(id ? Number(id) : null);
           setMobilePicker(null);
         }}
@@ -2262,6 +2258,111 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
       )}
     </div>
   );
+}
+
+function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mobile = false, onOpen, onCancel, onApply }: {
+  nodes: KnowledgeResourceNode[];
+  selectedUris: string[];
+  open: boolean;
+  disabled?: boolean;
+  mobile?: boolean;
+  onOpen: () => void;
+  onCancel: () => void;
+  onApply: (uris: string[]) => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [draftUris, setDraftUris] = useState<string[]>(selectedUris);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+  const directories = useMemo(() => nodes
+    .filter((node) => node.kind === "directory" && node.uri.endsWith("/") && !["viking://resources/", "viking://projects/", "viking://user/"].includes(node.uri))
+    .sort((left, right) => left.uri.localeCompare(right.uri)), [nodes]);
+  const directorySet = useMemo(() => new Set(directories.map((node) => node.uri)), [directories]);
+  const children = useMemo(() => {
+    const map = new Map<string, KnowledgeResourceNode[]>();
+    for (const node of directories) {
+      const parent = node.parent_uri && directorySet.has(node.parent_uri) ? node.parent_uri : "";
+      const bucket = map.get(parent) ?? [];
+      bucket.push(node);
+      map.set(parent, bucket);
+    }
+    for (const bucket of map.values()) bucket.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+    return map;
+  }, [directories, directorySet]);
+  const selectedSet = useMemo(() => new Set(draftUris), [draftUris]);
+  const flatRows = useMemo(() => {
+    const rows: Array<{ node: KnowledgeResourceNode; depth: number }> = [];
+    const walk = (parent: string, depth: number) => {
+      for (const node of children.get(parent) ?? []) {
+        rows.push({ node, depth });
+        if (expanded.has(node.uri)) walk(node.uri, depth + 1);
+      }
+    };
+    walk("", 0);
+    const query = searchTerm.trim().toLocaleLowerCase();
+    return query ? rows.filter(({ node }) => `${node.name} ${node.uri}`.toLocaleLowerCase().includes(query)) : rows;
+  }, [children, expanded, searchTerm]);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraftUris(selectedUris);
+    setSearchTerm("");
+    const initial = new Set<string>();
+    for (const uri of selectedUris) {
+      let node = directories.find(item => item.uri === uri);
+      while (node?.parent_uri && directorySet.has(node.parent_uri)) {
+        initial.add(node.parent_uri);
+        node = directories.find(item => item.uri === node!.parent_uri);
+      }
+    }
+    for (const root of children.get("") ?? []) initial.add(root.uri);
+    setExpanded(initial);
+  }, [open, selectedUris, directories, directorySet, children]);
+
+  useEffect(() => {
+    if (!open || mobile) return;
+    const outside = (event: PointerEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) onCancel();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onCancel(); }
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", escape, true); };
+  }, [mobile, onCancel, open]);
+
+  if (!open && mobile) return null;
+
+  const toggleDraft = (uri: string) => setDraftUris(current => current.includes(uri) ? current.filter(item => item !== uri) : [...current, uri]);
+  const toggleExpanded = (uri: string) => setExpanded(current => {
+    const next = new Set(current);
+    if (next.has(uri)) next.delete(uri); else next.add(uri);
+    return next;
+  });
+  const body = (
+    <div ref={panelRef} className={mobile ? "flex max-h-[82dvh] w-full flex-col rounded-t-3xl bg-white p-4 shadow-2xl" : "absolute bottom-10 right-0 z-40 w-[360px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.2)]"}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0"><p className="text-sm font-semibold text-slate-900">知识目录</p><p className="mt-0.5 text-[11px] text-slate-500">可多选文件夹，确定后才应用到本轮聊天</p></div>
+        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-800">已选 {draftUris.length}</span>
+      </div>
+      <label className="relative mt-3 block"><Search size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="搜索目录" className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-xs outline-none focus:border-blue-300 focus:bg-white" /></label>
+      <div className="mt-2 min-h-0 max-h-[52dvh] flex-1 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/60 p-1">
+        {flatRows.length === 0 ? <p className="px-3 py-8 text-center text-xs text-slate-500">暂无可用知识目录</p> : flatRows.map(({ node, depth }) => {
+          const hasChildren = (children.get(node.uri)?.length ?? 0) > 0;
+          const checked = selectedSet.has(node.uri);
+          return <div key={node.uri} className="flex items-center gap-1 rounded-lg px-1 py-1 hover:bg-white" style={{ paddingLeft: `${4 + depth * 16}px` }}>
+            <button type="button" onClick={() => hasChildren && toggleExpanded(node.uri)} className={`grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 ${hasChildren ? "hover:bg-slate-100" : "invisible"}`} aria-label={expanded.has(node.uri) ? "收起目录" : "展开目录"}>{expanded.has(node.uri) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
+            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1 text-xs text-slate-700"><input type="checkbox" checked={checked} onChange={() => toggleDraft(node.uri)} className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" /><span className="min-w-0 truncate">{node.name}</span></label>
+          </div>;
+        })}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3"><button type="button" onClick={() => setDraftUris([])} className="text-xs text-slate-500 hover:text-slate-800">清空</button><div className="flex gap-2"><button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">取消</button><button type="button" onClick={() => onApply(draftUris)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">确定</button></div></div>
+    </div>
+  );
+
+  if (mobile) return createPortal(<div className="fixed inset-0 z-[160] flex items-end bg-slate-950/55 lg:hidden" onMouseDown={onCancel}><div className="w-full" onMouseDown={event => event.stopPropagation()}>{body}</div></div>, document.body);
+  return <div ref={panelRef} className="relative"><button type="button" disabled={disabled} onClick={onOpen} className={`inline-flex h-8 max-w-[180px] items-center gap-1.5 rounded-lg border px-2 text-[12px] transition ${selectedUris.length > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50"} disabled:cursor-not-allowed disabled:text-slate-400`} aria-haspopup="dialog" aria-expanded={open}><FolderSearch size={15} className="shrink-0" /><span className="truncate">{selectedUris.length > 0 ? `知识目录 · ${selectedUris.length}` : "知识目录"}</span><ChevronDown size={14} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} /></button>{open && body}</div>;
 }
 
 type MobileOption = {

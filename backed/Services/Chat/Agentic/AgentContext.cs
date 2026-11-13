@@ -37,6 +37,9 @@ public sealed class AgentContext
     /// <summary>Optional server-visible knowledge folder scope for this turn.</summary>
     public string? KnowledgeScopeUri { get; set; }
 
+    /// <summary>Optional server-visible knowledge folder scopes for this turn.</summary>
+    public List<string> KnowledgeScopeUris { get; set; } = [];
+
     /// <summary>
     /// Selected code repositories reserved for code retrieval and diagnostics tools.
     /// </summary>
@@ -101,6 +104,7 @@ public sealed class AgentContext
     {
         var knowledgeBaseNames = NormalizeNames(request.KnowledgeBaseNames, request.KnowledgeBaseName);
         var dashboardApplicationId = string.IsNullOrWhiteSpace(request.DashboardApplicationId) ? null : request.DashboardApplicationId.Trim();
+        var knowledgeScopeUris = NormalizeScopes(request.KnowledgeScopeUris, request.KnowledgeScopeUri);
         return new AgentContext
         {
             RuntimeUserId = request.RuntimeUserId ?? string.Empty,
@@ -109,7 +113,8 @@ public sealed class AgentContext
             Mode = string.IsNullOrWhiteSpace(request.Mode) ? "chat" : request.Mode.Trim(),
             KnowledgeBaseNames = knowledgeBaseNames,
             KnowledgeBaseName = knowledgeBaseNames.FirstOrDefault(),
-            KnowledgeScopeUri = NormalizeScope(request.KnowledgeScopeUri),
+            KnowledgeScopeUris = knowledgeScopeUris,
+            KnowledgeScopeUri = knowledgeScopeUris.FirstOrDefault(),
             CodeRepositoryNames = dashboardApplicationId is null ? NormalizeNames(request.CodeRepositoryNames, null) : [],
             DashboardApplicationId = dashboardApplicationId,
             DashboardFilePath = string.IsNullOrWhiteSpace(request.DashboardFilePath) ? null : request.DashboardFilePath.Trim(),
@@ -133,10 +138,14 @@ public sealed class AgentContext
             .ToList();
     }
 
-    private static string? NormalizeScope(string? value)
+    private static List<string> NormalizeScopes(IEnumerable<string>? values, string? legacyValue)
     {
-        var scope = value?.Trim();
-        return string.IsNullOrWhiteSpace(scope) ? null : scope;
+        return (values ?? [])
+            .Append(legacyValue ?? string.Empty)
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 }
 

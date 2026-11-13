@@ -52,6 +52,7 @@ export type ChatCompleteRequest = {
   knowledge_base_name?: string;
   knowledge_base_names?: string[];
   knowledge_scope_uri?: string;
+  knowledge_scope_uris?: string[];
   code_repository_names?: string[];
   code_project_id?: number;
   project_references?: Array<{ project_id: number }>;

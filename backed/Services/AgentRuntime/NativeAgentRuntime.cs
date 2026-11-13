@@ -160,6 +160,7 @@ public sealed class NativeAgentRuntime : IRuntimeEngine
             KnowledgeBaseNames = request.Capabilities.KnowledgeBaseNames.ToList(),
             KnowledgeBaseName = request.Capabilities.KnowledgeBaseNames.FirstOrDefault(),
             KnowledgeScopeUri = request.Capabilities.KnowledgeScopeUri,
+            KnowledgeScopeUris = request.Capabilities.KnowledgeScopeUris?.ToList() ?? [],
             CodeRepositoryNames = request.Capabilities.CodeRepositoryNames.ToList(),
             DashboardApplicationId = request.Capabilities.DashboardApplicationId,
             DashboardFilePath = request.Capabilities.DashboardFilePath,

@@ -6,7 +6,7 @@
 
 ## 兼容边界
 
-- `knowledge_scope_uri` 为空：沿用原有知识库全范围检索。
+- `knowledge_scope_uris` 为空：沿用原有知识库全范围检索。
 - `agent=codex`：聊天编排器仍优先进入现有 Codex CLI 分支，Scope 不参与 CLI 参数、工作区或工具权限决策。
 - Scope 只影响非 Codex 知识检索：Wiki 页面按来源文档过滤，RAG chunk 按 `document_id` 过滤。
 - Scope 解析失败或目录无权访问时，本轮返回明确错误，不扩大到全库检索。
@@ -17,17 +17,20 @@
 ```json
 {
   "knowledge_base_names": ["shared-books"],
-  "knowledge_scope_uri": "viking://resources/books/refactoring/",
+  "knowledge_scope_uris": [
+    "viking://resources/books/refactoring/",
+    "viking://resources/checklists/"
+  ],
   "code_project_id": 12,
   "agent": "codex"
 }
 ```
 
-前端从资源树选择 `kind=directory` 的节点，只发送服务端返回的 URI。后端再次规范化 URI、检查可见目录，并解析该目录下的文档 ID；浏览器或模型提供的本机绝对路径不具有授权意义。
+前端从资源树选择多个 `kind=directory` 的节点，只发送服务端返回的 URI。后端再次规范化每个 URI、检查可见目录，并解析这些目录下文档 ID 的并集；浏览器或模型提供的本机绝对路径不具有授权意义。
 
 ## 会话持久化
 
-Scope URI 与知识库选择一起写入会话 preferences，重新打开会话时恢复选择。资源树刷新后如果 URI 已不可见，前端清除选择，后端仍会拒绝无权或不存在的 URI。
+Scope URI 列表与知识库选择一起写入会话 preferences，重新打开会话时恢复选择。资源树刷新后如果某个 URI 已不可见，前端清除该项，后端仍会拒绝无权或不存在的 URI。
 
 ## 后续扩展
 

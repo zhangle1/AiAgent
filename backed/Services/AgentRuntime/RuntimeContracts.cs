@@ -66,7 +66,8 @@ public sealed record RuntimeCapabilitySnapshot(
     string ProjectReferenceContext,
     string MarkdownDocumentContext,
     string ProjectAgentMarkdownIndexContext,
-    string? KnowledgeScopeUri = null);
+    string? KnowledgeScopeUri = null,
+    IReadOnlyList<string>? KnowledgeScopeUris = null);
 
 public sealed record RuntimeTurnRequest(
     string RunId,
