@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileText, Loader2 } from "lucide-react";
+import { BookPlus, Download, FileText, Loader2 } from "lucide-react";
+import { SaveMarkdownToKnowledgeDialog } from "./SaveMarkdownToKnowledgeDialog";
 import { downloadProjectDocumentReference } from "@/lib/code-repository-api";
 
 export function ChatDocumentCard({ reference, projectId, onOpen }: {
@@ -11,6 +12,8 @@ export function ChatDocumentCard({ reference, projectId, onOpen }: {
 }) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSave, setShowSave] = useState(false);
+  const [notice, setNotice] = useState("");
   const path = reference.replace(/(?::|#L)[1-9]\d{0,8}$/i, "").replace(/\\/g, "/");
   const name = path.split("/").pop() || path;
 
@@ -37,7 +40,10 @@ export function ChatDocumentCard({ reference, projectId, onOpen }: {
       <button type="button" onClick={() => void download()} disabled={downloading} aria-label={`下载 ${name}`} title={downloading ? "下载中" : "下载原文件"} className="flex w-7 shrink-0 items-center justify-center border-l border-slate-200/70 text-slate-500 transition hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 disabled:opacity-50">
         {downloading ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>}
       </button>
+      {/\.(md|markdown)$/i.test(name) && <button type="button" onClick={() => { setNotice(""); setShowSave(true); }} aria-label={`保存 ${name} 到知识库`} title="保存到知识库项目" className="flex w-7 shrink-0 items-center justify-center border-l border-slate-200/70 text-slate-500 hover:bg-blue-50 hover:text-blue-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"><BookPlus size={14}/></button>}
     </span>
+    {showSave && <SaveMarkdownToKnowledgeDialog key={`${projectId}:${reference}`} projectId={projectId} reference={reference} onClose={() => setShowSave(false)} onSaved={setNotice}/>}
+    {notice && <span role="status" className="whitespace-normal break-words border-t border-slate-200 px-2 py-1 text-xs text-emerald-700">{notice}</span>}
     {error && <span role="alert" className="whitespace-normal break-words border-t border-rose-100 px-2 py-1 text-xs text-rose-700">{error}</span>}
   </span>;
 }

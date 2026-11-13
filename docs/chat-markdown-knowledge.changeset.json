@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-user-authorized-delivery",
+  "createdAt": "2026-11-13T07:05:49.795Z",
+  "baseCommit": "158aec318a74e643e81ab22afd3106634721b857",
+  "objective": "???? Markdown ?????????????????????",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "2895df890f9afd7c2903c99ac9517fc97ccc62e333546d434abde609ca045894"
+    },
+    {
+      "path": "README.md",
+      "sha256": "c17b68afdad7a1c9a8d5f2f87910c6364cd9ad83ea37d164f60b8bd9a21b829c"
+    },
+    {
+      "path": "front/components/chat/ChatDocumentCard.tsx",
+      "sha256": "82b9d67297b7f893dfeea1b1bcd0181e106ad59e4d65131c1bcac7f98b433427"
+    },
+    {
+      "path": "front/lib/code-repository-api.ts",
+      "sha256": "46c6d2c7cc7a12c7516a6c8eedc7c66b19a1bbbb87fb4c7610f6dab25141b1be"
+    },
+    {
+      "path": "design/customer-ontology/preview.png",
+      "sha256": "e8fb3511ee265dcb901551cd8af8a531a4acb7a4662d3fb8e5bd301306ad3833"
+    },
+    {
+      "path": "design/customer-ontology/prototype.html",
+      "sha256": "e6716e5c17e0c5c54e2a503c13252939daf7c09a2d7ea76ab094dfe4fc417fe2"
+    },
+    {
+      "path": "design/graphify-code-atlas/prototype.html",
+      "sha256": "4975894c915cab298f9a61e7053f8a14f7484a2f42b4f1c9417db01a4df8c27c"
+    },
+    {
+      "path": "design/graphify-code-atlas/solution.md",
+      "sha256": "bae03cda65483043563377978f26fd0e8ba4015fa665f19d0c2cf057abd85079"
+    },
+    {
+      "path": "docs/agent-run-recovery-capabilities-changesets-design.md",
+      "sha256": "75096251e2730bf74bcee94d3fe79dab35cb2624eedd5f27bfb019cafa371d63"
+    },
+    {
+      "path": "docs/sidebar-onboarding-icon.changeset.json",
+      "sha256": "febcf7c67361991bf006f39d0936f033b8218f8710eee31484d7e96e017dca65"
+    },
+    {
+      "path": "docs/t3code-principles-and-aiagent-reference.md",
+      "sha256": "5f5bdec2f6943f845161b4543430d1b50642ea6a963a6f4befbc3a12ccf3da2a"
+    },
+    {
+      "path": "front/components/chat/SaveMarkdownToKnowledgeDialog.tsx",
+      "sha256": "d4aa602b42268d2110ec200cee9a9f4dfe0830b3393f9f09eb8172d53470b122"
+    }
+  ],
+  "validation": {
+    "typescript": "passed",
+    "documentRendererRegression": "2 passed",
+    "gitWhitespace": "passed",
+    "credentialPatternScan": "passed"
+  },
+  "authorization": "Current user explicitly requested all pending files and this feature to be committed and pushed."
+}
