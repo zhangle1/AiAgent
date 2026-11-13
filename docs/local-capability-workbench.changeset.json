@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-user-requested-delivery",
+  "baseCommit": "eeaad6a98d2e60f625bc96eeb32e9b653a95f0cb",
+  "objective": "Local capability validation and reusable AI prompt context prototype",
+  "files": [
+    {
+      "path": "design/customer-ontology/agent-workbench.html",
+      "sha256": "e98bcdb873e156ba0930c53ad16703ad2a867153ec310e5c52d69a80d6da2c13"
+    },
+    {
+      "path": "design/customer-ontology/agent-workbench.md",
+      "sha256": "c49e38737ae00e235a25a1e57a45598b042e35513ce9eed17ce95241d20855ea"
+    },
+    {
+      "path": "design/customer-ontology/agent-workbench-preview.png",
+      "sha256": "c43663a3ca177e599c37adae0f72c3cb609dd59d4c8a759909adedba283f6420"
+    }
+  ],
+  "validation": {
+    "browser": "passed: layered failure, generation gate, prompt fill, context invalidation, Markdown download, chat, narrow layout, runtime errors",
+    "scope": "Standalone synthetic prototype only"
+  },
+  "authorization": "Current user explicitly requested commit and push; unrelated working tree changes excluded"
+}
