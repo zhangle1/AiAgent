@@ -1,0 +1,95 @@
+{
+    "schemaVersion":  1,
+    "kind":  "local-review-snapshot",
+    "status":  "validated-awaiting-human-delivery",
+    "createdAt":  "2026-11-13T05:52:06.5234949Z",
+    "baseCommit":  "5106767ca58dacb6c0e264bd29573804fce6aae1",
+    "objective":  "项目企业模型、MES 配置、ETL 流程定义和聊天上下文",
+    "files":  [
+                  {
+                      "path":  "AGENTS.md",
+                      "sha256":  "009b88940cd93647410afb610556324489d136bf397e53ecd1ba6ceef0ec5fa5"
+                  },
+                  {
+                      "path":  "README.md",
+                      "sha256":  "544f96b63adc03f62c1893c82f16627e6efcc5e5af617a5394df946ecc2e4109"
+                  },
+                  {
+                      "path":  "backed/Program.cs",
+                      "sha256":  "15123b108028ac02572d4736663bf8abe0c8d0e9516484914d04c1e80eb63d58"
+                  },
+                  {
+                      "path":  "backed/Services/Ontology/OntologyStore.cs",
+                      "sha256":  "1ec42ce1be703c682d93c2c58d638e3b75afb8dda4c99934f709e345898f1160"
+                  },
+                  {
+                      "path":  "backed/Services/Ontology/OntologyAppService.cs",
+                      "sha256":  "95b37850a43e732c618708ba89e313a67d08a46d4408776f610f05a5c88c4c07"
+                  },
+                  {
+                      "path":  "backed.tests/OntologyTests.cs",
+                      "sha256":  "ff9838216b96981612ed5250507ed33055e3c5bc2456fe5af84a8b0ef1f6d330"
+                  },
+                  {
+                      "path":  "front/components/chat/KnowledgeChatHome.tsx",
+                      "sha256":  "57c91e986fc53a3e89f97bca28ca3c20ea6e0c1eaaa992a1b71565f9fb5f329e"
+                  },
+                  {
+                      "path":  "front/components/ontology/OntologyWorkbench.tsx",
+                      "sha256":  "17e7b35a6916156daff5f28a8748b2f032b8ad55c6d589f5fd0debfeaa85cddd"
+                  },
+                  {
+                      "path":  "front/lib/ontology-api.ts",
+                      "sha256":  "e749411ac8f270f86b4bca08c0265a66b2e95b0b6c979bf5ceae79aceae16725"
+                  },
+                  {
+                      "path":  "front/lib/ontology-types.ts",
+                      "sha256":  "16df114867b7c74bdaffd389d9b24254b7dc266d4cb5d16798d2ab28b6e4053c"
+                  },
+                  {
+                      "path":  "front/tests/ontology.browser.mjs",
+                      "sha256":  "8a8df8531661a3fac9bc39c694bbf35c64c4411ce5db36146b029fe555768a39"
+                  },
+                  {
+                      "path":  "design/customer-ontology/README.md",
+                      "sha256":  "36264f3e8d16831dd4a973b887bc75328aeb72dbcec51afa191dfa8b7007da5b"
+                  },
+                  {
+                      "path":  "design/customer-ontology/agent-workbench.md",
+                      "sha256":  "52a0e48af3f9cef630efdab2eaddc26b7ce1f7c01fab82556176ef9b5807c355"
+                  },
+                  {
+                      "path":  "design/customer-ontology/phase-1.md",
+                      "sha256":  "749b271c91840a8d9eaa746be77473948f08d4525a8836a90ca3edc55647508c"
+                  },
+                  {
+                      "path":  "design/customer-ontology/api-plugins.md",
+                      "sha256":  "ce37cfeaf5ead2b7023f6b6311ae4df8ac9c57edb7386eb65a87aaf7202235b7"
+                  },
+                  {
+                      "path":  "design/customer-ontology/codex-compatibility.md",
+                      "sha256":  "99fe73c780f92454766a5cce3442ce8aaf77c8741a3478a85b9eda5ca1d7f8aa"
+                  },
+                  {
+                      "path":  "design/customer-ontology/context-and-execution.md",
+                      "sha256":  "3466eb4052d47217d2286cc1342ff0f2c1fa3b802bd341cc82945387aa6d4218"
+                  }
+              ],
+    "validation":  {
+                       "typescript":  "passed",
+                       "backendBuild":  "passed, existing warnings",
+                       "ontologyTests":  "2 passed; .NET 10 host with DOTNET_ROLL_FORWARD=Major",
+                       "browser":  "passed: model selection, atomic connection and graph save, password clearing, context draft insertion, Escape",
+                       "whitespace":  "passed"
+                   },
+    "limitations":  [
+                        "定义图，不执行 ETL 或数据库连通验证",
+                        "LLM API 需宿主认证 HTTP 能力；未注册 Codex 原生工具",
+                        "单后端实例文件存储，按用户和项目隔离"
+                    ],
+    "delivery":  {
+                     "committed":  false,
+                     "requiresHumanDelivery":  true,
+                     "pushed":  false
+                 }
+}

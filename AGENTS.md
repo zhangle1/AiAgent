@@ -1,5 +1,7 @@
 # AiAgent 开发与 Agent 协作说明
 
+资料库图片放大使用原生模态 dialog，沿用本人附件内容接口，不引入外部图片地址；保持键盘关闭、焦点恢复与会话卸载关闭。客户本体 Agent 面板原型保留于 `design/customer-ontology/agent-workbench.md` 与同名 HTML，首轮实际工作台范围见 `design/customer-ontology/phase-1.md`，采用聊天、节点画布和检查器并列布局；对象关系与工具链执行图分别表达业务语义与执行依赖。不将模拟测试、工具运行或发布描述为已实现服务能力。
+
 聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。
 
 普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
@@ -191,3 +193,5 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 聊天主动技能位于 `backed/Resources/ChatSkills/catalog-v1.json`，仅显式调用，禁止注册到原生自动发现目录或把技能清单放入系统提示词。HTTP／WebSocket 统一经 `ChatSkillCatalog.Apply` 解析服务端正文，保留 `ServerPromptMessage` 与原始消息分离；`skill_invocations` 多选按顺序解析、去重，保留旧单项字段兼容，任意无效项或版本冲突拒绝整次请求。消息元数据保存完整快照数组，重试沿用原消息全部版本；结束边界同时识别旧单项和新数组快照。已发布正文不可覆盖，新增版本须保留旧版本解析。前端多轮选择可结束，切换会话／项目或刷新不自动恢复。改动前读 `docs/chat-explicit-skills.md`，验证未选择不加载、版本篡改、重试、普通聊天结束边界及 `/spec` 兼容。
 
 - 变化地图文件导入试点使用固定 head 的普通 Git blob，保持敏感文件阻止与用户/项目授权。`lexical-imports-v1` 只展示 JS/TS 单行相对导入候选，禁止标成 AST/Graphify/运行验证；新关系不混入旧 Git 改动或 AI 证据。入口显式触发，取消与迟到响应隔离、读取/遍历预算及覆盖缺口见 `docs/change-atlas.md`。
+
+本体模型首轮实现位于 Services/Ontology、components/ontology 及 lib/ontology-*。按用户和项目隔离，加密原子文件存储；所有接口重新检查项目权限，图更新做版本及 DAG 校验。密码不回显、不进入上下文。流程只定义不执行；不改 Codex 原生链路。规格与 API 见 design/customer-ontology/phase-1.md、api-plugins.md；旧 HTML 为模拟原型。

@@ -1,4 +1,6 @@
 "use client";
+import { OntologyWorkbench } from "@/components/ontology/OntologyWorkbench";
+
 
 import { getChatSkills } from "@/lib/chat-skill-api";
 import type { ChatSkill, ChatSkillReference } from "@/lib/chat-skill-types";
@@ -320,6 +322,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
   const currentKnowledgeBase = readyKnowledgeBases.find((kb) => kb.name === selectedKbNames[0]);
   // 嵌入式场景由宿主页面统一选择项目，发送时不能依赖异步状态同步。
+  const [ontologyOpen, setOntologyOpen] = useState(false);
+  useEffect(() => { setOntologyOpen(false); }, [selectedProjectId, activeSessionId]);
   const effectiveProjectId = embedded && embeddedProjectLocked ? embeddedProjectId ?? null : selectedProjectId;
   const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
   const activeVisualizationCommits = visualizationCommits.filter((commit) => commit.project_id === effectiveProjectId);
@@ -1270,7 +1274,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
           <ClientScanDialog />
           <ChatRuntimeToolbar key={`${selectedProject?.id}:${activeSessionId}`} onPackagePrompt={(prompt) => { setVisualizationType(null); setVisualizationCommits([]); prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${prompt}` : prompt); }} project={selectedProject} rightPanelOpen={rightPanelOpen} onToggleRightPanel={() => setRightPanelOpen((current) => !current)} onOpenRuntimePanel={() => openInspector("terminal")} />
           <span className="hidden lg:contents">
-            <SidePanelTabLauncher onOpen={openInspector} />
+            <SidePanelTabLauncher onOpen={openInspector} onOntology={() => setOntologyOpen(true)} />
+            {ontologyOpen && <OntologyWorkbench key={`${effectiveProjectId}:${activeSessionId}`} projectId={effectiveProjectId} onClose={() => setOntologyOpen(false)} onInsert={(text) => prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${text}` : text)} />}
           </span>
           <button type="button" onClick={() => void loadBootstrap()} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600 lg:inline-flex" aria-label={t("knowledge.refresh")}>
             <RefreshCw size={14} />
@@ -2171,7 +2176,7 @@ type ContextPickerItem = {
   description?: string;
 };
 
-function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
+function SidePanelTabLauncher({ onOpen, onOntology }: { onOpen: (tab: InspectorTab) => void; onOntology: () => void }) {
   const [open, setOpen] = useState(false);
   const options: Array<{
     tab: InspectorTab;
@@ -2192,6 +2197,7 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
       </button>
       {open && (
         <div className="absolute right-0 top-10 z-50 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">
+          <button type="button" onClick={() => { setOpen(false); onOntology(); }} className="flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-slate-700 hover:bg-slate-100"><BookOpen size={16} />本体模型</button>
           {options.map((option) => {
             const Icon = option.icon;
             return (

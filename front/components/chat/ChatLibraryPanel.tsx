@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileText, FolderOpen, Link2, Loader2, RefreshCw, Search } from "lucide-react";
+import { Download, FileText, FolderOpen, Link2, Loader2, RefreshCw, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getMyChatUploads, myChatUploadContentUrl } from "@/lib/chat-api";
 import { getProjectMarkdownDocuments } from "@/lib/code-repository-api";
 import type { CodeProjectMarkdownDocument } from "@/lib/code-repository-types";
@@ -16,6 +16,7 @@ export function ChatLibraryPanel({ projectId, refreshToken, onInsert, onAttach, 
   onAttach?: (file: File) => Promise<void>;
   onPreview: (document: CodeProjectMarkdownDocument) => void;
 }) {
+  const [preview, setPreview] = useState<ChatLibraryItem | null>(null);
   const [items, setItems] = useState<ChatLibraryItem[]>([]);
   const [keyword, setKeyword] = useState("");
   const [source, setSource] = useState("all");
@@ -95,7 +96,7 @@ export function ChatLibraryPanel({ projectId, refreshToken, onInsert, onAttach, 
     <div className="workspace-scroll min-h-0 flex-1 overflow-auto p-3">
       {loading ? <div className="flex items-center justify-center gap-2 py-12 text-xs text-slate-500"><Loader2 size={16} className="animate-spin"/>正在发现资料…</div> : visible.length ? <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">{visible.map((item) => <article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-3 transition hover:border-blue-200 hover:bg-white">
         <div className="mb-3 flex items-center justify-between"><span className="rounded-lg bg-white p-2 text-blue-600"><FileText size={21}/></span><span className="text-[10px] text-slate-400">{item.source === "upload" ? "上传资料" : "项目文件"}</span></div>
-        {item.upload?.kind === "image" && <img src={myChatUploadContentUrl(item.upload.id)} alt={item.name} loading="lazy" className="mb-3 h-32 w-full rounded-lg bg-slate-100 object-contain"/>}
+        {item.upload?.kind === "image" && <button type="button" aria-label={`放大查看：${item.name}`} title="双击放大；也可按 Enter 打开" onDoubleClick={() => setPreview(item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPreview(item); } }} className="mb-3 block w-full cursor-zoom-in rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"><img src={myChatUploadContentUrl(item.upload.id)} alt={item.name} loading="lazy" className="h-32 w-full rounded-lg bg-slate-100 object-contain"/></button>}
         <h3 title={item.name} className="break-words text-xs font-semibold leading-5 text-slate-800">{item.name}</h3><p title={item.location} className="mt-1 truncate text-[10px] text-slate-400">{item.location}</p><p className="mt-2 text-[10px] text-slate-400">{item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "更新时间未知"}</p>
         <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200/70 pt-3">
           {item.document && <button type="button" onClick={() => onPreview(item.document!)} className="text-xs text-slate-500 hover:text-blue-700">预览</button>}
@@ -104,5 +105,29 @@ export function ChatLibraryPanel({ projectId, refreshToken, onInsert, onAttach, 
         </div>
       </article>)}</div> : <div className="py-14 text-center text-xs leading-6 text-slate-400"><FolderOpen size={30} className="mx-auto mb-3"/>{keyword || source !== "all" ? "没有匹配的资料" : "暂无资料。发送附件或在项目中保存文档后，可在这里找到。"}</div>}
     </div>
+    {preview?.upload && <LibraryImagePreview key={preview.id} item={preview} onClose={() => setPreview(null)} />}
   </section>;
+}
+
+function LibraryImagePreview({ item, onClose }: { item: ChatLibraryItem; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
+  return <dialog ref={dialog} aria-label={`查看图片：${item.name}`} onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} className="fixed inset-0 m-auto w-[94vw] max-w-6xl rounded-2xl bg-slate-900 p-4 text-white shadow-2xl backdrop:bg-slate-950/75">
+    <div className="mb-3 flex items-center gap-3">
+      <span className="min-w-0 flex-1 truncate text-sm">{item.name}</span>
+      <button type="button" aria-label="缩小图片" disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value - 0.25))} className="rounded p-2 hover:bg-white/10 disabled:opacity-40"><ZoomOut size={18}/></button>
+      <button type="button" onClick={() => setZoom(1)} className="text-xs" aria-label="恢复适应窗口">{Math.round(zoom * 100)}%</button>
+      <button type="button" aria-label="放大图片" disabled={zoom >= 4} onClick={() => setZoom((value) => Math.min(4, value + 0.25))} className="rounded p-2 hover:bg-white/10 disabled:opacity-40"><ZoomIn size={18}/></button>
+      <button type="button" autoFocus aria-label="关闭图片预览" onClick={onClose} className="rounded p-2 hover:bg-white/10"><X size={18}/></button>
+    </div>
+    <div className="h-[75vh] overflow-auto rounded-lg bg-slate-950/50">
+      {failed ? <p role="alert" className="p-6 text-sm">图片加载失败，请关闭后重试。</p> : <img src={myChatUploadContentUrl(item.upload!.id)} alt={item.name} onError={() => setFailed(true)} className="mx-auto object-contain" style={{ width: `${zoom * 100}%`, maxWidth: "none", height: zoom === 1 ? "100%" : "auto" }}/>}
+    </div>
+  </dialog>;
 }

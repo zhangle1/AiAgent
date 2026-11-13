@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-awaiting-human-delivery",
+  "createdAt": "2026-11-13T01:23:10.505Z",
+  "baseCommit": "eeaad6a98d2e60f625bc96eeb32e9b653a95f0cb",
+  "objective": "Library image modal and customer ontology Agent workbench design",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "152c402565d6bd4ef5cf76eb25b7fb5a227193889419427e62e85d4dad14e891"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "b2cb0c44172301ab730dc0174844cddc003312590377b3d48810a9ed34f90075"
+    },
+    {
+      "path": "docs/chat-library.md",
+      "sha256": "587d1182d7b1bb06fe09952b14c09bd8159666a8259a463fcecfdc4301591a23"
+    },
+    {
+      "path": "front/components/chat/ChatLibraryPanel.tsx",
+      "sha256": "f8731127325f6b0b42f3c78db6e231d26a7cf182c37f708e2284f5ff716e8784"
+    },
+    {
+      "path": "front/tests/chat-library.browser.mjs",
+      "sha256": "6b70f056b9c2a57c72fb4ece31d4967b798805a06b33a605c0d218ef910a8f59"
+    },
+    {
+      "path": "design/customer-ontology/agent-workbench.md",
+      "sha256": "c5d55f3b7d98761204f258c987c598bfd2adda850add55da5fd2ba182ef2ed68"
+    },
+    {
+      "path": "design/customer-ontology/agent-workbench.html",
+      "sha256": "833a5a7f838670658c92fd909e42e16f3e11e5853823a896e1e731a97f20d056"
+    },
+    {
+      "path": "design/customer-ontology/agent-workbench-preview.png",
+      "sha256": "8f680e61dc32f26d1183480a979814dcad2713281d61f939dcdc61efce279d81"
+    }
+  ],
+  "validation": {
+    "typescript": "passed",
+    "regressionTests": "32 passed",
+    "libraryBrowser": "passed: double click, zoom, Escape, keyboard, session unmount and existing actions",
+    "prototypeBrowser": "passed: menu, connection scenarios, credential input clearing, bind, query, proposal, publication, environment reset, mobile width",
+    "gitWhitespace": "passed"
+  },
+  "delivery": {
+    "committed": false,
+    "pushed": false
+  },
+  "scopeNotes": "Ontology is standalone in-memory prototype only. Existing solution.md and prototype.html retained unchanged. Other untracked files excluded."
+}
