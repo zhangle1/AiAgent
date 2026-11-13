@@ -17,7 +17,7 @@ const bundle = await build({
   bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic",
   tsconfig: path.join(front, "tsconfig.json"),
 });
-let denied = false, extra = false, delay = false;
+let denied = false, extra = false, delay = false, image = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://fixture.test");
   if (url.pathname === "/bundle.js") { res.setHeader("Content-Type", "text/javascript"); return res.end(bundle.outputFiles[0].text); }
@@ -29,7 +29,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.startsWith("/api/")) {
     res.setHeader("Content-Type", "application/json");
-    if (url.pathname.endsWith("/mine")) return res.end(JSON.stringify([{id:"u1",file_name:"上传.txt",content_type:"text/plain",kind:"document",created_at:"2026-10-09T10:00:00Z"}]));
+    if (url.pathname.endsWith("/mine")) return res.end(JSON.stringify([{id:"u1",file_name:"上传.txt",content_type:"text/plain",kind:"document",created_at:"2026-10-09T10:00:00Z"}, ...(image ? [{id:"img1",file_name:"演示图片.png",content_type:"image/png",kind:"image",created_at:"2026-10-09T10:00:00Z"}] : [])]));
     return res.end(JSON.stringify(["原型.html", "代码.ts", "src/template.html", ...(extra ? ["新生成.doc"] : [])].map(name => ({repository_name:"repo",path:name,name:name.split('/').at(-1),source:"repository",updated_at:"2026-10-10T10:00:00Z"}))));
   }
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -38,7 +38,7 @@ const server = http.createServer((req, res) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 let browser;
 try {
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, ...(process.env.CHAT_LIBRARY_TEST_BROWSER ? { executablePath: process.env.CHAT_LIBRARY_TEST_BROWSER } : {}) });
   const page = await browser.newPage({ viewport: {width: 900, height: 850}, acceptDownloads: true });
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -74,6 +74,27 @@ try {
   await page.waitForTimeout(700);
   assert.equal(await page.locator("output").textContent(), "预览:原型.html");
   assert.equal(await page.locator("main").evaluate(el => el.scrollWidth <= el.clientWidth), true);
+  image = true;
+  await page.getByRole("textbox", {name:"搜索资料库"}).fill("");
+  await page.getByRole("button", {name:"刷新资料库"}).click();
+  const thumbnail = page.getByRole("button", {name:"放大查看：演示图片.png"});
+  await thumbnail.dblclick();
+  const lightbox = page.getByRole("dialog", {name:"查看图片：演示图片.png"});
+  await lightbox.waitFor();
+  await lightbox.getByRole("button", {name:"放大图片", exact:true}).click();
+  assert.equal(await lightbox.getByRole("button", {name:"恢复适应窗口"}).textContent(), "125%");
+  await page.keyboard.press("Escape");
+  await lightbox.waitFor({state:"detached"});
+  await thumbnail.focus();
+  await page.keyboard.press("Enter");
+  await lightbox.waitFor();
+  assert.equal(await lightbox.getByRole("button", {name:"恢复适应窗口"}).textContent(), "100%");
+  await lightbox.getByRole("button", {name:"关闭图片预览"}).click();
+  await lightbox.waitFor({state:"detached"});
+  await thumbnail.dblclick();
+  await lightbox.waitFor();
+  await page.getByRole("button", {name:"切换会话"}).evaluate(button => button.click());
+  await lightbox.waitFor({state:"detached"});
   assert.deepEqual(errors, []);
   console.log("PASS: discovery, filtering, search, original download, 403, preview, both chat associations, refresh and session race");
 } finally {
