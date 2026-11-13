@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-awaiting-human-delivery",
+  "createdAt": "2026-11-10T07:00:20.582Z",
+  "baseCommit": "dbffcfc90946c704862f3d8b6a6fb7895a4d7b95",
+  "objective": "Remove standalone sidebar onboarding icon, retain tools menu entry",
+  "files": [
+    {
+      "path": "front/components/layout/AppSidebar.tsx",
+      "sha256": "c6ca5646f67c0388dc8b09a54ee09fde0e32919afa9551cdff85e11c9b097c03"
+    }
+  ],
+  "validation": {
+    "typescriptSyntax": "passed",
+    "gitWhitespace": "passed",
+    "toolsMenuEntryRetained": true,
+    "encodingAndNewlines": "preserved"
+  },
+  "delivery": {
+    "committed": false,
+    "pushed": false
+  },
+  "scopeNotes": "Account quota feasibility investigated only; existing design files excluded"
+}

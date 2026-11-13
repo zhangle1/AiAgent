@@ -145,6 +145,15 @@ export async function downloadProjectDocumentReference(projectId: number, refere
   await downloadDocumentBlob(projectMarkdownDocumentDownloadUrl(projectId, file.repository_name, file.path), file.name);
 }
 
+export async function getProjectMarkdownReferenceFile(projectId: number, reference: string, signal?: AbortSignal): Promise<File> {
+  const file = await resolveProjectDocumentReference(projectId, reference);
+  signal?.throwIfAborted();
+  if (!/\.(md|markdown)$/i.test(file.name)) throw new Error("仅支持保存 Markdown 文件。");
+  const response = await fetch(projectMarkdownDocumentDownloadUrl(projectId, file.repository_name, file.path), { cache: "no-store", signal });
+  if (!response.ok) throw new Error(`读取原文件失败（${response.status}）。`);
+  return new File([await response.blob()], file.name, { type: "text/markdown" });
+}
+
 export async function downloadProjectPackage(projectId: number, href: string): Promise<void> {
   const route = `/api/v1/code-repositories/projects/${projectId}/markdown-documents/download`;
   if (!href.startsWith(`${route}?`)) throw new Error("请选择当前项目中的交付包。");
