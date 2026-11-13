@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-user-authorized-delivery",
+  "createdAt": "2026-11-13T08:07:50.202558+00:00",
+  "baseCommit": "932bb60f52809f412c53bcbd23da7d43b99c865d",
+  "validatedMergeCommit": "3407d66edfd78f4bbc8025da7817a5c8a37220d6",
+  "hashSource": "git-commit-bytes; excludes this delivery record",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "8264584818fff4a7dd8c9ca3624aae07ac397b1b5bdb48ac5a78a9bed3e406b0",
+      "bytes": 34767
+    },
+    {
+      "path": "README.md",
+      "sha256": "b8a71042346d2d781e8a757257c018658cea776fed237e7b4abe6d039a15c008",
+      "bytes": 40752
+    },
+    {
+      "path": "backed.tests/KnowledgeScopeContextTests.cs",
+      "sha256": "d91ea134103ef4130001dcfa4897ab101ff75464817864b5ea3dfb880926d199",
+      "bytes": 1388
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "be06f834f604369ec898c19c5b1643937c5ae803dc4cc15504d12c90272f5620",
+      "bytes": 16841
+    },
+    {
+      "path": "backed/Services/AgentRuntime/NativeAgentRuntime.cs",
+      "sha256": "7a9a122552a6eea3ce8dbd6a360c55e446fd617b908c8d02de75f7bd0c76d043",
+      "bytes": 9139
+    },
+    {
+      "path": "backed/Services/AgentRuntime/RuntimeContracts.cs",
+      "sha256": "951b345c2336e1ad7fdb0167458ce7a15938cc94bfe04e3d27bb6f99e278632c",
+      "bytes": 3011
+    },
+    {
+      "path": "backed/Services/AgentRuntime/RuntimeRequestFactory.cs",
+      "sha256": "ae441d12c76e6612b6f53bf696927ddd4af20b8630f784218f19866eb340a56d",
+      "bytes": 1698
+    },
+    {
+      "path": "backed/Services/Chat/Agentic/AgentContext.cs",
+      "sha256": "af2bb12aecabf744ce7c1ff495203584a474d0ce0b0c3a8a2617061ca4659b2c",
+      "bytes": 9227
+    },
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "170e85e595f19598722cc3e1ade48573784bd436063320d8f4c43f49d8ff1cb3",
+      "bytes": 27108
+    },
+    {
+      "path": "backed/Services/Chat/Prompting/ChatPromptBuilder.cs",
+      "sha256": "1f9543b7c6df4bf0ced5b8261106dc0c855c7f2377ae7038be4fce3ff9a01dda",
+      "bytes": 13659
+    },
+    {
+      "path": "backed/Services/Chat/Retrieval/KnowledgeRetrievalService.cs",
+      "sha256": "4613441c152b70dc45103540f81769a68a734f20f9b53c92ee8bf1730ea9a714",
+      "bytes": 13705
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeWikiRetrievalService.cs",
+      "sha256": "86fd91a38d72c92c4ad9890b1271728c2d0f631c6d94182bfd5e51b1211ae303",
+      "bytes": 4229
+    },
+    {
+      "path": "docs/knowledge-chat-scope.changeset.json",
+      "sha256": "70cacfddd7d35a55392da919b836f2c353030fc2caadfd936ee3a3fb907248a0",
+      "bytes": 3680
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "16f15d860841128ea004d68bcd7ffe12c22617913f9c7bc1488fb61549b90745",
+      "bytes": 2622
+    },
+    {
+      "path": "docs/knowledge-scope-picker-fix.changeset.json",
+      "sha256": "50d97a23792529319e7d771a8a2265bceb465779c1c676432188f5c109fbd199",
+      "bytes": 1566
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "07db8d1aee85d46f65bb4eea19dccbdd78f75d96c924db8cf49816b459ade685",
+      "bytes": 179571
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "54593d4e0d12a5bad365d7a35d2495390dd690924d4945ce5311b86f13c298d8",
+      "bytes": 17117
+    },
+    {
+      "path": "front/tests/knowledge-scope-picker.browser.mjs",
+      "sha256": "66f354b1a5a4a72ce97c1bcc3ee9b5844dc44fb59a9565cda445014d2a902452",
+      "bytes": 9455
+    }
+  ],
+  "fingerprint": "73ecf0fa8102b54274da3995b591626a26c1247b2a1f13e4015ca9c0c6688a7c",
+  "authorization": "User explicitly requested fetching, merging and pushing in this chat. This records chat authorization, not a platform approval record.",
+  "validation": {
+    "typescript": "passed on merged tree",
+    "frontend": "24 tests passed: chat stream, recovery, document downloads, packaging",
+    "browser": "passed actual chat page with synthetic API/WebSocket: desktop/mobile scope multi-select, confirmation, cancellation and Codex request fields",
+    "gitWhitespace": "passed"
+  },
+  "scope": "Retain existing Scope and picker fixes; merge remote Markdown-to-knowledge feature and design documents; push normally to configured origin Gitee/GitHub URLs."
+}
