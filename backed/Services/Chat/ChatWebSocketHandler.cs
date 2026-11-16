@@ -96,6 +96,7 @@ public sealed class ChatWebSocketHandler
                 ?? throw new UnauthorizedAccessException();
             request.RuntimeUserId = user.Id;
             request.RuntimeUsername = user.Username;
+            _sessions.PrepareCommandSession(user, request);
             command = (request.RecoverOnly || (request.Goal == null && !string.IsNullOrWhiteSpace(request.CommandId))) ? context.RequestServices.GetRequiredService<ChatCommandStore>().Begin(request, user) : null;
             if (command is { IsOwner: false })
             {

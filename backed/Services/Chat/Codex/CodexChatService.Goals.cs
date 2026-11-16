@@ -21,7 +21,7 @@ public sealed partial class CodexChatService : IChatGoalControl
 
     public object? GetGoal(string userId, string sessionId)
     {
-        var goal = LoadGoal(userId, sessionId);
+        var goal = LoadGoal(userId, sessionId, allowMissingSession: true);
         if (goal == null) return null;
         var running = _goalExecutions.ContainsKey(GoalKey(userId, sessionId));
         // A process restart cannot be interpreted as successful completion or automatic resume.
@@ -32,7 +32,8 @@ public sealed partial class CodexChatService : IChatGoalControl
             catch (InvalidOperationException) { return goal.Snapshot(true); }
             using (recovery)
             {
-                goal = LoadGoal(userId, sessionId)!;
+                goal = LoadGoal(userId, sessionId, allowMissingSession: true);
+                if (goal == null) return null;
                 if (goal.Status == "active")
                 {
                     goal.Status = "paused";
@@ -65,11 +66,17 @@ public sealed partial class CodexChatService : IChatGoalControl
         return goal.Snapshot(false);
     }
 
-    private ChatGoalState? LoadGoal(string userId, string sessionId)
+    private ChatGoalState? LoadGoal(string userId, string sessionId, bool allowMissingSession = false)
     {
         using var db = _db.CopyNew();
-        var session = db.Queryable<AiChatSession>().First(x => x.Id == sessionId && x.UserId == userId && !x.IsDeleted)
-            ?? throw new UnauthorizedAccessException("会话不存在或无权访问。");
+        var session = db.Queryable<AiChatSession>().First(x => x.Id == sessionId && x.UserId == userId && !x.IsDeleted);
+        // The composer polls while a client-generated session is not persisted yet.
+        // Do not reveal whether an inaccessible session exists. Mutations still require ownership.
+        if (session == null)
+        {
+            if (allowMissingSession) return null;
+            throw new UnauthorizedAccessException("会话不存在或无权访问。");
+        }
         return string.IsNullOrWhiteSpace(session.GoalJson) ? null : JsonSerializer.Deserialize<ChatGoalState>(session.GoalJson, JsonOptions);
     }
 

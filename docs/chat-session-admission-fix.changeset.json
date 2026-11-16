@@ -1,0 +1,71 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-user-authorized",
+  "createdAt": "2026-11-16T10:59:34.426099+08:00",
+  "baseCommit": "ba033663aebac3de6138f67359a57c7a3541b58e",
+  "objective": "Fix new ordinary chat admission and goal polling before session persistence.",
+  "diagnosis": "The browser generates a session ID before its first message. Command admission rejected the missing session before RecordUserMessageAsync could create it; the goal panel also polled the missing session every two seconds and LoadGoal threw UnauthorizedAccessException. Generic Codex diagnostics mislabeled the admission failure as file/model access denied.",
+  "files": [
+    {
+      "path": "backed/Services/Chat/ChatSessionService.cs",
+      "sha256": "c2c7cccaecadbab2c9cc2d1d6456ba5ad1fd27d902cba4ad992d56023ac57b35",
+      "bytes": 28897
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "9654c3167ebfba8db3f5537557db5d8f9216b8b8323a494bfeedf93aefed18f2",
+      "bytes": 22604
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "447653ae11d837e34685cbf33a2ca2177a463f3d0e3f4f061fd38ae2d0bffd81",
+      "bytes": 17933
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Goals.cs",
+      "sha256": "61bc29ddb44d1da79909e9c2c1bb3fae25fbf42480d52223e456ba208db23995",
+      "bytes": 16249
+    },
+    {
+      "path": "backed.tests/ChatCommandTests.cs",
+      "sha256": "9914dd30efd4d1036c80220c000f99d601777ab8a7eb256e452b451b71b1fbeb",
+      "bytes": 20431
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "e13f03d94377a1d2df5c2a4a50895fe2b3d56825cde726c3f4db2db5aa3d8486",
+      "bytes": 13608
+    },
+    {
+      "path": "docs/chat-command-recovery.md",
+      "sha256": "71e573cd285eb8fbaedd1c208e822324749d61f386090f2880b810d6fa00fad7",
+      "bytes": 5778
+    },
+    {
+      "path": "docs/chat-goal-mode.md",
+      "sha256": "be4b01a6a2081eabab4d1a90883e75ea9754df61ef14334e6535558b7db4fd07",
+      "bytes": 9306
+    }
+  ],
+  "fingerprint": "502790cff45a7517a3faebdfdb31e7b9c63d85670107ff67c1212669852fe31e",
+  "validation": {
+    "red": "SSE and WebSocket first-message regression cases both failed before the admission fix. Separate goal polling regression reproduced the screenshot exception at LoadGoal.",
+    "green": "80 passed, 0 failed: ChatCommandTests, ChatGoalTests, CodexDiagnosticsTests, ChatBootstrapCancellationTests, ChatSkillTests, SwaggerDocumentTests.",
+    "command": "dotnet test backed.tests/AiAgent.Backend.Tests.csproj --no-restore --artifacts-path \"$env:TEMP\\aiagent-chat-session-tests\" -p:EnableDefaultContentItems=false --filter \"FullyQualifiedName~ChatCommandTests|FullyQualifiedName~ChatGoalTests|FullyQualifiedName~CodexDiagnosticsTests|FullyQualifiedName~ChatBootstrapCancellationTests|FullyQualifiedName~ChatSkillTests|FullyQualifiedName~SwaggerDocumentTests\" --verbosity quiet",
+    "boundaries": "First message, duplicate replay, concurrent session creation, owner/deleted/archived isolation, recovery without creating a session, denied project, read-only missing goal, strict goal control authorization.",
+    "environment": "Synthetic authentication, isolated SQLite and fake app-server; SDK 9.0.318 and runtime 9.0.20. No real credentials, user database or real model used. Existing compiler warnings remain.",
+    "whitespace": "git diff --check passed",
+    "live": "User debugger and running services were not restarted or replaced; rebuild/restart is needed to apply the source fix.",
+    "stagedSnapshot": "67 passed, 0 failed in a fresh directory exported from the Git index: ChatCommandTests, ChatGoalTests, CodexDiagnosticsTests, ChatSkillTests, SwaggerDocumentTests. No untracked or unstaged files included."
+  },
+  "scope": "Only this fix is staged. ChatAppService.cs contains only the PrepareCommandSession call relative to HEAD; earlier bootstrap cancellation edits remain uncommitted in the working tree. Other unrelated edits and artifacts remain local.",
+  "delivery": "User authorized commit and push of this fixed snapshot; verify fingerprint immediately before committing. No deployment or service restart.",
+  "reviewedWorkingTreeFingerprint": "ebc4132a552ce53f0b3d1b618856400cb27b2cf3b65756ea6a534ab9a3fa258f",
+  "approval": {
+    "request": "推送上去吧",
+    "scope": "Only the chat session admission and goal polling fix; exclude unrelated working changes.",
+    "branch": "main",
+    "remote": "origin (configured Gitee and GitHub push destinations)",
+    "fingerprint": "502790cff45a7517a3faebdfdb31e7b9c63d85670107ff67c1212669852fe31e"
+  }
+}

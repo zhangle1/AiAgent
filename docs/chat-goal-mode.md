@@ -44,6 +44,8 @@
 
 所有控制接口按当前登录用户限定会话，状态版本冲突返回 409。目标快照使用 camelCase；请求中的预算与版本使用 snake_case。流新增 `goal_updated`，普通文本和工具事件继续使用现有协议。
 
+只读 GET 在会话尚未入库、已删除或不属于当前用户时统一返回 `{ goal: null }`，不透露他人会话是否存在，也不创建会话。输入区会在首条消息持久化前轮询此接口，因此空状态不应反复抛出 `UnauthorizedAccessException`。目标启动、继续、暂停、结束及保存仍严格验证会话归属；不能通过空查询结果获得执行权限。
+
 Furion 路由注册须为根 GET 使用显式空模板 `[HttpGet("")]`，并把父路径中的 sessionId 显式标为 `[FromRoute]`，避免自动追加同名参数导致整个端点注册失败。控制路径参数使用 `{goalAction}`，避开 MVC 保留名 `action`；浏览器仍调用上述 `/goal/pause` 和 `/goal/end` 地址。Swagger 回归同时用合成身份和目标服务通过真实 HTTP 验证 GET、暂停、结束及 expected_version 绑定。
 
 原生协议参考：[OpenAI app-server 文档](https://learn.chatgpt.com/docs/app-server)。已用本机 CLI 0.164.0 导出 schema，并在隔离 `CODEX_HOME` / 工作区运行真实 `initialize → thread/start → goal/set(paused) → goal/get → goal/clear`，返回 paused 和指定预算；没有调用真实模型。

@@ -13,6 +13,7 @@ namespace AiAgent.Backend.Services.Chat;
 
 public interface IChatSessionService
 {
+    void PrepareCommandSession(AuthenticatedUser user, ChatCompleteRequest request);
     Task<ChatSessionSummaryDto> CreateEmptyAsync(AuthenticatedUser user, long projectId, string? title, CancellationToken cancellationToken);
     Task<ChatSessionSummaryDto> CreateDraftAsync(AuthenticatedUser user, long projectId, string title, string draftContent, IReadOnlyList<ChatImageAttachmentDto> imageAttachments, string? imageWarning, CancellationToken cancellationToken);
     Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken);
@@ -92,6 +93,34 @@ public sealed class ChatSessionService : IChatSessionService
         _db.Insertable(session).ExecuteCommand();
         var project = _db.Queryable<AiCodeProject>().First(item => item.Id == projectId && !item.IsDeleted);
         return Task.FromResult(ToSummary(session, [], project));
+    }
+
+    public void PrepareCommandSession(AuthenticatedUser user, ChatCompleteRequest request)
+    {
+        // Recovery must only read existing commands; legacy and goal requests keep their own lifecycle.
+        if (request.RecoverOnly || request.Goal != null || string.IsNullOrWhiteSpace(request.CommandId)) return;
+        var sessionId = request.SessionId;
+        if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 64 || sessionId != sessionId.Trim())
+            throw new InvalidOperationException("Invalid command session identity.");
+        if (request.RuntimeUserId != user.Id) throw new UnauthorizedAccessException();
+        using var db = _db.CopyNew();
+        var session = db.Queryable<AiChatSession>().InSingle(sessionId);
+        if (session != null)
+        {
+            if (session.UserId != user.Id || session.IsDeleted || session.IsArchived) throw new UnauthorizedAccessException();
+            return;
+        }
+        var projectId = ResolveProjectId(user, request.CodeProjectId);
+        ValidateRepositoryScope(user, projectId, request.CodeRepositoryNames);
+        // Only establish identity here. History, attachments and preferences remain after command admission.
+        session = new AiChatSession { Id = sessionId, UserId = user.Id, Title = MakeTitle(request.Message), CodeProjectId = projectId };
+        try { db.Insertable(session).ExecuteCommand(); }
+        catch
+        {
+            // A concurrent first message may have won the primary-key insert.
+            var winner = db.Queryable<AiChatSession>().InSingle(sessionId);
+            if (winner == null || winner.UserId != user.Id || winner.IsDeleted || winner.IsArchived) throw;
+        }
     }
 
     public async Task RecordUserMessageAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)

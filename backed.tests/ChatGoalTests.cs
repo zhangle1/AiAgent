@@ -18,6 +18,20 @@ namespace AiAgent.Backend.Tests;
 public sealed class ChatGoalTests
 {
     [Fact]
+    public void GoalPollingBeforeFirstMessageReturnsEmptyWithoutCreatingSession()
+    {
+        using var fixture = new Fixture();
+        using var service = fixture.Service();
+        Assert.Null(service.GetGoal("owner", "not-yet-created"));
+        Assert.Null(service.GetGoal("other", "session"));
+        fixture.Db.Updateable<AiChatSession>().SetColumns(x => x.IsDeleted == true).Where(x => x.Id == "session").ExecuteCommand();
+        Assert.Null(service.GetGoal("owner", "session"));
+        Assert.Equal(1, fixture.Db.Queryable<AiChatSession>().Count());
+        Assert.Throws<UnauthorizedAccessException>(() => service.ControlGoal("owner", "not-yet-created", "end", 0));
+        Assert.Throws<UnauthorizedAccessException>(() => service.ControlGoal("owner", "session", "end", 0));
+    }
+
+    [Fact]
     public async Task NewGoalUsesTwoMillionTokenBudgetWhenRequestOmitsIt()
     {
         using var fixture = new Fixture();
@@ -80,7 +94,8 @@ public sealed class ChatGoalTests
         Assert.Equal(23, goal.TokensUsed);
         Assert.Single(fixture.Calls(), x => x.GetProperty("method").GetString() == "turn/start");
         Assert.False(fixture.Calls().Single(x => x.GetProperty("method").GetString() == "thread/start").GetProperty("params").GetProperty("ephemeral").GetBoolean());
-        Assert.Throws<UnauthorizedAccessException>(() => service.GetGoal("other", "session"));
+        Assert.Null(service.GetGoal("other", "session"));
+        Assert.Throws<UnauthorizedAccessException>(() => service.ControlGoal("other", "session", "end", goal.Version));
         Assert.DoesNotContain("threadId", JsonSerializer.Serialize(service.GetGoal("owner", "session")));
         await Assert.ThrowsAnyAsync<Exception>(() => service.CompleteAsync(fixture.Request(new() { Objective = "verified outcome", ExpectedVersion = 0 }), null, default));
         Assert.Single(fixture.Calls(), x => x.GetProperty("method").GetString() == "turn/start");

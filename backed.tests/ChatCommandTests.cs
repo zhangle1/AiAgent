@@ -1,6 +1,7 @@
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Admin;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
 using SqlSugar;
@@ -153,6 +154,124 @@ public sealed class ChatCommandTests : IDisposable
         Assert.True(token.IsCancellationRequested);
         first.Dispose();
         Assert.False(store.Cancel(Request(), user));
+    }
+
+    private ChatSessionService Sessions(IProjectAccessService? access = null) =>
+        new(db, null!, null!, access!, null!, null!, NullLogger<ChatSessionService>.Instance);
+
+    [Theory]
+    [InlineData("other")]
+    [InlineData("deleted")]
+    [InlineData("archived")]
+    public void PreparingCommandCannotReplaceUnavailableSession(string state)
+    {
+        var session = db.Queryable<AiChatSession>().InSingle("session");
+        session.UserId = state == "other" ? "other" : user.Id;
+        session.IsDeleted = state == "deleted";
+        session.IsArchived = state == "archived";
+        db.Updateable(session).ExecuteCommand();
+        var request = Request();
+        Assert.Throws<UnauthorizedAccessException>(() => Sessions().PrepareCommandSession(user, request));
+        Assert.Equal("session", request.SessionId);
+        Assert.Equal(1, db.Queryable<AiChatSession>().Count());
+        Assert.Empty(db.Queryable<AiChatCommand>().ToList());
+    }
+
+    [Fact]
+    public void RecoveryCannotCreateMissingSessionAndDeniedProjectsLeaveNoSession()
+    {
+        db.Deleteable<AiChatSession>().ExecuteCommand();
+        var recovery = Request(); recovery.RecoverOnly = true;
+        Sessions().PrepareCommandSession(user, recovery);
+        Assert.Throws<UnauthorizedAccessException>(() => store.Begin(recovery, user));
+        var access = DispatchProxy.Create<IProjectAccessService, Collaborator>();
+        ((Collaborator)(object)access).InvokeMethod = (_, _) => false;
+        var request = Request(); request.CodeProjectId = 42;
+        Assert.Throws<InvalidOperationException>(() => Sessions(access).PrepareCommandSession(user, request));
+        Assert.Empty(db.Queryable<AiChatSession>().ToList());
+        Assert.Empty(db.Queryable<AiChatCommand>().ToList());
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstCommandsCreateOneSessionAndOneOwner()
+    {
+        db.Deleteable<AiChatSession>().ExecuteCommand();
+        var leases = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => {
+            var request = Request();
+            Sessions().PrepareCommandSession(user, request);
+            return store.Begin(request, user)!;
+        })));
+        Assert.Single(leases, lease => lease.IsOwner);
+        Assert.Equal(1, db.Queryable<AiChatSession>().Count());
+        Assert.Equal(1, db.Queryable<AiChatCommand>().Count());
+        foreach (var lease in leases) lease.Dispose();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FirstMessageCreatesSessionBeforeAdmissionAndDuplicateOnlyReplays(bool websocket)
+    {
+        db.Deleteable<AiChatSession>().ExecuteCommand();
+        db.CodeFirst.InitTables<AiChatMessage>();
+        using var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
+        var context = new DefaultHttpContext { RequestServices = services };
+        var sessions = Sessions();
+        var historyCalls = 0;
+        T Stub<T>() where T : class
+        {
+            var value = DispatchProxy.Create<T, Collaborator>();
+            ((Collaborator)(object)value).InvokeMethod = (method, args) => {
+                if (method.Name == "TryGetCurrentUserAsync") return Task.FromResult<AuthenticatedUser?>(user);
+                if (method.Name == "PrepareCommandSession") return method.Invoke(sessions, args);
+                if (method.Name == "RecordUserMessageAsync")
+                {
+                    Assert.True(db.Queryable<AiChatSession>().Any(x => x.Id == "session" && x.UserId == user.Id));
+                    historyCalls++;
+                    db.Insertable(new AiChatMessage { SessionId = "session", Role = "user", Content = "hello" }).ExecuteCommand();
+                }
+                if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
+                if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
+                    return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(method.ReturnType.GenericTypeArguments[0]).Invoke(null, [null]);
+                return null;
+            };
+            return value;
+        }
+        var engine = new ChatEngine();
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            string output;
+            if (websocket)
+            {
+                using var socket = new FixtureSocket(JsonSerializer.Serialize(Request()));
+                context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
+                var handler = new ChatWebSocketHandler(engine, Stub<IAuthService>(), Stub<IChatSessionService>(),
+                    Stub<IChatImageAttachmentService>(), Stub<IChatFileAttachmentService>(), Stub<IUsageStatisticsService>(),
+                    Stub<IMemoryService>(), Stub<IProjectReferenceContextService>(), Stub<IMarkdownDocumentReferenceContextService>(),
+                    Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(),
+                    Stub<IChatDebugTraceStore>(), NullLogger<ChatWebSocketHandler>.Instance);
+                await handler.HandleClientAsync(context);
+                output = string.Join("\n", socket.Sent);
+            }
+            else
+            {
+                context.Response.Body = new MemoryStream();
+                var app = new ChatAppService(new HttpContextAccessor { HttpContext = context }, engine,
+                    Stub<IAuthService>(), Stub<IChatSessionService>(), Stub<IChatImageAttachmentService>(), Stub<IChatFileAttachmentService>(),
+                    Stub<IChatUploadLibraryService>(), Stub<IUsageStatisticsService>(), Stub<IMemoryService>(), Stub<IProjectReferenceContextService>(),
+                    Stub<IMarkdownDocumentReferenceContextService>(), Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexChatService>(),
+                    Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(), Stub<IChatDebugTraceStore>());
+                await app.CompleteStream(Request(), default);
+                context.Response.Body.Position = 0;
+                output = await new StreamReader(context.Response.Body).ReadToEndAsync();
+            }
+            Assert.DoesNotContain("error", output);
+            Assert.Contains("completed", output);
+        }
+        Assert.Equal(1, engine.Calls);
+        Assert.Equal(1, historyCalls);
+        Assert.Equal(1, db.Queryable<AiChatMessage>().Count());
+        Assert.Equal(1, db.Queryable<AiChatCommand>().Count());
     }
 
     [Fact]
