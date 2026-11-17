@@ -1,0 +1,31 @@
+{
+    "kind":  "local-review-snapshot",
+    "status":  "validated-local-only",
+    "baseCommit":  "7ec8cc80402a48d5a005d8d8d70508b15d1d7df6",
+    "objective":  "Separate command result recovery from explicit reexecution after server failure",
+    "files":  [
+                  {
+                      "sha256":  "2af4e81602a99c5f45c462ae90e4f3993047367145158a44fefea0683bdc91f0",
+                      "path":  "front/components/chat/ChatStreamProvider.tsx"
+                  },
+                  {
+                      "sha256":  "78349aa4006d9cfd8ba429e16ea22c7f5272f8e429c80243e1d3687e4992eae5",
+                      "path":  "front/components/chat/ChatRetryNotice.tsx"
+                  },
+                  {
+                      "sha256":  "c1a553bd97925ce99e8cf50d833dbc61af3250dd774d822d7b06cf00875487c3",
+                      "path":  "front/tests/chat-auto-retry.test.mjs"
+                  },
+                  {
+                      "sha256":  "f705b5a3cf9d53e0f6e21df20fe274893a5907e79d9891374264f0a27a0a6835",
+                      "path":  "docs/chat-command-recovery.md"
+                  }
+              ],
+    "validation":  {
+                       "typescript":  "npx tsc --noEmit --incremental false passed",
+                       "whitespace":  "git diff --check passed",
+                       "tests":  "21 chat retry and stream lifecycle tests passed"
+                   },
+    "delivery":  "Local changes only; not committed or deployed",
+    "limitation":  "Original production codex_request_context failure requires server diagnostics; not reproduced locally"
+}

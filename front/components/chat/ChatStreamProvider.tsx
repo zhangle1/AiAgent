@@ -21,6 +21,7 @@ export type ChatStreamRecord = {
   terminalReason?: ChatStreamTerminalReason;
   errorMessage?: string;
   retryAt?: number;
+  serverRejected?: boolean;
   unread: boolean;
   agent?: "codex" | "deepseek-harness" | "codebuddy";
 };
@@ -117,6 +118,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       update(streamId, (current) => ({
         ...current,
         status: event.type === "error" ? "error" : current.status,
+        serverRejected: event.type === "error" ? !request.recover_only : current.serverRejected,
         health: "active",
         lastEventAt: receivedAt,
         observedAt: receivedAt,
@@ -138,7 +140,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       }));
       flushUpdates();
       const completed = streamsRef.current[streamId];
-      if (completed?.status === "done") removeRecoveryPointer(streamId);
+      if (completed?.status === "done") removeRecoveryPointer(request.command_id ?? streamId);
       if (completed?.status === "error") {
         window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped: false, error: completed.errorMessage } }));
         window.dispatchEvent(new Event("aiagent:sessions-updated"));
@@ -193,7 +195,14 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     if (!stream || stream.status !== "error" || !request || request.goal || controllersRef.current.has(streamId)) return;
     cancelRetry(streamId);
     try {
-      startStream(request, streamId);
+      // A terminal command replays its error forever. Only explicit user action
+      // can start a new operation; transport recovery retains the original ID.
+      if (stream.serverRejected && !request.recover_only) {
+        if (!window.confirm("重新执行本轮消息？之前已完成的工具操作可能再次执行，请先核对执行结果。")) return;
+        startStream({ ...request, command_id: createStreamId(), recover_only: false }, streamId);
+      } else {
+        startStream(request, streamId);
+      }
     } catch {
       // Another turn or the global concurrency limit can prevent a retry.
       // Keep the failed turn available for an explicit retry, without a busy loop.

@@ -14,11 +14,13 @@ function mount(t, pointers = []) {
   const effects = [];
   const calls = [];
   const events = [];
+  const removedPointers = [];
   let timerId = 0;
   t.mock.method(Date, "now", () => now);
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
   globalThis.window = {
+    confirm: () => true,
     setTimeout(fn, delay) { timers.set(++timerId, { fn, at: now + delay }); return timerId; },
     setInterval(fn, delay) { timers.set(++timerId, { fn, at: now + delay, interval: delay }); return timerId; },
     clearTimeout(id) { timers.delete(id); },
@@ -50,7 +52,7 @@ function mount(t, pointers = []) {
   new Function("require", "module", "exports", source)((name) => {
     if (name === "react") return react;
     if (name === "react/jsx-runtime") return { jsx: (_, props) => props.value };
-    if (name === "@/lib/chat-command-recovery") return { readRecoveryPointers: () => pointers, saveRecoveryPointer() {}, removeRecoveryPointer() {} };
+    if (name === "@/lib/chat-command-recovery") return { readRecoveryPointers: () => pointers, saveRecoveryPointer() {}, removeRecoveryPointer(id) { removedPointers.push(id); } };
     return api;
   }, module, module.exports);
   const context = module.exports.ChatStreamProvider({ children: null });
@@ -77,7 +79,7 @@ function mount(t, pointers = []) {
     now = target;
   };
   const fail = async () => { calls.at(-1).reject(new Error("Selected model is at capacity.")); await settle(); await advance(60); };
-  return { context, calls, events, advance, settle, fail, records: () => records };
+  return { context, calls, events, removedPointers, advance, settle, fail, records: () => records };
 }
 
 test("goal failures never replay automatically or through generic retry", async (t) => {
@@ -190,6 +192,50 @@ test("refresh restores only the original command identity without resending the 
   assert.equal(h.calls[0].request.command_id, "accepted");
   assert.equal(h.calls[0].request.recover_only, true);
   assert.equal(h.calls[0].request.message, "");
+});
+
+test("explicit retry after server failure creates a new command and preserves the request", async (t) => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "session", message: "work", attachment_ids: ["file"], codex_model_id: "model" });
+  h.calls[0].emit({ type: "error", content: "runtime failed" });
+  h.calls[0].resolve();
+  await h.settle();
+  await h.advance(60);
+  assert.equal(h.records()[id].serverRejected, true);
+  assert.equal(h.calls.length, 1);
+  h.context.retryStream(id);
+  h.context.retryStream(id);
+  assert.equal(h.calls.length, 2);
+  assert.notEqual(h.calls[1].request.command_id, h.calls[0].request.command_id);
+  assert.deepEqual(h.calls[1].request.attachment_ids, ["file"]);
+  assert.equal(h.calls[1].request.message, "work");
+  assert.equal(h.calls[1].request.codex_model_id, "model");
+  h.calls[1].emit({ type: "completed", content: "done" });
+  h.calls[1].resolve();
+  await h.settle();
+  assert.deepEqual(h.removedPointers, [h.calls[1].request.command_id]);
+});
+
+test("declining reexecution never submits a new operation", async (t) => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "session", message: "work" });
+  h.calls[0].emit({ type: "error", content: "failed" });
+  h.calls[0].resolve();
+  await h.settle();
+  window.confirm = () => false;
+  h.context.retryStream(id);
+  assert.equal(h.calls.length, 1);
+});
+
+test("restored commands cannot reexecute without the original message", async (t) => {
+  const h = mount(t, [{ command_id: "accepted", session_id: "session", saved_at: 1000 }]);
+  await h.advance(1);
+  h.calls[0].emit({ type: "error", content: "failed" });
+  h.calls[0].resolve();
+  await h.settle();
+  h.context.retryStream("accepted");
+  assert.equal(h.calls[1].request.command_id, "accepted");
+  assert.equal(h.calls[1].request.recover_only, true);
 });
 
 test("success and other sessions cannot trigger or cancel the failed session's retry", async (t) => {
