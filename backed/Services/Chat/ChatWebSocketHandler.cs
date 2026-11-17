@@ -77,6 +77,8 @@ public sealed class ChatWebSocketHandler
         AuthenticatedUser user = null!;
         var providerRequestStarted = false;
         ChatCommandStore.Lease? command = null;
+        ChatDeliveryService.Admission? delivery = null;
+        CancellationTokenSource? deliveryCancellation = null;
         async Task Emit(AgentStreamEvent value, CancellationToken token)
         {
             command?.Append(value);
@@ -96,13 +98,32 @@ public sealed class ChatWebSocketHandler
                 ?? throw new UnauthorizedAccessException();
             request.RuntimeUserId = user.Id;
             request.RuntimeUsername = user.Username;
+            var dispatcher = context.RequestServices.GetService<ChatDeliveryService>();
+            request = dispatcher?.Restore(user, request) ?? request;
             _sessions.PrepareCommandSession(user, request);
+            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken);
+            if (delivery is not null && delivery.Kind != "execute")
+            {
+                await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
+                    Content = delivery.Kind == "steered" ? "追加指令已投递给当前任务，等待 Agent 处理。" : delivery.Kind == "cancelled" ? "排队消息已取消，未执行。" : delivery.Kind == "uncertain" ? "本次投递结果待确认，请核对已有结果；不会自动重新执行。" : "排队消息已保留，等待显式恢复。" }, cancellationToken);
+                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "delivery", CancellationToken.None);
+                return;
+            }
+            request.ResumeQueued = false;
+
             command = (request.RecoverOnly || (request.Goal == null && !string.IsNullOrWhiteSpace(request.CommandId))) ? context.RequestServices.GetRequiredService<ChatCommandStore>().Begin(request, user) : null;
+            delivery?.Registered();
             if (command is { IsOwner: false })
             {
                 await command.ReplayAsync((value, token) => SendEventAsync(socket, value, token), cancellationToken);
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "recovered", CancellationToken.None);
                 return;
+            }
+            if (delivery is not null)
+            {
+                deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, delivery.Stop);
+                cancellationToken = deliveryCancellation.Token;
+                user = await _authService.TryGetCurrentUserAsync(context, cancellationToken) ?? throw new UnauthorizedAccessException();
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
             if (request.AttachmentIds.Count > 0)
@@ -131,6 +152,7 @@ public sealed class ChatWebSocketHandler
             ChatSkillCatalog.Apply(request);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             await Emit(new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
+            if (delivery is not null) await Emit(new AgentStreamEvent { Type = "delivery_started" }, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             await SendTraceAsync(socket, trace?.Complete("auth_session_context"), cancellationToken);
             var content = new StringBuilder();
@@ -178,6 +200,7 @@ public sealed class ChatWebSocketHandler
             await SendTraceAsync(socket, trace?.Complete("request_completed"), cancellationToken);
             await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await Emit(new AgentStreamEvent { Type = "completed" }, cancellationToken);
+            if (delivery is not null) delivery.Succeeded = true;
 
             if (socket.State == WebSocketState.Open)
             {
@@ -197,7 +220,7 @@ public sealed class ChatWebSocketHandler
         catch (Exception exception)
         {
             var clientException = exception;
-            if (request != null && string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+            if (exception is not ChatDeliveryException && request != null && string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
             {
                 var failure = CodexDiagnosticException.ForRequest(exception, request);
                 _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
@@ -221,7 +244,8 @@ public sealed class ChatWebSocketHandler
         }
         finally
         {
-            command?.Dispose();
+            try { command?.Dispose(); }
+            finally { deliveryCancellation?.Dispose(); if (delivery is not null) await delivery.DisposeAsync(); }
             cancellationSource.Cancel();
             if (clientCloseMonitor != null)
             {
@@ -232,6 +256,7 @@ public sealed class ChatWebSocketHandler
 
     private static string ToClientError(Exception exception, ChatCompleteRequest? request)
     {
+        if (exception is ChatDeliveryException) return exception.Message;
         if (exception is CodexDiagnosticException diagnostic) return diagnostic.Message;
         var isCodex = string.Equals(request?.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
         if (isCodex && exception.Message.Contains("requires a newer version of Codex", StringComparison.OrdinalIgnoreCase))

@@ -3,6 +3,40 @@ import test from "node:test";
 import fs from "node:fs";
 import ts from "typescript";
 
+test("queued and steered input do not complete the active task or schedule retries", async (t) => {
+  const h = mount(t);
+  h.context.startStream({ session_id: "session", message: "A", delivery_intent: "queue" });
+  const queued = h.context.startStream({ session_id: "session", message: "B", delivery_intent: "queue" });
+  assert.equal(h.records()[queued].deliveryState, "queued");
+  h.calls[1].emit({ type: "delivery_queued" });
+  h.calls[1].emit({ type: "delivery_held" }); h.calls[1].resolve(); await h.settle();
+  assert.equal(h.records()[queued].deliveryState, "held"); assert.equal(h.records()[queued].retryAt, undefined);
+  const steered = h.context.startStream({ session_id: "session", message: "C", delivery_intent: "steer" });
+  h.calls[2].emit({ type: "delivery_steered" }); h.calls[2].resolve(); await h.settle();
+  assert.equal(h.records()[steered].deliveryState, "steered");
+  assert.equal(h.events.filter(type => type === "aiagent:chat-stream-complete").length, 0);
+  h.calls[0].emit({ type: "completed" }); h.calls[0].resolve(); await h.settle();
+  assert.equal(h.events.filter(type => type === "aiagent:chat-stream-complete").length, 1);
+});
+
+test("queued input becomes an ordinary running stream only after server admission", async (t) => {
+  const h = mount(t);
+  h.context.startStream({ session_id: "session", message: "A", delivery_intent: "queue" });
+  const id = h.context.startStream({ session_id: "session", message: "B", delivery_intent: "queue" });
+  h.calls[1].emit({ type: "delivery_queued" }); await h.advance(61);
+  assert.equal(h.records()[id].deliveryState, "queued");
+  h.calls[1].emit({ type: "delivery_started" }); await h.advance(61);
+  assert.equal(h.records()[id].deliveryState, undefined);
+  h.calls[0].resolve(); h.calls[1].resolve(); await h.settle();
+});
+
+test("goal execution rejects concurrent delivery instead of silently queuing it", async (t) => {
+  const h = mount(t);
+  h.context.startStream({ session_id: "session", message: "goal", goal: { action: "start", objective: "work" } });
+  assert.throws(() => h.context.startStream({ session_id: "session", message: "B", delivery_intent: "queue" }), /目标模式/);
+  assert.equal(h.calls.length, 1); h.calls[0].resolve(); await h.settle();
+});
+
 const source = ts.transpileModule(fs.readFileSync(new URL("../components/chat/ChatStreamProvider.tsx", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;

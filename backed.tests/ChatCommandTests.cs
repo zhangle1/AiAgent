@@ -19,7 +19,7 @@ using System.Text.Json;
 
 namespace AiAgent.Backend.Tests;
 
-public sealed class ChatCommandTests : IDisposable
+public sealed partial class ChatCommandTests : IDisposable
 {
     private readonly string path = Path.Combine(Path.GetTempPath(), $"chat-command-{Guid.NewGuid():N}.db");
     private readonly SqlSugarScope db;

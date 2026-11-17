@@ -76,6 +76,7 @@ public sealed class ModelSchemaInitializer : IModelSchemaInitializer
             typeof(AiChatDebugTrace),
             typeof(AiChatCommand),
             typeof(AiChatCommandEvent),
+            typeof(AiChatDelivery),
             typeof(AiAgentRun),
             typeof(AiAgentRunEvent),
             typeof(AiAgentToolClaim),

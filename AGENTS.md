@@ -4,6 +4,8 @@
 
 聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。
 
+消息连续投递由 `ChatDeliveryService` 在两种流入口统一准入，先保存待执行请求，再进入原命令去重与执行；停止／失败挂起后续项。Codex 原生追加使用匹配当前轮次的 `turn/steer`，确认不等于整轮完成；服务端绑定复用排队会话，目标模式独立。修改前读 `docs/chat-message-delivery.md`。
+
 普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
 
 聊天知识目录 Scope 是可选的资源文件夹范围，不是单一本书模型。`knowledge_scope_uris` 为空时必须保留原有聊天、检索和 Codex CLI 流程；只有非 Codex 的知识检索路径解析这些 URI，并按服务端可见资源树过滤文档。Scope 不能改变代码工作区、Codex 参数、工具权限或补丁/测试流程。契约见 `docs/knowledge-chat-scope.md`。
@@ -41,7 +43,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 修改团队知识 Git 导出、会话发布或项目目录时读 `docs/knowledge-team-git-implementation.md`：`KnowledgeGitMenu` 展开后由 `KnowledgeGitSync` 全量刷新共享投影及本人会话并显示真实 Git 变更数；目录仅浏览。强推前重新刷新快照，固定 force=true 和自动说明；网页固定传 include_own_sessions=true，后端按当前身份取本人原始会话并同步新增／更新／删除；其他所有者已发布副本保持，记忆和产物排除。会话导出按用户／项目名-ID 分组；平台关联按所有者查询 AiChatSession 并复用 SessionIdentity，缺省未分配项目。旧平铺副本须经路径与哈希验证迁移，保留未选字节及 manifest 项目快照。旧显式选择 API 保持兼容。配置在设置页；后端沿用 `PushTeamAsync` 的身份、范围、快照和远端 SHA lease 校验。项目使用稳定 ID URI 并按当前身份筛选。
 
-- 聊天目标模式仅在显式 `goal` 请求中启用，普通聊天保持临时 thread 和原取消语义。原生 Codex 独占续跑调度，禁止另加 `turn/start` 循环；等待终态目标及活动轮结束后再返回。目标和绑定保存在会话独立可空 `GoalJson` 字段，当前只支持单 API 实例；恢复校验用户、会话、项目、工作区、模型与权限快照和单调版本。断线／暂停先 interrupt，超时回收 worker，保存部分回答；目标请求禁止通用自动／手动重发，必须读取状态后显式继续。目标 worker 用完丢弃，避免旧订阅进入普通聊天。见 `docs/chat-goal-mode.md`。
+- 聊天目标模式仅在显式 `goal` 请求中启用，旧普通请求保持临时 thread；新投递协议按服务端绑定复用 thread，取消语义见 `docs/chat-message-delivery.md`。原生 Codex 独占续跑调度，禁止另加 `turn/start` 循环；等待终态目标及活动轮结束后再返回。目标和绑定保存在会话独立可空 `GoalJson` 字段，当前只支持单 API 实例；恢复校验用户、会话、项目、工作区、模型与权限快照和单调版本。断线／暂停先 interrupt，超时回收 worker，保存部分回答；目标请求禁止通用自动／手动重发，必须读取状态后显式继续。目标 worker 用完丢弃，避免旧订阅进入普通聊天。见 `docs/chat-goal-mode.md`。
 
 - 修改数据库启动初始化或排查启动耗时时先读 `docs/backend-startup-diagnostics.md`。保留表／补列／索引／种子数据顺序及失败即终止，按阶段记录无敏感内容的耗时；索引 SQL 保持原定义并批量执行，不以关闭 CodeFirst 代替性能修复。
 

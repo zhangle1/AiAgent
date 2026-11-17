@@ -87,6 +87,7 @@ public sealed class ChatAppService : IDynamicApiController
 
     private async Task<ChatCompleteResponse> CompleteCore(ChatCompleteRequest request, CancellationToken cancellationToken)
     {
+        if (request.DeliveryIntent is not null || request.ResumeQueued) throw new ChatDeliveryException("消息投递需要使用聊天流接口。");
         if (!string.IsNullOrWhiteSpace(request.CommandId)) throw new InvalidOperationException("Command IDs require the streaming endpoint.");
         var trace = ChatDebugTrace.Create(request);
         trace?.Complete("backend_received");
@@ -142,6 +143,8 @@ public sealed class ChatAppService : IDynamicApiController
         string? model = null;
         var providerRequestStarted = false;
         ChatCommandStore.Lease? command = null;
+        ChatDeliveryService.Admission? delivery = null;
+        CancellationTokenSource? deliveryCancellation = null;
         async Task Emit(AgentStreamEvent value, CancellationToken token)
         {
             command?.Append(value);
@@ -153,12 +156,30 @@ public sealed class ChatAppService : IDynamicApiController
             user = await RequireUser(cancellationToken);
             request.RuntimeUserId = user.Id;
             request.RuntimeUsername = user.Username;
+            var dispatcher = _httpContextAccessor.HttpContext!.RequestServices.GetService<ChatDeliveryService>();
+            request = dispatcher?.Restore(user, request) ?? request;
             _sessions.PrepareCommandSession(user, request);
+            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken);
+            if (delivery is not null && delivery.Kind != "execute")
+            {
+                await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
+                    Content = delivery.Kind == "steered" ? "追加指令已投递给当前任务，等待 Agent 处理。" : delivery.Kind == "cancelled" ? "排队消息已取消，未执行。" : delivery.Kind == "uncertain" ? "本次投递结果待确认，请核对已有结果；不会自动重新执行。" : "排队消息已保留，等待显式恢复。" }, cancellationToken);
+                return;
+            }
+            request.ResumeQueued = false;
+
             command = (request.RecoverOnly || (request.Goal == null && !string.IsNullOrWhiteSpace(request.CommandId))) ? _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatCommandStore>().Begin(request, user) : null;
+            delivery?.Registered();
             if (command is { IsOwner: false })
             {
                 await command.ReplayAsync((value, token) => WriteSseAsync(response, value, token), cancellationToken);
                 return;
+            }
+            if (delivery is not null)
+            {
+                deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, delivery.Stop);
+                cancellationToken = deliveryCancellation.Token;
+                user = await RequireUser(cancellationToken);
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
             await ResolveImageAttachmentsAsync(user, request, cancellationToken);
@@ -169,6 +190,7 @@ public sealed class ChatAppService : IDynamicApiController
             ChatSkillCatalog.Apply(request);
             await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
             await Emit(new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
+            if (delivery is not null) await Emit(new AgentStreamEvent { Type = "delivery_started" }, cancellationToken);
             request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
             await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
             await WriteTraceAsync(response, trace?.Start("request_started"), cancellationToken);
@@ -210,6 +232,7 @@ public sealed class ChatAppService : IDynamicApiController
             await WriteTraceAsync(response, trace?.Complete("request_completed"), cancellationToken);
             if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await Emit(new AgentStreamEvent { Type = "completed" }, cancellationToken);
+            if (delivery is not null) delivery.Succeeded = true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -220,7 +243,7 @@ public sealed class ChatAppService : IDynamicApiController
         catch (Exception exception)
         {
             var clientException = exception;
-            if (string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
+            if (exception is not ChatDeliveryException && string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
             {
                 var failure = CodexDiagnosticException.ForRequest(exception, request);
                 _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
@@ -236,15 +259,29 @@ public sealed class ChatAppService : IDynamicApiController
                 Content = ToClientError(clientException, request)
             }, cancellationToken);
         }
-        finally { command?.Dispose(); }
+        finally
+        {
+            try { command?.Dispose(); }
+            finally { deliveryCancellation?.Dispose(); if (delivery is not null) await delivery.DisposeAsync(); }
+        }
     }
 
     [HttpPost("commands/{commandId}/cancel")]
     public async Task<object> CancelCommand(string commandId, [FromQuery(Name = "session_id")] string sessionId, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
+        var deliveries = _httpContextAccessor.HttpContext!.RequestServices.GetService<ChatDeliveryService>();
+        if (deliveries is not null && await deliveries.CancelAsync(user, sessionId, commandId, cancellationToken)) return new { accepted = true };
         var store = _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatCommandStore>();
         return new { accepted = store.Cancel(new ChatCompleteRequest { CommandId = commandId, SessionId = sessionId, RuntimeUserId = user.Id }, user) };
+    }
+
+    [HttpGet("sessions/{sessionId}/deliveries")]
+    public async Task<IActionResult> Deliveries([FromRoute] string sessionId, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        try { return new OkObjectResult(await _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatDeliveryService>().ListAsync(user, sessionId, cancellationToken)); }
+        catch (UnauthorizedAccessException) { return new StatusCodeResult(403); }
     }
 
     [HttpPost("attachments/images")]
@@ -375,6 +412,7 @@ public sealed class ChatAppService : IDynamicApiController
 
     private static string ToClientError(Exception exception, ChatCompleteRequest request)
     {
+        if (exception is ChatDeliveryException) return exception.Message;
         if (exception is CodexDiagnosticException diagnostic) return diagnostic.Message;
         var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
         if (isCodex && exception.Message.Contains("requires a newer version of Codex", StringComparison.OrdinalIgnoreCase))

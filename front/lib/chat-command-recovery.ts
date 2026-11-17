@@ -1,7 +1,7 @@
 import type { ChatCompleteRequest } from "./chat-api";
 
 const KEY = "aiagent:pending-chat-commands:v1";
-type Pointer = Pick<ChatCompleteRequest, "agent" | "code_project_id"> & { command_id: string; session_id: string; saved_at: number };
+type Pointer = Pick<ChatCompleteRequest, "agent" | "code_project_id" | "delivery_intent"> & { command_id: string; session_id: string; saved_at: number };
 
 export function readRecoveryPointers(): Pointer[] {
   try {
@@ -16,9 +16,9 @@ export function readRecoveryPointers(): Pointer[] {
 export function saveRecoveryPointer(id: string, request: ChatCompleteRequest): void {
   if (!request.session_id || !request.command_id) return;
   try {
-    const pointers = readRecoveryPointers().filter((item) => item.command_id !== id && item.session_id !== request.session_id);
+    const pointers = readRecoveryPointers().filter((item) => item.command_id !== request.command_id && (request.delivery_intent ? true : item.session_id !== request.session_id));
     pointers.push({ command_id: request.command_id, session_id: request.session_id, agent: request.agent,
-      code_project_id: request.code_project_id, saved_at: Date.now() });
+      code_project_id: request.code_project_id, delivery_intent: request.delivery_intent, saved_at: Date.now() });
     sessionStorage.setItem(KEY, JSON.stringify(pointers.slice(-10)));
   } catch { /* Storage restrictions must not prevent sending. */ }
 }

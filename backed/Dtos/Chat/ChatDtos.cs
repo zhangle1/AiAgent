@@ -8,6 +8,10 @@ namespace AiAgent.Backend.Dtos.Chat;
 /// </summary>
 public sealed class ChatCompleteRequest
 {
+    [JsonPropertyName("delivery_intent")] public string? DeliveryIntent { get; set; }
+    [JsonPropertyName("resume_queued")] public bool ResumeQueued { get; set; }
+    [JsonIgnore] public Services.Chat.CodexTurnControl? TurnControl { get; set; }
+    [JsonIgnore] public Services.Chat.CodexConversationContext? ConversationContext { get; set; }
     [JsonPropertyName("command_id")]
     public string? CommandId { get; set; }
     [JsonPropertyName("recover_only")]

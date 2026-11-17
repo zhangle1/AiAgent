@@ -1,0 +1,165 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-for-user-authorized-push",
+  "createdAt": "2026-11-17T08:15:42.128006+00:00",
+  "baseCommit": "9aa9edab74c10969544f8cdbef85bd3d5ca108cd",
+  "verifiedSourceTree": "24b41fb6a1f7b0d0b35cc9e9967bcd7cc97abf4d",
+  "objective": "Implement server-persisted online message queuing, native Codex steering and bound conversation continuation after pulling remote updates.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "d8d7fd0920e2f85e06902e02114a0b76bf9c2d7c233d0898e8f50f9129ae3e29",
+      "bytes": 35973
+    },
+    {
+      "path": "README.md",
+      "sha256": "a86a7b8dfc98c6fd3b5e70f61e92995a63c7843d2235f00b39a69174a8f5fa69",
+      "bytes": 41672
+    },
+    {
+      "path": "backed.tests/ChatCommandTests.cs",
+      "sha256": "1a3c387aa47350f50f3208b4147cf19007c980a3c26feb3b865d7ed5ab4760fb",
+      "bytes": 20439
+    },
+    {
+      "path": "backed.tests/ChatDeliveryTests.cs",
+      "sha256": "faf5b3bc6700ec21ac2e508b524eadd4ecf3c00a336ae6420b7ffabb3cba7c21",
+      "bytes": 11805
+    },
+    {
+      "path": "backed.tests/ChatDeliveryTransportTests.cs",
+      "sha256": "30edb96e6daf5172b68d4366b8b1831438acc4dde721775424cf9e9ed0b1e477",
+      "bytes": 5868
+    },
+    {
+      "path": "backed.tests/ChatGoalSteeringTests.cs",
+      "sha256": "b46578937a2416e3beb6f78e58dfdf62f867bc7e26329270782ce84f38631c8a",
+      "bytes": 5270
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "8bbfa409d876eda2dffd83b761256d4922f803d254aec34c8efc4ec61de8dfba",
+      "bytes": 13953
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDeliveryDtos.cs",
+      "sha256": "11043b74ec1c8737be4ea9581460eeb7152e3bb0f4219ba2220c71c8ca9bf0d2",
+      "bytes": 572
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "80823062ad24e588f05d1132bda3f1f86543d3f26655c3a0f7d29e32dd8659da",
+      "bytes": 17186
+    },
+    {
+      "path": "backed/Entities/Chat/AiChatDelivery.cs",
+      "sha256": "8312a738d6c8aacb6373140dbcf5eb6fbfcef7c5b176461330436ccc5f668af2",
+      "bytes": 1305
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "4ef7729a59a65e91ceacf77954cb67716c71fbc888f3fa32c683f21f73916862",
+      "bytes": 17225
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "9d908a1960f8fabd13bd009309bbb3d490088520042e48a94d4b13a5355d5572",
+      "bytes": 25409
+    },
+    {
+      "path": "backed/Services/Chat/ChatDeliveryService.cs",
+      "sha256": "ef97ad2a4caa2c150831b1bcb7510c24d1469318515fde0c37d74dca8a9bbdfb",
+      "bytes": 21588
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "cbde2ae132aa6d0459da0d79cf0e9020b1b2b536827a4a5d34368a379dc08bd6",
+      "bytes": 19962
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Steering.cs",
+      "sha256": "3ee2a15c1e33cfff9fadb3637a6e7b75cccddb55a674aa30544a706c496dbd49",
+      "bytes": 3486
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "dc5b4013fac30ddf2f033e0f0cb7d6b1305f23e4c04ed9f3849ae3b3f6a78d2b",
+      "bytes": 69497
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexTurnControl.cs",
+      "sha256": "c5635e14438ce6029e820e7eb7428e3302a93f7e29decb72a8de6e4f2d4aa321",
+      "bytes": 1966
+    },
+    {
+      "path": "backed/Services/Settings/ModelSchemaInitializer.cs",
+      "sha256": "36d96334d824b40743e9ae3316d0064199d761847e3f5ea7be73b5c451506d22",
+      "bytes": 36417
+    },
+    {
+      "path": "docs/chat-message-delivery.md",
+      "sha256": "b3b1bf9226e63fdfdd3f2de5106f339cc3a181cb7a8c22ea69fead62e375d946",
+      "bytes": 7306
+    },
+    {
+      "path": "front/components/chat/ChatDeliveryQueue.tsx",
+      "sha256": "94850aafc8a73cdd47c6d8e62d6f49eb21efa2c2b4d094578285a6456d9194fd",
+      "bytes": 3744
+    },
+    {
+      "path": "front/components/chat/ChatStreamProvider.tsx",
+      "sha256": "1f4c6c2c3c376caeafd67117a2fd8aa968cfdf844430b4093fffaed28abf1cd3",
+      "bytes": 17373
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "2189d3a2d2ff148ca1ead4e9f5b77df4b56e838c0c49b1f6210959c43b204791",
+      "bytes": 183709
+    },
+    {
+      "path": "front/lib/chat-api.ts",
+      "sha256": "bea8650d4770b3042277005567ba2b26b8751dd764b5ff59e8199962625270ef",
+      "bytes": 17801
+    },
+    {
+      "path": "front/lib/chat-command-recovery.ts",
+      "sha256": "adf80a866e9847c66178447eb0a63457b51105ed1f277552671d1615bac953ac",
+      "bytes": 1628
+    },
+    {
+      "path": "front/tests/chat-auto-retry.test.mjs",
+      "sha256": "3cf25c699fe5952d14ab46221db8ba3706d0618ab7da14283f07ce6bcd6ed5e6",
+      "bytes": 12756
+    },
+    {
+      "path": "front/tests/chat-delivery.browser.mjs",
+      "sha256": "27690720caa4e7b9db7d7c97225e32a4fafd2cc93107f3dcdf78cd7b0d1a28d5",
+      "bytes": 10198
+    }
+  ],
+  "fingerprintSha256": "64d4ab90d1b8ae85cd349dbc76ad8a50556a7ff84233af9de13672b53fec7065",
+  "behavior": [
+    "Queue/steer/auto delivery intent; original execution and history remain under command idempotency. Both SSE and WebSocket share admission.",
+    "Queued payloads survive stop/disconnect/restart. Explicit resume loads original payload; failed/unknown tasks never automatically reexecute. Stop only cancels the active turn.",
+    "Native turn/steer uses server-owned expectedTurnId, serialized writes and one stdout reader with per-request acknowledgement; delivery acceptance is not task completion.",
+    "Codex queued turns use thread/start(ephemeral=false) then thread/resume. Binding includes project, selected references/scopes/skills, workspace, model/profile and sandbox permissions; changed selections isolate old context.",
+    "Owner/project/model authorization rechecked; queued input and native thread identifiers remain server-owned; goals and legacy ephemeral requests keep their existing protocol."
+  ],
+  "validation": {
+    "backendTests": "92 passed, 0 failed on the exact staged source snapshot; includes durable queue, duplicate requests, both transports, native RPC I/O, conversation resume, changed context binding, goals, policy, cancellation, schema and Swagger.",
+    "backendRelease": "Release build succeeded with 0 errors; 17 existing warnings outside the new delivery code.",
+    "frontendProduction": "Next.js 16.2.9 production build with --webpack passed on the isolated staged snapshot, including TypeScript and static rendering.",
+    "frontendTests": "32 passed, 0 failed on the staged snapshot, covering stream lifecycle, delivery transitions, acknowledgements, retries, recovery, project search and prototype regression.",
+    "browser": [
+      "Real frontend with intercepted synthetic HTTP/WebSocket: continuous delivery, queue/steer intent, completion separation, stop cancels only the active ID, refresh/explicit resume, 390px layout.",
+      "Existing composer regression passed: goals, attachments, skills, visualization, explicit sending and desktop/mobile."
+    ],
+    "visual": "Desktop and responsive mobile screenshots inspected.",
+    "whitespace": "git diff --cached --check passed; every staged source byte matched the isolated build snapshot."
+  },
+  "environment": "An initial cross-volume dependency junction prevented isolated Next builds; production compilation passed using the same-volume E: snapshot and supported Webpack mode. Temporary dependency copy was safely moved from C: to E: after permanent cleanup was rejected. Main dev server and user configuration/data were not changed.",
+  "authorization": "User explicitly requested pull, implementation, compilation verification and push. No additional approval inferred from attached source documents.",
+  "scope": "Feature-only staged snapshot. Earlier uncommitted PDF/Word/TXT conversion, goal budget and knowledge changes remain local; mixed files were staged using validated original line ranges.",
+  "limitations": "Single API instance with online execution. No detached background takeover, interrupt/restart steering or automatic quota recovery. Queue and native RPC acknowledgements do not prove execution completion.",
+  "deployment": "Deploy backend/frontend together and restart backend to create ai_chat_delivery. Existing code-first-disabled deployments must apply the new table/index schema first."
+}

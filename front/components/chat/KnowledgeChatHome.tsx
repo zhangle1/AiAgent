@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, ArrowUp, BookOpen, Bot, Braces, Check, ChevronDown, ChevronRight, Copy, Eye, FileCode2, FileText, FolderSearch, Globe2, ListTodo, Loader2, Menu, Mic, PanelRight, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Square, Terminal, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { chatImagePreviewUrl, deleteChatFile, deleteChatImage, persistedChatImageUrl, uploadChatFile, uploadChatImage, type ChatDebugTraceEvent, type ChatFileAttachment, type ChatImageAttachment, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
+import { ChatDeliveryQueue } from "./ChatDeliveryQueue";
 import { useChatStreams, type ChatStreamRecord } from "@/components/chat/ChatStreamProvider";
 import { ChatRetryNotice } from "@/components/chat/ChatRetryNotice";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
@@ -184,8 +185,10 @@ function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key:
 }
 
 function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], t: (key: TranslationKey) => string): ChatMessage[] {
-  const next = [...items];
+  const hidden = new Set(streams.filter(stream => stream.deliveryState).map(stream => `stream:${stream.id}`));
+  const next = items.filter(item => !hidden.has(item.id));
   for (const stream of streams) {
+    if (stream.deliveryState) continue;
     const id = `stream:${stream.id}`;
     const initial: ChatMessage = {
       id,
@@ -408,7 +411,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
   const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
-  const sending = sessionStreams.some((stream) => stream.status === "streaming");
+  const sending = sessionStreams.some((stream) => stream.status === "streaming" && !stream.deliveryState);
+  const [deliveryIntent, setDeliveryIntent] = useState<"queue" | "steer" | "auto">("queue");
+  useEffect(() => setDeliveryIntent("queue"), [activeSessionId]);
+  const canFollowUp = !embedded && !goalRequest && !sessionStreams.some(stream => stream.status === "streaming" && stream.goalMode);
   const latestSessionStream = sessionStreams.reduce<ChatStreamRecord | undefined>((latest, stream) => !latest || stream.startedAt >= latest.startedAt ? stream : latest, undefined);
   const failedStream = !sending && latestSessionStream?.status === "error" ? latestSessionStream : undefined;
   const prototypeReferenceOptions = useMemo(
@@ -924,7 +930,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     const markdownReferences = mergeMarkdownDocumentReferences(extractMarkdownDocumentReferences(query), markdownDocumentsForTurn);
     const projectReferencesForTurn = options?.projectReferences ?? pendingProjectReferences;
     const projectReferenceIds = mergeProjectReferenceIds(extractProjectReferenceIds(query), projectReferencesForTurn);
-    if ((!query && attachmentsForTurn.length === 0 && documentAttachmentsForTurn.length === 0 && markdownReferences.length === 0 && projectReferenceIds.length === 0) || sending || uploadingImages || uploadingFiles) return;
+    if ((!query && attachmentsForTurn.length === 0 && documentAttachmentsForTurn.length === 0 && markdownReferences.length === 0 && projectReferenceIds.length === 0) || (sending && !canFollowUp) || uploadingImages || uploadingFiles) return;
     if (selectedAgentId && selectedAgentProvider && !selectedAgentProvider.chat_supported) {
       setError(`${selectedAgentProvider.name} 已检测到，但当前版本尚未适配聊天接管协议。`);
       return;
@@ -1030,6 +1036,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     try {
       const goalForTurn = selectedAgentId === "codex" && !currentCodexModel?.profile_name ? goalRequest : undefined;
       const streamId = startStream({
+        delivery_intent: !embedded && !goalForTurn ? deliveryIntent : undefined,
         goal: goalForTurn,
         session_id: sessionId,
         message: outboundMessage,
@@ -1216,7 +1223,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function stopGenerating() {
-    sessionStreams.filter((stream) => stream.status === "streaming").forEach((stream) => cancelStream(stream.id));
+    sessionStreams.filter((stream) => stream.status === "streaming" && !stream.deliveryState).forEach((stream) => cancelStream(stream.id));
   }
 
   function openInspector(tab: InspectorTab) {
@@ -1433,6 +1440,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               {composerMenuAnchor && <ChatComposerMenu anchor={composerMenuAnchor} onClose={() => setComposerMenuAnchor(null)} onDesign={embedded ? undefined : () => { setDesignMode(value => !value); setComposerMenuAnchor(null); openInspector("prototype"); }} designMode={designMode} filesEnabled={selectedAgentId === "codex"} onFiles={() => { setComposerMenuAnchor(null); fileInputRef.current?.click(); }} onSkills={embedded ? undefined : () => { openSkillPicker(composerMenuAnchor); setComposerMenuAnchor(null); }} onGoal={embedded ? undefined : () => { setComposerMenuAnchor(null); activeComposerRef.current?.focus(); setGoalActivation(value => value + 1); }} goalDisabledReason={goalDisabledReason} onVisualization={embedded ? undefined : () => { setComposerMenuAnchor(null); setVisualizationActivation(value => value + 1); }} />}
               {previewSkill && createPortal(<ChatSkillPreview skill={previewSkill} onClose={() => setPreviewSkill(null)} />, document.body)}
               {slashProjectCommand && !skillMenuOpen && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
+              {!embedded && <>
+                <ChatDeliveryQueue sessionId={activeSessionId} onResume={commandId => { startStream({ session_id: activeSessionId!, command_id: commandId, message: "", resume_queued: true, delivery_intent: "queue" }); }} />
+                {sending && latestSessionStream?.deliveryState === "steered" && <p role="status" className="mb-2 text-xs text-blue-700">追加指令已投递给当前任务，等待 Agent 处理。</p>}
+                {sending && canFollowUp && <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500"><label className="inline-flex items-center gap-2">继续投递<select aria-label="消息投递方式" value={deliveryIntent} onChange={event => setDeliveryIntent(event.target.value as typeof deliveryIntent)} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-700"><option value="queue">排队继续</option><option value="steer">追加当前任务</option><option value="auto">自动选择</option></select></label><span>停止或失败后，后续消息会暂停保留。</span><button type="submit" disabled={!input.trim() || uploadingImages || uploadingFiles} className="ml-auto rounded-lg bg-blue-600 px-3 py-1.5 text-white disabled:opacity-40">{deliveryIntent === "steer" ? "追加指令" : "投递消息"}</button></div>}
+              </>}
               <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className="min-h-[56px] w-full px-1 py-2 text-[14px] leading-6 lg:hidden" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
               <div className="flex items-center gap-1 border-t border-slate-100 pt-2 lg:hidden">
                 <button type="button" onClick={event => openComposerMenu(event.currentTarget)} aria-haspopup="menu" aria-expanded={Boolean(composerMenuAnchor)} disabled={sending || uploadingImages || uploadingFiles} title="添加文件、技能、目标或可视化" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 disabled:opacity-40" aria-label="添加到聊天">

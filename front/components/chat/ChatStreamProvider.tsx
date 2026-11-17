@@ -11,6 +11,8 @@ export type ChatStreamTerminalReason = "completed" | "legacy_done" | "user_stopp
 export type ChatStreamRecord = {
   id: string;
   sessionId: string;
+  deliveryState?: "queued" | "held" | "steered";
+  goalMode?: boolean;
   status: ChatStreamStatus;
   events: ChatStreamEvent[];
   startedAt: number;
@@ -86,10 +88,12 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     flushUpdates();
     const sessionId = request.session_id?.trim();
     if (!sessionId) throw new Error("Chat session is required.");
-    if (Object.values(streamsRef.current).some((stream) => stream.sessionId === sessionId && (stream.status === "streaming" || controllersRef.current.has(stream.id))))
-      throw new Error("This session already has an active stream.");
-    if (Object.values(streamsRef.current).filter((stream) => stream.status === "streaming").length >= 10)
-      throw new Error("A user can run at most 10 chat sessions at the same time.");
+    const active = Object.values(streamsRef.current).filter(stream => stream.sessionId === sessionId && controllersRef.current.has(stream.id));
+    if (active.length && (request.goal || active.some(stream => stream.goalMode) || !request.delivery_intent && !request.recover_only))
+      throw new Error("当前会话已有活动请求；目标模式请先暂停，普通消息可选择排队继续。");
+    if (active.length >= 100) throw new Error("本会话最多保留 100 条待执行消息。");
+    const activeSessions = new Set(Object.values(streamsRef.current).filter(stream => stream.status === "streaming").map(stream => stream.sessionId));
+    if (activeSessions.size >= 10 && !activeSessions.has(sessionId)) throw new Error("A user can run at most 10 chat sessions at the same time.");
 
     const streamId = retryId ?? createStreamId();
     if (controllersRef.current.has(streamId)) return streamId;
@@ -103,7 +107,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       ? [{ type: "debug_trace", debug_trace: { trace_id: streamRequest.trace_id, stage: "browser_submit", status: "completed", elapsed_ms: 0, duration_ms: 0, provider: streamRequest.agent === "codex" ? "codex" : "openai_compatible", transport: "websocket" } }]
       : [];
     const startedAt = Date.now();
-    const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", events: initialEvents, startedAt, lastEventAt: startedAt, observedAt: startedAt, health: "connecting", unread: false, agent: request.agent };
+    const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", deliveryState: active.length && request.delivery_intent ? "queued" : undefined, goalMode: !!request.goal, events: initialEvents, startedAt, lastEventAt: startedAt, observedAt: startedAt, health: "connecting", unread: false, agent: request.agent };
     const next = { ...Object.fromEntries(Object.entries(streamsRef.current).map(([id, stream]) => [id,
       stream.sessionId === sessionId ? { ...stream, retryAt: undefined } : stream,
     ])), [streamId]: record };
@@ -118,6 +122,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       update(streamId, (current) => ({
         ...current,
         status: event.type === "error" ? "error" : current.status,
+        deliveryState: event.type === "delivery_queued" ? "queued" : event.type === "delivery_held" ? "held" : event.type === "delivery_steered" ? "steered" : event.type === "delivery_started" ? undefined : current.deliveryState,
         serverRejected: event.type === "error" ? !request.recover_only : current.serverRejected,
         health: "active",
         lastEventAt: receivedAt,
@@ -140,6 +145,12 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       }));
       flushUpdates();
       const completed = streamsRef.current[streamId];
+      if (completed?.deliveryState === "held" || completed?.deliveryState === "steered") {
+        if (completed.deliveryState === "steered") removeRecoveryPointer(request.command_id ?? streamId);
+        window.dispatchEvent(new Event("aiagent:sessions-updated"));
+        window.dispatchEvent(new Event("aiagent:chat-queue-updated"));
+        return;
+      }
       if (completed?.status === "done") removeRecoveryPointer(request.command_id ?? streamId);
       if (completed?.status === "error") {
         window.dispatchEvent(new CustomEvent("aiagent:chat-stream-failed", { detail: { sessionId, streamId, projectId: request.code_project_id, stopped: false, error: completed.errorMessage } }));

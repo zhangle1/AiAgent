@@ -15,7 +15,7 @@ using SqlSugar;
 
 namespace AiAgent.Backend.Tests;
 
-public sealed class ChatGoalTests
+public sealed partial class ChatGoalTests
 {
     [Fact]
     public void GoalPollingBeforeFirstMessageReturnsEmptyWithoutCreatingSession()
@@ -201,7 +201,7 @@ public sealed class ChatGoalTests
     private const string Server = """
 const fs = require('fs'), path = require('path');
 const dir = __dirname;
-let goal = null, turn = 0, scheduled = false;
+let goal = null, turn = 0, scheduled = false, steers = 0;
 const mode = () => fs.readFileSync(path.join(dir, 'mode'), 'utf8');
 const send = x => process.stdout.write(JSON.stringify(x) + '\n');
 const event = (method, params) => send({method, params});
@@ -228,6 +228,11 @@ require('readline').createInterface({input:process.stdin}).on('line', line => {
      scheduled=true;
      setTimeout(() => { started('t2'); content('second'); goal.status=['blocked','budgetLimited','usageLimited'].includes(mode())?mode():'complete'; goal.tokensUsed=23; event('thread/goal/updated',{goal}); content('tail'); done(); },20);
    }
+   break;
+ case 'turn/steer':
+   if(mode()==='steer-reject' || p.expectedTurnId!=='t1' || p.threadId!=='persistent-thread') {send({id:r.id,error:{message:'turn mismatch or steering rejected'}}); break;}
+   result({turnId:'t1'}); content('steered:'+p.input[0].text); steers++;
+   if(mode()!=='steer-two' || steers>=2) done();
    break;
  case 'turn/interrupt': result({}); event('turn/completed',{turn:{status:'interrupted'}}); break;
  }

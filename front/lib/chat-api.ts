@@ -40,6 +40,8 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export type ChatCompleteRequest = {
+  delivery_intent?: "auto" | "queue" | "steer";
+  resume_queued?: boolean;
   command_id?: string;
   recover_only?: boolean;
   goal?: import("./chat-goal-types").ChatGoalRequest;
@@ -207,7 +209,7 @@ export async function getChatUploadText(attachmentId: string, adminUserId?: stri
 }
 
 export type ChatStreamEvent = {
-  type: "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
+  type: "delivery_queued" | "delivery_started" | "delivery_held" | "delivery_steered" | "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
   debug_trace?: ChatDebugTraceEvent | null;
   label?: string | null;
   content?: string;
@@ -355,7 +357,7 @@ async function streamCompleteChatWs(
           return;
         }
         onEvent(event);
-        if (event.type === "completed") {
+        if (event.type === "completed" || event.type === "delivery_held" || event.type === "delivery_steered") {
           completed = true;
           finish();
           return;
@@ -406,7 +408,7 @@ async function streamCompleteChatSse(
   let sawDone = false;
   const handleEvent = (event: ChatStreamEvent) => {
     onEvent(event);
-    if (event.type === "completed") completed = true;
+    if (event.type === "completed" || event.type === "delivery_held" || event.type === "delivery_steered") completed = true;
     if (event.type === "done") sawDone = true;
   };
 
@@ -485,4 +487,9 @@ function parseSseFrame(frame: string): ChatStreamEvent | null {
   } catch {
     return null;
   }
+}
+
+export type ChatDelivery = { command_id: string; session_id: string; message: string; status: string; queue_held: boolean; position: number };
+export async function getChatDeliveries(sessionId: string, signal?: AbortSignal): Promise<ChatDelivery[]> {
+  return parseJson(await fetch(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/deliveries`, { cache: "no-store", signal }));
 }

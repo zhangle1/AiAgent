@@ -1234,14 +1234,22 @@ public sealed partial class CodexChatService : ICodexChatService, IDisposable
                     ["cwd"] = workspacePath,
                     ["approvalPolicy"] = "never",
                     ["sandbox"] = ToAppServerSandbox(_sandboxMode),
-                    ["ephemeral"] = true,
+                    ["ephemeral"] = request.ConversationContext is null,
                     ["serviceName"] = "aiagent"
                 };
                 if (!string.IsNullOrWhiteSpace(model.AppServerModelId)) threadParameters["model"] = model.AppServerModelId;
                 if (!string.IsNullOrWhiteSpace(model.ReasoningEffort)) threadParameters["modelReasoningEffort"] = model.ReasoningEffort;
-                await SendAsync(_process, new { method = "thread/start", id = threadRequestId, @params = threadParameters }, executionToken);
+                var binding = System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {
+                    workspacePath, _sandboxMode, model.AppServerModelId, model.ReasoningEffort, model.ProfileName, model.Definition.Id,
+                    Selection = CodexConversationContext.SelectionKey(request)
+                }))));
+                var resumedThread = request.ConversationContext?.LoadThread(binding);
+                if (resumedThread is not null) { threadParameters.Remove("ephemeral"); threadParameters["threadId"] = resumedThread; }
+                await SendAsync(_process, new { method = resumedThread is null ? "thread/start" : "thread/resume", id = threadRequestId, @params = threadParameters }, executionToken);
                 var threadResponse = await ReadResponseAsync(_stdout, threadRequestId, state, onEvent, _turnIdleTimeout, executionToken);
                 var threadId = ReadRequiredString(threadResponse, "thread", "id");
+                if (resumedThread is not null && resumedThread != threadId) throw new InvalidOperationException("原生会话恢复返回了不同绑定，未继续执行。");
+                request.ConversationContext?.SaveThread(binding, threadId);
 
                 var turnRequestId = NextRequestId();
                 await SendAsync(_process, new
@@ -1258,7 +1266,8 @@ public sealed partial class CodexChatService : ICodexChatService, IDisposable
                         sandboxPolicy = new { type = ToAppServerSandboxPolicy(_sandboxMode) }
                     }
                 }, executionToken);
-                await ReadTurnAsync(_stdout, turnRequestId, state, onEvent, _turnIdleTimeout, executionToken);
+                if (request.TurnControl is { } control) await ReadSteerableTurnAsync(turnRequestId, threadId, state, control, onEvent, executionToken);
+                else await ReadTurnAsync(_stdout, turnRequestId, state, onEvent, _turnIdleTimeout, executionToken);
                 return state;
             }
             catch (OperationCanceledException) when (turnTimeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)

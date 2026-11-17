@@ -1,5 +1,7 @@
 # AiAgent
 
+聊天运行中可继续输入并投递：默认排队，也可选择 Codex 原生追加或自动选择。后续轮次按序执行并复用已绑定上下文；停止或失败后队列保留，可在输入框上方明确恢复。使用与边界见 [消息排队与原生追加](docs/chat-message-delivery.md)。
+
 聊天输入框可选多个知识目录 Scope，把书籍、规范或 Wiki 文件夹作为本轮知识检索范围；Scope 为空时保持原有聊天和 Codex 本地改码流程不变。知识目录只提供受控证据，代码补丁、测试和交付继续沿用现有 Agent 流程。实现边界见 [聊天知识目录 Scope](docs/knowledge-chat-scope.md)。
 
 资料库上传图片支持双击放大弹窗、缩放和 Esc 关闭。客户本体采用聊天、节点编排画布与节点配置并列设计，支持对象关系、条件分支及人工确认的交互演示，见 [方案](design/customer-ontology/agent-workbench.md) 与 [交互原型](design/customer-ontology/agent-workbench.html)；本体部分为模拟设计，尚未接入真实 Agent 或连接器。
