@@ -1,0 +1,26 @@
+{
+    "kind":  "local-review-snapshot",
+    "title":  "Fix chat project search matching shared parent paths",
+    "base_commit":  "1542ada179ae7df35478d9e73f751517d5e78119",
+    "platform_change_set_id":  null,
+    "note":  "User explicitly requested fix and push. Local snapshot records file fingerprints and checks; it is not a platform approval record.",
+    "checks":  {
+                   "typescript":  "passed: tsc --noEmit --incremental false",
+                   "whitespace":  "passed: git diff --check",
+                   "regression":  "passed: node --test tests/chat-project-search.test.mjs (3 tests)"
+               },
+    "files":  [
+                  {
+                      "sha256":  "6cf9484d7bfd422db250bea5d456e497ba0f3f464e78dd9b88693a279a3c56e6",
+                      "path":  "front/components/chat/KnowledgeChatHome.tsx"
+                  },
+                  {
+                      "sha256":  "ed473e0059fcc196d8db9b6d683b6a35aac179dc11a9d3f655fd83df88c68143",
+                      "path":  "front/lib/chat-project-search.ts"
+                  },
+                  {
+                      "sha256":  "de6e47796422a808618dcb9b7ab27082d3c31c3da7dcad31f81dcb69f6042e87",
+                      "path":  "front/tests/chat-project-search.test.mjs"
+                  }
+              ]
+}

@@ -4,6 +4,7 @@
 import { getChatSkills } from "@/lib/chat-skill-api";
 import type { ChatSkill, ChatSkillReference } from "@/lib/chat-skill-types";
 import { skillCommand, filterChatSkills } from "@/lib/chat-skill-command";
+import { matchesChatProjectSearch } from "@/lib/chat-project-search";
 import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPicker";
 import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
@@ -1500,6 +1501,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       id: String(project.id),
                       label: project.display_name,
                       description: `${project.root_path} · ${project.repository_count} 个代码库`,
+                      rootPath: project.root_path,
                     }))}
                     selectedIds={selectedProjectId ? [String(selectedProjectId)] : []}
                     open={openContextPicker === "project"}
@@ -2215,6 +2217,7 @@ type ContextPickerItem = {
   id: string;
   label: string;
   description?: string;
+  rootPath?: string;
 };
 
 function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
@@ -2423,7 +2426,7 @@ function ContextMultiSelect({ icon, label, items, selectedIds, open, disabled, s
   const visibleItems = useMemo(() => {
     const term = searchTerm.trim().toLocaleLowerCase();
     if (!term) return uniqueItems;
-    return uniqueItems.filter((item) => `${item.label} ${item.description ?? ""}`.toLocaleLowerCase().includes(term));
+    return uniqueItems.filter((item) => matchesChatProjectSearch(item, term));
   }, [searchTerm, uniqueItems]);
   const selectedLabel = selectedIds.length === 0 ? label : selectedIds.length === 1 ? (uniqueItems.find((item) => item.id === selectedIds[0])?.label ?? label) : `${label} · ${selectedIds.length}`;
 
