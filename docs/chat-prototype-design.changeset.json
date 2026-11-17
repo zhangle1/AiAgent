@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-review-snapshot",
+  "status": "validated-with-existing-regression-failure",
+  "createdAt": "2026-11-17T05:49:57.261Z",
+  "baseCommit": "0c1cfc5c46857a82f2859b025797b0634b202382",
+  "objective": "Add explicit chat design mode and an integrated prototype output workspace",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "93f6d5b937602ab11674d50b6a3c9df11213759f757cd4a1fcac292100cc3889"
+    },
+    {
+      "path": "README.md",
+      "sha256": "4efa2836cf1e5b66a78d824f4a75fc3ccc9abd30a93ac131023e4fcf7be12e4f"
+    },
+    {
+      "path": "docs/chat-prototype-design.md",
+      "sha256": "66ca65cada85b92e794493a741dacff0e750254a4119316bedb2d4d89efc9dfe"
+    },
+    {
+      "path": "front/components/chat/ChatComposerMenu.tsx",
+      "sha256": "fdc422efd3b9daed6fb4de02e034b7a940682441413975ae061db7c0de8a706c"
+    },
+    {
+      "path": "front/components/chat/ChatInspectorPanel.tsx",
+      "sha256": "5cc72ba94badbeb1b02e402fd09a19784e62a7a990d4cd808d83dc64dc743072"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "77f62a50b90f2a7adf264938a285af04d81c08fc92fe63aae16723412663cda1"
+    },
+    {
+      "path": "front/components/prototype-studio/ChatPrototypePanel.tsx",
+      "sha256": "13d831a6abfb2ab62a7ddeea5bd7459b51099dc5538be5b2cc12fc079fbec9ba"
+    },
+    {
+      "path": "front/lib/chat-prototype.ts",
+      "sha256": "388a4c8398dbc1b03af4d3316fc55591b3efa8874df1cf3f1124a794e6a9fff6"
+    },
+    {
+      "path": "front/lib/code-repository-api.ts",
+      "sha256": "0abc28607e0c0e97de6d430995a47112a1dc794fb66686442c2006e4e22f4967"
+    },
+    {
+      "path": "front/tests/chat-prototype.test.mjs",
+      "sha256": "3a3f6741a9a44c76a21141882d623de1c43884d9d350e606871f577b52da5325"
+    },
+    {
+      "path": "front/tests/chat-prototype.browser.mjs",
+      "sha256": "21a5b9fe5e71baf6d81949e2d216bdd646dc4a5a1004a8de53abce7ee258cba1"
+    }
+  ],
+  "validation": {
+    "typescript": "passed: npx tsc --noEmit",
+    "prototypeUnit": "3 passed",
+    "prototypeBrowser": "passed: project filtering, sandbox, source editing, annotation save, draft insertion, real mobile PSD header and width",
+    "relatedRegression": "document-diagram-preview: 2 passed; chat-visualization: 5 passed, 1 existing failure (mock react.useRef missing in unchanged VisualizationToolbar test)",
+    "whitespace": "passed"
+  },
+  "delivery": "Local review only; no commit or push performed",
+  "limitations": [
+    "PSD editing uses its HTML source and re-export; no arbitrary PSD layer import/editor",
+    "Saved HTML and notes use existing design templates; generated PSD remains browser download",
+    "Prototype source editing is text editing, not a drag-and-drop page builder"
+  ]
+}

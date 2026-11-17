@@ -145,6 +145,15 @@ export async function downloadProjectDocumentReference(projectId: number, refere
   await downloadDocumentBlob(projectMarkdownDocumentDownloadUrl(projectId, file.repository_name, file.path), file.name);
 }
 
+export async function getProjectPrototypeHtml(projectId: number, repositoryName: string, path: string, signal?: AbortSignal): Promise<string> {
+  if (!/\.html?$/i.test(path)) throw new Error("请选择 HTML 原型。");
+  const response = await fetch(projectMarkdownDocumentDownloadUrl(projectId, repositoryName, path), { cache: "no-store", signal });
+  if (!response.ok) throw new Error(`读取原型失败（HTTP ${response.status}）。`);
+  const blob = await response.blob();
+  if (blob.size > 2_000_000) throw new Error("原型超过 2 MB，请拆分页面。");
+  return blob.text();
+}
+
 export async function getProjectMarkdownReferenceFile(projectId: number, reference: string, signal?: AbortSignal): Promise<File> {
   const file = await resolveProjectDocumentReference(projectId, reference);
   signal?.throwIfAborted();

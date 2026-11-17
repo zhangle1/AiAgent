@@ -7,6 +7,7 @@ import { skillCommand, filterChatSkills } from "@/lib/chat-skill-command";
 import { matchesChatProjectSearch } from "@/lib/chat-project-search";
 import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPicker";
 import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
+import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
 import { getChatClipboardFiles } from "@/lib/chat-clipboard";
@@ -38,7 +39,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { cancelAgentRun, getAgentRun, getSession, getSessionDiagnostics, listAgentRuns, type AgentRunDetail, type AgentRunSummary, type ChatDebugTraceRecord, type SessionDetail } from "@/lib/session-api";
 import { CODEX_POLICY_CHANGED_EVENT, getAgentProviderEnvironments, getCodexModelPolicy, getImageOcrPolicy, type AgentProviderEnvironment, type CodexModelPolicy, type ImageOcrPolicy } from "@/lib/agent-provider-api";
 
-type InspectorTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal" | "ontology";
+type InspectorTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal" | "ontology" | "prototype";
 
 type ChatImagePreview = ChatImageAttachment & { previewUrl: string };
 
@@ -253,6 +254,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [agentProviders, setAgentProviders] = useState<AgentProviderEnvironment[]>([]);
   const [codexModelPolicy, setCodexModelPolicy] = useState<CodexModelPolicy | null>(null);
   const [imageOcrPolicy, setImageOcrPolicy] = useState<ImageOcrPolicy | null>(null);
+  const [designMode, setDesignMode] = useState(false);
+  useEffect(() => { setDesignMode(false); }, [selectedProjectId, activeSessionId]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [readyTaskHandoff, setReadyTaskHandoff] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -952,7 +955,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       .filter((file) => prototypeReferences.includes(file.id))
       .map((file) => `\n\n用户通过 / 选择了原型文件“${file.name}.html”。请仅修改这一个文件，并返回完整替换版本：\n${file.html}`)
       .join("");
-    const outboundMessage = embeddedMessagePrefix ? `${embeddedMessagePrefix}${prototypeContext}\n\n用户需求：${messageText}` : `${messageText}${prototypeContext}`;
+    const designPrefix = designMode && !goalRequest && !options?.retryAssistantId ? "【设计模式】请设计或调整界面原型，用一个 html 代码块返回完整独立 HTML；使用内联 CSS、语义区域和 data-psd-name 中文名称，便于预览和导出 PSD。不要依赖脚本生成布局。\n\n" : "";
+    const outboundMessage = designPrefix + (embeddedMessagePrefix ? `${embeddedMessagePrefix}${prototypeContext}\n\n用户需求：${messageText}` : `${messageText}${prototypeContext}`);
     const sessionId = activeSessionId ?? createClientId();
     if (!activeSessionId) {
       if (debugTraceEnabled) sessionStorage.setItem(chatDebugStorageKey(sessionId), "1");
@@ -968,7 +972,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
           id: createClientId(),
           role: "user",
           skillInvocations: skillsForTurn.map(({ id, version }) => ({ id, version })),
-          content: messageText,
+          content: `${designPrefix}${messageText}`,
           attachments: attachmentsForTurn,
           documentAttachments: documentAttachmentsForTurn,
           markdownDocuments: markdownDocumentsForTurn,
@@ -1237,6 +1241,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     setRequestedInspectorTab(null);
   }, [selectedProjectId, activeSessionId]);
 
+  const [requestedPrototypeOutput, setRequestedPrototypeOutput] = useState<ChatPrototypeOutput | null>(null);
+  const [requestedPrototypeDocument, setRequestedPrototypeDocument] = useState<CodeProjectMarkdownDocument | null>(null);
+  useEffect(() => { setRequestedPrototypeDocument(null); setRequestedPrototypeOutput(null); }, [selectedProjectId, activeSessionId]);
+
   async function openProjectMarkdownDocument(reference: string) {
     if (!selectedProjectId) return;
     const scope = documentOpenScope.current;
@@ -1244,8 +1252,14 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     try {
       const document = await resolveProjectDocumentReference(selectedProjectId, reference);
       if (documentOpenScope.current !== scope || documentOpenSequence.current !== sequence) return;
-      setRequestedMarkdownDocument(document);
-      openInspector("documents");
+      if (/\.html?$/i.test(document.name)) {
+        setRequestedPrototypeOutput(null);
+        setRequestedPrototypeDocument(document);
+        openInspector("prototype");
+      } else {
+        setRequestedMarkdownDocument(document);
+        openInspector("documents");
+      }
     } catch (ex) {
       if (documentOpenScope.current === scope && documentOpenSequence.current === sequence) setError(ex instanceof Error ? ex.message : `无法打开 ${reference}。`);
     }
@@ -1341,6 +1355,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     onOpenProjectMarkdownDocument={openProjectMarkdownDocument}
                     projectId={selectedProjectId}
                     showDebugTrace={debugTraceEnabled}
+                    onOpenPrototype={(output) => { setRequestedPrototypeDocument(null); setRequestedPrototypeOutput(output); openInspector("prototype"); }}
                     onOpenDiagnostics={openDiagnostics}
                   />
                 ))}
@@ -1414,7 +1429,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 </div>
               )}
               {skillMenuOpen && <ChatSkillPicker anchor={activeComposerRef.current} selectedIds={selectedSkills.map(skill => skill.id)} onDismiss={dismissSkillMenu} previewOpen={Boolean(previewSkill)} goalOption={showGoalOption ? { selected: Boolean(goalRequest), disabledReason: goalDisabledReason, onSelect: selectGoalCommand } : undefined} onProjects={openSkillProjectSearch} items={skillOptions} activeIndex={skillActiveIndex} onActiveIndexChange={setSkillActiveIndex} onSelect={skill => selectChatSkill(skill, true)} onPreview={setPreviewSkill} />}
-              {composerMenuAnchor && <ChatComposerMenu anchor={composerMenuAnchor} onClose={() => setComposerMenuAnchor(null)} filesEnabled={selectedAgentId === "codex"} onFiles={() => { setComposerMenuAnchor(null); fileInputRef.current?.click(); }} onSkills={embedded ? undefined : () => { openSkillPicker(composerMenuAnchor); setComposerMenuAnchor(null); }} onGoal={embedded ? undefined : () => { setComposerMenuAnchor(null); activeComposerRef.current?.focus(); setGoalActivation(value => value + 1); }} goalDisabledReason={goalDisabledReason} onVisualization={embedded ? undefined : () => { setComposerMenuAnchor(null); setVisualizationActivation(value => value + 1); }} />}
+              {designMode && <button type="button" className="rounded bg-violet-50 px-2 py-1 text-xs text-violet-700" onClick={() => setDesignMode(false)}>设计模式 · 点击退出</button>}
+              {composerMenuAnchor && <ChatComposerMenu anchor={composerMenuAnchor} onClose={() => setComposerMenuAnchor(null)} onDesign={embedded ? undefined : () => { setDesignMode(value => !value); setComposerMenuAnchor(null); openInspector("prototype"); }} designMode={designMode} filesEnabled={selectedAgentId === "codex"} onFiles={() => { setComposerMenuAnchor(null); fileInputRef.current?.click(); }} onSkills={embedded ? undefined : () => { openSkillPicker(composerMenuAnchor); setComposerMenuAnchor(null); }} onGoal={embedded ? undefined : () => { setComposerMenuAnchor(null); activeComposerRef.current?.focus(); setGoalActivation(value => value + 1); }} goalDisabledReason={goalDisabledReason} onVisualization={embedded ? undefined : () => { setComposerMenuAnchor(null); setVisualizationActivation(value => value + 1); }} />}
               {previewSkill && createPortal(<ChatSkillPreview skill={previewSkill} onClose={() => setPreviewSkill(null)} />, document.body)}
               {slashProjectCommand && !skillMenuOpen && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
               <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className="min-h-[56px] w-full px-1 py-2 text-[14px] leading-6 lg:hidden" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
@@ -1583,7 +1599,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             </div>}
           </div>
         </section>
-        <ChatInspectorPanel key={`${selectedProject?.id}:${activeSessionId}`} libraryScope={activeSessionId ?? ""} onAttachLibraryFile={attachLibraryFile} isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestToken={inspectorRequestToken} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onInsertOntologyContext={(text) => prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${text}` : text)} onClose={() => setRightPanelOpen(false)} />
+        <ChatInspectorPanel requestedPrototypeOutput={requestedPrototypeOutput} requestedPrototypeDocument={requestedPrototypeDocument} prototypeMessages={displayMessages.filter(message => message.role === "assistant" && message.status !== "streaming" && message.status !== "error" && message.status !== "stopped")} key={`${selectedProject?.id}:${activeSessionId}`} libraryScope={activeSessionId ?? ""} onAttachLibraryFile={attachLibraryFile} isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestToken={inspectorRequestToken} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onInsertOntologyContext={(text) => prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${text}` : text)} onClose={() => setRightPanelOpen(false)} />
         {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} runs={agentRuns} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
         {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)} />}
       </div>
@@ -2228,6 +2244,7 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
     shortcut: string;
     icon: typeof FileCode2;
   }> = [
+    { tab: "prototype", label: "原型设计", shortcut: "", icon: FileCode2 },
     { tab: "ontology", label: "本体模型", shortcut: "", icon: BookOpen },
     { tab: "uploads", label: "资料库", shortcut: "", icon: BookOpen },
     { tab: "documents", label: "项目文档", shortcut: "", icon: FileText },
@@ -2530,9 +2547,10 @@ function copyPlainText(value: string) {
   return navigator.clipboard?.writeText(plainText);
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics }: { message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
+const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics, onOpenPrototype }: { onOpenPrototype: (output: ChatPrototypeOutput) => void; message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
+  const prototypeOutputs = useMemo(() => !isUser && (!message.status || message.status === "done") ? chatPrototypeOutputs([message]) : [], [isUser, message.content, message.status, message.id]);
   const canCopy = Boolean(message.content.trim());
   const contentRef = useRef<HTMLDivElement | null>(null);
   const selectionMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2638,7 +2656,10 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
             )}
           </>
         ) : (
+          <>
+          {prototypeOutputs.map(output => <button key={output.id} type="button" onClick={() => onOpenPrototype(output)} className="mb-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">{output.name} · 预览与调整原型 / PSD</button>)}
           <div ref={contentRef} onContextMenu={showSelectionCopyMenu} className="select-text rounded-2xl border border-[var(--border)] bg-white px-5 py-4 text-[14px] shadow-sm">{message.content ? <MarkdownMessage content={humanizeInlineReferenceTokens(message.content)} projectId={projectId} onOpenCodeFile={onOpenCodeFile} onOpenProjectMarkdownDocument={onOpenProjectMarkdownDocument} /> : <div className="text-zinc-400">{message.status === "stopped" ? "本次执行已由你停止。" : message.status === "error" ? "本次执行未完成，请查看运行日志后重试。" : t("chat.thinking")}</div>}</div>
+          </>
         )}
         {!isUser && (showDebugTrace || message.status === "error") && message.debugTrace && message.debugTrace.length > 0 && <DebugTraceTimeline events={message.debugTrace} />}
         {!isUser && ((message.trace && message.trace.length > 0) || message.thinking) && (

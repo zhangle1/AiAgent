@@ -9,6 +9,8 @@ import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeF
 import type { CodeProject, CodeProjectMarkdownDirectory, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
 import type { CodeProjectRuntime, CodeRuntimeLog } from "@/lib/code-runtime-types";
 import { getChatFileExtraction, getChatUploadText, getMyChatUploads, myChatUploadContentUrl, type ChatFileAttachment, type ChatFileExtractionPreview, type ChatUploadFile } from "@/lib/chat-api";
+import type { ChatPrototypeOutput } from "@/lib/chat-prototype";
+import { ChatPrototypePanel } from "@/components/prototype-studio/ChatPrototypePanel";
 import { OntologyWorkbench } from "@/components/ontology/OntologyWorkbench";
 import { ChatLibraryPanel } from "@/components/chat/ChatLibraryPanel";
 import { MermaidDiagram, mermaidSourceFromPre } from "@/components/chat/MermaidDiagram";
@@ -18,7 +20,7 @@ export type ChatCodeFileReference = {
   filePath: string;
   line?: number;
 };
-type WorkspaceTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal" | "ontology";
+type WorkspaceTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal" | "ontology" | "prototype";
 
 function terminalPanelWidth(viewportWidth: number) {
   const minimum = Math.min(360, Math.max(280, Math.round(viewportWidth * 0.45)));
@@ -26,7 +28,7 @@ function terminalPanelWidth(viewportWidth: number) {
   return Math.max(minimum, Math.min(maximum, Math.round(viewportWidth / 2)));
 }
 
-export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, requestToken, requestedMarkdownDocument, requestedDocumentAttachment, refreshToken, onAttachLibraryFile, libraryScope, onInsertMarkdownReference, onPrepareAgentMarkdown, onInsertOntologyContext, onClose }: { isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; requestToken?: number; requestedMarkdownDocument?: CodeProjectMarkdownDocument | null; requestedDocumentAttachment?: ChatFileAttachment | null; refreshToken?: number; libraryScope?: string; onAttachLibraryFile?: (file: File) => Promise<void>; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onPrepareAgentMarkdown?: (prompt: string) => void; onInsertOntologyContext?: (text: string) => void; onClose: () => void }) {
+export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, requestToken, requestedMarkdownDocument, requestedDocumentAttachment, refreshToken, onAttachLibraryFile, libraryScope, onInsertMarkdownReference, onPrepareAgentMarkdown, onInsertOntologyContext, onClose, prototypeMessages = [], requestedPrototypeDocument, requestedPrototypeOutput }: { requestedPrototypeOutput?: ChatPrototypeOutput | null; requestedPrototypeDocument?: CodeProjectMarkdownDocument | null; prototypeMessages?: { id: string; content: string }[]; isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; requestToken?: number; requestedMarkdownDocument?: CodeProjectMarkdownDocument | null; requestedDocumentAttachment?: ChatFileAttachment | null; refreshToken?: number; libraryScope?: string; onAttachLibraryFile?: (file: File) => Promise<void>; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onPrepareAgentMarkdown?: (prompt: string) => void; onInsertOntologyContext?: (text: string) => void; onClose: () => void }) {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   const [activeTab, setActiveTab] = useState<WorkspaceTab | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -64,7 +66,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     if (!requestedTab) return;
     setTabs((current) => current.includes(requestedTab) ? current : [...current, requestedTab]);
     setActiveTab(requestedTab);
-    if (requestedTab === "terminal" || requestedTab === "ontology") setPanelWidth(terminalPanelWidth(window.innerWidth));
+    if (requestedTab === "terminal" || requestedTab === "ontology" || requestedTab === "prototype") setPanelWidth(terminalPanelWidth(window.innerWidth));
   }, [requestedTab, requestToken]);
 
   useEffect(() => {
@@ -243,7 +245,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     setTabs((current) => current.includes(nextTab) ? current : [...current, nextTab]);
     setActiveTab(nextTab);
     setAddMenuOpen(false);
-    if ((nextTab === "terminal" || nextTab === "ontology") && typeof window !== "undefined") {
+    if ((nextTab === "terminal" || nextTab === "ontology" || nextTab === "prototype") && typeof window !== "undefined") {
       setPanelWidth(terminalPanelWidth(window.innerWidth));
     }
   }
@@ -367,7 +369,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
         <button type="button" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="关闭右侧面板"><PanelRightClose size={17}/></button>
       </div>
 
-      {activeTab === "ontology" ? <OntologyWorkbench key={`${project?.id}:${libraryScope}`} projectId={project?.id ?? null} onClose={() => closeTab("ontology")} onInsert={(text) => onInsertOntologyContext?.(text)} /> : activeTab === null ? <EmptyWorkspace onOpen={openTab}/> : activeTab === "preview" ? (
+      {activeTab === "prototype" ? <ChatPrototypePanel requestedOutput={requestedPrototypeOutput} requestedDocument={requestedPrototypeDocument} key={`${project?.id}:${libraryScope}`} projectId={project?.id ?? null} messages={prototypeMessages} onAdjust={onPrepareAgentMarkdown} /> : activeTab === "ontology" ? <OntologyWorkbench key={`${project?.id}:${libraryScope}`} projectId={project?.id ?? null} onClose={() => closeTab("ontology")} onInsert={(text) => onInsertOntologyContext?.(text)} /> : activeTab === null ? <EmptyWorkspace onOpen={openTab}/> : activeTab === "preview" ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <form onSubmit={(event) => { event.preventDefault(); loadBrowser(); }} className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <Code2 size={14} className="text-blue-600"/>
@@ -414,6 +416,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
 }
 
 function workspaceTabMeta(tab: WorkspaceTab) {
+  if (tab === "prototype") return { label: "原型设计", icon: FileCode2 };
   if (tab === "ontology") return { label: "本体模型", icon: FolderPlus };
   if (tab === "file") return { label: "文件", icon: FileCode2 };
   if (tab === "documents") return { label: "项目文档", icon: FileText };
@@ -429,12 +432,12 @@ function WorkspaceTabButton({ tab, active, onSelect, onClose }: { tab: Workspace
 }
 
 function AddTabMenu({ tabs, onOpen }: { tabs: WorkspaceTab[]; onOpen: (tab: WorkspaceTab) => void }) {
-  const options: WorkspaceTab[] = ["ontology", "uploads", "documents", "file", "preview"];
+  const options: WorkspaceTab[] = ["prototype", "ontology", "uploads", "documents", "file", "preview"];
   return <div className="absolute right-0 top-10 z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(15,23,42,0.2)]">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); const exists = tabs.includes(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-slate-700 transition hover:bg-slate-100"><Icon size={15} className="text-slate-500"/><span className="flex-1">{label}</span><span className="text-[10px] text-slate-400">{exists ? "切换" : "新增"}</span></button>; })}</div>;
 }
 
 function EmptyWorkspace({ onOpen }: { onOpen: (tab: WorkspaceTab) => void }) {
-  const options: WorkspaceTab[] = ["ontology", "uploads", "documents", "file", "preview"];
+  const options: WorkspaceTab[] = ["prototype", "ontology", "uploads", "documents", "file", "preview"];
   return <div className="flex min-h-0 flex-1 items-center justify-center p-6"><div className="w-full max-w-sm space-y-2">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-11 w-full items-center gap-2.5 rounded-lg bg-slate-50 px-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"><Icon size={16}/><span className="flex-1">{label}</span><Plus size={15} className="text-slate-400"/></button>; })}</div></div>;
 }
 
