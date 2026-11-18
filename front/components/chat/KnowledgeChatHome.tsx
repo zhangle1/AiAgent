@@ -10,7 +10,7 @@ import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
-import { getChatClipboardFiles } from "@/lib/chat-clipboard";
+import { getChatClipboardFiles, isChatImageFile } from "@/lib/chat-clipboard";
 
 import { memo, type FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -342,6 +342,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const effectiveProjectId = embedded && embeddedProjectLocked ? embeddedProjectId ?? null : selectedProjectId;
   const selectedProject = codeProjects.find((project) => project.id === effectiveProjectId) ?? null;
   const activeVisualizationCommits = visualizationCommits.filter((commit) => commit.project_id === effectiveProjectId);
+  const canSubmitComposer = !uploadingImages && !uploadingFiles && Boolean(input.trim() || imageAttachments.length || documentAttachments.length
+    || pendingMarkdownDocuments.length || pendingProjectReferences.length || (visualizationType && activeVisualizationCommits.length));
   useEffect(() => { setVisualizationCommits([]); }, [effectiveProjectId, requestedSessionId]);
   useEffect(() => { if (requestedSessionId && requestedSessionId === pendingSessionIdRef.current) return; setSelectedSkills([]); setComposerMenuAnchor(null); setPreviewSkill(null); setSkillMenuDismissed(false); setSkillPickerRequested(false); setSlashProjectCommand(null); }, [effectiveProjectId, requestedSessionId, requestedNewSessionKey]);
   const skillOptions = filterChatSkills(chatSkills, slashProjectCommand?.query ?? "");
@@ -1165,7 +1167,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
   async function attachLibraryFile(file: File) {
     const scope = documentOpenScope.current;
-    const isImage = file.type.startsWith("image/");
+    const isImage = isChatImageFile(file);
     if (isImage && !canAttachImages) throw new Error(imageInputError);
     if (!isImage && selectedAgentId !== "codex") throw new Error("请先选择 Codex 本地代理，再关联文件附件。");
     if (uploadingImages || uploadingFiles) throw new Error("请等待当前附件上传完成。");
@@ -1190,8 +1192,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   }
 
   function addAttachments(files: File[]) {
-    const images = files.filter((file) => file.type.startsWith("image/"));
-    const documents = files.filter((file) => !file.type.startsWith("image/"));
+    const readable = files.filter(file => file.size > 0);
+    const skipped = files.length - readable.length;
+    setError(skipped > 0 ? `有 ${skipped} 个文件为空或无法读取。请通过「添加到聊天」选择原文件。` : null);
+    const images = readable.filter(isChatImageFile);
+    const documents = readable.filter(file => !isChatImageFile(file));
     if (images.length > 0) void addImages(images);
     if (documents.length > 0) void addDocuments(documents);
   }
@@ -1377,14 +1382,19 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
             {failedStream && <ChatRetryNotice stream={failedStream} onRetry={() => retryStream(failedStream.id)} onCancel={() => cancelRetry(failedStream.id)} />}
 
+            {!embedded && activeSessionId && (
+              <ChatDeliveryQueue key={activeSessionId} sessionId={activeSessionId}
+                onResume={commandId => { startStream({ session_id: activeSessionId, command_id: commandId, message: "", resume_queued: true, delivery_intent: "queue" }); }} />
+            )}
+
             <form
               onSubmit={handleSubmit}
-              onPaste={(event) => {
+              onPasteCapture={(event) => {
                 const files = getChatClipboardFiles(event.clipboardData);
-                if (files.length > 0) {
-                  event.preventDefault();
-                  addAttachments(files);
-                }
+                if (files.length === 0) return;
+                event.preventDefault();
+                event.stopPropagation();
+                addAttachments(files);
               }}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
@@ -1393,7 +1403,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 if (files.length === 0) return;
                 addAttachments(files);
               }}
-              className={`sticky bottom-0 mt-auto relative rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:bottom-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
+              className={`relative mt-auto shrink-0 rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:mb-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
               {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={!goalDisabledReason} sending={sending} onChange={setGoalRequest} activation={goalActivation} submission={goalSubmission} />}
               {!embedded && (selectedSkills.length > 0 || skillError) && <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs">
@@ -1441,9 +1451,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               {previewSkill && createPortal(<ChatSkillPreview skill={previewSkill} onClose={() => setPreviewSkill(null)} />, document.body)}
               {slashProjectCommand && !skillMenuOpen && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
               {!embedded && <>
-                <ChatDeliveryQueue sessionId={activeSessionId} onResume={commandId => { startStream({ session_id: activeSessionId!, command_id: commandId, message: "", resume_queued: true, delivery_intent: "queue" }); }} />
                 {sending && latestSessionStream?.deliveryState === "steered" && <p role="status" className="mb-2 text-xs text-blue-700">追加指令已投递给当前任务，等待 Agent 处理。</p>}
-                {sending && canFollowUp && <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500"><label className="inline-flex items-center gap-2">继续投递<select aria-label="消息投递方式" value={deliveryIntent} onChange={event => setDeliveryIntent(event.target.value as typeof deliveryIntent)} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-700"><option value="queue">排队继续</option><option value="steer">追加当前任务</option><option value="auto">自动选择</option></select></label><span>停止或失败后，后续消息会暂停保留。</span><button type="submit" disabled={!input.trim() || uploadingImages || uploadingFiles} className="ml-auto rounded-lg bg-blue-600 px-3 py-1.5 text-white disabled:opacity-40">{deliveryIntent === "steer" ? "追加指令" : "投递消息"}</button></div>}
+                {sending && canFollowUp && <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500"><label className="inline-flex items-center gap-2">继续投递<select aria-label="消息投递方式" value={deliveryIntent} onChange={event => setDeliveryIntent(event.target.value as typeof deliveryIntent)} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-700"><option value="queue">排队继续</option><option value="steer">追加当前任务</option><option value="auto">自动选择</option></select></label><span>停止或失败后，后续消息会暂停保留。</span><button type="submit" disabled={!canSubmitComposer} className="ml-auto rounded-lg bg-blue-600 px-3 py-1.5 text-white disabled:opacity-40">{deliveryIntent === "steer" ? "追加指令" : "投递消息"}</button></div>}
               </>}
               <InlineReferenceComposer value={input} cursor={composerCursor} placeholder="发消息或按住说话" className="min-h-[56px] w-full px-1 py-2 text-[14px] leading-6 lg:hidden" onValueChange={handleComposerChange} onCursorChange={handleComposerCursorChange} onFocus={handleComposerFocus} onKeyDown={handleComposerKeyDown} onRemove={removeInlineReference} onOpenDocument={openProjectMarkdownDocument} />
               <div className="flex items-center gap-1 border-t border-slate-100 pt-2 lg:hidden">
@@ -1455,7 +1464,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 min-w-0 max-w-[140px] items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0" /></button>
                 <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18} /></button>
                 {sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor" /></button>
-                  : <button type="submit" disabled={!input.trim() && imageAttachments.length === 0 && documentAttachments.length === 0 && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && activeVisualizationCommits.length > 0)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17} /></button>}
+                  : <button type="submit" disabled={!canSubmitComposer} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17} /></button>}
               </div>
               {composerExpanded && (
                 <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 lg:hidden">
@@ -1594,7 +1603,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       <Square size={15} fill="currentColor" />
                     </button>
                   ) : (
-                    <button type="submit" disabled={!input.trim() && pendingMarkdownDocuments.length === 0 && pendingProjectReferences.length === 0 && !(visualizationType && (activeVisualizationCommits.length > 0))} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
+                    <button type="submit" disabled={!canSubmitComposer} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>
                       <ArrowUp size={17} />
                     </button>
                   )}

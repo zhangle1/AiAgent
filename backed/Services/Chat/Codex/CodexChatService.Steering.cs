@@ -14,7 +14,7 @@ public sealed partial class CodexChatService
             var responses = new ConcurrentDictionary<int, TaskCompletionSource<JsonElement>>();
             using var writes = new SemaphoreSlim(1, 1);
             using var binding = control.Bind(() => state.ActiveTurn && !string.IsNullOrWhiteSpace(state.ActiveTurnId) && IsUsable,
-                async (text, token) => {
+                async (request, token) => {
                     var turnId = state.ActiveTurnId;
                     if (!state.ActiveTurn || string.IsNullOrWhiteSpace(turnId)) throw new InvalidOperationException("原生轮次已结束，未追加指令。");
                     if (responses.Count >= 16) throw new InvalidOperationException("追加请求过多，请等待确认。");
@@ -24,8 +24,10 @@ public sealed partial class CodexChatService
                     try
                     {
                         if (!state.ActiveTurn || state.ActiveTurnId != turnId) throw new InvalidOperationException("原生轮次已变化，未追加指令。");
-                        await SendAsync(_process, new { id, method = "turn/steer", @params = new { threadId, expectedTurnId = turnId,
-                            input = new[] { new { type = "text", text } } } }, token);
+                        var input = request.AttachmentIds.Count > 0 || request.DocumentAttachmentIds.Count > 0
+                            ? BuildTurnInput(request)
+                            : new List<object> { new { type = "text", text = request.Message } };
+                        await SendAsync(_process, new { id, method = "turn/steer", @params = new { threadId, expectedTurnId = turnId, input } }, token);
                     }
                     catch { responses.TryRemove(id, out _); throw; }
                     finally { writes.Release(); }

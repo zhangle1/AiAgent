@@ -1,0 +1,36 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-18T09:02:49.010314+00:00",
+  "baseCommit": "0a4eb9f1562f05a09f8ad58f9674ec024ad8b88e",
+  "priorLocalSnapshotFingerprintSha256": "feb56381f2fbaeab83b842cf8851ccc6010c283f6853243747728569f5c47631",
+  "objective": "Place the pending delivery queue above the chat composer and hide it when it has no pending messages.",
+  "files": [
+    {
+      "path": "docs/chat-message-delivery.md",
+      "sha256": "247914633762d491186146492cc2e705aec076bf4f35a94d3b2a843c9b34476a",
+      "bytes": 7651
+    },
+    {
+      "path": "front/components/chat/ChatDeliveryQueue.tsx",
+      "sha256": "be7444951a693e2940a6dc7c76270c3a81315f4597e5d98e9d69da6dd2c7fb08",
+      "bytes": 3637
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "27b675fbbb138c008f353ee7840b44bf361f94e0c251ddcc268af34eca5b4143",
+      "bytes": 183947
+    },
+    {
+      "path": "front/tests/chat-delivery.browser.mjs",
+      "sha256": "2ed53aad9267f9e2131c1c03781860493b6ad7df914aebcb824393752296eb3f",
+      "bytes": 12424
+    }
+  ],
+  "fingerprintSha256": "82628dda69181301fc4bb42b3a0cdb24b82043eb4594bb774debc38eff721620",
+  "validation": {
+    "typescript": "TypeScript check passed.",
+    "browser": "Isolated headless desktop and 390px chat layouts verified. The queue is outside and above the composer, stays hidden when empty even during a polling error, and disappears again after the last pending item is resumed. Existing composer and delivery interactions passed.",
+    "whitespace": "git diff --check passed."
+  }
+}

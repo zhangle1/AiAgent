@@ -59,6 +59,9 @@ public sealed class ChatWebSocketHandler
     /// <summary>
     /// Accepts a WebSocket, reads one chat request, streams agent events, then closes the socket.
     /// </summary>
+    private Task ResolveAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken);
+
     public async Task HandleClientAsync(HttpContext context)
     {
         if (!context.WebSockets.IsWebSocketRequest)
@@ -101,7 +104,7 @@ public sealed class ChatWebSocketHandler
             var dispatcher = context.RequestServices.GetService<ChatDeliveryService>();
             request = dispatcher?.Restore(user, request) ?? request;
             _sessions.PrepareCommandSession(user, request);
-            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken);
+            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, ResolveAttachmentsAsync);
             if (delivery is not null && delivery.Kind != "execute")
             {
                 await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
@@ -126,26 +129,7 @@ public sealed class ChatWebSocketHandler
                 user = await _authService.TryGetCurrentUserAsync(context, cancellationToken) ?? throw new UnauthorizedAccessException();
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
-            if (request.AttachmentIds.Count > 0)
-            {
-                if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException("Image attachments are currently supported only when Codex local agent is selected.");
-                }
-                var resolvedModel = _codexModelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
-                var imagePolicy = _imageOcrPolicy.GetPolicy();
-                resolvedModel.EnsureImageInputEnabled(imagePolicy);
-                request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
-            }
-            if (request.DocumentAttachmentIds.Count > 0)
-            {
-                if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException("Document attachments are currently supported only when Codex local agent is selected.");
-                }
-                var attachments = await _fileAttachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.DocumentAttachmentIds, cancellationToken);
-                request.ServerAttachmentContext = await _fileAttachments.ExtractContextAsync(attachments, cancellationToken);
-            }
+            await ResolveAttachmentsAsync(user, request, cancellationToken);
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);

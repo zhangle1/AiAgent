@@ -1,0 +1,109 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-18T08:38:31.019390+00:00",
+  "baseCommit": "0a4eb9f1562f05a09f8ad58f9674ec024ad8b88e",
+  "objective": "Preserve readable clipboard file bytes and reuse attachment conversion when adding input to an active Codex turn.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "998247a86b90da4f4e067236af0e894b594d811cb84df3a929f0f37edcec6bd5",
+      "bytes": 36510
+    },
+    {
+      "path": "README.md",
+      "sha256": "0ef63edc23c4c76af8c798f318ee5bdb9f51e38673f965d2ea33ba45cb3ff0b1",
+      "bytes": 42075
+    },
+    {
+      "path": "backed.tests/Chat/ChatAttachmentHttpTests.cs",
+      "sha256": "4258ae348137a14b66491409d4ae9e6ab2722c05630a5ba1e0420eae9c612bb6",
+      "bytes": 8908
+    },
+    {
+      "path": "backed.tests/ChatDeliveryTests.cs",
+      "sha256": "86de0d99d4db924ce001ddf6868ddf2f03240aa5e69ab2aa3a9354663ed91270",
+      "bytes": 11813
+    },
+    {
+      "path": "backed.tests/ChatDeliveryTransportTests.cs",
+      "sha256": "fc7321c9bfa27864b13263f8204e9f7b4b080a919da11c66e747a88419391096",
+      "bytes": 10279
+    },
+    {
+      "path": "backed.tests/ChatGoalSteeringTests.cs",
+      "sha256": "c8bf0bb3e405037ac4b69721d1bf47295ccfe4a71a680019210fa9062ee6dff9",
+      "bytes": 6333
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "02565ae910696163cc7e1b6a44b489a6fc8269da7ca6a2b142a72a5c7dc660e0",
+      "bytes": 24642
+    },
+    {
+      "path": "backed/Services/Chat/ChatAttachmentPreparation.cs",
+      "sha256": "e870b6ece512e374cd0333984312ce405de844b7d95f622545f7aaadb99de37c",
+      "bytes": 1664
+    },
+    {
+      "path": "backed/Services/Chat/ChatDeliveryService.cs",
+      "sha256": "38923cb57d0da68bbe449de20b70a40dba0b83137db0334b6974e9fdcdeeb4a0",
+      "bytes": 22402
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "07743d0c3d2516c2a83bbb20e2c41665c6c1cb729b26316cd7e6c4bd8dce29d2",
+      "bytes": 18879
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Steering.cs",
+      "sha256": "0c70d692aafdd49edc371ed1eef0a7bf654f8e03d0e1c99e4d701d9d1f6af311",
+      "bytes": 3684
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexTurnControl.cs",
+      "sha256": "f460f9a0c1c9b24a22849b3ec601ef20894c256bab7d20cc4e62bcbefacad4ec",
+      "bytes": 2024
+    },
+    {
+      "path": "docs/chat-message-delivery.md",
+      "sha256": "6bef544493a8bf7a2a30b472e8f170784c87aadbc640f69117dd9586b86e39bc",
+      "bytes": 7603
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "d81811f80fd78d8d012dbb92ad8530c19528ce73ef84593b725c6fb81a2e6c6e",
+      "bytes": 183860
+    },
+    {
+      "path": "front/lib/chat-clipboard.ts",
+      "sha256": "4d30162b6d241be17709a5eff166d15e5a5724affe46dca25135d7ebbcfceef9",
+      "bytes": 1296
+    },
+    {
+      "path": "front/tests/chat-clipboard.test.mjs",
+      "sha256": "4d6bfee54f852f3693deb23690defc26b841bf88f1d6a7cf0fb2c4a7bf8b1908",
+      "bytes": 3028
+    },
+    {
+      "path": "front/tests/chat-composer-menu.browser.mjs",
+      "sha256": "d72f31e0d7699ecc6cd1b5d4f6ea2c25027cced3ea0d3eb7ef3424867b20944d",
+      "bytes": 13486
+    },
+    {
+      "path": "front/tests/chat-delivery.browser.mjs",
+      "sha256": "3bf8442a03edabac1eb7169cf8fdd13d81d7d23c9621ddf40335c9a8bad77279",
+      "bytes": 11394
+    }
+  ],
+  "fingerprintSha256": "feb56381f2fbaeab83b842cf8851ccc6010c283f6853243747728569f5c47631",
+  "validation": {
+    "backendRelease": "Release compilation succeeded. 437 tests passed. Two existing UsageStatisticsServiceTests failed with the same SQLite AUTOINCREMENT error as the baseline.",
+    "attachmentHttp": "TXT, Markdown, DOCX, CSV and HTML were uploaded and extracted through the real HTTP endpoints. PNG preview preserved the original bytes. Missing, zero-byte and malformed attachments returned HTTP 400.",
+    "nativeSteering": "Both SSE and WebSocket passed TXT, Markdown, DOCX and Excel text plus original PNG into the existing turn. Cross-user attachments were rejected before sending. The native RPC fixture confirmed the active turn ID, text and localImage fields.",
+    "frontend": "7 clipboard unit tests, TypeScript, and the two isolated headless browser scenarios passed, including an attachment-only follow-up.",
+    "pdf": "An isolated synthetic PDF converted successfully using the existing Python worker."
+  },
+  "localScope": "Verification used synthetic fixtures. The changes are available for review in the isolated worktree.",
+  "limitations": "Legacy DOC extraction still requires LibreOffice. The headless browser generated synthetic clipboard events."
+}

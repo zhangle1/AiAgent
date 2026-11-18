@@ -1,3 +1,5 @@
+using System.IO;
+using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat;
 
 namespace AiAgent.Backend.Tests;
@@ -27,22 +29,40 @@ public sealed partial class ChatGoalTests
         Assert.Equal(2, fixture.Calls().Count(call => call.GetProperty("method").GetString() == "thread/start"));
     }
 
-    [Fact]
-    public async Task OrdinaryCodexTurnSteersWithExpectedTurnIdUsingOnlyOneStdoutReader()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OrdinaryCodexTurnSteersWithExpectedTurnIdUsingOnlyOneStdoutReader(bool attachments)
     {
         using var fixture = new Fixture("hang"); using var service = fixture.Service();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var request = fixture.Request(); request.TurnControl = new();
         var running = service.CompleteAsync(request, null, cancellation.Token);
         await Ready(request.TurnControl, cancellation.Token);
-        await request.TurnControl.SteerAsync("additional instruction", cancellation.Token);
+        var followUp = new ChatCompleteRequest { Message = "additional instruction" };
+        if (attachments)
+        {
+            followUp.AttachmentIds = ["image-id"];
+            followUp.DocumentAttachmentIds = ["file-id"];
+            followUp.LocalImagePaths = [Path.Combine(fixture.Root, "attachment.png")];
+            followUp.ServerAttachmentContext = "prepared TXT evidence";
+        }
+        await request.TurnControl.SteerAsync(followUp, cancellation.Token);
         var result = await running.WaitAsync(cancellation.Token);
-        Assert.Contains("steered:additional instruction", result.Content);
+        Assert.Contains("additional instruction", result.Content);
         var calls = fixture.Calls();
         Assert.Single(calls, call => call.GetProperty("method").GetString() == "turn/start");
         var steer = Assert.Single(calls, call => call.GetProperty("method").GetString() == "turn/steer").GetProperty("params");
         Assert.Equal("t1", steer.GetProperty("expectedTurnId").GetString());
         Assert.Equal("persistent-thread", steer.GetProperty("threadId").GetString());
+        var input = steer.GetProperty("input");
+        if (attachments)
+        {
+            Assert.Contains("prepared TXT evidence", input[0].GetProperty("text").GetString());
+            Assert.Equal("localImage", input[1].GetProperty("type").GetString());
+            Assert.Equal(followUp.LocalImagePaths[0], input[1].GetProperty("path").GetString());
+        }
+        else Assert.Equal("additional instruction", Assert.Single(input.EnumerateArray()).GetProperty("text").GetString());
         Assert.False(request.TurnControl.Ready);
     }
 
@@ -55,7 +75,7 @@ public sealed partial class ChatGoalTests
         // The fixture keeps the initial turn open in this mode.
         fixture.Mode("hang"); var running = service.CompleteAsync(request, null, cancellation.Token);
         await Ready(request.TurnControl, cancellation.Token); fixture.Mode("steer-two");
-        await Task.WhenAll(request.TurnControl.SteerAsync("one", cancellation.Token), request.TurnControl.SteerAsync("two", cancellation.Token));
+        await Task.WhenAll(request.TurnControl.SteerAsync(new() { Message = "one" }, cancellation.Token), request.TurnControl.SteerAsync(new() { Message = "two" }, cancellation.Token));
         var result = await running.WaitAsync(cancellation.Token);
         Assert.Contains("steered:one", result.Content); Assert.Contains("steered:two", result.Content);
         Assert.Equal(2, fixture.Calls().Count(call => call.GetProperty("method").GetString() == "turn/steer"));
@@ -69,9 +89,9 @@ public sealed partial class ChatGoalTests
         var request = fixture.Request(); request.TurnControl = new();
         var running = service.CompleteAsync(request, null, cancellation.Token);
         await Ready(request.TurnControl, cancellation.Token); fixture.Mode("steer-reject");
-        await Assert.ThrowsAnyAsync<Exception>(() => request.TurnControl.SteerAsync("rejected", cancellation.Token));
+        await Assert.ThrowsAnyAsync<Exception>(() => request.TurnControl.SteerAsync(new() { Message = "rejected" }, cancellation.Token));
         Assert.False(running.IsCompleted); Assert.True(request.TurnControl.Ready);
-        fixture.Mode("hang"); await request.TurnControl.SteerAsync("accepted", cancellation.Token);
+        fixture.Mode("hang"); await request.TurnControl.SteerAsync(new() { Message = "accepted" }, cancellation.Token);
         Assert.Contains("steered:accepted", (await running.WaitAsync(cancellation.Token)).Content);
     }
 

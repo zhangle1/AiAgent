@@ -88,7 +88,7 @@ public sealed class ChatDeliveryTests : IDisposable
     {
         var request = Request("A"); var active = (await Enter(request))!; active.Registered();
         var inputs = new List<string>();
-        using var native = request.TurnControl!.Bind(() => true, (text, _) => { inputs.Add(text); return Task.CompletedTask; });
+        using var native = request.TurnControl!.Bind(() => true, (turn, _) => { inputs.Add(turn.Message); return Task.CompletedTask; });
         Assert.Equal("steered", (await Enter(Request("B", "steer")))!.Kind);
         Assert.Equal("steered", (await Enter(Request("B", "steer")))!.Kind);
         Assert.Equal(new[] { "B" }, inputs); Assert.Equal(new[] { "B" }, _messages);

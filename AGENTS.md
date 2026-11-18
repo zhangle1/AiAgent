@@ -4,7 +4,7 @@
 
 聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。
 
-消息连续投递由 `ChatDeliveryService` 在两种流入口统一准入，先保存待执行请求，再进入原命令去重与执行；停止／失败挂起后续项。Codex 原生追加使用匹配当前轮次的 `turn/steer`，确认不等于整轮完成；服务端绑定复用排队会话，目标模式独立。修改前读 `docs/chat-message-delivery.md`。
+消息连续投递由 `ChatDeliveryService` 在两种流入口统一准入，先保存待执行请求，再进入原命令去重与执行；停止／失败挂起后续项。Codex 原生追加使用匹配当前轮次的 `turn/steer`，确认不等于整轮完成；追加附件复用普通消息的所有权、模型图片权限和正文提取，先保存历史，再提交同一轮次的文本和原图；服务端绑定复用排队会话，目标模式独立。修改前读 `docs/chat-message-delivery.md`。
 
 普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
 
@@ -71,6 +71,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 
 - 目录资源解析在 `wiki_compile` 队列内先保存 L2，再由 `KnowledgeResourceSemanticService` 生成文件摘要并自底向上生成 L1，L0 从简介提取，不单独调用模型。`KnowledgeSemanticStore` 用不可变版本和原子 manifest 发布 `.overview.md` / `.abstract.md`；指纹覆盖原文、解析正文哈希和后代资源，缓存失效不得展示为最新。个人语义只汇总到本人根目录，不汇总到 `viking://user/`；不改 RAG 活动索引。`ContentHash` 为可空列；已有无哈希记录回退解析 ID。详情见 `docs/knowledge-resource-semantics.md`。
+
+- 聊天文件粘贴从剪贴板的 `items` 与 `files` 中优先读取有正文的列表，按 MIME 或支持的图片后缀分流。空附件在前端提示通过文件选择器重试，文档和图片上传 API 对缺失或零字节的 `file` 返回 JSON 400。混合剪贴板保留 Excel 单元格文本优先的行为。
 
 - 聊天 Excel 附件 `.xls/.xlt/.xlsx/.xlsm/.xlsb/.xltx/.xltm` 使用 ExcelDataReader 在受控路径直接读取，不调用 LibreOffice、不执行宏；旧版支持 OLE 与原始 BIFF 流，现代格式校验工作簿包结构和解压大小。保留工作表名称、空列位置，支持代码页、取消和提取长度限制。前端粘贴单元格时若同时有表格文字与位图，优先原生文字粘贴；粘贴文件仍走附件上传。聊天 `.doc` 及知识库旧版 Office 预览仍沿用临时目录转换。
 

@@ -67,7 +67,8 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         return saved;
     }
 
-    public async Task<Admission?> EnterAsync(AuthenticatedUser user, ChatCompleteRequest request, AgentStreamEventHandler emit, CancellationToken ct)
+    public async Task<Admission?> EnterAsync(AuthenticatedUser user, ChatCompleteRequest request, AgentStreamEventHandler emit, CancellationToken ct,
+        Func<AuthenticatedUser, ChatCompleteRequest, CancellationToken, Task>? prepareAttachments = null)
     {
         if (request.DeliveryIntent is null && !request.ResumeQueued)
         {
@@ -79,6 +80,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         if (string.IsNullOrWhiteSpace(request.CommandId) || request.CommandId.Length > 128 || string.IsNullOrWhiteSpace(request.SessionId)) throw new ChatDeliveryException("投递需要会话及命令编号。");
         if (request.DeliveryIntent is not null and not "auto" and not "queue" and not "steer") throw new ChatDeliveryException("未知消息投递方式。");
         Authorize(user, request);
+        var hasAttachments = request.AttachmentIds.Count > 0 || request.DocumentAttachmentIds.Count > 0;
         var state = State(user.Id, request.SessionId); Waiting? waiting = null; var owner = false; var steer = false;
         await state.Gate.WaitAsync(ct);
         try
@@ -111,7 +113,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
                 var pending = db.Queryable<AiChatDelivery>().Where(d => d.UserId == user.Id && d.SessionId == request.SessionId && d.Status == "queued").ToList();
                 if (pending.Count >= 100) throw new ChatDeliveryException("本会话最多保留 100 条待执行消息。");
                 var active = state.Active;
-                var native = active?.Control.Ready == true && CanSteer(active.Request, request);
+                var native = active?.Control.Ready == true && (!hasAttachments || prepareAttachments is not null) && CanSteer(active.Request, request);
                 if (native && codexPolicy is not null) _ = codexPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
                 if (active is not null && request.DeliveryIntent == "steer" && !native) throw new ChatDeliveryException("当前引擎、轮次或输入内容不支持原生追加，请选择排队继续。");
                 steer = active is not null && native && request.DeliveryIntent is "auto" or "steer";
@@ -135,11 +137,25 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
 
         if (steer)
         {
+            if (hasAttachments)
+            {
+                try
+                {
+                    await prepareAttachments!(user, request, ct);
+                    if (!waiting!.Control.Ready) throw new InvalidOperationException("当前轮次已结束，请重新发送或选择排队继续。");
+                }
+                catch (Exception exception)
+                {
+                    await FinishSteering(state, waiting!, "cancelled");
+                    if (exception is InvalidOperationException) throw new ChatDeliveryException(exception.Message);
+                    throw;
+                }
+            }
             try
             {
                 // Persist the user's input before attempting the RPC. An ambiguous acknowledgement is never retried automatically.
                 await sessions.RecordUserMessageAsync(user, request, ct);
-                await waiting!.Control.SteerAsync(request.Message, ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
+                await waiting!.Control.SteerAsync(request, ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
                 await FinishSteering(state, waiting, "steered");
                 return new("steered");
             }
@@ -336,7 +352,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
     private static bool CanSteer(ChatCompleteRequest active, ChatCompleteRequest next)
         => active.Agent == "codex" && next.Agent == "codex" && active.Goal is null && next.Goal is null
             && active.CodeProjectId == next.CodeProjectId && active.CodexModelId == next.CodexModelId && active.CodexReasoningEffort == next.CodexReasoningEffort && active.CodexSandboxMode == next.CodexSandboxMode
-            && next.AttachmentIds.Count == 0 && next.DocumentAttachmentIds.Count == 0 && next.SkillInvocation is null && next.SkillInvocations.Count == 0
+            && next.SkillInvocation is null && next.SkillInvocations.Count == 0
             && ContextKey(active) == ContextKey(next);
 
     private static string ContextKey(ChatCompleteRequest request) => CodexConversationContext.SelectionKey(request);

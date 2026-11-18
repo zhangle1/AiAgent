@@ -11,7 +11,7 @@ const artifacts = process.env.CHAT_TEST_ARTIFACTS ?? path.join(os.tmpdir(), "cha
 await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-const errors = []; const sent = []; let uploads = 0; let goalState = null;
+const errors = []; const sent = []; const pastedUploads = []; let uploads = 0; let goalState = null;
 page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
 await page.route("**/api/**", async route => {
@@ -24,8 +24,8 @@ await page.route("**/api/**", async route => {
   else if (name.endsWith("/sessions/project-preferences")) body = { preferences: [] };
   else if (name.endsWith("/sessions/sidebar-preference")) body = { project_sort_mode: "name" };
   else if (name.endsWith("/agent-providers/environments")) body = [{ id: "codex", name: "Codex", installed: true, chat_supported: true, protocol: "app-server", command: "fixture", message: "" }];
-  else if (name.endsWith("/codex-model-policy")) body = { models: [{ id: "fixture", name: "Fixture Codex", description: "", profile_name: null, supports_reasoning_effort: false, reasoning_efforts: [], is_builtin: true, image_input: "none" }], allowed_model_ids: ["fixture"], default_model_id: "fixture", allow_chat_model_override: true, allowed_reasoning_efforts: [], default_reasoning_effort: "", profile_models: [] };
-  else if (name.endsWith("/image-ocr-policy")) body = { enabled: false, native_image_input_enabled: false };
+  else if (name.endsWith("/codex-model-policy")) body = { models: [{ id: "fixture", name: "Fixture Codex", description: "", profile_name: null, supports_reasoning_effort: false, reasoning_efforts: [], is_builtin: true, image_input: "native" }], allowed_model_ids: ["fixture"], default_model_id: "fixture", allow_chat_model_override: true, allowed_reasoning_efforts: [], default_reasoning_effort: "", profile_models: [] };
+  else if (name.endsWith("/image-ocr-policy")) body = { enabled: false, native_image_input_enabled: true };
   else if (name === "/api/v1/code-repositories/projects") body = [{ id: 11, name: "fixture", display_name: "测试项目", root_path: "fixture", repositories: [], repository_count: 0 }];
   else if (name.endsWith("/git/status")) body = { project_id: 11, repositories: [], state: "ready", message: "" };
   else if (name === "/api/v1/code-runtime/projects/11") body = { project_id: 11, profiles: [], runs: [] };
@@ -35,7 +35,16 @@ await page.route("**/api/**", async route => {
   }
   else if (/\/sessions\/[^/]+\/goal$/.test(name)) body = { goal: goalState };
   else if (/\/sessions\/[^/]+$/.test(name)) body = { id: name.split("/").at(-1), title: "Fixture", messages: [], preferences: { agent: "codex", codex_model_id: "fixture" }, project_id: 11 };
-  else if (name === "/api/v1/chat/attachments/files" && route.request().method() === "POST") { uploads++; body = { id: "fixture-document", file_name: "说明.md", content_type: "text/markdown", size_bytes: 12, kind: "document", extraction_status: "ready" }; }
+  else if (["/api/v1/chat/attachments/files", "/api/v1/chat/attachments/images"].includes(name) && route.request().method() === "POST") {
+    const request = route.request();
+    const form = await new Response(request.postDataBuffer(), { headers: { "content-type": request.headers()["content-type"] } }).formData();
+    const file = form.get("file");
+    assert.ok(file instanceof File);
+    const isImage = name.endsWith("/images");
+    pastedUploads.push({ name: file.name, bytes: [...new Uint8Array(await file.arrayBuffer())], isImage });
+    if (!isImage) uploads++;
+    body = { id: pastedUploads.length === 1 ? "fixture-document" : `fixture-attachment-${pastedUploads.length}`, file_name: file.name, content_type: file.type, size_bytes: file.size, kind: "document", extraction_status: "ready" };
+  }
   else if (name.startsWith("/api/v1/chat/attachments/files/")) body = { ok: true };
   await route.fulfill({ json: body });
 });
@@ -123,7 +132,38 @@ try {
   await page.screenshot({ path: path.join(artifacts, "composer-selected-mobile.png") });
   assert.equal(await page.getByRole("textbox", { name: "目标 Token 预算" }).count(), 0);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await page.goto(`${base}?project=11&new=clipboard`);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const input = editor();
+  await input.waitFor();
+  await input.fill("原草稿");
+  const paste = files => input.evaluate((element, entries) => {
+    const clipboard = new DataTransfer();
+    for (const [name, type, bytes] of entries) clipboard.items.add(new File([Uint8Array.from(bytes)], name, { type }));
+    clipboard.items.add("剪贴板文件的附带文本", "text/plain");
+    element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
+  }, files);
+  const beforeEmptyPaste = pastedUploads.length;
+  await paste([["空文件.txt", "text/plain", []]]);
+  await page.getByRole("alert").filter({ hasText: "文件为空或无法读取" }).waitFor();
+  assert.equal(pastedUploads.length, beforeEmptyPaste);
+  assert.equal(await input.innerText(), "原草稿");
+
+  const clipboardFiles = [
+    ["中文.txt", "text/plain", [...Buffer.from("中文 TXT")]],
+    ["标题.md", "text/markdown", [...Buffer.from("# Markdown")]],
+    ["表单.docx", "", [80, 75, 3, 4, 1]],
+    ["截图.png", "application/octet-stream", [137, 80, 78, 71, 13, 10, 26, 10]],
+  ];
+  await paste(clipboardFiles);
+  for (const [name] of clipboardFiles) {
+    await page.getByRole("button", { name: `移除 ${name}`, exact: true }).waitFor();
+  }
+  assert.deepEqual(pastedUploads.slice(beforeEmptyPaste).sort((a, b) => a.name.localeCompare(b.name)),
+    clipboardFiles.map(([name, , bytes]) => ({ name, bytes, isImage: name.endsWith(".png") })).sort((a, b) => a.name.localeCompare(b.name)));
+  assert.equal(await input.innerText(), "原草稿");
+
   assert.deepEqual(errors, []);
-  console.log(`Passed: compact plus menu, disabled goal explanation, Escape/focus, goal via plus and Chinese/English slash, hidden fixed budget in sent request, file chooser/upload, skill menu, visualization dialog, one-shot goal clearing, completed goal hidden and deleted in dialog, next ordinary request has no goal, no implicit sends, desktop/mobile layout. Screenshots: ${artifacts}`);
+  console.log(`Passed: Ctrl+V file routing, byte preservation and empty-file handling, compact plus menu, disabled goal explanation, Escape/focus, goal via plus and Chinese/English slash, hidden fixed budget in sent request, file chooser/upload, skill menu, visualization dialog, one-shot goal clearing, completed goal hidden and deleted in dialog, next ordinary request has no goal, no implicit sends, desktop/mobile layout. Screenshots: ${artifacts}`);
 } catch (error) { await page.screenshot({ path: path.join(artifacts, "failure.png") }); throw error; }
 finally { await browser.close(); }

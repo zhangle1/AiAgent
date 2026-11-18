@@ -5,6 +5,7 @@ using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Memory;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -95,8 +96,7 @@ public sealed class ChatAppService : IDynamicApiController
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
         request.RuntimeUsername = user.Username;
-        await ResolveImageAttachmentsAsync(user, request, cancellationToken);
-        await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
+        await ResolveAttachmentsAsync(user, request, cancellationToken);
         await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
         await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
@@ -159,7 +159,7 @@ public sealed class ChatAppService : IDynamicApiController
             var dispatcher = _httpContextAccessor.HttpContext!.RequestServices.GetService<ChatDeliveryService>();
             request = dispatcher?.Restore(user, request) ?? request;
             _sessions.PrepareCommandSession(user, request);
-            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken);
+            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, ResolveAttachmentsAsync);
             if (delivery is not null && delivery.Kind != "execute")
             {
                 await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
@@ -182,8 +182,7 @@ public sealed class ChatAppService : IDynamicApiController
                 user = await RequireUser(cancellationToken);
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
-            await ResolveImageAttachmentsAsync(user, request, cancellationToken);
-            await ResolveDocumentAttachmentsAsync(user, request, cancellationToken);
+            await ResolveAttachmentsAsync(user, request, cancellationToken);
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
@@ -286,18 +285,25 @@ public sealed class ChatAppService : IDynamicApiController
 
     [HttpPost("attachments/images")]
     [Consumes("multipart/form-data")]
-    public async Task<ChatImageAttachmentDto> UploadImage(IFormFile file, CancellationToken cancellationToken)
+    public async Task<ActionResult<ChatImageAttachmentDto>> UploadImage(IFormFile? file, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
-        return await _attachments.SaveAsync(user, file, cancellationToken);
+        if (file is not { Length: > 0 }) return new BadRequestObjectResult(new { message = "Image file is empty." });
+
+        try { return await _attachments.SaveAsync(user, file, cancellationToken); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
     }
 
     [HttpPost("attachments/files")]
     [Consumes("multipart/form-data")]
-    public async Task<ChatFileAttachmentDto> UploadFile(IFormFile file, CancellationToken cancellationToken)
+    public async Task<ActionResult<ChatFileAttachmentDto>> UploadFile(IFormFile? file, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
-        return await _fileAttachments.SaveAsync(user, file, cancellationToken);
+        if (file is not { Length: > 0 }) return new BadRequestObjectResult(new { message = "Attachment file is empty." });
+
+        try { return await _fileAttachments.SaveAsync(user, file, cancellationToken); }
+        catch (InvalidOperationException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (DecoderFallbackException) { return new BadRequestObjectResult(new { message = "文本附件编码无法识别，请另存为 UTF-8 后重新上传。" }); }
     }
 
     [HttpDelete("attachments/{attachmentId}")]
@@ -364,29 +370,8 @@ public sealed class ChatAppService : IDynamicApiController
         return new FileStreamResult(new FileStream(image.Path, FileMode.Open, FileAccess.Read, FileShare.Read), image.ContentType) { EnableRangeProcessing = true };
     }
 
-    private async Task ResolveImageAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
-    {
-        if (request.AttachmentIds.Count == 0) return;
-        if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Image attachments are currently supported only when Codex local agent is selected.");
-        }
-        var model = _codexModelPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
-        var imagePolicy = _imageOcrPolicy.GetPolicy();
-        model.EnsureImageInputEnabled(imagePolicy);
-        request.LocalImagePaths = (await _attachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.AttachmentIds, cancellationToken)).Select(item => item.LocalPath).ToList();
-    }
-
-    private async Task ResolveDocumentAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
-    {
-        if (request.DocumentAttachmentIds.Count == 0) return;
-        if (!string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Document attachments are currently supported only when Codex local agent is selected.");
-        }
-        var attachments = await _fileAttachments.ResolveLocalAttachmentsAsync(user, request.SessionId, request.DocumentAttachmentIds, cancellationToken);
-        request.ServerAttachmentContext = await _fileAttachments.ExtractContextAsync(attachments, cancellationToken);
-    }
+    private Task ResolveAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken);
 
     [HttpGet("codex/quota")]
     public async Task<CodexQuotaResponse> GetCodexQuota(CancellationToken cancellationToken)

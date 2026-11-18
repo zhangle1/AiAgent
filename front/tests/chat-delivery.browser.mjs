@@ -12,6 +12,7 @@ await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = []; const sent = []; let uploads = 0; let goalState = null;
+let deliveriesUnavailable = true;
 const queue = []; const canceled = []; const sockets = new Map(); const history = []; let sequence = 0;
 page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
@@ -21,7 +22,10 @@ await page.route("**/api/**", async route => {
   else if (name === "/api/v1/settings") body = { ui: { theme: "light", language: "zh-CN", preferred_agent: "codex" }, catalog: { version: 1, services: { llm: { active_profile_id: "fixture", active_model_id: "fixture", profiles: [{ id: "fixture", name: "Fixture", models: [{ id: "fixture", name: "Fixture", model: "fixture" }] }] } } } };
   else if (name === "/api/v1/settings/ui") body = { theme: "light", language: "zh-CN" };
   else if (name.endsWith("/chat/skills")) body = skills;
-  else if (name.endsWith("/deliveries")) body = queue;
+  else if (name.endsWith("/deliveries")) {
+    if (deliveriesUnavailable) return route.fulfill({ status: 500, body: "Synthetic queue error" });
+    body = queue;
+  }
   else if (/\/chat\/commands\/[^/]+\/cancel$/.test(name)) {
     const command = decodeURIComponent(name.split("/").at(-2)); canceled.push(command);
     for (const row of queue) { row.queue_held = true; sockets.get(row.command_id)?.socket.send(JSON.stringify({ type: "delivery_held", content: "排队消息保留，等待恢复。" })); }
@@ -31,8 +35,8 @@ await page.route("**/api/**", async route => {
   else if (name.endsWith("/sessions/project-preferences")) body = { preferences: [] };
   else if (name.endsWith("/sessions/sidebar-preference")) body = { project_sort_mode: "name" };
   else if (name.endsWith("/agent-providers/environments")) body = [{ id: "codex", name: "Codex", installed: true, chat_supported: true, protocol: "app-server", command: "fixture", message: "" }];
-  else if (name.endsWith("/codex-model-policy")) body = { models: [{ id: "fixture", name: "Fixture Codex", description: "", profile_name: null, supports_reasoning_effort: false, reasoning_efforts: [], is_builtin: true, image_input: "none" }], allowed_model_ids: ["fixture"], default_model_id: "fixture", allow_chat_model_override: true, allowed_reasoning_efforts: [], default_reasoning_effort: "", profile_models: [] };
-  else if (name.endsWith("/image-ocr-policy")) body = { enabled: false, native_image_input_enabled: false };
+  else if (name.endsWith("/codex-model-policy")) body = { models: [{ id: "fixture", name: "Fixture Codex", description: "", profile_name: null, supports_reasoning_effort: false, reasoning_efforts: [], is_builtin: true, image_input: "native" }], allowed_model_ids: ["fixture"], default_model_id: "fixture", allow_chat_model_override: true, allowed_reasoning_efforts: [], default_reasoning_effort: "", profile_models: [] };
+  else if (name.endsWith("/image-ocr-policy")) body = { enabled: false, native_image_input_enabled: true };
   else if (name === "/api/v1/code-repositories/projects") body = [{ id: 11, name: "fixture", display_name: "测试项目", root_path: "fixture", repositories: [], repository_count: 0 }];
   else if (name.endsWith("/git/status")) body = { project_id: 11, repositories: [], state: "ready", message: "" };
   else if (name === "/api/v1/code-runtime/projects/11") body = { project_id: 11, profiles: [], runs: [] };
@@ -42,7 +46,8 @@ await page.route("**/api/**", async route => {
   }
   else if (/\/sessions\/[^/]+\/goal$/.test(name)) body = { goal: goalState };
   else if (/\/sessions\/[^/]+$/.test(name)) body = { id: name.split("/").at(-1), title: "Fixture", messages: history, preferences: { agent: "codex", codex_model_id: "fixture" }, project_id: 11 };
-  else if (name === "/api/v1/chat/attachments/files" && route.request().method() === "POST") { uploads++; body = { id: "fixture-document", file_name: "说明.md", content_type: "text/markdown", size_bytes: 12, kind: "document", extraction_status: "ready" }; }
+  else if (name === "/api/v1/chat/attachments/files" && route.request().method() === "POST") { uploads++; body = { id: "fixture-document", file_name: "追加.txt", content_type: "text/plain", size_bytes: 12, kind: "document", extraction_status: "ready" }; }
+  else if (name === "/api/v1/chat/attachments/images" && route.request().method() === "POST") body = { id: "fixture-image", file_name: "追加.png", content_type: "image/png", size_bytes: 8 };
   else if (name.startsWith("/api/v1/chat/attachments/files/")) body = { ok: true };
   await route.fulfill({ json: body });
 });
@@ -59,7 +64,7 @@ await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw =>
     emit(socket, "session_ready"); emit(socket, "delivery_started");
     message("assistant", "恢复任务完成"); emit(socket, "content", "恢复任务完成"); emit(socket, "completed"); return;
   }
-  if (request.delivery_intent === "steer" && request.message === "追加 JWT 要求") {
+  if (request.delivery_intent === "steer" && ["追加 JWT 要求", "请分析我附上的文件。"].includes(request.message)) {
     message("user", request.message); emit(socket, "delivery_steered", "已追加，等待 Agent 处理。"); return;
   }
   const active = [...sockets.values()].find(item => item.request !== request && item.request.message === "执行 A");
@@ -78,14 +83,42 @@ async function requestFor(text) {
 try {
   await page.addInitScript(() => { window.__deliveryCompletions = 0; window.addEventListener("aiagent:chat-stream-complete", () => window.__deliveryCompletions++); });
   await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?project=11&new=delivery`);
-  await editor().waitFor({ timeout: 60000 }); await send("执行 A");
+  await editor().waitFor({ timeout: 60000 });
+  const queuePanel = page.getByRole("region", { name: "消息投递队列", exact: true });
+  const failedPoll = () => page.waitForResponse(response => response.url().endsWith("/deliveries") && response.status() === 500);
+  const firstPoll = failedPoll();
+  await send("执行 A");
   const a = await requestFor("执行 A"); assert.equal(a.delivery_intent, "queue");
+  await firstPoll;
+  await failedPoll();
+  assert.equal(await queuePanel.count(), 0, "An empty queue must stay hidden during polling errors");
+  deliveriesUnavailable = false;
   const mode = page.getByRole("combobox", { name: "消息投递方式", exact: true }); await mode.waitFor();
   await send("排队 B"); const b = await requestFor("排队 B");
-  await page.getByRole("region", { name: "消息投递队列", exact: true }).getByText("排队 B", { exact: true }).waitFor();
+  await queuePanel.getByText("排队 B", { exact: true }).waitFor();
+  const assertQueueAboveComposer = async () => {
+    assert.equal(await queuePanel.evaluate(element => element.closest("form")), null);
+    const panel = await queuePanel.boundingBox();
+    const composer = await editor().locator("xpath=ancestor::form").boundingBox();
+    assert.ok(panel && composer && panel.y + panel.height <= composer.y, "Queue should sit above the composer");
+  };
+  await assertQueueAboveComposer();
   await mode.selectOption("steer"); await send("追加 JWT 要求");
   const c = await requestFor("追加 JWT 要求"); assert.equal(c.delivery_intent, "steer");
   await page.getByRole("status").filter({ hasText: "追加指令已投递给当前任务" }).waitFor();
+  await editor().evaluate(element => {
+    const data = new DataTransfer();
+    data.items.add(new File(["追加 TXT 正文"], "追加.txt", { type: "text/plain" }));
+    data.items.add(new File([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)], "追加.png", { type: "image/png" }));
+    element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await page.getByRole("button", { name: "移除 追加.png", exact: true }).waitFor();
+  await page.getByRole("button", { name: "移除 追加.txt", exact: true }).waitFor();
+  await page.getByRole("button", { name: "追加指令", exact: true }).click();
+  const withAttachments = await requestFor("请分析我附上的文件。");
+  assert.equal(withAttachments.delivery_intent, "steer");
+  assert.deepEqual(withAttachments.attachment_ids, ["fixture-image"]);
+  assert.deepEqual(withAttachments.document_attachment_ids, ["fixture-document"]);
   assert.equal(await page.evaluate(() => window.__deliveryCompletions), 0);
   await page.screenshot({ path: path.join(artifacts, "queue-and-steer-desktop.png"), fullPage: true });
   message("assistant", "A 已完成"); emit(sockets.get(a.command_id).socket, "completed");
@@ -103,11 +136,13 @@ try {
   await page.getByRole("button", { name: "恢复执行", exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.querySelector("main")?.getBoundingClientRect().left === 0);
+  await assertQueueAboveComposer();
   await page.screenshot({ path: path.join(artifacts, "held-queue-mobile.png"), fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   await page.getByRole("button", { name: "恢复执行", exact: true }).click();
   await page.getByText("恢复任务完成", { exact: true }).waitFor();
   const resumed = sent.find(request => request.resume_queued); assert.equal(resumed.command_id, e.command_id); assert.equal(resumed.message, "");
+  await queuePanel.waitFor({ state: "detached" });
   assert.equal(queue.length, 0); assert.deepEqual(errors, []);
-  console.log(`PASS: continuous delivery while active, queue/steer intent, acknowledgement vs completion, stop/hold, refresh persistence, explicit resume and 390px layout. Screenshots: ${artifacts}`);
+  console.log(`PASS: continuous delivery with pasted TXT and PNG, queue/steer intent, acknowledgement vs completion, stop/hold, refresh persistence, explicit resume and 390px layout. Screenshots: ${artifacts}`);
 } finally { await browser.close(); }
