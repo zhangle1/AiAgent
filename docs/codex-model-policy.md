@@ -4,8 +4,10 @@
 
 AiAgent 将 Codex 本地代理使用的模型从本机 Codex CLI 默认值中解耦。管理员可以维护允许使用的 Codex 模型、默认模型，以及普通用户能否在聊天中切换模型；聊天请求只能使用该白名单中的模型。
 
-首期内置模型：
+部分内置模型：
 
+- `gpt-6.2-sol`：GPT-6.2 Sol，适合日常编码、写作与多步骤任务。
+- `gpt-6.2-astra`：GPT-6.2 Astra，适合跨模块编码、复杂推理与长时间任务。
 - `gpt-6.1-sol`：GPT-6.1 Sol，适合复杂编码、长时间任务与 Agent 工作流。
 - `gpt-6.1-terra`：GPT-6.1 Terra，适合日常开发、分析与 Agent 工作流，兼顾速度与质量。
 - `gpt-5.6-sol`：Sol，适合复杂、开放式的编码与分析任务。
@@ -56,7 +58,7 @@ Codex 运行租约的缓存键必须包含模型 ID。这样同一个浏览器�
 ## 5.6 Luna、推理等级与第三方 Profile 扩展
 
 - 内置模型扩展为 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；管理员可分别启用并设置默认值。
-- 管理员可以维护 `minimal`、`low`、`medium`、`high`、`xhigh` 推理等级、默认等级，以及是否允许聊天框覆盖默认值。AiAgent 将选中的等级通过 app-server 的 `modelReasoningEffort` 下发。
+- 管理员可以维护 `minimal`、`low`、`medium`、`high`、`xhigh` 推理等级、默认等级，以及是否允许聊天框覆盖默认值。AiAgent 将选中的等级通过 app-server 的 `turn/start` 参数 `effort` 下发。
 - 管理员可新增第三方 Codex profile：显示名、`profile_name`、可选的实际 `model_id`、说明，以及该 provider 是否支持 `modelReasoningEffort`。profile 名称仅允许字母、数字、连字符和下划线。
 - profile 不写进 `thread/start`。内置模型仍走 app-server；第三方 profile 走 `codex exec --profile <profile_name> --json`，该 profile 对应后端运行账户 `~/.codex/<profile_name>.config.toml`。
 - 第三方项未填写 `model_id` 时，AiAgent 不传 `model`，完整采用 profile 文件中的模型配置；填写后才覆盖为管理员指定的模型 ID。
@@ -91,3 +93,10 @@ Codex 运行租约的缓存键必须包含模型 ID。这样同一个浏览器�
 - 推理等级为 `low/medium/high/xhigh/max`；显式 `none/minimal` 被拒绝。默认等级不兼容时，从管理员允许的兼容等级中选择。
 - 目录版本 5 为旧策略补充启用新模型，保留默认模型、切换权限及已禁用的旧模型；保存版本 5 后禁用新模型不会再次自动启用。
 - 设置页与聊天选择器读取服务端目录，部署新版后端后即可选择 GPT-6.1 Terra。
+
+## GPT-6.2 Sol 与 Astra 支持（2026-11-18）
+
+- Codex app-server 直接接收 `gpt-6.2-sol` 和 `gpt-6.2-astra`，两者支持原生图片输入和 AiAgent 现有的 `low/medium/high/xhigh/max` 推理等级。
+- 目录版本 6 为旧策略启用两个新模型，保留原默认模型、推理配置、切换权限和旧模型的启用状态。管理员保存版本 6 的策略后，可以关闭任一新模型。
+- 普通聊天与目标模式都通过 `turn/start.effort` 传递推理等级。
+- 本次验证使用 Codex CLI `0.170.0`。在部署机器上可执行 `npm install -g @openai/codex@latest`，重启后端以启动新版 CLI 的 worker。模型可用性取决于后端运行账户。参见 [Codex 模型选择](https://learn.chatgpt.com/docs/models?surface=cli)。

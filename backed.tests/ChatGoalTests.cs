@@ -71,12 +71,16 @@ public sealed partial class ChatGoalTests
     {
         using var fixture = new Fixture();
         using var service = fixture.Service();
-        var result = await service.CompleteAsync(fixture.Request(), null, default);
+        var request = fixture.Request();
+        request.CodexReasoningEffort = "high";
+        var result = await service.CompleteAsync(request, null, default);
         Assert.Equal("first", result.Answer);
         Assert.Null(service.GetGoal("owner", "session"));
         var calls = fixture.Calls();
         Assert.DoesNotContain(calls, x => x.GetProperty("method").GetString()!.StartsWith("thread/goal/"));
         Assert.True(calls.Single(x => x.GetProperty("method").GetString() == "thread/start").GetProperty("params").GetProperty("ephemeral").GetBoolean());
+        var turn = Assert.Single(calls, x => x.GetProperty("method").GetString() == "turn/start");
+        Assert.Equal("high", turn.GetProperty("params").GetProperty("effort").GetString());
     }
 
     [Fact]
@@ -188,7 +192,7 @@ public sealed partial class ChatGoalTests
 
     private sealed class Policy : ICodexModelPolicyService
     {
-        public CodexResolvedModel ResolveModel(string? id, string? effort) => new(new("fixture", "Fixture", "", "fixture", null, false, true), null);
+        public CodexResolvedModel ResolveModel(string? id, string? effort) => new(new("fixture", "Fixture", "", "fixture", null, true, true), effort);
         public CodexModelPolicyDto GetPolicy() => throw new NotSupportedException();
         public CodexModelPolicyDto UpdatePolicy(AuthenticatedUser user, CodexModelPolicyUpdateRequest request) => throw new NotSupportedException();
     }

@@ -1238,7 +1238,6 @@ public sealed partial class CodexChatService : ICodexChatService, IDisposable
                     ["serviceName"] = "aiagent"
                 };
                 if (!string.IsNullOrWhiteSpace(model.AppServerModelId)) threadParameters["model"] = model.AppServerModelId;
-                if (!string.IsNullOrWhiteSpace(model.ReasoningEffort)) threadParameters["modelReasoningEffort"] = model.ReasoningEffort;
                 var binding = System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {
                     workspacePath, _sandboxMode, model.AppServerModelId, model.ReasoningEffort, model.ProfileName, model.Definition.Id,
                     Selection = CodexConversationContext.SelectionKey(request)
@@ -1262,6 +1261,7 @@ public sealed partial class CodexChatService : ICodexChatService, IDisposable
                         clientUserMessageId = request.SessionId,
                         input = BuildTurnInput(request),
                         cwd = workspacePath,
+                        effort = model.ReasoningEffort,
                         approvalPolicy = "never",
                         sandboxPolicy = new { type = ToAppServerSandboxPolicy(_sandboxMode) }
                     }

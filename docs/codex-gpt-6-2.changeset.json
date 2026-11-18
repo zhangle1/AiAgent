@@ -1,0 +1,60 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-for-user-authorized-push",
+  "createdAt": "2026-11-18T06:57:23.919027+00:00",
+  "baseCommit": "61e746b79bc3acbb3007fbc3420c031f865647fe",
+  "verifiedSourceTree": "c36480a2b89e595f536102af4049a1a60bcd924a",
+  "objective": "Add GPT-6.2 Sol and GPT-6.2 Astra to the AiAgent local Codex provider.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "572c3350c29c1b6a9e6cceb0e659280b57ff44f714d729c085f9dd87eddbeef9",
+      "bytes": 36042
+    },
+    {
+      "path": "README.md",
+      "sha256": "ef376b816dea29b79e3d3a86cb05576d30579e789b8e8eb78f41e42fafa0e269",
+      "bytes": 41742
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "bdfa097bdcbcc686ea553e6e432683b0c8ad9709a51da388dbaac549fae6830e",
+      "bytes": 14223
+    },
+    {
+      "path": "backed.tests/CodexModelPolicyTests.cs",
+      "sha256": "05de7633c398665100237cecf5c45f2528e5923632c70477f079a3e77e796df8",
+      "bytes": 7236
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "f437740fbf1da288c101786cb572e4edfe46d660096810820bf2eeef21f04c03",
+      "bytes": 69416
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexModelPolicyService.cs",
+      "sha256": "c4e3ce6b7887d5195d643f4f28e42df0b02faa0c779d8e89b70486326dc232a2",
+      "bytes": 21011
+    },
+    {
+      "path": "docs/codex-model-policy.md",
+      "sha256": "d60535ef4b0480807e03d5a5d3054662e7309fe0e01da89c38b14c6a4907efef",
+      "bytes": 7987
+    }
+  ],
+  "fingerprintSha256": "92e55b2b3b8c9a843f700b7cd51c339f710e397c1bb20caff7088a2a7fb75c60",
+  "behavior": [
+    "Catalog version 6 enables both models for older policies while preserving existing defaults, overrides and older model eligibility.",
+    "Both models support native image input and the platform's low, medium, high, xhigh and max reasoning levels.",
+    "Normal app-server turns send the resolved reasoning effort in turn/start, as goal turns already do."
+  ],
+  "validation": {
+    "backendRelease": "Release build of the backend and test projects passed with 0 errors.",
+    "frontendProduction": "Next.js 16.2.9 production build passed with Webpack.",
+    "backendTests": "435 passed, including all 11 model policy cases and the ordinary chat RPC regression. The same two UsageStatisticsServiceTests fail on the baseline and final code with the SQLite AUTOINCREMENT schema error.",
+    "codexCli": "CLI 0.170.0 listed both model IDs and completed a real app-server turn with each using turn/start.effort.",
+    "whitespace": "git diff --cached --check passed. Working-tree bytes matched the verified index for all source files."
+  },
+  "authorization": "The requester explicitly authorized pulling, implementing, compiling and pushing the feature.",
+  "deployment": "Deploy the updated backend independently of the source push. Codex CLI 0.170.0 was verified with both models."
+}
