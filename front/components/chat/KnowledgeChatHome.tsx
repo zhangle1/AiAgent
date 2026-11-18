@@ -10,6 +10,7 @@ import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatCollaborationDialog } from "@/components/chat/ChatCollaborationDialog";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
+import { ChatMessageNavigation } from "@/components/chat/ChatMessageNavigation";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
 import { getChatClipboardFiles } from "@/lib/chat-clipboard";
 
@@ -1330,14 +1331,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             {displayMessages.length === 0 ? (
               <EmptyState title={t("chat.heroTitle")} />
             ) : (
+              <div className="relative flex min-h-0 flex-1">
               <div ref={messagesScrollRef} onScroll={(event) => {
                 const container = event.currentTarget;
                 if (activeSessionIdRef.current) scrollPositionsRef.current.set(activeSessionIdRef.current, container.scrollTop);
                 shouldStickToBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 96;
-              }} className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
+              }} className="workspace-scroll min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto pb-6 pr-10 pt-4">
                 {displayMessages.map((message, index) => (
+                  <div key={message.id} data-chat-question={message.role === "user" ? message.id : undefined}>
                   <MessageBubble
-                    key={message.id}
                     message={message}
                     onPreviewImage={setPreviewingImage}
                     onRetry={
@@ -1368,6 +1370,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     onOpenPrototype={(output) => { setRequestedPrototypeDocument(null); setRequestedPrototypeOutput(output); openInspector("prototype"); }}
                     onOpenDiagnostics={openDiagnostics}
                   />
+                  </div>
                 ))}
                 {sending && (
                   <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -1375,6 +1378,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     {t("chat.thinking")}
                   </div>
                 )}
+              </div>
+              <ChatMessageNavigation key={activeSessionId ?? "new"} messages={displayMessages} scrollRef={messagesScrollRef} />
               </div>
             )}
 
@@ -2254,6 +2259,30 @@ type ContextPickerItem = {
 
 function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
   const [open, setOpen] = useState(false);
+  const launcherRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !launcherRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      launcherRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [open]);
+
   const options: Array<{
     tab: InspectorTab;
     label: string;
@@ -2269,7 +2298,7 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
   ];
 
   return (
-    <div className="relative">
+    <div ref={launcherRef} className="relative">
       <button type="button" onClick={() => setOpen((current) => !current)} className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-white shadow-sm transition ${open ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="Open side panel tab" aria-expanded={open}>
         <Plus size={16} />
       </button>

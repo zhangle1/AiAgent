@@ -1,0 +1,32 @@
+{
+    "checks":  {
+                   "typescript":  "passed: npx tsc --noEmit",
+                   "browser":  "passed: isolated real component with synthetic messages; markers, preview, jump, scroll highlight, Escape, narrow viewport",
+                   "build":  "passed: npm run build",
+                   "whitespace":  "passed: git diff --check"
+               },
+    "files":  [
+                  {
+                      "sha256":  "b592f06c39e6bfaf939a523c6e021395cb3eb796ee984737209212938d191524",
+                      "path":  "AGENTS.md"
+                  },
+                  {
+                      "sha256":  "60b189ecb945f8d39d7a7300b505a7967cec994bd74969a26de04af869100461",
+                      "path":  "README.md"
+                  },
+                  {
+                      "sha256":  "6acd2419d28fc352f74afe7bf04d6bacd06e81ff4f615174a773f0e7b3434530",
+                      "path":  "front/components/chat/KnowledgeChatHome.tsx"
+                  },
+                  {
+                      "sha256":  "969468874d4215e2580de5b86a09fd6a8083e7d60043d99919a5f1db3a30c2e0",
+                      "path":  "front/components/chat/ChatMessageNavigation.tsx"
+                  }
+              ],
+    "title":  "聊天右侧会话导航与菜单外部关闭",
+    "kind":  "local-review-snapshot",
+    "status":  "validated",
+    "base_commit":  "6ab4f2805a34f3e2757c0a0183843af1077df351",
+    "date":  "2026-11-18",
+    "supersedes":  "side-panel-menu-dismiss.changeset.json"
+}
