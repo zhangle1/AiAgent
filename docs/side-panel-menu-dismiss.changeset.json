@@ -1,0 +1,16 @@
+﻿{
+    "kind":  "local-review-snapshot",
+    "title":  "右侧加号菜单点击外部关闭",
+    "date":  "2026-11-18",
+    "base_commit":  "6ab4f2805a34f3e2757c0a0183843af1077df351",
+    "status":  "local-only",
+    "checks":  {
+                   "whitespace":  "passed: git diff --check"
+               },
+    "files":  [
+                  {
+                      "sha256":  "3a8aa0c11aae0a26be11a57437c5f89a233e637e90b2d7d4e200c731e7e539c4",
+                      "path":  "front/components/chat/KnowledgeChatHome.tsx"
+                  }
+              ]
+}

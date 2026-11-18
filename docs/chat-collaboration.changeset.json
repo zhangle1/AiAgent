@@ -1,0 +1,64 @@
+{
+  "kind": "local-review-snapshot",
+  "title": "Chat collaboration Git history picker",
+  "base_commit": "0a4eb9f1562f05a09f8ad58f9674ec024ad8b88e",
+  "platform_change_set_id": null,
+  "note": "Local review manifest only; no commit or push. AGENTS.md and README.md retain pre-existing remote-policy additions. Existing docs/codex-remote-access-policy.md excluded.",
+  "checks": {
+    "frontend_production_build": "passed",
+    "typescript": "passed in production build",
+    "unit_tests": "8 passed",
+    "browser": "passed in Chrome using synthetic API fixtures: history tree, person/date/search filters, clipboard, draft preservation, project switch, Escape, 390px layout, escaped patch, truncation, denied access",
+    "diff_check": "passed"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "0ef02c0096e44f137c3eec4eab9cf9a63f6d37444dce1374f291f497bd6536e6"
+    },
+    {
+      "path": "README.md",
+      "sha256": "a8cba3c4ce275b73274e0f5dccd9a3a29d2ecab29222cd5a2b233e813360e34c"
+    },
+    {
+      "path": "docs/chat-collaboration.md",
+      "sha256": "5311d8776d5e01380f7a0d08ee7ca82a431cf5905dedbbe494ed2ed6e3ac0a15"
+    },
+    {
+      "path": "front/components/chat/ChatComposerMenu.tsx",
+      "sha256": "2550f3f9756721e049b4900a4e6bdc796d60e5aec4c1e805c401707caa503404"
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "e6c26ef795aacac94eb9b4f679f4fe10ecdcfb95f4dad1c051f0b4ff3af02382"
+    },
+    {
+      "path": "front/components/chat/ChatCollaborationDialog.tsx",
+      "sha256": "4809f470778f0c335a3d6ea53ae2f4bbfe5c67d876dd5890ea6d93338f08c648"
+    },
+    {
+      "path": "front/components/change-atlas/AtlasReviewPage.tsx",
+      "sha256": "aecc1fbf0d1ac4710a353aac2f99915b38e8d211cf1a1daac99e4e321530956c"
+    },
+    {
+      "path": "front/app/change-atlas/review/page.tsx",
+      "sha256": "d8b40967d384d209c004befedecab088fa040b3920c1b11f9cfd07e2050ec9db"
+    },
+    {
+      "path": "front/lib/change-atlas-api.ts",
+      "sha256": "ad6668c266e419f635d9616224bae8b37cd8445efd7ab7ca3ee7189526bd9c27"
+    },
+    {
+      "path": "front/lib/chat-collaboration.ts",
+      "sha256": "64b61978a4198b207c0d78ea3d2cce3df9c1f257f73d54e20098216a3b5dfaa0"
+    },
+    {
+      "path": "front/tests/chat-collaboration.test.mjs",
+      "sha256": "41c8f34a7f9a63edbaaa4ba569923b27a20d17e1d23aacb95abd8233def083da"
+    },
+    {
+      "path": "front/tests/chat-collaboration.browser.mjs",
+      "sha256": "eea8a147ba736a34ec58b8a2fe1dcc76be4c25b872c5a1aa3146755504f7db6b"
+    }
+  ]
+}

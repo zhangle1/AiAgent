@@ -2,10 +2,11 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Network, Paperclip, Sparkles, Target } from "lucide-react";
+import { Network, Paperclip, Sparkles, Target, Users } from "lucide-react";
 
-export function ChatComposerMenu({ anchor, onClose, onFiles, filesEnabled, onSkills, onGoal, goalDisabledReason, onVisualization, onDesign, designMode }: {
+export function ChatComposerMenu({ anchor, onClose, onFiles, filesEnabled, onSkills, onGoal, goalDisabledReason, onVisualization, onDesign, designMode, onCollaboration }: {
   anchor: HTMLButtonElement; onClose: () => void; onFiles: () => void; filesEnabled: boolean;
+  onCollaboration?: () => void;
   onDesign?: () => void; designMode?: boolean;
   onSkills?: () => void; onGoal?: () => void; goalDisabledReason?: string; onVisualization?: () => void;
 }) {
@@ -48,6 +49,7 @@ export function ChatComposerMenu({ anchor, onClose, onFiles, filesEnabled, onSki
     {onGoal && <button type="button" role="menuitem" disabled={Boolean(goalDisabledReason)} onClick={onGoal} className={item}><Target size={17} className="shrink-0" /><span>目标模式<span className="block text-[11px] text-slate-400">{goalDisabledReason || "设置目标与验收标准"}</span></span></button>}
     {onSkills && <button type="button" role="menuitem" onClick={onSkills} className={item}><Sparkles size={17} className="shrink-0" /><span>技能<span className="block text-[11px] text-slate-400">选择一个或多个技能，也可输入 / 搜索</span></span></button>}
     {onDesign && <button type="button" role="menuitem" onClick={onDesign} className={item}><Sparkles size={17}/><span>{designMode ? "退出设计模式" : "设计模式"}<span className="block text-[11px] text-slate-400">生成 HTML 原型，预览、注解和导出 PSD</span></span></button>}
+    {onCollaboration && <button type="button" role="menuitem" onClick={onCollaboration} className={item}><Users size={17} className="shrink-0" /><span>协作<span className="block text-[11px] text-slate-400">按人员、日期、项目选择 Git 变更链接</span></span></button>}
     {onVisualization && <button type="button" role="menuitem" onClick={onVisualization} className={item}><Network size={17} className="shrink-0" /><span>可视化<span className="block text-[11px] text-slate-400">交互图形、Mermaid 与 Git 来源</span></span></button>}
   </div>, document.body);
 }

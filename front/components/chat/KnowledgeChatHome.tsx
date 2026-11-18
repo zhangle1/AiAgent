@@ -8,7 +8,9 @@ import { matchesChatProjectSearch } from "@/lib/chat-project-search";
 import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPicker";
 import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
+import { ChatCollaborationDialog } from "@/components/chat/ChatCollaborationDialog";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
+import { ChatMessageNavigation } from "@/components/chat/ChatMessageNavigation";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
 import { getChatClipboardFiles, isChatImageFile } from "@/lib/chat-clipboard";
 
@@ -281,6 +283,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLButtonElement | null>(null);
   const [goalActivation, setGoalActivation] = useState(0);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
+  useEffect(() => { setCollaborationOpen(false); }, [selectedProjectId, activeSessionId]);
   const [visualizationActivation, setVisualizationActivation] = useState(0);
   const [mobilePicker, setMobilePicker] = useState<"model" | "knowledge-scope" | "project" | null>(null);
   const [slashProjectCommand, setSlashProjectCommand] = useState<SlashProjectCommand | null>(null);
@@ -1332,14 +1336,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             {displayMessages.length === 0 ? (
               <EmptyState title={t("chat.heroTitle")} />
             ) : (
+              <div className="relative flex min-h-0 flex-1">
               <div ref={messagesScrollRef} onScroll={(event) => {
                 const container = event.currentTarget;
                 if (activeSessionIdRef.current) scrollPositionsRef.current.set(activeSessionIdRef.current, container.scrollTop);
                 shouldStickToBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 96;
-              }} className="workspace-scroll min-h-0 flex-1 space-y-5 overflow-y-auto pb-6 pt-4">
+              }} className="workspace-scroll min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto pb-6 pr-10 pt-4">
                 {displayMessages.map((message, index) => (
+                  <div key={message.id} data-chat-question={message.role === "user" ? message.id : undefined}>
                   <MessageBubble
-                    key={message.id}
                     message={message}
                     onPreviewImage={setPreviewingImage}
                     onRetry={
@@ -1370,6 +1375,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     onOpenPrototype={(output) => { setRequestedPrototypeDocument(null); setRequestedPrototypeOutput(output); openInspector("prototype"); }}
                     onOpenDiagnostics={openDiagnostics}
                   />
+                  </div>
                 ))}
                 {sending && (
                   <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -1377,6 +1383,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     {t("chat.thinking")}
                   </div>
                 )}
+              </div>
+              <ChatMessageNavigation key={activeSessionId ?? "new"} messages={displayMessages} scrollRef={messagesScrollRef} />
               </div>
             )}
 
@@ -1447,7 +1455,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               )}
               {skillMenuOpen && <ChatSkillPicker anchor={activeComposerRef.current} selectedIds={selectedSkills.map(skill => skill.id)} onDismiss={dismissSkillMenu} previewOpen={Boolean(previewSkill)} goalOption={showGoalOption ? { selected: Boolean(goalRequest), disabledReason: goalDisabledReason, onSelect: selectGoalCommand } : undefined} onProjects={openSkillProjectSearch} items={skillOptions} activeIndex={skillActiveIndex} onActiveIndexChange={setSkillActiveIndex} onSelect={skill => selectChatSkill(skill, true)} onPreview={setPreviewSkill} />}
               {designMode && <button type="button" className="rounded bg-violet-50 px-2 py-1 text-xs text-violet-700" onClick={() => setDesignMode(false)}>设计模式 · 点击退出</button>}
-              {composerMenuAnchor && <ChatComposerMenu anchor={composerMenuAnchor} onClose={() => setComposerMenuAnchor(null)} onDesign={embedded ? undefined : () => { setDesignMode(value => !value); setComposerMenuAnchor(null); openInspector("prototype"); }} designMode={designMode} filesEnabled={selectedAgentId === "codex"} onFiles={() => { setComposerMenuAnchor(null); fileInputRef.current?.click(); }} onSkills={embedded ? undefined : () => { openSkillPicker(composerMenuAnchor); setComposerMenuAnchor(null); }} onGoal={embedded ? undefined : () => { setComposerMenuAnchor(null); activeComposerRef.current?.focus(); setGoalActivation(value => value + 1); }} goalDisabledReason={goalDisabledReason} onVisualization={embedded ? undefined : () => { setComposerMenuAnchor(null); setVisualizationActivation(value => value + 1); }} />}
+              {collaborationOpen && !embedded && <ChatCollaborationDialog projects={codeProjects} initialProjectId={effectiveProjectId} onClose={() => setCollaborationOpen(false)} onInsert={prompt => { setInput(current => current.trim() ? `${current}\n\n${prompt}` : prompt); setCollaborationOpen(false); activeComposerRef.current?.focus(); }} />}
+              {composerMenuAnchor && <ChatComposerMenu onCollaboration={embedded ? undefined : () => { setComposerMenuAnchor(null); setCollaborationOpen(true); }} anchor={composerMenuAnchor} onClose={() => setComposerMenuAnchor(null)} onDesign={embedded ? undefined : () => { setDesignMode(value => !value); setComposerMenuAnchor(null); openInspector("prototype"); }} designMode={designMode} filesEnabled={selectedAgentId === "codex"} onFiles={() => { setComposerMenuAnchor(null); fileInputRef.current?.click(); }} onSkills={embedded ? undefined : () => { openSkillPicker(composerMenuAnchor); setComposerMenuAnchor(null); }} onGoal={embedded ? undefined : () => { setComposerMenuAnchor(null); activeComposerRef.current?.focus(); setGoalActivation(value => value + 1); }} goalDisabledReason={goalDisabledReason} onVisualization={embedded ? undefined : () => { setComposerMenuAnchor(null); setVisualizationActivation(value => value + 1); }} />}
               {previewSkill && createPortal(<ChatSkillPreview skill={previewSkill} onClose={() => setPreviewSkill(null)} />, document.body)}
               {slashProjectCommand && !skillMenuOpen && (slashProjectCommand.kind === "documents" ? <MarkdownDocumentSlashMenu items={markdownDocumentOptions} loading={markdownDocumentLoading} hasProject={Boolean(selectedProjectId)} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertMarkdownDocumentReference} /> : slashProjectCommand.kind === "prototypes" ? <PrototypeReferenceSlashMenu items={prototypeReferenceOptions} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onSelect={insertPrototypeReference} /> : <ProjectReferenceSlashMenu items={projectReferenceOptions} loading={projectReferenceLoading} showDocumentCategory={slashProjectCommand.query.length === 0} activeIndex={activeProjectReferenceIndex} onActiveIndexChange={setActiveProjectReferenceIndex} onOpenDocuments={openMarkdownDocumentSearch} onSelect={insertProjectReference} />)}
               {!embedded && <>
@@ -2259,6 +2268,30 @@ type ContextPickerItem = {
 
 function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void }) {
   const [open, setOpen] = useState(false);
+  const launcherRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !launcherRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      launcherRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [open]);
+
   const options: Array<{
     tab: InspectorTab;
     label: string;
@@ -2274,7 +2307,7 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
   ];
 
   return (
-    <div className="relative">
+    <div ref={launcherRef} className="relative">
       <button type="button" onClick={() => setOpen((current) => !current)} className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-white shadow-sm transition ${open ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"}`} aria-label="Open side panel tab" aria-expanded={open}>
         <Plus size={16} />
       </button>
