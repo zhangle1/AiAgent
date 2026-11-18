@@ -20,6 +20,7 @@ async function request<T>(projectId: number, path: string, signal?: AbortSignal,
   return value as T;
 }
 export const createAtlasSnapshot = (projectId: number, body: AtlasCreateRequest, signal?: AbortSignal) => request<AtlasSnapshot>(projectId, "snapshots", signal, body);
+export const readAtlasSnapshot = (projectId: number, snapshotId: string, signal?: AbortSignal) => request<AtlasSnapshot>(projectId, `snapshots/${encodeURIComponent(snapshotId)}`, signal);
 export const readAtlasEvidence = (projectId: number, snapshotId: string, commitId: string, fileId: string, signal?: AbortSignal) =>
   request<AtlasEvidence>(projectId, `snapshots/${encodeURIComponent(snapshotId)}/evidence?${new URLSearchParams({ commit_id: commitId, file_id: fileId })}`, signal);
 export async function readAtlasAnalysisStream(response: Response, onStatus?: (message: string) => void): Promise<AtlasAnalysis> {

@@ -1,5 +1,9 @@
 # AiAgent 开发与 Agent 协作说明
 
+聊天「+ → 协作」默认使用 Git 历史树，复用变化地图本地 HEAD 快照，按 Git 署名、UTC 日期、项目和提交／路径筛选。仅显式插入普通提示文本，不自动发送；保留草稿及原可视化入口。链接查阅页沿用当前用户快照及项目权限，不提供跨用户共享授权；切换项目／会话关闭弹窗，旧请求取消并丢弃迟到结果。契约见 `docs/chat-collaboration.md`。
+
+用户明确要求 SSH 远程访问、部署或探测时，先读 `docs/codex-remote-access-policy.md`，核对 Codex 实际执行位置、SSH 认证及任务范围。策略文本不赋予网络或执行权限；以真实 SSH 和 HTTP 探测报告结果，不将人工终端或客户端在线视为模型已可远程执行。
+
 资料库图片放大使用原生模态 dialog，沿用本人附件内容接口，不引入外部图片地址；保持键盘关闭、焦点恢复与会话卸载关闭。客户本体 Agent 面板原型保留于 `design/customer-ontology/agent-workbench.md` 与同名 HTML，首轮实际工作台范围见 `design/customer-ontology/phase-1.md`，采用聊天、节点画布和检查器并列布局；对象关系与工具链执行图分别表达业务语义与执行依赖。不将模拟测试、工具运行或发布描述为已实现服务能力。
 
 聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。
