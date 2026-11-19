@@ -723,6 +723,25 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     }
   }
 
+  function changeProject(projectId: number | null) {
+    if (embeddedProjectLocked || projectId === selectedProjectId) return;
+    if (activeSessionId || requestedSessionId) {
+      const name = codeProjects.find((project) => project.id === projectId)?.display_name ?? "不绑定项目";
+      if (!window.confirm(
+        `切换到“${name}”将打开新聊天。当前会话及其项目归属会保留，未发送的草稿和附件不会带入新聊天。是否继续？`,
+      )) return;
+      setOpenContextPicker(null);
+      setMobilePicker(null);
+      const params = new URLSearchParams({ new: createClientId() });
+      if (projectId !== null) params.set("project", String(projectId));
+      router.push(`/chat?${params.toString()}`);
+      return;
+    }
+    setSelectedProjectId(projectId);
+    setOpenContextPicker(null);
+    setMobilePicker(null);
+  }
+
   function openDiagnostics() {
     if (!activeSessionId) return;
     setDiagnosticDialogOpen(true);
@@ -1554,7 +1573,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     searchable
                     emptyText="暂无已配置项目"
                     onToggleOpen={() => setOpenContextPicker((current) => (current === "project" ? null : "project"))}
-                    onToggle={(id) => setSelectedProjectId((current) => (current === Number(id) ? null : Number(id)))}
+                    onToggle={(id) => changeProject(selectedProjectId === Number(id) ? null : Number(id))}
                   />}
                   <label className={`hidden h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium sm:inline-flex ${selectedProjectId ? "text-violet-700 hover:bg-violet-50" : "text-slate-400"}`} title={selectedAgentProvider?.message || "选择本地编码代理"}>
                     <Bot size={15} />
@@ -1696,7 +1715,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
           if (mobilePicker === "model") {
             if (selectedAgentId === "codex") { setSelectedCodexModelId(id); onEmbeddedCodexModelChange?.(id); }
             else setSelectedModelId(id);
-          } else setSelectedProjectId(id ? Number(id) : null);
+          } else changeProject(id ? Number(id) : null);
           setMobilePicker(null);
         }}
       />

@@ -1,0 +1,35 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-19T03:52:40.035Z",
+  "baseCommit": "059fba5811f40d175bd4bd6406e09a5a378d5aa4",
+  "objective": "Confirm project changes in existing sessions and navigate to a fresh chat while preserving original session ownership.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "5b8c2206d9742ba5149e9aac54c756652db35fa4fac82ef15a48e6f4de17410f",
+      "bytes": 38175
+    },
+    {
+      "path": "README.md",
+      "sha256": "266037a01661f0561ef50f142f7850cf91942970b0ee1fe5c72c2aeb3b435e5b",
+      "bytes": 43493
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "1f4960cf9d92c656fbde7f605b3f17efb79ee9c3e0c8e199adc3dbc44a8babe3",
+      "bytes": 189987
+    },
+    {
+      "path": "front/tests/chat-project-switch.browser.mjs",
+      "sha256": "80f3dd78656a36f789f074d9c0beec48347efbefd1b12d088b62206c7b6e9190",
+      "bytes": 10527
+    }
+  ],
+  "fingerprintSha256": "16dc503c5635ac837b0ec5a9ba288af7e24fd0509d0b52371aacf8d403775bd1",
+  "validation": {
+    "typescript": "tsc --noEmit --incremental false passed",
+    "browser": "Synthetic API/WebSocket tests passed on local source port 3783: desktop and mobile cancellation, fresh chat, distinct session ID and target project in request; unbinding and blank-chat selection.",
+    "whitespace": "git diff --check passed"
+  }
+}
