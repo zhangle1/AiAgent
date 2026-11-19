@@ -82,3 +82,12 @@ test("slash-prefixed Windows root documents keep preview and download identity",
     assert.equal(link.props.reference, `D:/work/repo/design.${ext}`);
   }
 });
+
+test("code links preserve the starting line of ranges and column locations", () => {
+  const rendered = module.exports.MarkdownMessage({ content: "", projectId: 7, onOpenCodeFile: () => {} });
+  for (const reference of ["src/Service.cs:120:8", "src/Service.cs:120-140", "src/Service.cs#L120-L140", "src/Service.cs#L120C8-L140C9", "/D:/work/src/Service.cs:120"]) {
+    const href = rendered.props.urlTransform(reference);
+    const link = rendered.props.components.a({ href, children: "Service" });
+    assert.equal(link.props.candidate.reference, reference.startsWith("/D:") ? "D:/work/src/Service.cs:120" : "src/Service.cs:120");
+  }
+});
