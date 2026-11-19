@@ -1,0 +1,104 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-19T01:08:35.045466+00:00",
+  "baseCommit": "fa16409ec8e0899c3b56d4a5d4e6b27825f1c984",
+  "priorLocalSnapshotFingerprintSha256": "31feefdeb8b060282935e670d3a3b6ab0525897410d5f96948be296770ee4cee",
+  "objective": "Deliver the chat collaboration timeline, prompt insertion and left-side conversation navigation on the merged origin/main baseline.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "1b13b781d7c8b0062e2d46a9aef3acb37a19d6c0d996c014dccd842ad00ac475",
+      "bytes": 37700
+    },
+    {
+      "path": "README.md",
+      "sha256": "de64baa801f265454ec197d11ce6d72cf0542da9dd8f5e0f69d6166647ed3bd2",
+      "bytes": 42981
+    },
+    {
+      "path": "backed.tests/ChangeAtlasTests.cs",
+      "sha256": "df361bd3c2443d156885bebea8a78aff26118bf76cf39aca92fb15e64611dc2f",
+      "bytes": 25002
+    },
+    {
+      "path": "backed/Dtos/ChangeAtlas/ChangeAtlasDtos.cs",
+      "sha256": "986fdec61b27e7aeed31634d57ac6ab475790b76db5f40d1de558e92af2a7c15",
+      "bytes": 5330
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasGitReader.cs",
+      "sha256": "a8b467694ca41c88ae6ca40913b8d5d526c242abf027f01bd1eca2426a7fa6e3",
+      "bytes": 19935
+    },
+    {
+      "path": "backed/Services/ChangeAtlas/ChangeAtlasService.cs",
+      "sha256": "7cbcb68c16d75f07c2fb5f32ca674a4a08ba8986fc2080597cb1783e39e45e14",
+      "bytes": 11950
+    },
+    {
+      "path": "docs/change-atlas.md",
+      "sha256": "fb081d15877b30ac01f903d325323405ef69099ff25be1280e9fb509b9235aa6",
+      "bytes": 13608
+    },
+    {
+      "path": "docs/chat-collaboration.md",
+      "sha256": "ed1d4892f7f78a286b1c66dd61f97ba3cd5a0e2c23a0d03c5f23bd2735050140",
+      "bytes": 2259
+    },
+    {
+      "path": "front/components/change-atlas/AtlasReviewPage.tsx",
+      "sha256": "adf1aedd208925a827ef2dde847e746831dfd0ca7c416637965f9352d22c6088",
+      "bytes": 3727
+    },
+    {
+      "path": "front/components/chat/ChatCollaborationDialog.tsx",
+      "sha256": "a9723fb1f500cf61aea3b0ee51fe25028031d1458c6bcd3af3fe001bf60c3557",
+      "bytes": 14502
+    },
+    {
+      "path": "front/components/chat/ChatMessageNavigation.tsx",
+      "sha256": "62269be4a1e567d0689f39d50c57dd5a4615d6b31daecc7eba36e4c92add7296",
+      "bytes": 3837
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "ab8d054f644979b75f01545ae0083b2de81848956cf634652836cc3500bfd0b3",
+      "bytes": 185987
+    },
+    {
+      "path": "front/lib/change-atlas-types.ts",
+      "sha256": "00200f5e22745073f2a5ac9f02243a98cd482dfee955adc88b4bc299492a2f0c",
+      "bytes": 2175
+    },
+    {
+      "path": "front/lib/chat-collaboration.ts",
+      "sha256": "debf6f5e74f52fd2dee5078878ab696532d970b91f23f64eaf983ae0649b5591",
+      "bytes": 4551
+    },
+    {
+      "path": "front/tests/chat-collaboration.browser.mjs",
+      "sha256": "9a22766acc435a4809a1310799e991c10979d6dd6b7946c8db7824783b2e2cfe",
+      "bytes": 8830
+    },
+    {
+      "path": "front/tests/chat-collaboration.test.mjs",
+      "sha256": "00052b7dc1acfbb986e5d9024049e1052033419ed7a94fd71dac5d1ba68c4c6b",
+      "bytes": 3629
+    },
+    {
+      "path": "front/tests/chat-delivery.browser.mjs",
+      "sha256": "9dcd832106d80f922c1592143fe80062937b430065f6a10a5d388bb9c6ca3ac1",
+      "bytes": 13511
+    }
+  ],
+  "fingerprintSha256": "b4e344ce1e91f8e091a4efa0280def188999042b2aa4418ef5a84e3cc1d4f45f",
+  "validation": {
+    "backend": "12 ChangeAtlasTests passed in Release after merging origin/main.",
+    "frontend": "33 targeted Node tests passed, including the remote file-link regression.",
+    "build": "Production Next.js build and its TypeScript check passed.",
+    "browser": "Collaboration and continuous delivery suites passed against the isolated production frontend with synthetic fixtures.",
+    "whitespace": "git diff --check and staged diff check."
+  },
+  "validatedAt": "2026-11-19T03:12:15.566825+00:00"
+}

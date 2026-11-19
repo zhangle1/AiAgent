@@ -8,6 +8,7 @@ public sealed class AtlasCreateRequest
     [JsonPropertyName("days")] public int Days { get; set; } = 7;
     [JsonPropertyName("ref")] public string Ref { get; set; } = "HEAD";
     [JsonPropertyName("refresh_remote")] public bool RefreshRemote { get; set; }
+    [JsonPropertyName("history_only")] public bool HistoryOnly { get; set; }
 }
 
 public sealed class AtlasSnapshot

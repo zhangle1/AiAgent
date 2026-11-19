@@ -74,7 +74,7 @@ POST /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/analysis
 POST /api/v1/projects/{projectId}/change-atlas/snapshots/{snapshotId}/analysis/stream
 ```
 
-创建请求：`{ repository_id?, days, ref: "HEAD" | 服务端引用列表中的完整ref, refresh_remote }`。分析请求：`{ module_id, author_id?, until?: "yyyy-MM-dd", daily, perspective: "delivery" | "developer", question, model_id?, reasoning_effort? }`。
+创建请求：`{ repository_id?, days, ref: "HEAD" | 服务端引用列表中的完整ref, refresh_remote, history_only? }`。聊天协作传 `history_only: true`，仅支持本地 HEAD，按北京时间裁剪日期并批量读取提交统计。快照标记 `coverage: "history"`，只保存提交涉及的文件，用于授权差异查阅。目录地图沿用原有日期与结构统计。分析请求：`{ module_id, author_id?, until?: "yyyy-MM-dd", daily, perspective: "delivery" | "developer", question, model_id?, reasoning_effort? }`。
 
 流式分析沿用相同请求体，身份与快照访问错误在开流前返回 HTTP 状态。开流后使用 `status`（message）、`heartbeat`、`result`（AtlasAnalysis）、`error`（message）事件。仅 `result` 代表解读成功；断流、取消、错误或引用校验失败不得视为完成，旧 JSON 接口继续保留。
 

@@ -20,6 +20,8 @@ public sealed partial class ChangeAtlasService(ISqlSugarClient database, IProjec
         RequireAccess(user, projectId);
         if (request.Days is < 1 or > 30 || request.Ref == null || request.Ref.Length > 256 || request.Ref != "HEAD" && !request.Ref.StartsWith("refs/", StringComparison.Ordinal))
             throw new ArgumentException("请选择 1–30 天范围和有效分支。");
+        if (request.HistoryOnly && (request.Ref != "HEAD" || request.RefreshRemote))
+            throw new ArgumentException("协作历史仅支持读取本地 HEAD。");
         using var db = database.CopyNew();
         var repositories = db.Queryable<AiCodeRepository>().Where(x => x.ProjectId == projectId && !x.IsDeleted).ToList();
         if (request.RepositoryId.HasValue)
@@ -28,7 +30,15 @@ public sealed partial class ChangeAtlasService(ISqlSugarClient database, IProjec
             repositories = [selected];
         }
         if (repositories.Count > 12) throw new ArgumentException("项目代码库较多，请选择单个代码库生成地图。");
-        var snapshot = new AtlasSnapshot { Id = Guid.NewGuid().ToString("N"), ProjectId = projectId, Days = request.Days, CreatedAt = DateTime.UtcNow, StartAt = DateTime.UtcNow.Date.AddDays(1 - request.Days) };
+        var now = DateTime.UtcNow;
+        // Collaboration uses calendar days in Beijing. The existing atlas stays on its UTC day boundaries.
+        var offset = TimeSpan.FromHours(8);
+        var start = request.HistoryOnly ? now.Add(offset).Date.Subtract(offset) : now.Date;
+        var snapshot = new AtlasSnapshot
+        {
+            Id = Guid.NewGuid().ToString("N"), ProjectId = projectId, Days = request.Days, CreatedAt = now,
+            StartAt = start.AddDays(1 - request.Days), Coverage = request.HistoryOnly ? "history" : "directory"
+        };
         var files = new Dictionary<string, AtlasFile>(StringComparer.Ordinal);
         var modules = new Dictionary<string, AtlasModule>(StringComparer.Ordinal);
         foreach (var repository in repositories.OrderBy(x => x.Id))
@@ -36,8 +46,11 @@ public sealed partial class ChangeAtlasService(ISqlSugarClient database, IProjec
             token.ThrowIfCancellationRequested();
             try
             {
-                var read = await git.CaptureAsync(repository.RootPath, store.Cache(user.Id, repository.Id), snapshot.Id, request.Ref, request.RefreshRemote, snapshot.StartAt,
-                    request.RefreshRemote ? Credential(db, user, repository) : null, token);
+                var cache = store.Cache(user.Id, repository.Id);
+                var read = request.HistoryOnly
+                    ? await git.CaptureHistoryAsync(repository.RootPath, cache, snapshot.Id, snapshot.StartAt, token)
+                    : await git.CaptureAsync(repository.RootPath, cache, snapshot.Id, request.Ref, request.RefreshRemote, snapshot.StartAt,
+                        request.RefreshRemote ? Credential(db, user, repository) : null, token);
                 var incomingPaths = read.Paths.Concat(read.Commits.SelectMany(x => x.Changes).Select(x => x.Path)).Distinct(StringComparer.Ordinal).Count();
                 if (files.Count + incomingPaths > 20000 || snapshot.Commits.Sum(x => x.Files.Count) + read.Commits.Sum(x => x.Changes.Count) > 30000)
                 {
@@ -51,9 +64,13 @@ public sealed partial class ChangeAtlasService(ISqlSugarClient database, IProjec
                 {
                     var fileId = ChangeAtlasGitReader.Hash(repository.Id + ":" + path);
                     if (files.TryGetValue(fileId, out var known)) return known;
-                    var directory = ModuleDirectory(path);
-                    var moduleId = ChangeAtlasGitReader.Hash(repository.Id + ":module:" + directory);
-                    if (!modules.ContainsKey(moduleId)) modules[moduleId] = new(moduleId, repository.Id, directory == "." ? "根目录" : directory.Split('/').Last(), directory);
+                    var moduleId = "";
+                    if (!request.HistoryOnly)
+                    {
+                        var directory = ModuleDirectory(path);
+                        moduleId = ChangeAtlasGitReader.Hash(repository.Id + ":module:" + directory);
+                        if (!modules.ContainsKey(moduleId)) modules[moduleId] = new(moduleId, repository.Id, directory == "." ? "根目录" : directory.Split('/').Last(), directory);
+                    }
                     return files[fileId] = new(fileId, repository.Id, moduleId, path, atHead.Contains(path));
                 }
                 foreach (var path in read.Paths.Where(ChangeAtlasGitReader.ValidPath)) AddFile(path);

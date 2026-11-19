@@ -44,7 +44,7 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
 
   if (!questions.length) return null;
 
-  return <nav aria-label="会话导航" className="absolute bottom-8 right-0 top-8 z-20 flex w-8 flex-col justify-center">
+  return <nav aria-label="会话导航" className="absolute bottom-8 left-0 top-8 z-20 flex w-8 flex-col justify-center">
     <div className="workspace-scroll max-h-full overflow-y-auto py-2">
       {questions.map((question, index) => {
         const active = question.id === activeId;
@@ -61,10 +61,10 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
               setActiveId(question.id);
               setDismissed(true);
             }}
-            className="flex h-5 w-8 items-center justify-end rounded px-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+            className="flex h-5 w-8 items-center justify-start rounded px-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
             <span className={`h-0.5 rounded-full transition-all group-hover:w-6 group-hover:bg-blue-500 ${active ? "w-6 bg-slate-700" : "w-3 bg-slate-300"}`} />
           </button>
-          {!dismissed && <div className="pointer-events-none absolute right-10 top-1/2 hidden w-64 max-w-[65vw] -translate-y-1/2 rounded-xl border border-slate-200 bg-white/95 p-3 text-xs leading-5 text-slate-600 shadow-lg backdrop-blur group-hover:block group-focus-within:block">
+          {!dismissed && <div className="pointer-events-none absolute left-10 top-1/2 hidden w-64 max-w-[65vw] -translate-y-1/2 rounded-xl border border-slate-200 bg-white/95 p-3 text-xs leading-5 text-slate-600 shadow-lg backdrop-blur group-hover:block group-focus-within:block">
             <p className="mb-1 font-semibold text-slate-800">第 {index + 1} 条提问</p>
             <p className="line-clamp-4 break-words">{preview.slice(0, 300)}</p>
           </div>}

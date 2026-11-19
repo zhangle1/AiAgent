@@ -15,6 +15,7 @@ public interface IChangeAtlasGit
 {
     Task<string?> SourceAsync(string cache, string sha, string path, CancellationToken token) => Task.FromResult<string?>(null);
     Task<AtlasGitCapture> CaptureAsync(string source, string cache, string snapshotId, string requestedRef, bool refreshRemote, DateTime since, GitWorkspaceCredential? credential, CancellationToken token);
+    Task<AtlasGitCapture> CaptureHistoryAsync(string source, string cache, string snapshotId, DateTime since, CancellationToken token);
     Task<(string Patch, bool Truncated)> PatchAsync(string cache, string sha, string? parent, string path, CancellationToken token);
 }
 
@@ -26,7 +27,13 @@ public sealed class ChangeAtlasGitReader : IChangeAtlasGit
     public const int CommitLimit = 120;
     public const int FileLimit = 5000;
 
-    public async Task<AtlasGitCapture> CaptureAsync(string source, string cache, string snapshotId, string requestedRef, bool refreshRemote, DateTime since, GitWorkspaceCredential? credential, CancellationToken token)
+    public Task<AtlasGitCapture> CaptureAsync(string source, string cache, string snapshotId, string requestedRef, bool refreshRemote, DateTime since, GitWorkspaceCredential? credential, CancellationToken token)
+        => CaptureCoreAsync(source, cache, snapshotId, requestedRef, refreshRemote, since, credential, token, historyOnly: false);
+
+    public Task<AtlasGitCapture> CaptureHistoryAsync(string source, string cache, string snapshotId, DateTime since, CancellationToken token)
+        => CaptureCoreAsync(source, cache, snapshotId, "HEAD", false, since, null, token, historyOnly: true);
+
+    private async Task<AtlasGitCapture> CaptureCoreAsync(string source, string cache, string snapshotId, string requestedRef, bool refreshRemote, DateTime since, GitWorkspaceCredential? credential, CancellationToken token, bool historyOnly)
     {
         var gate = _gates.GetOrAdd(cache, _ => new(1, 1));
         await gate.WaitAsync(token);
@@ -40,6 +47,7 @@ public sealed class ChangeAtlasGitReader : IChangeAtlasGit
             if (sourceHead.Code != 0) return new("", "HEAD", "local", [], [], [], ["该代码库还没有提交。"]);
             Directory.CreateDirectory(cache);
             if (!File.Exists(Path.Combine(cache, "HEAD"))) await Require(cache, ["init", "--bare", "--quiet"], token);
+            if (historyOnly) return await ReadHistoryAsync(source, cache, snapshotId, sourceHead.Text, since, token);
             // Source references and commits only; uncommitted files and the index are never read.
             await Require(cache, ["fetch", "--quiet", "--no-tags", "--prune", "--", source, "+HEAD:refs/atlas/local-head", "+refs/heads/*:refs/heads/*"], token);
             var branchResult = await Run(source, ["symbolic-ref", "--quiet", "--short", "HEAD"], token);
@@ -97,6 +105,52 @@ public sealed class ChangeAtlasGitReader : IChangeAtlasGit
         finally { gate.Release(); }
     }
 
+    private static async Task<AtlasGitCapture> ReadHistoryAsync(string source, string cache, string snapshotId, string head, DateTime since, CancellationToken token)
+    {
+        if (!Sha.IsMatch(head)) throw new InvalidOperationException("Git 版本标识无效。");
+        var cached = await Run(cache, ["cat-file", "-e", head + "^{commit}"], token);
+        if (cached.Code != 0) await Require(cache, ["fetch", "--quiet", "--no-tags", "--", source, head], token);
+        await Require(cache, ["update-ref", "refs/atlas/snapshots/" + snapshotId, head], token);
+
+        // NUL separates fields and numstat entries. A record starts with RS plus a hash; a numstat entry starts with its counts.
+        var log = await Require(cache, ["log", "--root", "--no-show-signature", "--diff-merges=first-parent",
+            "--max-count=" + (CommitLimit + 1), "--since=" + since.ToString("O"),
+            "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv",
+            "--format=%x1e%H%x00%P%x00%an%x00%ae%x00%cI%x00%s", head, "--"], token, raw: true);
+        var parts = log.Text.Split('\0');
+        var commits = new List<AtlasRawCommit>();
+        var warnings = new List<string>();
+        for (var index = 0; index < parts.Length && parts[index].Length > 0;)
+        {
+            token.ThrowIfCancellationRequested();
+            if (commits.Count == CommitLimit)
+            {
+                warnings.Add($"提交较多，仅载入最近 {CommitLimit} 次，可缩小历史范围。");
+                break;
+            }
+            var marker = parts[index++];
+            if (marker[0] != '\u001e' || marker.Length == 1 || !Sha.IsMatch(marker[1..]) || index + 4 >= parts.Length)
+                throw new InvalidOperationException("Git 历史格式无效。");
+            var parents = parts[index++].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var author = parts[index++];
+            var email = parts[index++];
+            var timestamp = parts[index++];
+            var subject = parts[index++];
+            var changes = new List<AtlasRawChange>();
+            while (index < parts.Length && parts[index].Length > 0 && parts[index][0] != '\u001e')
+            {
+                var row = parts[index++].TrimStart('\n', '\r');
+                if (ParseNumstatRow(row) is { } change) changes.Add(change);
+            }
+            if (!DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                throw new InvalidOperationException("Git 提交时间无效。");
+            commits.Add(new(marker[1..], parents.FirstOrDefault(), parents.Length > 1, Hash(author + "\0" + email.ToLowerInvariant()),
+                Clip(author, 200), date.UtcDateTime, Clip(subject, 1000), changes.Take(500).ToList(), changes.Count > 500));
+        }
+        if (commits.Any(commit => commit.Truncated)) warnings.Add("部分提交的文件列表已截断，仅显示已读取的统计。");
+        return new(head, "HEAD", "local", [], [], commits, warnings);
+    }
+
     public async Task<string?> SourceAsync(string cache, string sha, string path, CancellationToken token)
     {
         if (!Sha.IsMatch(sha) || !ValidPath(path) || ChangeAtlasService.Sensitive(path)) throw new ArgumentException("无效的源码文件。");
@@ -127,14 +181,18 @@ public sealed class ChangeAtlasGitReader : IChangeAtlasGit
     {
         var rows = new List<AtlasRawChange>();
         foreach (var row in value.Split('\0', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var first = row.IndexOf('\t'); var second = first < 0 ? -1 : row.IndexOf('\t', first + 1);
-            if (second < 0) continue;
-            var path = row[(second + 1)..];
-            if (!ValidPath(path)) continue;
-            rows.Add(new(path, int.TryParse(row[..first], out var added) ? added : null, int.TryParse(row[(first + 1)..second], out var deleted) ? deleted : null));
-        }
+            if (ParseNumstatRow(row) is { } change) rows.Add(change);
         return rows;
+    }
+
+    private static AtlasRawChange? ParseNumstatRow(string row)
+    {
+        var first = row.IndexOf('\t');
+        var second = first < 0 ? -1 : row.IndexOf('\t', first + 1);
+        if (second < 0) return null;
+        var path = row[(second + 1)..];
+        return ValidPath(path) ? new(path, int.TryParse(row[..first], out var added) ? added : null,
+            int.TryParse(row[(first + 1)..second], out var deleted) ? deleted : null) : null;
     }
     public static bool ValidPath(string path) => path.Length is > 0 and <= 4096 && !path.StartsWith('/') && !path.Split('/').Contains("..") && !path.Contains('\0');
     public static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant()[..24];

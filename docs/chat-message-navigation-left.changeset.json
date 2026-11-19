@@ -1,0 +1,40 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-18T09:41:37.896873+00:00",
+  "baseCommit": "cb75868e15d2a5aed917352ec6e1b6f7f655bf97",
+  "objective": "Move the chat message navigation into the left gutter and open previews toward the conversation.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "da7aef72ef0b9da3c69cbf4eff5a6cc94f9f62050378824920a22bfd758e41f6",
+      "bytes": 37619
+    },
+    {
+      "path": "README.md",
+      "sha256": "0c80e987f17db7f4d61c3255abd1bc1034807a09ea22208383501062849e1cdd",
+      "bytes": 42959
+    },
+    {
+      "path": "front/components/chat/ChatMessageNavigation.tsx",
+      "sha256": "62269be4a1e567d0689f39d50c57dd5a4615d6b31daecc7eba36e4c92add7296",
+      "bytes": 3837
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "1b5897a9201f0f55f61a0afc8ab64cd43c151136ea2dd5ac56f6f9e0e52f7a77",
+      "bytes": 185958
+    },
+    {
+      "path": "front/tests/chat-delivery.browser.mjs",
+      "sha256": "9dcd832106d80f922c1592143fe80062937b430065f6a10a5d388bb9c6ca3ac1",
+      "bytes": 13511
+    }
+  ],
+  "fingerprintSha256": "31feefdeb8b060282935e670d3a3b6ab0525897410d5f96948be296770ee4cee",
+  "validation": {
+    "typescript": "TypeScript check passed.",
+    "browser": "Desktop and 390px headless chat verified placement to the left of the conversation, inward previews, Escape dismissal and the existing delivery flow.",
+    "whitespace": "git diff --check passed."
+  }
+}

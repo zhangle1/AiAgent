@@ -150,6 +150,42 @@ public sealed class ChangeAtlasTests
     }
 
     [Fact]
+    public async Task CollaborationHistoryUsesBeijingDaysAndKeepsFirstParentEvidence()
+    {
+        using var f = new Fixture();
+        await f.Initialize();
+        await Command(f.Source, "switch", "-c", "topic");
+        await File.WriteAllTextAsync(Path.Combine(f.Source, "新文件.txt"), "topic evidence\n");
+        await Commit(f.Source, "主题提交");
+        await Command(f.Source, "switch", "main");
+        await Command(f.Source, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+            "-c", "commit.gpgsign=false", "merge", "--no-ff", "-m", "合并提交", "topic");
+        await Command(f.Source, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+            "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "空提交");
+        var request = new AtlasCreateRequest { Days = 14, HistoryOnly = true };
+        var snapshot = await f.Service.CreateAsync(Owner, 1, request, CancellationToken.None);
+        Assert.Equal("history", snapshot.Coverage);
+        Assert.Equal(snapshot.CreatedAt.AddHours(8).Date.AddDays(-13).AddHours(-8), snapshot.StartAt);
+        Assert.Empty(snapshot.Modules);
+        Assert.Equal(5, snapshot.Commits.Count);
+        Assert.Empty(snapshot.Commits.Single(commit => commit.Subject == "空提交").Files);
+        var merge = snapshot.Commits.Single(commit => commit.Subject == "合并提交");
+        Assert.True(merge.IsMerge);
+        var changed = Assert.Single(merge.Files);
+        Assert.Equal(1, changed.Added);
+        var evidence = await f.Service.EvidenceAsync(Owner, 1, snapshot.Id, merge.Id, changed.FileId, CancellationToken.None);
+        Assert.Equal("新文件.txt", evidence.Path);
+        Assert.Contains("+topic evidence", evidence.Patch);
+
+        var warm = await f.Service.CreateAsync(Owner, 1, request, CancellationToken.None);
+        Assert.Equal(snapshot.Commits.Select(commit => commit.Sha), warm.Commits.Select(commit => commit.Sha));
+        Assert.NotEqual(snapshot.Id, warm.Id);
+        Assert.Equal(merge.Sha, (await f.Service.EvidenceAsync(Owner, 1, snapshot.Id, merge.Id, changed.FileId, CancellationToken.None)).Sha);
+        request.RefreshRemote = true;
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.CreateAsync(Owner, 1, request, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task RemoteRefreshFindsExternalPushAndForcePushWithoutTouchingSource()
     {
         using var f = new Fixture(); await f.Initialize();

@@ -103,6 +103,22 @@ try {
     assert.ok(panel && composer && panel.y + panel.height <= composer.y, "Queue should sit above the composer");
   };
   await assertQueueAboveComposer();
+  const navigation = page.getByRole("navigation", { name: "会话导航", exact: true });
+  const firstQuestion = navigation.getByRole("button", { name: /^跳转到第 1 条提问/ });
+  const assertNavigationOnLeft = async () => {
+    const rail = await navigation.boundingBox();
+    const conversation = await page.locator("[data-chat-question]").first().boundingBox();
+    assert.ok(rail && conversation && rail.x + rail.width <= conversation.x, "Message navigation should sit in the left gutter");
+    await firstQuestion.focus();
+    const preview = navigation.getByText("第 1 条提问", { exact: true });
+    await preview.waitFor();
+    const tooltip = await preview.boundingBox();
+    assert.ok(tooltip && tooltip.x >= rail.x + rail.width, "Preview should open toward the conversation");
+    assert.ok(tooltip.x + tooltip.width <= (await page.evaluate(() => innerWidth)), "Preview should fit inside the viewport");
+    await firstQuestion.press("Escape");
+    await preview.waitFor({ state: "hidden" });
+  };
+  await assertNavigationOnLeft();
   await mode.selectOption("steer"); await send("追加 JWT 要求");
   const c = await requestFor("追加 JWT 要求"); assert.equal(c.delivery_intent, "steer");
   await page.getByRole("status").filter({ hasText: "追加指令已投递给当前任务" }).waitFor();
@@ -137,6 +153,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.querySelector("main")?.getBoundingClientRect().left === 0);
   await assertQueueAboveComposer();
+  await assertNavigationOnLeft();
   await page.screenshot({ path: path.join(artifacts, "held-queue-mobile.png"), fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   await page.getByRole("button", { name: "恢复执行", exact: true }).click();
