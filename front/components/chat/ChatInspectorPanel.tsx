@@ -57,6 +57,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   const [resizing, setResizing] = useState(false);
   const runtimeSequences = useRef<Record<string, number>>({});
   const resizeStart = useRef<{ x: number; width: number } | null>(null);
+  const codeScrollRef = useRef<HTMLPreElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const markdownUploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -170,6 +171,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     setTabs((current) => current.includes("file") ? current : [...current, "file"]);
     setActiveTab("file");
     setLoadingFile(true);
+    setFile(null);
     setError(null);
     void getCodeFile(fileReference.repositoryName, fileReference.filePath)
       .then((value) => { if (!disposed) setFile(value); })
@@ -179,10 +181,16 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   }, [fileReference]);
 
   useEffect(() => {
-    if (!fileReference?.line) return;
-    const timer = window.setTimeout(() => document.getElementById(`chat-code-line-${fileReference.line}`)?.scrollIntoView({ block: "center" }), 80);
-    return () => window.clearTimeout(timer);
-  }, [file, fileReference]);
+    if (!isOpen || activeTab !== "file" || loadingFile || !file || !fileReference?.line) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = codeScrollRef.current;
+      const target = container?.querySelector<HTMLElement>(`[data-code-line="${fileReference.line}"]`);
+      if (!container || !target) return;
+      const offset = target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTop += offset - (container.clientHeight - target.offsetHeight) / 2;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [file, fileReference, loadingFile, isOpen, activeTab, requestToken]);
 
   useEffect(() => {
     if (!isOpen || !project || (activeTab !== "documents" && requestedTab !== "documents")) return;
@@ -352,7 +360,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   }
 
   if (!isOpen) return null;
-  const lines = file?.content.split("\n").slice(0, 2500) ?? [];
+  const lines = file?.content.split("\n").slice(0, Math.max(2500, fileReference?.line ?? 0)) ?? [];
   const line = fileReference?.line;
 
   return (
@@ -382,7 +390,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
       ) : activeTab === "file" ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-slate-100 px-4 py-3"><p className="truncate text-xs font-semibold text-slate-800">{file?.path || fileReference?.filePath || "选择代码引用以查看文件"}</p><p className="mt-1 text-[11px] text-slate-400">{file ? `${file.line_count} 行` : "代码文件仅在已注册仓库范围内读取"}</p></div>
-          {loadingFile ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>读取文件中…</div> : file ? <pre className="workspace-scroll min-h-0 flex-1 overflow-auto bg-slate-950 py-3 text-[12px] leading-6 text-slate-100">{lines.map((content, index) => { const number = index + 1; const highlighted = number === line; return <div id={`chat-code-line-${number}`} key={number} className={`flex min-w-max px-4 ${highlighted ? "bg-amber-300/20 ring-1 ring-inset ring-amber-300/50" : ""}`}><span className="mr-4 w-10 select-none text-right text-slate-500">{number}</span><code className="whitespace-pre">{content || " "}</code></div>; })}{file.line_count > lines.length && <p className="px-4 pt-2 text-slate-500">为保持面板流畅，仅显示前 {lines.length} 行。</p>}</pre> : <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">从聊天结果中的代码引用卡片打开文件。</div>}
+          {loadingFile ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>读取文件中…</div> : file ? <pre ref={codeScrollRef} className="workspace-scroll min-h-0 flex-1 overflow-auto bg-slate-950 py-3 text-[12px] leading-6 text-slate-100">{lines.map((content, index) => { const number = index + 1; const highlighted = number === line; return <div data-code-line={number} key={number} className={`flex min-w-max px-4 ${highlighted ? "bg-amber-300/20 ring-1 ring-inset ring-amber-300/50" : ""}`}><span className="mr-4 w-10 select-none text-right text-slate-500">{number}</span><code className="whitespace-pre">{content || " "}</code></div>; })}{file.line_count > lines.length && <p className="px-4 pt-2 text-slate-500">为保持面板流畅，仅显示前 {lines.length} 行。</p>}</pre> : <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center text-sm leading-6 text-slate-500">从聊天结果中的代码引用卡片打开文件。</div>}
         </div>
       ) : activeTab === "uploads" ? (
         <>{requestedExtraction ? <UploadsTab uploads={uploads} selectedUpload={selectedUpload} requestedExtraction={requestedExtraction} loading={loadingUploads} onSelect={(item) => { setRequestedExtraction(null); setSelectedUpload(item); }} /> : <ChatLibraryPanel key={`${project?.id}:${libraryScope}`} projectId={project?.id ?? null} refreshToken={refreshToken} onInsert={onInsertMarkdownReference} onAttach={onAttachLibraryFile} onPreview={(document) => { setSelectedMarkdownDocument(document); openTab("documents"); }} />}{requestedExtraction && <button type="button" onClick={() => setRequestedExtraction(null)} className="border-t border-slate-200 p-3 text-xs text-blue-600">返回资料库</button>}</>

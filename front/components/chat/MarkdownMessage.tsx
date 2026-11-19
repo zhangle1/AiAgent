@@ -103,6 +103,11 @@ function MarkdownPre({ children, ...props }: { children?: ReactNode }) {
   return chart ? <MermaidDiagram chart={chart} /> : <CodeBlock {...domProps(props)}><code>{readChildrenText(children)}</code></CodeBlock>;
 }
 
+function normalizeCodeLocation(value: string): string {
+  return value.replace(/#L([1-9]\d{0,8})(?:C\d+)?(?:-L?\d+(?:C\d+)?)?$/i, ':$1')
+    .replace(/:([1-9]\d{0,8})(?::\d+|-\d+(?::\d+)?)$/, ':$1');
+}
+
 function decodeReference(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -119,7 +124,7 @@ function codeReferenceFromHref(href?: string): CodeReferenceCandidate | null {
       const path = url.searchParams.get("path");
       const line = url.searchParams.get("line");
       if (!path) return null;
-      return { reference: line && /^[1-9]\d{0,8}$/.test(line) ? `${path}:${line}` : path };
+      return { reference: line && /^[1-9]\d{0,8}$/.test(line) ? `${path}:${line}` : normalizeCodeLocation(path) };
     } catch {
       return null;
     }
@@ -135,12 +140,12 @@ function codeReferenceFromHref(href?: string): CodeReferenceCandidate | null {
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return null;
 
-  const reference = decodeReference(href).trim().replace(/^\/([a-z]:[\\/])/i, "$1");
+  const reference = normalizeCodeLocation(decodeReference(href).trim()).replace(/^\/([a-z]:[\\/])/i, "$1");
   return sourceFilePattern.test(reference) || markdownDocumentReferenceFromText(reference) ? { reference } : null;
 }
 
 function codeReferenceFromText(value: string): CodeReferenceCandidate | null {
-  const reference = value.trim();
+  const reference = normalizeCodeLocation(value.trim());
   return !reference.includes("\n") && sourceFilePattern.test(reference) ? { reference } : null;
 }
 
@@ -153,7 +158,7 @@ function documentDownloadReference(href: string | undefined, projectId?: number 
 }
 
 function markdownDocumentReferenceFromText(value: string): string | null {
-  const reference = value.trim();
+  const reference = normalizeCodeLocation(value.trim());
   if (reference.startsWith("//") || (/^[a-z][a-z\d+.-]*:/i.test(reference) && !/^[a-z]:[\\/]/i.test(reference))) return null;
   return !reference.includes("\n") && /\.(?:md|markdown|txt|csv|json|jsonl|xml|ya?ml|html?|pdf|docx?|xlsx?|pptx?|rtf)(?:(?::|#L)[1-9]\d{0,8})?$/i.test(reference) ? reference : null;
 }
