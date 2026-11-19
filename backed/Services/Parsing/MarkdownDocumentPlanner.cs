@@ -9,7 +9,8 @@ public sealed record MarkdownDocumentPlan(string RootName, IReadOnlyList<Markdow
 /// <summary>Deterministic source layout. Model context splitting belongs to the later semantic stage.</summary>
 public sealed class MarkdownDocumentPlanner
 {
-    public const string Version = "markdown-layout-1";
+    public const string Version = "markdown-layout-2";
+    public static bool SupportsVersion(string? version) => version is Version or "markdown-layout-1";
     private sealed record Heading(int Start, int Level, string Name);
     private sealed record Section(string Name, int Start, int End, List<Section> Children);
     private static readonly Regex HeadingLine = new(@"^ {0,3}(#{1,6})(?:[\t ]+|$)(.*)$", RegexOptions.Compiled);
@@ -24,7 +25,8 @@ public sealed class MarkdownDocumentPlanner
         var root = SafeName(Path.GetFileNameWithoutExtension(documentName));
         var files = new List<MarkdownSection>();
         var allocated = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        if (!options.SplitContent || Fits(content, options)) Write(root + ".md", 0, content.Length);
+        var atomicRanges = new Lazy<List<(int Start, int End)>>(() => FindAtomicRanges(content, ct));
+        if (!options.SplitContent || Fits(content, options)) Write((root.Equals("_index", StringComparison.OrdinalIgnoreCase) ? root + "-source" : root) + ".md", 0, content.Length);
         else
         {
             var headings = FindHeadings(content, ct);
@@ -33,10 +35,24 @@ public sealed class MarkdownDocumentPlanner
         }
         return new(root, files);
 
-        void Write(string path, int start, int end, string prefix = "") => files.Add(new(path, prefix + content[start..end], start, end, prefix));
+        void Write(string path, int start, int end, string prefix = "")
+        {
+            if (files.Count >= 10000) throw new InvalidOperationException("解析分片超过 10000 个，请增大章节阈值。");
+            files.Add(new(path, prefix + content[start..end], start, end, prefix));
+        }
+        (int Start, int End)? AtomicAt(int point)
+        {
+            var ranges = atomicRanges.Value; var low = 0; var high = ranges.Count - 1;
+            while (low <= high)
+            {
+                var middle = low + (high - low) / 2;
+                if (ranges[middle].Start < point) low = middle + 1; else high = middle - 1;
+            }
+            return high >= 0 && ranges[high].End > point ? ranges[high] : null;
+        }
         string Allocate(string parent, string name, bool directory)
         {
-            if (!allocated.TryGetValue(parent, out var names)) allocated[parent] = names = new(StringComparer.OrdinalIgnoreCase);
+            if (!allocated.TryGetValue(parent, out var names)) allocated[parent] = names = new(StringComparer.OrdinalIgnoreCase) { "_index" };
             var stem = SafeName(name); var candidate = stem; var count = 1;
             while (!names.Add(candidate)) candidate = stem + "-" + ++count;
             return parent + candidate + (directory ? "/" : ".md");
@@ -103,6 +119,7 @@ public sealed class MarkdownDocumentPlanner
             {
                 if (match.Index >= end) break;
                 var boundary = Math.Min(end, match.Index + match.Length);
+                if (AtomicAt(boundary) is not null) continue;
                 AddParagraph(paragraphStart, boundary); paragraphStart = boundary;
             }
             if (paragraphStart < end) AddParagraph(paragraphStart, end);
@@ -126,7 +143,8 @@ public sealed class MarkdownDocumentPlanner
                 while (current < to)
                 {
                     var cut = current + SafeWidth(content.AsSpan(current, to - current), options);
-                    if (cut == to) break;
+                    if (AtomicAt(cut) is { } atom) cut = atom.Start > current ? atom.Start : atom.End;
+                    if (cut >= to) break;
                     AddPart(current, cut); current = cut;
                 }
             }
@@ -215,6 +233,42 @@ public sealed class MarkdownDocumentPlanner
             result.Add(new(start, heading.Groups[1].Length, SafeName(title)));
         }
         return result;
+    }
+
+    private static List<(int Start, int End)> FindAtomicRanges(string content, CancellationToken ct)
+    {
+        var ranges = new List<(int Start, int End)>();
+        var fence = '\0'; var length = 0; var opening = 0;
+        foreach (var (start, end) in Lines(content, 0, content.Length))
+        {
+            ct.ThrowIfCancellationRequested();
+            var match = FenceLine.Match(content[start..end].TrimEnd('\r', '\n'));
+            if (!match.Success) continue;
+            if (fence == '\0')
+            {
+                if (match.Groups[1].Value[0] == '`' && match.Groups[2].Value.Contains('`')) continue;
+                fence = match.Groups[1].Value[0]; length = match.Groups[1].Length; opening = start;
+            }
+            else if (match.Groups[1].Value[0] == fence && match.Groups[1].Length >= length && string.IsNullOrWhiteSpace(match.Groups[2].Value))
+            {
+                if (ranges.Count >= 100000) throw new InvalidOperationException("文档链接与代码块数量超限。");
+                ranges.Add((opening, end)); fence = '\0';
+            }
+        }
+        if (fence != '\0') ranges.Add((opening, content.Length));
+        foreach (Match match in Regex.Matches(content, @"!?\[[^\]\r\n]*\]\([^\r\n)]+\)", RegexOptions.NonBacktracking))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (ranges.Count >= 100000) throw new InvalidOperationException("文档链接与代码块数量超限。");
+            ranges.Add((match.Index, match.Index + match.Length));
+        }
+        var merged = new List<(int Start, int End)>();
+        foreach (var range in ranges.OrderBy(r => r.Start))
+        {
+            if (merged.Count > 0 && merged[^1].End > range.Start) merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, range.End));
+            else merged.Add(range);
+        }
+        return merged;
     }
 
     private static IEnumerable<(int Start, int End)> Lines(string content, int start, int end)

@@ -28,6 +28,7 @@ public sealed class ChatWebSocketHandler
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
     private readonly IProjectReferenceContextService _projectReferences;
+    private readonly Knowledge.KnowledgeResourceService? _bookResources;
     private readonly IMarkdownDocumentReferenceContextService _markdownDocuments;
     private readonly IProjectAgentMarkdownIndexContextService _projectAgentMarkdownIndex;
     private readonly ICodexModelPolicyService _codexModelPolicy;
@@ -38,7 +39,7 @@ public sealed class ChatWebSocketHandler
     /// <summary>
     /// Creates the WebSocket chat handler.
     /// </summary>
-    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatWebSocketHandler> logger)
+    public ChatWebSocketHandler(IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatWebSocketHandler> logger, Knowledge.KnowledgeResourceService? bookResources = null)
     {
         _orchestrator = orchestrator;
         _authService = authService;
@@ -48,6 +49,7 @@ public sealed class ChatWebSocketHandler
         _usage = usage;
         _memory = memory;
         _projectReferences = projectReferences;
+        _bookResources = bookResources;
         _markdownDocuments = markdownDocuments;
         _projectAgentMarkdownIndex = projectAgentMarkdownIndex;
         _codexModelPolicy = codexModelPolicy;
@@ -56,12 +58,12 @@ public sealed class ChatWebSocketHandler
         _logger = logger;
     }
 
+    private Task PrepareChatInputAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken, _bookResources);
+
     /// <summary>
     /// Accepts a WebSocket, reads one chat request, streams agent events, then closes the socket.
     /// </summary>
-    private Task ResolveAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
-        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken);
-
     public async Task HandleClientAsync(HttpContext context)
     {
         if (!context.WebSockets.IsWebSocketRequest)
@@ -104,7 +106,7 @@ public sealed class ChatWebSocketHandler
             var dispatcher = context.RequestServices.GetService<ChatDeliveryService>();
             request = dispatcher?.Restore(user, request) ?? request;
             _sessions.PrepareCommandSession(user, request);
-            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, ResolveAttachmentsAsync);
+            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, PrepareChatInputAsync);
             if (delivery is not null && delivery.Kind != "execute")
             {
                 await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
@@ -129,7 +131,7 @@ public sealed class ChatWebSocketHandler
                 user = await _authService.TryGetCurrentUserAsync(context, cancellationToken) ?? throw new UnauthorizedAccessException();
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
-            await ResolveAttachmentsAsync(user, request, cancellationToken);
+            await PrepareChatInputAsync(user, request, cancellationToken);
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);

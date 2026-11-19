@@ -7,8 +7,11 @@ internal static class ChatAttachmentPreparation
 {
     internal static async Task ResolveAsync(AuthenticatedUser user, ChatCompleteRequest request,
         IChatImageAttachmentService images, IChatFileAttachmentService files, ICodexModelPolicyService models,
-        IImageOcrPolicyService imagePolicy, CancellationToken cancellationToken)
+        IImageOcrPolicyService imagePolicy, CancellationToken cancellationToken, Knowledge.KnowledgeResourceService? books = null)
     {
+        if (request.HasBookSelection)
+            request.BookChapters = (books ?? throw new InvalidOperationException("知识目录服务不可用。"))
+                .ResolveBookChapters(user, request, cancellationToken);
         var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
         if (request.AttachmentIds.Count > 0)
         {

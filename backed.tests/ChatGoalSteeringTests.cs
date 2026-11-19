@@ -24,6 +24,9 @@ public sealed partial class ChatGoalTests
         Assert.Equal(2, calls.Count(call => call.GetProperty("method").GetString() == "turn/start"));
         Assert.Single(threads);
         var changedScope = fixture.Request(); changedScope.KnowledgeScopeUri = "viking://resources/restricted/"; changedScope.ConversationContext = Context(); changedScope.TurnControl = new();
+        var chapter = Path.Combine(fixture.Root, "chapter.md");
+        File.WriteAllText(chapter, "example");
+        changedScope.BookChapters.Add(new("example", "chapter.md", chapter, AiAgent.Backend.Services.Knowledge.KnowledgeSemanticStore.Hash("example")));
         await service.CompleteAsync(changedScope, null, default);
         Assert.Equal(2, threads.Count);
         Assert.Equal(2, fixture.Calls().Count(call => call.GetProperty("method").GetString() == "thread/start"));

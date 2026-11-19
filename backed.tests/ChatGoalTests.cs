@@ -152,7 +152,7 @@ public sealed partial class ChatGoalTests
         Assert.Equal("ended", fixture.Goal().Status);
     }
 
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "aiagent-goal-" + Guid.NewGuid().ToString("N"));
         public SqlSugarScope Db { get; }
@@ -205,6 +205,31 @@ public sealed partial class ChatGoalTests
     private const string Server = """
 const fs = require('fs'), path = require('path');
 const dir = __dirname;
+function readSelectedChapter(input) {
+ const text = input[0].text;
+ const root = JSON.parse(text.match(/JSON 字符串）： (.+)/)[1]);
+ const cli = process.env.AIAGENT_BOOK_TEST_CODEX;
+ if (cli) {
+   const home = path.join(dir, 'isolated-codex-home');
+   fs.mkdirSync(home, {recursive:true});
+   const reader = path.join(dir, 'read-book.cjs');
+   fs.writeFileSync(reader, "const fs=require('fs'),path=require('path');process.stdout.write((" + readBookDirectory.toString() + ")(process.argv[2]));");
+   const env = {CODEX_HOME:home};
+   for (const key of ['PATH','SYSTEMROOT','TEMP','TMP','COMSPEC','LOCALAPPDATA','USERPROFILE','APPDATA','PATHEXT','PROGRAMFILES','PROGRAMDATA','WINDIR','SYSTEMDRIVE','USERNAME'])
+     if (process.env[key]) env[key] = process.env[key];
+   const run = require('child_process').spawnSync(cli, ['sandbox', '-P', ':read-only', '-C', dir, process.execPath, reader, root],
+     {encoding:'utf8',env,timeout:20000,windowsHide:true});
+   return run.status === 0 ? run.stdout : 'Sandbox test read failed: '+(run.stderr || run.error);
+ }
+ return readBookDirectory(root);
+}
+function readBookDirectory(root) {
+ const walk = directory => fs.readdirSync(directory, {withFileTypes:true}).flatMap(entry => {
+   const file = path.join(directory, entry.name);
+   return entry.isDirectory() ? walk(file) : [fs.readFileSync(file, 'utf8')];
+ });
+ return walk(root).join('\n') + '\n' + fs.readFileSync(path.join(__dirname, 'Capacity.cs'), 'utf8');
+}
 let goal = null, turn = 0, scheduled = false, steers = 0;
 const mode = () => fs.readFileSync(path.join(dir, 'mode'), 'utf8');
 const send = x => process.stdout.write(JSON.stringify(x) + '\n');
@@ -224,7 +249,8 @@ require('readline').createInterface({input:process.stdin}).on('line', line => {
    goal = {objective:p.objective || 'outcome',status:p.status,tokensUsed:11,timeUsedSeconds:1}; result({goal}); break;
  case 'turn/start':
    turn++; result({turn:{id:'t1'}}); started('t1'); content('first');
-   if(mode()!=='hang') done();
+   if(mode()==='book' || mode()==='book-hang') content(readSelectedChapter(p.input));
+   if(mode()!=='hang' && mode()!=='book-hang') done();
    break;
  case 'thread/goal/get':
    result({goal});
@@ -235,7 +261,12 @@ require('readline').createInterface({input:process.stdin}).on('line', line => {
    break;
  case 'turn/steer':
    if(mode()==='steer-reject' || p.expectedTurnId!=='t1' || p.threadId!=='persistent-thread') {send({id:r.id,error:{message:'turn mismatch or steering rejected'}}); break;}
-   result({turnId:'t1'}); content('steered:'+p.input[0].text); steers++;
+   result({turnId:'t1'});
+   if(mode()==='book-hang') {
+     setTimeout(() => { content('read-after-ack:'+readSelectedChapter(p.input)); done(); }, 150);
+     break;
+   }
+   content('steered:'+p.input[0].text); steers++;
    if(mode()!=='steer-two' || steers>=2) done();
    break;
  case 'turn/interrupt': result({}); event('turn/completed',{turn:{status:'interrupted'}}); break;

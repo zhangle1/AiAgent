@@ -95,6 +95,7 @@ export type KnowledgeResourceNode = {
   can_publish?: boolean;
   source_status?: "available" | "missing" | "outside_root" | "invalid_path" | "unsafe_path" | "unreadable" | null;
   source_message?: string | null;
+  is_navigation?: boolean;
   source_uri?: string | null;
   parsed_document_id?: number | null;
   section_order?: number | null;
@@ -131,6 +132,7 @@ export type KnowledgeResourceRead = {
   model?: string | null;
   children: KnowledgeResourceNode[];
   compiled_outputs?: KnowledgeResourceNode[];
+  parsed_index?: KnowledgeResourceNode | null;
   parsed_outputs?: KnowledgeResourceNode[];
 };
 export type KnowledgeResourceImport = {

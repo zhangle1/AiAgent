@@ -31,6 +31,7 @@ public sealed class ChatAppService : IDynamicApiController
     private readonly IUsageStatisticsService _usage;
     private readonly IMemoryService _memory;
     private readonly IProjectReferenceContextService _projectReferences;
+    private readonly Knowledge.KnowledgeResourceService? _bookResources;
     private readonly IMarkdownDocumentReferenceContextService _markdownDocuments;
     private readonly IProjectAgentMarkdownIndexContextService _projectAgentMarkdownIndex;
     private readonly ICodexChatService _codex;
@@ -42,7 +43,7 @@ public sealed class ChatAppService : IDynamicApiController
     /// <summary>
     /// 初始化聊天 API 服务。
     /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IChatUploadLibraryService uploadLibrary, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatAppService>? logger = null)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IChatUploadLibraryService uploadLibrary, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatAppService>? logger = null, Knowledge.KnowledgeResourceService? bookResources = null)
     {
         _httpContextAccessor = httpContextAccessor;
         _orchestrator = orchestrator;
@@ -54,6 +55,7 @@ public sealed class ChatAppService : IDynamicApiController
         _usage = usage;
         _memory = memory;
         _projectReferences = projectReferences;
+        _bookResources = bookResources;
         _markdownDocuments = markdownDocuments;
         _projectAgentMarkdownIndex = projectAgentMarkdownIndex;
         _codex = codex;
@@ -96,7 +98,7 @@ public sealed class ChatAppService : IDynamicApiController
         var user = await RequireUser(cancellationToken);
         request.RuntimeUserId = user.Id;
         request.RuntimeUsername = user.Username;
-        await ResolveAttachmentsAsync(user, request, cancellationToken);
+        await PrepareChatInputAsync(user, request, cancellationToken);
         await _projectReferences.ResolveAsync(user, request, cancellationToken);
         await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
         await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
@@ -159,7 +161,7 @@ public sealed class ChatAppService : IDynamicApiController
             var dispatcher = _httpContextAccessor.HttpContext!.RequestServices.GetService<ChatDeliveryService>();
             request = dispatcher?.Restore(user, request) ?? request;
             _sessions.PrepareCommandSession(user, request);
-            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, ResolveAttachmentsAsync);
+            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, PrepareChatInputAsync);
             if (delivery is not null && delivery.Kind != "execute")
             {
                 await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
@@ -182,7 +184,7 @@ public sealed class ChatAppService : IDynamicApiController
                 user = await RequireUser(cancellationToken);
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
-            await ResolveAttachmentsAsync(user, request, cancellationToken);
+            await PrepareChatInputAsync(user, request, cancellationToken);
             await _projectReferences.ResolveAsync(user, request, cancellationToken);
             await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
             await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
@@ -370,8 +372,8 @@ public sealed class ChatAppService : IDynamicApiController
         return new FileStreamResult(new FileStream(image.Path, FileMode.Open, FileAccess.Read, FileShare.Read), image.ContentType) { EnableRangeProcessing = true };
     }
 
-    private Task ResolveAttachmentsAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
-        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken);
+    private Task PrepareChatInputAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
+        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken, _bookResources);
 
     [HttpGet("codex/quota")]
     public async Task<CodexQuotaResponse> GetCodexQuota(CancellationToken cancellationToken)

@@ -12,7 +12,7 @@ using System.Text.Json;
 namespace AiAgent.Backend.Services.Knowledge;
 
 /// <summary>Logical shared directories over immutable sources. URIs never become filesystem paths.</summary>
-public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledgePathService paths,
+public sealed partial class KnowledgeResourceService(ISqlSugarClient database, IKnowledgePathService paths,
     IKnowledgeIngestionService ingestion, KnowledgeCompilationWorker worker, KnowledgeCompilerSettings settings,
     ILlmChatClient llm, ICodexChatService codex, ILogger<KnowledgeBaseManager> managerLogger,
     IHttpContextAccessor httpContextAccessor, KnowledgeResourceSemanticService semantic,
@@ -102,6 +102,7 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             if (!bases.TryGetValue(doc.KnowledgeBaseId, out var kb) || !latestParsed.TryGetValue(doc.Id, out var parsed) ||
                 parsed.SourceHash != doc.FileHash || !nodes.TryGetValue(DocumentUri(kb, doc), out var source)) continue;
             var layout = parsedStore.ReadManifest(kb, parsed); if (layout is null) continue;
+            source.ParsedDocumentId = parsed.Id;
             var root = ParsedRootUri(source.Uri, doc);
             AddDirectory(root, layout.RootName);
             SetMetadata(nodes[root]);
@@ -112,6 +113,22 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
                 for (var directory = parent; directory.StartsWith(root, StringComparison.Ordinal); directory = Parent(directory)) SetMetadata(nodes[directory]);
                 var node = new KnowledgeResourceNodeDto { Uri = uri, ParentUri = parent, Name = entry.Path.Split('/').Last(),
                     Kind = "file", Extension = ".md", Status = "processed", SectionOrder = entry.Order };
+                SetMetadata(node); nodes[uri] = node;
+            }
+            foreach (var asset in layout.Assets ?? [])
+            {
+                var uri = root + string.Join('/', asset.Path.Split('/').Select(Uri.EscapeDataString));
+                var parent = Parent(uri); AddDirectory(parent);
+                for (var directory = parent; directory.StartsWith(root, StringComparison.Ordinal); directory = Parent(directory)) SetMetadata(nodes[directory]);
+                var node = new KnowledgeResourceNodeDto { Uri = uri, ParentUri = parent, Name = asset.Path.Split('/').Last(),
+                    Kind = "file", Extension = ".png", Status = "processed" };
+                SetMetadata(node); nodes[uri] = node;
+            }
+            foreach (var index in layout.Navigation ?? [])
+            {
+                var uri = root + string.Join('/', index.Path.Split('/').Select(Uri.EscapeDataString));
+                var parent = Parent(uri); AddDirectory(parent);
+                var node = new KnowledgeResourceNodeDto { Uri = uri, ParentUri = parent, Name = "目录索引.md", Kind = "file", Extension = ".md", Status = "processed", IsNavigation = true };
                 SetMetadata(node); nodes[uri] = node;
             }
             void SetMetadata(KnowledgeResourceNodeDto node)
@@ -246,7 +263,20 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         {
             if (node.Kind == "directory") return new() { Node = node, Children = Tree().Where(x => x.ParentUri == node.Uri).ToList(), SemanticStatus = "not_applicable" };
             var part = ParsedSection(node);
+            if (node.Extension == ".png") return new() { Node = node, SemanticStatus = "not_applicable" };
             var text = await System.IO.File.ReadAllTextAsync(part.Path, Encoding.UTF8, ct);
+            var sourceRecord = Resolve(node);
+            text = ParsedMarkdown(sourceRecord.Base, sourceRecord.Document, node.ParsedDocumentId, text) ?? text;
+            if (node.IsNavigation)
+            {
+                var row = scopeDb.Queryable<AiKnowledgeParsedDocument>().InSingle(node.ParsedDocumentId);
+                var layout = new KnowledgeParsedDocumentStore(paths).ReadManifest(sourceRecord.Base, row) ?? throw new InvalidOperationException("解析目录已变化。");
+                var root = ParsedRootUri(DocumentUri(sourceRecord.Base, sourceRecord.Document), sourceRecord.Document);
+                var currentPath = string.Join('/', node.Uri[root.Length..].Split('/').Select(Uri.UnescapeDataString));
+                text = Parsing.MarkdownBundleWriter.RewriteNavigationLinks(text, currentPath,
+                    layout.Files.Select(f => f.Path).Concat((layout.Navigation ?? []).Select(n => n.Path)),
+                    path => root + string.Join('/', path.Split('/').Select(Uri.EscapeDataString)));
+            }
             return new() { Node = node, SourceText = text, ParsedContent = text, Parser = part.Parser, SemanticStatus = "not_applicable" };
         }
         if (node.Kind == "file" && node.Uri.StartsWith(ownerRoot + "wiki/", StringComparison.Ordinal))
@@ -278,8 +308,9 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
             catch (DirectoryNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
         }
         var outputs = Tree().Where(item => item.Kind == "file" && item.DocumentId == doc.Id && IsGeneratedUri(item.Uri)).ToList();
-        return new() { Node = node, SourceText = source, ParsedContent = content.ParsedContent,
-            ParsedOutputs = outputs.Where(item => item.ParsedDocumentId == content.ParsedDocumentId && IsParsedUri(item.Uri)).OrderBy(item => item.SectionOrder).ToList(),
+        return new() { Node = node, SourceText = source, ParsedContent = ParsedMarkdown(kb, doc, content.ParsedDocumentId, content.ParsedContent),
+            ParsedIndex = outputs.FirstOrDefault(item => item.IsNavigation && item.ParsedDocumentId == content.ParsedDocumentId && item.Uri == ParsedRootUri(node.Uri, doc) + Parsing.MarkdownBundleWriter.IndexName),
+            ParsedOutputs = outputs.Where(item => item.ParsedDocumentId == content.ParsedDocumentId && IsParsedUri(item.Uri) && item.Extension == ".md" && !item.IsNavigation).OrderBy(item => item.SectionOrder).ToList(),
             CompiledOutputs = outputs.Where(item => !IsParsedUri(item.Uri)).ToList(),
             SemanticContent = generated?.Overview ?? content.ArtifactContent, Parser = content.Parser, Model = generated?.Model ?? content.Model,
             SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
@@ -326,13 +357,14 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         return worker.Cancel(kb.Name, id);
     }
 
-    public (string Path, string Name, string ContentType) File(string uri)
+    public (string Path, string Name, string ContentType) File(string uri, long? parsedDocumentId = null)
     {
         var node = FindNode(uri);
         if (IsParsedUri(node.Uri))
         {
+            if (parsedDocumentId.HasValue && parsedDocumentId != node.ParsedDocumentId) throw new InvalidOperationException("解析版本已改变，请刷新目录。");
             if (node.Kind != "file") throw new ArgumentException("请选择解析章节文件。");
-            return (ParsedSection(node).Path, node.Name, "text/markdown; charset=utf-8");
+            return (ParsedSection(node).Path, node.Name, node.Extension == ".png" ? "image/png" : "text/markdown; charset=utf-8");
         }
         if (IsGeneratedUri(node.Uri))
         {
@@ -421,9 +453,24 @@ public sealed class KnowledgeResourceService(ISqlSugarClient database, IKnowledg
         var store = new KnowledgeParsedDocumentStore(paths);
         var layout = store.ReadManifest(kb, parsed) ?? throw new InvalidOperationException("解析目录缺失，请重新解析。");
         var root = ParsedRootUri(DocumentUri(kb, doc), doc);
-        var entry = layout.Files.SingleOrDefault(e => root + string.Join('/', e.Path.Split('/').Select(Uri.EscapeDataString)) == node.Uri)
-            ?? throw new KeyNotFoundException("解析章节不存在。");
-        return (store.SectionPath(kb, parsed, entry), parsed.Parser);
+        var entry = layout.Files.SingleOrDefault(e => root + string.Join('/', e.Path.Split('/').Select(Uri.EscapeDataString)) == node.Uri);
+        if (entry is not null) return (store.SectionPath(kb, parsed, entry), parsed.Parser);
+        var index = (layout.Navigation ?? []).SingleOrDefault(e => root + string.Join('/', e.Path.Split('/').Select(Uri.EscapeDataString)) == node.Uri);
+        if (index is not null) return (store.NavigationPath(kb, parsed, index), parsed.Parser);
+        var asset = (layout.Assets ?? []).SingleOrDefault(e => root + string.Join('/', e.Path.Split('/').Select(Uri.EscapeDataString)) == node.Uri)
+            ?? throw new KeyNotFoundException("解析文件不存在。");
+        return (store.AssetPath(kb, parsed, asset), parsed.Parser);
+    }
+
+    private string? ParsedMarkdown(AiKnowledgeBase kb, AiKnowledgeDocument doc, long? parsedId, string? content)
+    {
+        if (content is null || parsedId is null) return content;
+        using var db = database.CopyNew();
+        var row = db.Queryable<AiKnowledgeParsedDocument>().Where(p => p.DocumentId == doc.Id && p.KnowledgeBaseId == kb.Id).OrderByDescending(p => p.Id).First();
+        if (row is null || row.Id != parsedId || row.SourceHash != doc.FileHash) return content;
+        var layout = new KnowledgeParsedDocumentStore(paths).ReadManifest(kb, row);
+        return layout?.Assets is not { Count: > 0 } assets ? content : KnowledgeParsedDocumentStore.RewriteAssetLinks(content, assets,
+            asset => ParsedRootUri(DocumentUri(kb, doc), doc) + string.Join('/', asset.Path.Split('/').Select(Uri.EscapeDataString)));
     }
 
     private AiKnowledgeArtifact WorkspaceArtifact(KnowledgeResourceNodeDto node, string ownerRoot)

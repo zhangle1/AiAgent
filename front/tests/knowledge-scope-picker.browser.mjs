@@ -7,14 +7,18 @@ const dependencies = process.env.KNOWLEDGE_TEST_TOOLS ? createRequire(path.resol
 const { chromium } = dependencies("playwright");
 const artifacts = process.env.CHAT_TEST_ARTIFACTS;
 if (artifacts) await mkdir(artifacts, { recursive: true });
+const bookName = "Design and Optimization of Manufacturing Systems, Second Edition.pdf";
 const nodes = [
   { uri: "viking://resources/", name: "资料", kind: "directory" },
   { uri: "viking://resources/books/", parent_uri: "viking://resources/", name: "书籍", kind: "directory" },
   { uri: "viking://resources/books/design/", parent_uri: "viking://resources/books/", name: "设计", kind: "directory" },
   { uri: "viking://resources/books/design/deep/", parent_uri: "viking://resources/books/design/", name: "深层原则", kind: "directory" },
   { uri: "viking://resources/standards/", parent_uri: "viking://resources/", name: "规范", kind: "directory" },
-  { uri: "viking://resources/books/design/one.md", parent_uri: "viking://resources/books/design/", name: "one.md", kind: "file", knowledge_base_name: "fixture-books" },
-  { uri: "viking://resources/standards/two.md", parent_uri: "viking://resources/standards/", name: "two.md", kind: "file", knowledge_base_name: "fixture-standards" },
+  { uri: "viking://resources/books/design/one.md", parent_uri: "viking://resources/books/design/", name: "one.md", kind: "file", document_id: 1, knowledge_base_name: "fixture-books" },
+  { uri: "viking://resources/standards/two.md", parent_uri: "viking://resources/standards/", name: "two.md", kind: "file", document_id: 2, knowledge_base_name: "fixture-standards" },
+  { uri: "viking://resources/books/design/examples/", parent_uri: "viking://resources/books/design/", name: "设计示例", kind: "directory" },
+  { uri: "viking://resources/Manufacturing%20Systems.pdf", parent_uri: "viking://resources/", name: bookName, kind: "file", document_id: 10, knowledge_base_name: "resource-store" },
+  { uri: "viking://resources/Manufacturing%20Systems.pdf-other.md", parent_uri: "viking://resources/", name: "同名前缀的另一份资料.md", kind: "file", document_id: 11, knowledge_base_name: "prefix-base" },
 ];
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -57,6 +61,7 @@ try {
   await page.goto(process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat?project=11");
   await page.locator('[contenteditable="true"]:visible').first().waitFor({ timeout: 60000 });
   await open();
+  await checkbox(bookName).waitFor();
   await checkbox("设计").click();
   await retained("设计");
   await checkbox("规范").click();
@@ -64,6 +69,7 @@ try {
   const designRow = checkbox("设计").locator("..").locator("..");
   await designRow.getByRole("button", { name: "展开目录", exact: true }).click();
   await checkbox("深层原则").waitFor();
+  await retained("深层原则"); await retained("设计示例");
   await designRow.getByRole("button", { name: "收起目录", exact: true }).click();
   assert.equal(await checkbox("深层原则").count(), 0);
   await retained("设计");
@@ -94,6 +100,50 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("合成响应"));
   assert.deepEqual(sent.at(-1).knowledge_scope_uris, [nodes[2].uri, nodes[4].uri]);
   assert.equal(sent.at(-1).agent, "codex");
+  // Confirmed parent selections restore their descendants, including collapsed rows.
+  await open();
+  await checkbox("设计").locator("..").locator("..").getByRole("button", { name: "展开目录", exact: true }).click();
+  await retained("深层原则"); await retained("设计示例");
+  await checkbox("深层原则").click();
+  assert.equal(await checkbox("设计").evaluate(element => element.indeterminate), true);
+  assert.equal(await checkbox("书籍").evaluate(element => element.indeterminate), true);
+  await retained("设计示例"); await retained("规范");
+  if (artifacts) await page.screenshot({ path: path.join(artifacts, "scope-picker-cascade-desktop.png") });
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  await editor.fill("只检查仍勾选的目录"); await editor.press("Enter");
+  await page.waitForFunction(() => document.body.innerText.includes("只检查仍勾选的目录"));
+  await page.waitForTimeout(250);
+  assert.deepEqual([...sent.at(-1).knowledge_scope_uris].sort(), [nodes[5].uri, nodes[7].uri, nodes[4].uri].sort(), "unchecked descendants must not remain covered by a submitted ancestor; direct files stay selected");
+  assert.equal(sent.at(-1).agent, "codex");
+  await open();
+  assert.equal(await checkbox("深层原则").isChecked(), false);
+  assert.equal(await checkbox("设计").evaluate(element => element.indeterminate), true);
+  // A filtered parent still selects/deselects every hidden descendant.
+  await page.getByPlaceholder("搜索目录").fill("书籍");
+  await checkbox("书籍").click();
+  await page.getByPlaceholder("搜索目录").fill("");
+  await retained("设计"); await retained("深层原则"); await retained("设计示例");
+  await page.getByPlaceholder("搜索目录").fill("书籍");
+  await checkbox("书籍").click();
+  await page.getByPlaceholder("搜索目录").fill("");
+  for (const name of ["书籍", "设计", "深层原则", "设计示例"]) {
+    assert.equal(await checkbox(name).isChecked(), false);
+    assert.equal(await checkbox(name).evaluate(element => element.indeterminate), false);
+  }
+  await retained("规范");
+  await page.keyboard.press("Escape");
+  await open();
+  await page.getByRole("button", { name: "清空", exact: true }).click();
+  await checkbox(bookName).click();
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  await open(); await retained(bookName);
+  if (artifacts) await page.screenshot({ path: path.join(artifacts, "scope-picker-book-desktop.png") });
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await editor.fill("只按勾选的一本书检查代码"); await editor.press("Enter");
+  await page.waitForTimeout(250);
+  assert.deepEqual(sent.at(-1).knowledge_scope_uris, [nodes[8].uri]);
+  assert.deepEqual(sent.at(-1).knowledge_base_names, ["resource-store"]);
+  assert.equal(sent.at(-1).agent, "codex");
   await page.setViewportSize({ width: 390, height: 844 });
   // Open a fresh page so mobile controls start in their initial state.
   await page.goto(process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat?project=11");
@@ -104,6 +154,9 @@ try {
   await page.locator('[contenteditable="true"]:visible').first().click();
   await page.getByRole("button", { name: "选择知识目录", exact: true }).click();
   await checkbox("设计").click(); await retained("设计");
+  await page.getByPlaceholder("搜索目录").fill("深层原则");
+  await retained("深层原则");
+  await page.getByPlaceholder("搜索目录").fill("");
   await checkbox("规范").click(); await retained("规范");
   await page.keyboard.press("Escape");
   assert.equal(await page.getByPlaceholder("搜索目录").count(), 0, "mobile Escape cancels draft");
@@ -114,8 +167,9 @@ try {
   await page.getByRole("button", { name: "选择知识目录", exact: true }).click();
   assert.equal(await checkbox("设计").isChecked(), false, "mobile outside click discards draft");
   await checkbox("规范").click();
+  await checkbox(bookName).click(); await retained(bookName);
   if (artifacts) await page.screenshot({ path: path.join(artifacts, "scope-picker-mobile.png") });
   await page.getByRole("button", { name: "确定", exact: true }).click();
   assert.equal(errors.length, 0, errors.join("\n"));
-  console.log("PASS: actual chat page keeps scope picker open, retains draft across checkbox/parent rerenders, searches collapsed descendants, confirms multi-selection, cancels outside/Escape, submits Scope without changing Codex selection, desktop/mobile.");
+  console.log("PASS: selectable files at root/inside folders; parent cascade includes files, child exclusions preserve direct files; exact PDF scope and base persist into Codex requests; draft/confirm/cancel/search pass on desktop/mobile.");
 } finally { await browser.close(); }

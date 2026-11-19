@@ -97,3 +97,10 @@ public sealed class DocumentParseResult
     [JsonPropertyName("details")]
     public Dictionary<string, object?> Details { get; set; } = [];
 }
+public sealed class DocumentParseAsset
+{
+    [JsonPropertyName("path")] public string Path { get; set; } = "";
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "image";
+    [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
+}

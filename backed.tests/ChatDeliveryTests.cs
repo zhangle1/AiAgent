@@ -97,6 +97,41 @@ public sealed class ChatDeliveryTests : IDisposable
     }
 
     [Fact]
+    public async Task ScopedSteeringPreparesOnlyOnceAndRejectsUnavailableChaptersBeforeHistory()
+    {
+        var request = Request("A");
+        request.KnowledgeScopeUris = ["viking://resources/books/"];
+        await using var active = (await Enter(request))!;
+        active.Registered();
+        var received = new List<string>();
+        using var native = request.TurnControl!.Bind(() => true, (input, _) => {
+            received.Add(Assert.Single(input.BookChapters).RelativePath);
+            return Task.CompletedTask;
+        });
+        var calls = 0;
+        Task Prepare(AuthenticatedUser user, ChatCompleteRequest input, CancellationToken ct)
+        {
+            calls++;
+            if (input.Message == "revoked") throw new InvalidOperationException("所选目录不可访问");
+            input.BookChapters = [new("manual", "chapter.md", "synthetic", "synthetic")];
+            return Task.CompletedTask;
+        }
+        Task<ChatDeliveryService.Admission?> Steer(string command)
+        {
+            var followUp = Request(command, "steer");
+            followUp.KnowledgeScopeUris = [.. request.KnowledgeScopeUris];
+            return _service.EnterAsync(_user, followUp, Ignore, default, Prepare);
+        }
+        Assert.Equal("steered", (await Steer("B"))!.Kind);
+        Assert.Equal("steered", (await Steer("B"))!.Kind);
+        await Assert.ThrowsAsync<ChatDeliveryException>(() => Steer("revoked"));
+        Assert.Equal(2, calls);
+        Assert.Equal(new[] { "chapter.md" }, received);
+        Assert.Equal(new[] { "B" }, _messages);
+        active.Succeeded = true;
+    }
+
+    [Fact]
     public async Task UnacknowledgedSteeringIsNotRetriedAndHoldsFutureInput()
     {
         var request = Request("A"); var active = (await Enter(request))!; active.Registered(); var calls = 0;

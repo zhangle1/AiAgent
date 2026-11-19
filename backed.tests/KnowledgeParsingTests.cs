@@ -39,7 +39,7 @@ public sealed partial class KnowledgeWorkspaceTests
         using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
         var semantic = new KnowledgeResourceSemanticService(db, ingestion, files.Paths, new(files.Paths), api, cli);
         var resources = new KnowledgeResourceService(db, files.Paths, ingestion, worker, settings, api, cli, NullLogger<KnowledgeBaseManager>.Instance, new HttpContextAccessor(), semantic);
-        var tree = resources.Tree(); var sections = tree.Where(n => n.Kind == "file" && KnowledgeResourceService.IsParsedUri(n.Uri)).ToList();
+        var tree = resources.Tree(); var sections = tree.Where(n => n.Kind == "file" && !n.IsNavigation && KnowledgeResourceService.IsParsedUri(n.Uri)).ToList();
         Assert.Equal(layout.Files.Count, sections.Count); Assert.Single(resources.Processing());
         var read = await resources.ReadAsync(doc.ResourceUri!, default); Assert.Equal(layout.Files.Count, read.ParsedOutputs.Count); Assert.Empty(read.CompiledOutputs);
         foreach (var section in sections)
@@ -59,7 +59,7 @@ public sealed partial class KnowledgeWorkspaceTests
         // Reparse publishes a replacement layout, without leaving old section names in the tree.
         var next = await ingestion.ParseResourceAsync(kb, doc, new() { Parsing = new() { SplitContent = false } }, default);
         Assert.NotEqual(result.ParsedDocumentId, next.ParsedDocumentId);
-        Assert.Single(resources.Tree(), n => n.Kind == "file" && KnowledgeResourceService.IsParsedUri(n.Uri));
+        Assert.Single(resources.Tree(), n => n.Kind == "file" && !n.IsNavigation && KnowledgeResourceService.IsParsedUri(n.Uri));
         Assert.Equal(source, ingestion.GetContent(kb, doc).ParsedContent);
     }
 
@@ -133,7 +133,7 @@ public sealed partial class KnowledgeWorkspaceTests
         using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
         var semantic = new KnowledgeResourceSemanticService(db, ingestion, files.Paths, new(files.Paths), api, cli);
         var resources = new KnowledgeResourceService(db, files.Paths, ingestion, worker, settings, api, cli, NullLogger<KnowledgeBaseManager>.Instance, new HttpContextAccessor(), semantic);
-        var section = resources.Tree().Last(n => n.Kind == "file" && KnowledgeResourceService.IsParsedUri(n.Uri));
+        var section = resources.Tree().Last(n => n.Kind == "file" && !n.IsNavigation && KnowledgeResourceService.IsParsedUri(n.Uri));
         Assert.True(section.Uri.Length > 1000); Assert.NotEmpty((await resources.ReadAsync(section.Uri, default)).ParsedContent!);
         Assert.Equal(source, ingestion.GetContent(kb, doc).ParsedContent);
     }

@@ -12,6 +12,7 @@ public sealed partial class CodexChatService
             AgentStreamEventHandler? onEvent, CancellationToken ct)
         {
             var responses = new ConcurrentDictionary<int, TaskCompletionSource<JsonElement>>();
+            using var books = new CodexBookDirectories();
             using var writes = new SemaphoreSlim(1, 1);
             using var binding = control.Bind(() => state.ActiveTurn && !string.IsNullOrWhiteSpace(state.ActiveTurnId) && IsUsable,
                 async (request, token) => {
@@ -24,7 +25,8 @@ public sealed partial class CodexChatService
                     try
                     {
                         if (!state.ActiveTurn || state.ActiveTurnId != turnId) throw new InvalidOperationException("原生轮次已变化，未追加指令。");
-                        var input = request.AttachmentIds.Count > 0 || request.DocumentAttachmentIds.Count > 0
+                        books.Prepare(request, token);
+                        var input = request.BookDirectory != null || request.AttachmentIds.Count > 0 || request.DocumentAttachmentIds.Count > 0
                             ? BuildTurnInput(request)
                             : new List<object> { new { type = "text", text = request.Message } };
                         await SendAsync(_process, new { id, method = "turn/steer", @params = new { threadId, expectedTurnId = turnId, input } }, token);

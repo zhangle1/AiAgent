@@ -10,6 +10,11 @@ public sealed class ChatCompleteRequest
 {
     [JsonPropertyName("delivery_intent")] public string? DeliveryIntent { get; set; }
     [JsonPropertyName("resume_queued")] public bool ResumeQueued { get; set; }
+    [JsonIgnore] internal List<Services.Chat.CodexBookChapter> BookChapters { get; set; } = [];
+    [JsonIgnore] internal string? BookDirectory { get; set; }
+    internal bool HasBookSelection => string.Equals(Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase)
+        && (KnowledgeScopeUris?.Any(uri => !string.IsNullOrWhiteSpace(uri)) == true || !string.IsNullOrWhiteSpace(KnowledgeScopeUri));
+
     [JsonIgnore] public Services.Chat.CodexTurnControl? TurnControl { get; set; }
     [JsonIgnore] public Services.Chat.CodexConversationContext? ConversationContext { get; set; }
     [JsonPropertyName("command_id")]

@@ -123,6 +123,18 @@ public sealed class MarkdownDocumentPlannerTests
         Assert.ThrowsAny<OperationCanceledException>(() => Planner.Plan(source, "doc.md", Small, cancel.Token));
     }
 
+    [Fact]
+    public void FencedCodeAndImageReferencesStayReadableAcrossSizeSplits()
+    {
+        var code = "```csharp\n" + new string('a', 200) + "\n\n# inside code\n" + new string('b', 200) + "\n```";
+        var image = "![large image](assets/" + new string('a', 100) + ".png)";
+        var source = "# Example\n\n" + code + "\n\n" + new string('x', 100) + image + new string('y', 100);
+        var plan = Planner.Plan(source, "manual.txt", Small);
+        Assert.Single(plan.Sections, section => section.Content.Contains(code, StringComparison.Ordinal));
+        Assert.Single(plan.Sections, section => section.Content.Contains(image, StringComparison.Ordinal));
+        Coverage(source, plan);
+    }
+
     private static void Coverage(string source, MarkdownDocumentPlan plan)
     {
         var next = 0;

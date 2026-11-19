@@ -332,9 +332,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
 
   const llmModels = useMemo(() => resolveLlmModels(catalog), [catalog]);
   const knowledgeScopeItems = useMemo(() => knowledgeResourceNodes
-    .filter((node) => node.kind === "directory" && node.uri.endsWith("/") && !["viking://resources/", "viking://projects/", "viking://user/"].includes(node.uri))
-    .map((node) => ({ id: node.uri, label: node.name, description: node.uri }))
-    .slice(0, 300), [knowledgeResourceNodes]);
+    .filter(isChatKnowledgeScopeNode)
+    .map((node) => ({ id: node.uri, label: node.name, description: node.uri })), [knowledgeResourceNodes]);
   const selectedKnowledgeScopes = knowledgeScopeItems.filter((item) => selectedKnowledgeScopeUris.includes(item.id));
   useEffect(() => {
     if (knowledgeResourceNodes.length > 0) {
@@ -1553,7 +1552,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                       setSelectedKnowledgeScopeUris(uris);
                       setOpenContextPicker(null);
                       const scopedKnowledgeBases = knowledgeResourceNodes
-                        .filter((node) => node.kind === "file" && node.knowledge_base_name && uris.some(uri => node.uri === uri || node.uri.startsWith(uri)))
+                        .filter((node) => node.kind === "file" && node.knowledge_base_name && uris.some(uri => node.uri === uri || (uri.endsWith("/") && node.uri.startsWith(uri))))
                         .map((node) => node.knowledge_base_name as string)
                         .filter((name, index, names) => names.findIndex((item) => item.toLocaleLowerCase() === name.toLocaleLowerCase()) === index);
                       if (scopedKnowledgeBases.length > 0) setSelectedKbNames(scopedKnowledgeBases);
@@ -1664,7 +1663,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
           setSelectedKnowledgeScopeUris(uris);
           setMobilePicker(null);
           const scopedKnowledgeBases = knowledgeResourceNodes
-            .filter((node) => node.kind === "file" && node.knowledge_base_name && uris.some(uri => node.uri === uri || node.uri.startsWith(uri)))
+            .filter((node) => node.kind === "file" && node.knowledge_base_name && uris.some(uri => node.uri === uri || (uri.endsWith("/") && node.uri.startsWith(uri))))
             .map((node) => node.knowledge_base_name as string)
             .filter((name, index, names) => names.findIndex((item) => item.toLocaleLowerCase() === name.toLocaleLowerCase()) === index);
           if (scopedKnowledgeBases.length > 0) setSelectedKbNames(scopedKnowledgeBases);
@@ -2356,6 +2355,12 @@ function SidePanelTabLauncher({ onOpen }: { onOpen: (tab: InspectorTab) => void 
   );
 }
 
+function isChatKnowledgeScopeNode(node: KnowledgeResourceNode): boolean {
+  if (node.kind === "directory") return node.uri.endsWith("/") && !["viking://resources/", "viking://projects/", "viking://user/"].includes(node.uri);
+  // Select the original document, rather than implying chapter-level retrieval for generated outputs.
+  return node.kind === "file" && !!node.document_id && !node.source_uri && !node.uri.includes("/_parsed/") && !node.uri.includes("/_compiled/");
+}
+
 function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mobile = false, onOpen, onCancel, onApply }: {
   nodes: KnowledgeResourceNode[];
   selectedUris: string[];
@@ -2371,22 +2376,42 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
   const [draftUris, setDraftUris] = useState<string[]>(selectedUris);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
-  const directories = useMemo(() => nodes
-    .filter((node) => node.kind === "directory" && node.uri.endsWith("/") && !["viking://resources/", "viking://projects/", "viking://user/"].includes(node.uri))
+  const scopeNodes = useMemo(() => nodes
+    .filter(isChatKnowledgeScopeNode)
     .sort((left, right) => left.uri.localeCompare(right.uri)), [nodes]);
-  const directorySet = useMemo(() => new Set(directories.map((node) => node.uri)), [directories]);
+  const scopeNodeSet = useMemo(() => new Set(scopeNodes.map((node) => node.uri)), [scopeNodes]);
   const children = useMemo(() => {
     const map = new Map<string, KnowledgeResourceNode[]>();
-    for (const node of directories) {
-      const parent = node.parent_uri && directorySet.has(node.parent_uri) ? node.parent_uri : "";
+    for (const node of scopeNodes) {
+      const parent = node.parent_uri && scopeNodeSet.has(node.parent_uri) ? node.parent_uri : "";
       const bucket = map.get(parent) ?? [];
       bucket.push(node);
       map.set(parent, bucket);
     }
-    for (const bucket of map.values()) bucket.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+    for (const bucket of map.values()) bucket.sort((left, right) => left.kind === right.kind ? left.name.localeCompare(right.name, "zh-CN") : left.kind === "directory" ? -1 : 1);
     return map;
-  }, [directories, directorySet]);
+  }, [scopeNodes, scopeNodeSet]);
+  const ancestors = useMemo(() => {
+    const byUri = new Map(scopeNodes.map(node => [node.uri, node]));
+    return new Map(scopeNodes.map(node => {
+      const parents = new Set<string>();
+      let parent = node.parent_uri;
+      while (parent && byUri.has(parent) && parent !== node.uri && !parents.has(parent)) {
+        parents.add(parent);
+        parent = byUri.get(parent)?.parent_uri;
+      }
+      return [node.uri, parents];
+    }));
+  }, [scopeNodes]);
+  const subtrees = useMemo(() => {
+    const map = new Map(scopeNodes.map(node => [node.uri, [node.uri]]));
+    for (const node of scopeNodes)
+      for (const parent of ancestors.get(node.uri) ?? []) map.get(parent)?.push(node.uri);
+    return map;
+  }, [scopeNodes, ancestors]);
   const selectedSet = useMemo(() => new Set(draftUris), [draftUris]);
+  // Submit only the top selected folders; their descendants are already in scope.
+  const appliedUris = draftUris.filter(uri => !Array.from(ancestors.get(uri) ?? []).some(parent => selectedSet.has(parent)));
   const flatRows = useMemo(() => {
     const rows: Array<{ node: KnowledgeResourceNode; depth: number }> = [];
     const query = searchTerm.trim().toLocaleLowerCase();
@@ -2400,21 +2425,21 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
     return query ? rows.filter(({ node }) => `${node.name} ${node.uri}`.toLocaleLowerCase().includes(query)) : rows;
   }, [children, expanded, searchTerm]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
-    setDraftUris(selectedUris);
+    setDraftUris(Array.from(new Set(selectedUris.flatMap(uri => subtrees.get(uri) ?? []))));
     setSearchTerm("");
     const initial = new Set<string>();
     for (const uri of selectedUris) {
-      let node = directories.find(item => item.uri === uri);
-      while (node?.parent_uri && directorySet.has(node.parent_uri)) {
+      let node = scopeNodes.find(item => item.uri === uri);
+      while (node?.parent_uri && scopeNodeSet.has(node.parent_uri)) {
         initial.add(node.parent_uri);
-        node = directories.find(item => item.uri === node!.parent_uri);
+        node = scopeNodes.find(item => item.uri === node!.parent_uri);
       }
     }
     for (const root of children.get("") ?? []) initial.add(root.uri);
     setExpanded(initial);
-  }, [open, selectedUris, directories, directorySet, children]);
+  }, [open, selectedUris, scopeNodes, scopeNodeSet, children, subtrees]);
 
   useEffect(() => {
     if (!open) return;
@@ -2432,7 +2457,13 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
 
   if (!open && mobile) return null;
 
-  const toggleDraft = (uri: string) => setDraftUris(current => current.includes(uri) ? current.filter(item => item !== uri) : [...current, uri]);
+  const toggleDraft = (uri: string) => setDraftUris(current => {
+    const subtree = new Set(subtrees.get(uri) ?? [uri]);
+    if (!current.includes(uri)) return Array.from(new Set([...current, ...subtree]));
+    // Removing a child also removes covering ancestors, so it stays excluded on submit.
+    const parents = ancestors.get(uri);
+    return current.filter(item => !subtree.has(item) && !parents?.has(item));
+  });
   const toggleExpanded = (uri: string) => setExpanded(current => {
     const next = new Set(current);
     if (next.has(uri)) next.delete(uri); else next.add(uri);
@@ -2441,21 +2472,22 @@ function KnowledgeScopePicker({ nodes, selectedUris, open, disabled = false, mob
   const body = (
     <div ref={panelRef} role="dialog" aria-label="选择知识目录" aria-modal={mobile || undefined} className={mobile ? "flex max-h-[82dvh] w-full flex-col rounded-t-3xl bg-white p-4 shadow-2xl" : "absolute bottom-10 right-0 z-40 w-[360px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.2)]"}>
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0"><p className="text-sm font-semibold text-slate-900">知识目录</p><p className="mt-0.5 text-[11px] text-slate-500">可多选文件夹，确定后才应用到本轮聊天</p></div>
-        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-800">已选 {draftUris.length}</span>
+        <div className="min-w-0"><p className="text-sm font-semibold text-slate-900">知识目录</p><p className="mt-0.5 text-[11px] text-slate-500">可多选目录或文件，确定后才应用到本轮聊天</p></div>
+        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-800">已选 {appliedUris.length}</span>
       </div>
       <label className="relative mt-3 block"><Search size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="搜索目录" aria-label="搜索知识目录" onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }} className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-xs outline-none focus:border-blue-300 focus:bg-white" /></label>
       <div className="mt-2 min-h-0 max-h-[52dvh] flex-1 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/60 p-1">
-        {flatRows.length === 0 ? <p className="px-3 py-8 text-center text-xs text-slate-500">暂无可用知识目录</p> : flatRows.map(({ node, depth }) => {
+        {flatRows.length === 0 ? <p className="px-3 py-8 text-center text-xs text-slate-500">暂无可用知识目录或文件</p> : flatRows.map(({ node, depth }) => {
           const hasChildren = (children.get(node.uri)?.length ?? 0) > 0;
           const checked = selectedSet.has(node.uri);
+          const mixed = !checked && (subtrees.get(node.uri) ?? []).some(uri => selectedSet.has(uri));
           return <div key={node.uri} className="flex items-center gap-1 rounded-lg px-1 py-1 hover:bg-white" style={{ paddingLeft: `${4 + depth * 16}px` }}>
             <button type="button" onClick={() => hasChildren && toggleExpanded(node.uri)} className={`grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 ${hasChildren ? "hover:bg-slate-100" : "invisible"}`} aria-label={expanded.has(node.uri) ? "收起目录" : "展开目录"}>{expanded.has(node.uri) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
-            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1 text-xs text-slate-700"><input type="checkbox" checked={checked} onChange={() => toggleDraft(node.uri)} className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" /><span className="min-w-0 truncate">{node.name}</span></label>
+            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1 text-xs text-slate-700"><input type="checkbox" checked={checked} ref={element => { if (element) element.indeterminate = mixed; }} aria-checked={mixed ? "mixed" : checked} onChange={() => toggleDraft(node.uri)} className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" /><span className="shrink-0 text-slate-400">{node.kind === "file" ? <FileText size={13} /> : <FolderSearch size={13} />}</span><span title={node.name} className="min-w-0 truncate">{node.name}</span></label>
           </div>;
         })}
       </div>
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3"><button type="button" onClick={() => setDraftUris([])} className="text-xs text-slate-500 hover:text-slate-800">清空</button><div className="flex gap-2"><button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">取消</button><button type="button" onClick={() => onApply(draftUris)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">确定</button></div></div>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3"><button type="button" onClick={() => setDraftUris([])} className="text-xs text-slate-500 hover:text-slate-800">清空</button><div className="flex gap-2"><button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">取消</button><button type="button" onClick={() => onApply(appliedUris)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">确定</button></div></div>
     </div>
   );
 
