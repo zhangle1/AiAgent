@@ -174,6 +174,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 ## Git 规则
 
+管理员历史会话界面位于 `front/components/settings/admin/AdminSessionsPage.tsx`，复用 `MarkdownMessage` 展示助手正文。列表与详情的迟到响应必须隔离；人员筛选沿用管理员 API，搜索与排序限当前最近 100 条结果。只读详情不传入当前用户的项目操作上下文，避免将他人会话的文件引用绑定到管理员工作区。
+
 
 - 提交信息使用简洁中文或 Conventional Commit，例如 `feat: 增加看板工作区快照`。
 - 推送前检查暂存列表，确认不存在本地配置、运行时数据、知识库原文、依赖目录和构建输出。
