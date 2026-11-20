@@ -9,6 +9,7 @@ import { runtimeTestFromHref } from "@/lib/chat-runtime";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { resolveProjectCodeFileReference } from "@/lib/code-repository-api";
+import { knowledgeChapterFromHref, stagedKnowledgeChapter, type KnowledgeChapterReference } from "@/lib/knowledge-api";
 import { ArchitectureDiagram, architectureSourceFromPre } from "@/components/chat/visualization/ArchitectureDiagram";
 import { MermaidDiagram, mermaidSourceFromPre } from "@/components/chat/MermaidDiagram";
 
@@ -17,6 +18,8 @@ type MarkdownMessageProps = {
   projectId?: number | null;
   onOpenCodeFile?: (reference: { repositoryName: string; filePath: string; line?: number }) => void;
   onOpenProjectMarkdownDocument?: (fileName: string) => void;
+  onOpenKnowledgeChapter?: (chapter: KnowledgeChapterReference) => void;
+  scopedKnowledgeChapters?: ReadonlyMap<string, KnowledgeChapterReference | null>;
 };
 
 type CodeReferenceCandidate = {
@@ -210,8 +213,10 @@ function OpenCodeReference({ candidate, projectId, onOpenCodeFile, children, cla
   );
 }
 
-export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProjectMarkdownDocument }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProjectMarkdownDocument, onOpenKnowledgeChapter, scopedKnowledgeChapters }: MarkdownMessageProps) {
   const renderedContent = linkifyAgentFileReferences(content);
+  const chapterFromPath = (reference: string) => stagedKnowledgeChapter(reference) ??
+    scopedKnowledgeChapters?.get(reference.replace(/\\/g, "/").replace(/^\.\//, "").replace(/:[1-9]\d{0,8}$/, ""));
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -247,6 +252,8 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
           const codeText = readChildrenText(children).trim();
           const zip = !className ? localZipReference(codeText) : null;
           if (zip && projectId) return <ChatPackageDownload key={`${projectId}:${zip}`} projectId={projectId} reference={zip} name={zip.replace(/\\/g, "/").split("/").at(-1)!}/>;
+          const chapter = !className ? chapterFromPath(normalizeCodeLocation(codeText)) : null;
+          if (chapter && onOpenKnowledgeChapter) return <ChatDocumentCard key={codeText} chapter={chapter} onOpen={onOpenKnowledgeChapter} />;
           const sourceReference = !className ? codeReferenceFromText(codeText) : null;
           const markdownDocumentReference = !className ? markdownDocumentReferenceFromText(codeText) : null;
           const code = <code className={`${className ?? ""} rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.92em]`} {...domProps(props)}>{children}</code>;
@@ -271,6 +278,9 @@ export function MarkdownMessage({ content, projectId, onOpenCodeFile, onOpenProj
           // Only local references become cards; external links retain their original destination.
           const linkText = readChildrenText(children).trim();
           const sourceReference = codeReferenceFromHref(href) ?? (!href ? codeReferenceFromText(linkText) : null);
+          const chapter = knowledgeChapterFromHref(href) ?? (sourceReference ? chapterFromPath(sourceReference.reference) : null);
+          if (chapter) return onOpenKnowledgeChapter ?
+            <ChatDocumentCard key={href || sourceReference?.reference} chapter={chapter} onOpen={onOpenKnowledgeChapter} /> : <span>{children}</span>;
           const markdownDocumentReference = codeReferenceFromHref(href) ? markdownDocumentReferenceFromText(sourceReference?.reference ?? "") : null;
           if (markdownDocumentReference && projectId && onOpenProjectMarkdownDocument) {
             return <ChatDocumentCard key={`${projectId}:${markdownDocumentReference}`} reference={markdownDocumentReference} projectId={projectId} onOpen={onOpenProjectMarkdownDocument}/>;

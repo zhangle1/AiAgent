@@ -9,6 +9,7 @@ using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Knowledge;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AiAgent.Backend.Tests;
@@ -74,11 +75,20 @@ public sealed partial class KnowledgeWorkspaceTests
         Assert.Contains(codeMarker, result.Content);
         if (steer) Assert.Contains(marker, result.Content.Split("read-after-ack:").Last());
         Assert.DoesNotContain(sibling, result.Content);
+        Assert.Contains($"/api/v1/knowledge-resources/file?uri={Uri.EscapeDataString(node.Uri)}\\u0026parsed_document_id={node.ParsedDocumentId}", result.Content);
+        var filesApi = new KnowledgeResourceAppService(resources, null!, null!, accessor);
+        var download = Assert.IsType<PhysicalFileResult>(filesApi.File(node.Uri, true, node.ParsedDocumentId));
+        Assert.Equal(chosen.Source, download.FileName);
+        Assert.Equal(node.Name, download.FileDownloadName);
+        Assert.IsType<ConflictResult>(filesApi.File(node.Uri, parsedDocumentId: node.ParsedDocumentId + 1));
+        var privateResult = Assert.IsType<StatusCodeResult>(filesApi.File("viking://user/other/_parsed/private-1/chapter.md", parsedDocumentId: 1));
+        Assert.Equal(403, privateResult.StatusCode);
         var rpc = fixture.Calls().Single(call => call.GetProperty("method").GetString() == (steer ? "turn/steer" : "turn/start"));
         var prompt = rpc.GetProperty("params").GetProperty("input")[0].GetProperty("text").GetString()!;
         Assert.DoesNotContain(marker, prompt);
         Assert.DoesNotContain(codeMarker, prompt);
         Assert.DoesNotContain(chosen.Source, prompt);
+        Assert.Contains("aiagent-chapter-links.json", prompt);
         Assert.DoesNotContain("BookDirectory", JsonSerializer.Serialize(submitted), StringComparison.OrdinalIgnoreCase);
         Assert.False(Directory.Exists(submitted.BookDirectory));
         Assert.False(Directory.Exists(first.BookDirectory));

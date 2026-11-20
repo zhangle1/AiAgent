@@ -113,7 +113,7 @@ public sealed class ChatDeliveryTests : IDisposable
         {
             calls++;
             if (input.Message == "revoked") throw new InvalidOperationException("所选目录不可访问");
-            input.BookChapters = [new("manual", "chapter.md", "synthetic", "synthetic")];
+            input.BookChapters = [new("manual", "chapter.md", "synthetic", "synthetic", "viking://resources/_parsed/manual-1/chapter.md", 1)];
             return Task.CompletedTask;
         }
         Task<ChatDeliveryService.Admission?> Steer(string command)

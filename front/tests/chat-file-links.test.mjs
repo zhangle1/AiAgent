@@ -9,11 +9,16 @@ const source = ts.transpileModule(fs.readFileSync(new URL("../components/chat/Ma
 }).outputText;
 const module = { exports: {} };
 const packaging = { exports: {} };
+const knowledge = {};
+new Function("exports", ts.transpileModule(fs.readFileSync(new URL("../lib/knowledge-api.ts", import.meta.url), "utf8"), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText)(knowledge);
 new Function("require", "exports", ts.transpileModule(fs.readFileSync(new URL("../lib/chat-packaging.ts", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText)((name) => { if (name === "./chat-workflow") return workflow; throw new Error(`Unexpected import ${name}`); }, packaging.exports);
 new Function("require", "module", "exports", source)((name) => {
   if (name === "@/lib/chat-packaging") return packaging.exports;
+  if (name === "@/lib/knowledge-api") return knowledge;
   if (name === "@/lib/chat-runtime") return { runtimeTestFromHref: () => null };
   if (name === "@/components/chat/ChatDocumentCard") return { ChatDocumentCard: "DocumentCard" };
   if (name === "react/jsx-runtime") return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
@@ -34,6 +39,50 @@ for (const path of ["D:/AiAgent/Project/AIAGENT/ai-agents/doc/方案.md:12", "D:
     assert.ok(opened.endsWith(".md:12") || opened.endsWith(".html") || opened.endsWith("design notes.md") || opened.endsWith(".pdf"));
   });
 }
+
+test("versioned knowledge chapters render a document card even without a code project", () => {
+  const rendered = module.exports.MarkdownMessage({ content: "", projectId: null, onOpenKnowledgeChapter: () => {} });
+  const uri = "viking://resources/books/_parsed/Manual-41/parts/Cycle%20time.md";
+  const href = `/api/v1/knowledge-resources/file?${new URLSearchParams({ uri, parsed_document_id: "57" })}`;
+  const card = rendered.props.components.a({ href: rendered.props.urlTransform(href), children: "Cycle time" });
+  assert.equal(card.type, "DocumentCard");
+  assert.deepEqual(card.props.chapter, { kind: "resource", uri, parsedDocumentId: 57, name: "Cycle time.md" });
+  const external = `https://example.com${href}`;
+  assert.equal(rendered.props.components.a({ href: rendered.props.urlTransform(external), children: "Cycle time" }).type, "a");
+  const readOnly = module.exports.MarkdownMessage({ content: "" });
+  assert.equal(readOnly.props.components.a({ href: readOnly.props.urlTransform(href), children: "Cycle time" }).type, "span");
+});
+
+test("old staged chapter links route to the knowledge library instead of the project", () => {
+  const rendered = module.exports.MarkdownMessage({ content: "", projectId: 7, onOpenProjectMarkdownDocument: () => {}, onOpenKnowledgeChapter: () => {} });
+  const href = rendered.props.urlTransform("file:///C:/Temp/aiagent-books-random/41-Manual/parts/Cycle%20time.md#L2");
+  const card = rendered.props.components.a({ href, children: "Cycle time" });
+  assert.deepEqual(card.props.chapter, { kind: "staged", documentId: 41, book: "Manual", path: "parts/Cycle time.md", name: "Cycle time.md" });
+});
+
+test("historical book-relative paths open the unique chapter inside the selected knowledge scope", () => {
+  const sourceUri = "viking://resources/books/Fixture.pdf";
+  const otherSource = "viking://resources/books/Other.pdf";
+  const root = "viking://resources/books/_parsed/Fixture-41/";
+  const relative = "Part II/Chapter 12/12.3.2 Statistical Process Control_1.md";
+  const uri = root + relative.split("/").map(encodeURIComponent).join("/");
+  const entry = { uri, kind: "file", extension: ".md", name: relative.split("/").at(-1), source_uri: sourceUri, parsed_document_id: 57 };
+  const other = { ...entry, uri: entry.uri.replace("Fixture-41", "Other-42"), source_uri: otherSource, parsed_document_id: 58 };
+  const render = (scopes) => module.exports.MarkdownMessage({ content: "", projectId: 7, onOpenProjectMarkdownDocument: () => {}, onOpenKnowledgeChapter: () => {},
+    scopedKnowledgeChapters: knowledge.scopedKnowledgeChapterReferences([entry, other], scopes) });
+  const expected = { kind: "resource", uri, parsedDocumentId: 57, name: entry.name };
+  for (const scope of [root, sourceUri]) {
+    const rendered = render([scope]);
+    const href = rendered.props.urlTransform(uri.slice(root.length));
+    assert.deepEqual(rendered.props.components.a({ href, children: "章节" }).props.chapter, expected);
+    assert.deepEqual(rendered.props.components.code({ children: "./" + relative }).props.chapter, expected);
+    assert.equal(rendered.props.components.code({ children: entry.name }).props.chapter, undefined);
+    assert.equal(rendered.props.components.a({ href: rendered.props.urlTransform(`https://example.test/${uri.slice(root.length)}`), children: "外部链接" }).type, "a");
+  }
+  for (const scopes of [[], [sourceUri, otherSource]]) {
+    assert.equal(render(scopes).props.components.code({ children: relative }).props.chapter, undefined);
+  }
+});
 
 test("external document URL remains a web link", () => {
   const rendered = module.exports.MarkdownMessage({ content: "", onOpenProjectMarkdownDocument: () => assert.fail("external link must not open project file") });

@@ -3,6 +3,8 @@ import type { KnowledgeCleanupPreview, KnowledgeCleanupResult } from "@/lib/know
 
 import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage, KnowledgeResourceAnswer, KnowledgeResourceImport, KnowledgeResourceNode, KnowledgeResourceRead, PlatformSessionImportOptions, PlatformSessionImportResult } from "@/lib/knowledge-types";
 
+export const MAX_KNOWLEDGE_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<KnowledgeResourceNode[]> {
   return parseJson(await fetch("/api/v1/knowledge-resources/tree", { cache: "no-store", signal }));
 }
@@ -23,6 +25,22 @@ export async function getKnowledgeResourceProcessing(signal?: AbortSignal): Prom
 }
 export async function readKnowledgeResource(uri: string, signal?: AbortSignal): Promise<KnowledgeResourceRead> {
   return parseJson(await fetch(`/api/v1/knowledge-resources/read?uri=${encodeURIComponent(uri)}`, { cache: "no-store", signal }));
+}
+
+export async function readKnowledgeResourceForPreview(uri: string, signal?: AbortSignal): Promise<KnowledgeResourceRead> {
+  const resource = await readKnowledgeResource(uri, signal);
+  const { node } = resource;
+  // The JSON resource endpoint omits original text beyond 2 MiB. A copied chapter with images can be larger.
+  const size = node.size ?? 0;
+  if (resource.source_text != null || node.kind !== "file" || node.source_status !== "available" ||
+      !/\.(?:md|markdown)$/i.test(node.extension ?? node.name) || size <= 2 * 1024 * 1024 || size > MAX_KNOWLEDGE_UPLOAD_BYTES)
+    return resource;
+
+  const response = await fetch(knowledgeResourceFileUrl(node.uri), { cache: "no-store", signal });
+  if (!response.ok) throw new Error(`Markdown 预览读取失败（HTTP ${response.status}）。`);
+  const file = await response.blob();
+  if (file.size > MAX_KNOWLEDGE_UPLOAD_BYTES) throw new Error("Markdown 文件超过预览大小上限。");
+  return { ...resource, source_text: await file.text() };
 }
 export async function getKnowledgeResourceTask(uri: string, signal?: AbortSignal): Promise<KnowledgeCompilationJob | null> {
   return parseJson(await fetch(`/api/v1/knowledge-resources/task?uri=${encodeURIComponent(uri)}`, { cache: "no-store", signal }));
@@ -47,8 +65,94 @@ export async function getPlatformSessionImportOptions(limit = 100): Promise<Plat
 export async function importPlatformSessions(sessionIds: string[]): Promise<PlatformSessionImportResult> {
   return parseJson(await fetch("/api/v1/knowledge-resources/platform-sessions/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_ids: sessionIds }) }));
 }
-export function knowledgeResourceFileUrl(uri: string, download = false): string {
-  return `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}${download ? "&download=true" : ""}`;
+export function knowledgeResourceFileUrl(uri: string, download = false, parsedDocumentId?: number | null): string {
+  return `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}${download ? "&download=true" : ""}${parsedDocumentId != null ? `&parsed_document_id=${parsedDocumentId}` : ""}`;
+}
+
+export type KnowledgeChapterReference = { name: string } & (
+  { kind: "resource"; uri: string; parsedDocumentId: number } |
+  { kind: "staged"; documentId: number; book: string; path: string }
+);
+
+export function scopedKnowledgeChapterReferences(nodes: readonly KnowledgeResourceNode[], scopeUris: readonly string[]) {
+  const chapters = new Map<string, KnowledgeChapterReference | null>();
+  if (!scopeUris.length) return chapters;
+
+  const marker = "/_parsed/";
+  for (const node of nodes) {
+    const { source_uri: source, parsed_document_id: version } = node;
+    if (node.kind !== "file" || node.extension !== ".md" || !source || !version) continue;
+    const offset = node.uri.indexOf(marker);
+    if (offset < 0 || !scopeUris.some(scope => scope === source ||
+        (scope.endsWith("/") && (node.uri.startsWith(scope) || source.startsWith(scope))))) continue;
+
+    const [, ...segments] = node.uri.slice(offset + marker.length).split("/");
+    // A bare filename can also refer to a project document. Require the book's directory path.
+    if (segments.length < 2) continue;
+    let path: string;
+    try { path = segments.map(decodeURIComponent).join("/"); } catch { continue; }
+    chapters.set(path, chapters.has(path) ? null : {
+      kind: "resource", uri: node.uri, parsedDocumentId: version, name: node.name,
+    });
+  }
+  return chapters;
+}
+
+export function knowledgeChapterFromHref(href?: string): KnowledgeChapterReference | null {
+  const route = "/api/v1/knowledge-resources/file?";
+  if (!href?.startsWith(route)) return null;
+  const query = new URLSearchParams(href.slice(route.length));
+  const uri = query.get("uri");
+  const version = query.get("parsed_document_id");
+  if (!uri || !/^viking:\/\/(?:resources|projects|user)\/(?:[^/?#]+\/)*_parsed\/[^/?#]+\/(?:[^/?#]+\/)*[^/?#]+\.md$/i.test(uri) ||
+      !version || !/^[1-9]\d*$/.test(version) || !Number.isSafeInteger(Number(version))) return null;
+  try {
+    return { kind: "resource", uri, parsedDocumentId: Number(version), name: decodeURIComponent(uri.split("/").at(-1)!) };
+  } catch {
+    return null;
+  }
+}
+
+export function stagedKnowledgeChapter(reference: string): KnowledgeChapterReference | null {
+  const normalized = reference.replace(/\\/g, "/").replace(/:[1-9]\d{0,8}$/, "");
+  if (normalized.startsWith("//") || (/^[a-z][a-z\d+.-]*:/i.test(normalized) && !/^[a-z]:\//i.test(normalized))) return null;
+  const match = normalized.match(/(?:^|\/)aiagent-books-[^/]+\/([1-9]\d*)-([^/]+)\/([^\r\n]+\.md)$/i);
+  if (!match) return null;
+  const [, id, book, path] = match;
+  const parts = path.split("/");
+  if (!Number.isSafeInteger(Number(id)) || parts.some(part => !part || part === "." || part === "..")) return null;
+  return { kind: "staged", documentId: Number(id), book, path, name: parts.at(-1)! };
+}
+
+async function resolveKnowledgeChapter(chapter: KnowledgeChapterReference, signal?: AbortSignal) {
+  if (chapter.kind === "resource") return chapter;
+  const encodeSegment = (segment: string) => encodeURIComponent(segment).replace(/[!'()*]/g,
+    char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  const suffix = `/_parsed/${encodeSegment(`${chapter.book}-${chapter.documentId}`)}/${chapter.path.split("/").map(encodeSegment).join("/")}`;
+  const nodes = await getKnowledgeResourceTree(signal);
+  const matches = nodes.filter(node => node.kind === "file" && node.document_id === chapter.documentId &&
+    node.parsed_document_id != null && node.uri.endsWith(suffix));
+  if (matches.length !== 1) throw new Error("资料库中找不到该章节，或当前账号无权访问。");
+  return { uri: matches[0].uri, parsedDocumentId: matches[0].parsed_document_id! };
+}
+
+export async function readKnowledgeChapter(chapter: KnowledgeChapterReference, signal?: AbortSignal) {
+  const { uri, parsedDocumentId } = await resolveKnowledgeChapter(chapter, signal);
+  const resource = await readKnowledgeResource(uri, signal);
+  if (resource.node.uri !== uri || resource.node.parsed_document_id !== parsedDocumentId)
+    throw new Error("章节版本或内容已变化，请从资料库打开当前版本。");
+  return { text: resource.source_text ?? resource.parsed_content ?? "", uri, parsedDocumentId };
+}
+
+export async function getKnowledgeChapterFile(chapter: KnowledgeChapterReference, download: boolean, signal?: AbortSignal): Promise<Response> {
+  const { uri, parsedDocumentId } = await resolveKnowledgeChapter(chapter, signal);
+  const response = await fetch(knowledgeResourceFileUrl(uri, download, parsedDocumentId), { cache: "no-store", signal });
+  if (response.status === 409) throw new Error("章节版本或内容已变化，请从资料库打开当前版本。");
+  if (response.status === 401 || response.status === 403) throw new Error("当前账号无权访问该章节，请确认已登录并有资料库访问权限。");
+  if (response.status === 404) throw new Error("资料库中找不到该章节，或当前账号无权访问。");
+  if (!response.ok || !response.headers.get("content-type")?.toLowerCase().startsWith("text/markdown"))
+    throw new Error(`读取资料库章节失败（HTTP ${response.status}）。`);
+  return response;
 }
 
 export async function getKnowledgeCompilations(signal?: AbortSignal): Promise<KnowledgeCompilationJob[]> {

@@ -176,7 +176,11 @@ export async function downloadProjectPackage(projectId: number, href: string): P
 async function downloadDocumentBlob(href: string, name: string): Promise<void> {
   const response = await fetch(href, { cache: "no-store" });
   if (!response.ok) throw new Error(`下载失败（${response.status}），请确认文件仍存在且有访问权限。`);
-  const url = URL.createObjectURL(await response.blob());
+  saveDocumentBlob(await response.blob(), name);
+}
+
+export function saveDocumentBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;

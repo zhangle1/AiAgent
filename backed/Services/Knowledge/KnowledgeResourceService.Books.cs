@@ -30,14 +30,15 @@ public sealed partial class KnowledgeResourceService
             var root = ParsedRootUri(DocumentUri(kb, doc), doc);
             var allowed = book.Select(node => node.Uri).ToHashSet(StringComparer.Ordinal);
             var label = $"{doc.Id}-{MarkdownDocumentPlanner.SafeName(Path.GetFileNameWithoutExtension(doc.OriginalFileName))}";
-            bool Selected(string path) => allowed.Contains(root + string.Join('/', path.Split('/').Select(Uri.EscapeDataString)));
+            string ChapterUri(string path) => root + string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
+            bool Selected(string path) => allowed.Contains(ChapterUri(path));
             foreach (var entry in manifest.Files.Where(entry => Selected(entry.Path)))
             {
                 ct.ThrowIfCancellationRequested();
-                chapters.Add(new(label, entry.Path, store.SectionPath(kb, parsed, entry), entry.Hash));
+                chapters.Add(new(label, entry.Path, store.SectionPath(kb, parsed, entry), entry.Hash, ChapterUri(entry.Path), parsed.Id));
             }
             foreach (var index in (manifest.Navigation ?? []).Where(index => Selected(index.Path)))
-                chapters.Add(new(label, index.Path, store.NavigationPath(kb, parsed, index), index.Hash));
+                chapters.Add(new(label, index.Path, store.NavigationPath(kb, parsed, index), index.Hash, ChapterUri(index.Path), parsed.Id));
         }
         if (chapters.Count != selected.Count) throw new InvalidOperationException("书籍目录已变化，请刷新后重试。");
         return chapters;

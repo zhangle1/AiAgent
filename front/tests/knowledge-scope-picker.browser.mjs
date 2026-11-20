@@ -20,18 +20,35 @@ const nodes = [
   { uri: "viking://resources/Manufacturing%20Systems.pdf", parent_uri: "viking://resources/", name: bookName, kind: "file", document_id: 10, knowledge_base_name: "resource-store" },
   { uri: "viking://resources/Manufacturing%20Systems.pdf-other.md", parent_uri: "viking://resources/", name: "同名前缀的另一份资料.md", kind: "file", document_id: 11, knowledge_base_name: "prefix-base" },
 ];
+const legacySession = "fixture-legacy-book";
+const legacyPath = "Part II/Chapter 12/12.3.2 Statistical Process Control_1.md";
+const encodedLegacyPath = legacyPath.split("/").map(encodeURIComponent).join("/");
+const legacyChapter = {
+  uri: `viking://resources/_parsed/Manufacturing%20Systems-10/${encodedLegacyPath}`,
+  name: legacyPath.split("/").at(-1), kind: "file", extension: ".md", document_id: 10,
+  source_uri: nodes[8].uri, parsed_document_id: 31,
+};
+const projectMarkdown = { repository_name: "fixture", path: "docs/project-guide.md", name: "project-guide.md", preview_kind: "markdown", extension: ".md" };
+nodes.push(legacyChapter);
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 page.setDefaultTimeout(15000);
-const errors = [], sent = [];
+const errors = [], sent = [], legacyFileReads = [];
+let releaseLegacyTree;
+const legacyTree = new Promise(resolve => { releaseLegacyTree = resolve; });
 page.on("pageerror", error => errors.push(error.message));
 await page.route("**/api/**", async route => {
-  const name = new URL(route.request().url()).pathname;
+  const url = new URL(route.request().url());
+  const name = url.pathname;
   let body = [];
   if (name.endsWith("/auth/status")) body = { authenticated: true, user_id: "fixture", username: "fixture", role: "admin" };
   else if (name === "/api/v1/settings") body = { ui: { theme: "light", language: "zh-CN", preferred_agent: "codex" }, catalog: { version: 1, services: { llm: { active_profile_id: "fixture", active_model_id: "fixture", profiles: [{ id: "fixture", name: "Fixture", models: [{ id: "fixture", name: "Fixture", model: "fixture" }] }] } } } };
   else if (name === "/api/v1/settings/ui") body = { theme: "light", language: "zh-CN" };
-  else if (name === "/api/v1/knowledge-resources/tree") body = nodes;
+  else if (name === "/api/v1/knowledge-resources/tree") { await legacyTree; body = nodes; }
+  else if (name === "/api/v1/knowledge-resources/read") {
+    legacyFileReads.push(Object.fromEntries(url.searchParams));
+    body = { node: legacyChapter, source_text: "# 可打开的历史章节\n" };
+  }
   else if (name.endsWith("/sessions/list")) body = { sessions: [] };
   else if (name.endsWith("/sessions/project-preferences")) body = { preferences: [] };
   else if (name.endsWith("/sessions/sidebar-preference")) body = { project_sort_mode: "name" };
@@ -39,9 +56,18 @@ await page.route("**/api/**", async route => {
   else if (name.endsWith("/codex-model-policy")) body = { models: [{ id: "fixture", name: "Fixture Codex", description: "", profile_name: null, supports_reasoning_effort: false, reasoning_efforts: [], is_builtin: true, image_input: "none" }], allowed_model_ids: ["fixture"], default_model_id: "fixture", allow_chat_model_override: true, allowed_reasoning_efforts: [], default_reasoning_effort: "", profile_models: [] };
   else if (name.endsWith("/image-ocr-policy")) body = { enabled: false, native_image_input_enabled: false };
   else if (name === "/api/v1/code-repositories/projects") body = [{ id: 11, name: "fixture", display_name: "测试项目", root_path: "fixture", repositories: [], repository_count: 0 }];
+  else if (name === "/api/v1/code-repositories/projects/11/markdown-documents") body = [projectMarkdown];
+  else if (name === "/api/v1/code-repositories/projects/11/documents/preview") {
+    assert.equal(url.searchParams.get("path"), projectMarkdown.path);
+    body = { content: "# 项目 Markdown 预览\n\n**原有项目文档。**" };
+  }
   else if (name.endsWith("/git/status")) body = { project_id: 11, repositories: [], state: "ready", message: "" };
   else if (name === "/api/v1/code-runtime/projects/11") body = { project_id: 11, profiles: [], runs: [] };
   else if (/\/sessions\/[^/]+\/goal$/.test(name)) body = { goal: null };
+  else if (name.endsWith(`/sessions/${legacySession}`)) body = {
+    id: legacySession, title: "历史书籍会话", project_id: 11, preferences: { knowledge_scope_uris: [legacyChapter.source_uri], agent: "codex" },
+    messages: [{ id: 1, role: "user", content: "阅读所选书籍" }, { id: 2, role: "assistant", content: `实际阅读：[章节](${encodedLegacyPath})\n\n[项目文档](${projectMarkdown.path})` }],
+  };
   else if (/\/sessions\/[^/]+$/.test(name)) body = { id: name.split("/").at(-1), title: "Fixture", messages: [], preferences: {}, project_id: 11 };
   await route.fulfill({ json: body });
 });
@@ -58,6 +84,20 @@ const retained = async name => {
   assert.equal(await checkbox(name).isChecked(), true, "checkbox draft must remain checked");
 };
 try {
+  const historyUrl = new URL(process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat");
+  historyUrl.searchParams.set("session", legacySession);
+  await page.goto(historyUrl.toString());
+  await page.getByTitle(`在右侧项目文档中打开 ${legacyChapter.name}`).waitFor({ timeout: 30000 });
+  releaseLegacyTree();
+  await page.getByTitle(`预览资料库章节 ${legacyChapter.name}`).click();
+  await page.getByRole("region", { name: "资料库章节预览" }).getByRole("heading", { name: "可打开的历史章节" }).waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.ok(legacyFileReads.length > 0);
+  for (const read of legacyFileReads) assert.deepEqual(read, { uri: legacyChapter.uri });
+  await page.getByTitle(`在右侧项目文档中打开 ${projectMarkdown.name}`).click();
+  await page.getByRole("heading", { name: "项目 Markdown 预览" }).waitFor();
+  assert.equal(await page.getByRole("region", { name: "资料库章节预览" }).count(), 0);
+  await page.getByRole("button", { name: "关闭右侧面板", exact: true }).click();
   await page.goto(process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat?project=11");
   await page.locator('[contenteditable="true"]:visible').first().waitFor({ timeout: 60000 });
   await open();
@@ -171,5 +211,5 @@ try {
   if (artifacts) await page.screenshot({ path: path.join(artifacts, "scope-picker-mobile.png") });
   await page.getByRole("button", { name: "确定", exact: true }).click();
   assert.equal(errors.length, 0, errors.join("\n"));
-  console.log("PASS: selectable files at root/inside folders; parent cascade includes files, child exclusions preserve direct files; exact PDF scope and base persist into Codex requests; draft/confirm/cancel/search pass on desktop/mobile.");
-} finally { await browser.close(); }
+  console.log("PASS: late catalog updates historical chapter cards; exact file scopes, parent cascade, draft and selection on desktop/mobile.");
+} finally { releaseLegacyTree(); await browser.close(); }

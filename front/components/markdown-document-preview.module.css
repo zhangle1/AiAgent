@@ -1,0 +1,27 @@
+.content { min-width: 0; color: #334155; font-size: 0.9375rem; line-height: 1.8; overflow-wrap: anywhere; }
+.content > :first-child { margin-top: 0; }
+.content :is(h1, h2, h3, h4, h5, h6) { margin: 1.5em 0 0.55em; color: #0f172a; font-weight: 700; line-height: 1.4; }
+.content h1 { font-size: 1.625rem; }
+.content h2 { font-size: 1.375rem; }
+.content h3 { font-size: 1.1875rem; }
+.content h4 { font-size: 1.0625rem; }
+.content h5 { font-size: 1rem; }
+.content h6 { font-size: 0.9375rem; color: #475569; }
+.content :is(h1, h2) { border-bottom: 1px solid #e2e8f0; padding-bottom: 0.35em; }
+.content :is(p, ul, ol, blockquote, pre, .tableScroll, img) { margin: 0.8rem 0; }
+.content :is(ul, ol) { padding-inline-start: 1.5rem; }
+.content ul { list-style: disc; }
+.content ol { list-style: decimal; }
+.content li + li { margin-top: 0.25rem; }
+.content li > :is(ul, ol, p) { margin: 0.25rem 0; }
+.content a, .resourceLink { color: #1d4ed8; text-decoration: underline; text-underline-offset: 0.15em; }
+.content blockquote { border-inline-start: 3px solid #93c5fd; background: #eff6ff; padding: 0.4rem 0.9rem; }
+.content hr { margin: 1.5rem 0; border-color: #e2e8f0; }
+.content .tableScroll { max-width: 100%; overflow-x: auto; }
+.content table { min-width: 100%; border-collapse: collapse; font-size: 0.875rem; line-height: 1.6; }
+.content :is(th, td) { min-width: 5rem; border: 1px solid #e2e8f0; padding: 0.45rem 0.65rem; vertical-align: top; }
+.content th { background: #f1f5f9; font-weight: 650; }
+.content code { border-radius: 0.25rem; padding: 0.12em 0.35em; background: #f1f5f9; color: #9f1239; font-size: 0.9em; }
+.content pre { max-width: 100%; overflow-x: auto; border-radius: 0.6rem; padding: 0.85rem; background: #0f172a; color: #f1f5f9; line-height: 1.6; }
+.content pre code { padding: 0; background: transparent; color: inherit; }
+.content img { max-width: 100%; height: auto; border-radius: 0.4rem; }
