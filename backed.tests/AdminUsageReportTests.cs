@@ -11,6 +11,32 @@ namespace AiAgent.Backend.Tests;
 public sealed class AdminUsageReportTests
 {
     [Fact]
+    public async Task SessionPagesRespectOwnerOrderingAndAdministratorAccess()
+    {
+        using var db = Database();
+        db.CodeFirst.InitTables<AiChatMessage>();
+        var timestamp = new DateTime(2026, 11, 20);
+        db.Insertable(new[] {
+            new AiChatSession { Id = "a", UserId = "u1", UpdatedAt = timestamp },
+            new AiChatSession { Id = "b", UserId = "u1", UpdatedAt = timestamp },
+            new AiChatSession { Id = "c", UserId = "u2", UpdatedAt = timestamp.AddDays(1) },
+            new AiChatSession { Id = "d", UserId = "u1", UpdatedAt = timestamp, IsDeleted = true }
+        }).ExecuteCommand();
+        var service = new AdminService(db, null!);
+        var admin = new AuthenticatedUser("admin", "admin", "admin");
+        var first = await service.ListSessionsAsync(admin, null, 2, default);
+        var second = await service.ListSessionsAsync(admin, null, 2, default, 2);
+        Assert.Equal(new[] { "c", "b" }, first.Select(s => s.Id));
+        Assert.Equal("a", Assert.Single(second).Id);
+        var oldest = await service.ListSessionsAsync(admin, "u1", 1, default, 0, true);
+        var next = await service.ListSessionsAsync(admin, "u1", 1, default, 1, true);
+        Assert.Equal("a", Assert.Single(oldest).Id);
+        Assert.Equal("b", Assert.Single(next).Id);
+        Assert.Empty(await service.ListSessionsAsync(admin, "u1", 1, default, 2));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListSessionsAsync(new("user", "user"), null, 50, default));
+    }
+
+    [Fact]
     public async Task ReportFiltersOwnersProjectsAndInclusiveDatesAndDeduplicatesSessions()
     {
         using var db = Database();

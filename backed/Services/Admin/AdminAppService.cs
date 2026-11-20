@@ -135,8 +135,8 @@ public sealed class AdminAppService : IDynamicApiController
     }
 
     [HttpGet("sessions")]
-    public async Task<List<AdminSessionSummaryDto>> ListSessions([FromQuery(Name = "user_id")] string? userId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default)
-        => await _admin.ListSessionsAsync(await RequireAdministrator(cancellationToken), userId, limit, cancellationToken);
+    public async Task<List<AdminSessionSummaryDto>> ListSessions([FromQuery(Name = "user_id")] string? userId, [FromQuery] int limit = 100, CancellationToken cancellationToken = default, [FromQuery] int offset = 0, [FromQuery] bool ascending = false)
+        => await _admin.ListSessionsAsync(await RequireAdministrator(cancellationToken), userId, limit, cancellationToken, offset, ascending);
 
     [HttpGet("users/{userId}/sessions/{sessionId}")]
     public async Task<IActionResult> GetSession(string userId, string sessionId, CancellationToken cancellationToken)

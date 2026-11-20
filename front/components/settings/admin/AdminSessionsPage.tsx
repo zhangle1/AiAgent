@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { History, Loader2 } from "lucide-react";
 import { getAdminSession, getAdminSessions, getAdminUsers, type AdminSession, type AdminUser } from "@/lib/admin-api";
 import { getAuthStatus } from "@/lib/auth-api";
@@ -25,16 +25,53 @@ export function AdminSessionsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
   const requestId = useRef(0);
+  const generation = useRef(0);
+  const busy = useRef(false);
+  const offset = useRef(0);
+  const listRoot = useRef<HTMLDivElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [listError, setListError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const loadMore = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    const version = generation.current;
+    setLoading(true); setListError("");
+    try {
+      const result = await getAdminSessions(userId || undefined, offset.current, ascending);
+      if (version !== generation.current) return;
+      offset.current += result.length;
+      setSessions(previous => {
+        const keys = new Set(previous.map(s => `${s.user_id}:${s.id}`));
+        return [...previous, ...result.filter(s => !keys.has(`${s.user_id}:${s.id}`))];
+      });
+      setHasMore(result.length === 50);
+    } catch (e) {
+      if (version === generation.current) setListError(e instanceof Error ? e.message : "加载失败");
+    } finally {
+      if (version === generation.current) { busy.current = false; setLoading(false); }
+    }
+  }, [userId, ascending]);
   useEffect(() => { let active = true; void getAuthStatus().then(s => { if (active) setAllowed(s.is_admin === true); }).catch(() => { if (active) setAllowed(false); }); return () => { active = false; }; }, []);
   useEffect(() => { if (!allowed) return; let active = true; void getAdminUsers().then(v => { if (active) setUsers(v); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [allowed]);
   useEffect(() => {
     if (!allowed) return;
-    let active = true;
-    requestId.current++;
-    setSelected(null); setDetail(null); setDetailLoading(false); setSessions([]); setLoading(true); setError("");
-    void getAdminSessions(userId || undefined).then(v => { if (active) setSessions(v); }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; requestId.current++; };
-  }, [allowed, userId]);
+    generation.current++; requestId.current++;
+    busy.current = false; offset.current = 0;
+    setSelected(null); setDetail(null); setDetailLoading(false); setSessions([]); setHasMore(true); setError("");
+    listRoot.current?.scrollTo({ top: 0 });
+    void loadMore();
+    return () => { generation.current++; requestId.current++; };
+  }, [allowed, loadMore, refresh]);
+  useEffect(() => {
+    if (!allowed || loading || !hasMore || listError || !sentinel.current) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) void loadMore();
+    }, { root: listRoot.current, rootMargin: "100px" });
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [allowed, loading, hasMore, listError, loadMore, sessions.length]);
   const open = async (session: AdminSession) => {
     const id = ++requestId.current;
     setSelected(session); setDetail(null); setDetailLoading(true); setError("");
@@ -58,11 +95,12 @@ export function AdminSessionsPage() {
     </div>
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.65fr)]">
       <aside className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 p-4"><h2 className="text-sm font-semibold">会话列表 <span className="ml-2 text-xs font-normal text-slate-400">{visible.length} 条</span></h2><p className="mt-1 text-xs text-slate-400">所选人员最近 100 条，排序和搜索作用于这些会话</p></div>
-        <div aria-busy={loading} className="max-h-[72vh] divide-y divide-slate-100 overflow-y-auto">
-          {loading ? <p role="status" className="p-8 text-center text-sm text-slate-400">正在加载会话…</p> : visible.length === 0 ? <p className="p-8 text-center text-sm text-slate-400">没有符合条件的会话</p> : visible.map(s => <button key={`${s.user_id}:${s.id}`} aria-pressed={selected?.id === s.id && selected.user_id === s.user_id} onClick={() => void open(s)} className={`block w-full border-l-2 p-4 text-left transition ${selected?.id === s.id && selected.user_id === s.user_id ? "border-blue-500 bg-blue-50" : "border-transparent hover:bg-slate-50"}`}>
+        <div className="border-b border-slate-100 p-4"><button className="float-right text-xs text-blue-600" onClick={() => setRefresh(v => v + 1)}>刷新</button><h2 className="text-sm font-semibold">会话列表 <span className="ml-2 text-xs font-normal text-slate-400">{visible.length} 条</span></h2><p className="mt-1 text-xs text-slate-400">已加载 {sessions.length} 条，搜索作用于已加载会话</p></div>
+        <div ref={listRoot} aria-busy={loading} className="max-h-[72vh] divide-y divide-slate-100 overflow-y-auto">
+          {!loading && visible.length === 0 ? <p className="p-8 text-center text-sm text-slate-400">没有符合条件的会话</p> : visible.map(s => <button key={`${s.user_id}:${s.id}`} aria-pressed={selected?.id === s.id && selected.user_id === s.user_id} onClick={() => void open(s)} className={`block w-full border-l-2 p-4 text-left transition ${selected?.id === s.id && selected.user_id === s.user_id ? "border-blue-500 bg-blue-50" : "border-transparent hover:bg-slate-50"}`}>
             <h3 className="line-clamp-2 text-sm font-medium leading-6 text-slate-800">{s.title || "未命名会话"}</h3><p className="mt-1 truncate text-xs text-slate-500">{person(s.user_id, s.username)} · {s.message_count} 条消息 · {s.project_name || "未关联项目"}</p><p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-slate-400">{s.last_message}</p><time className="mt-2 block text-[11px] text-slate-400">{time(s.updated_at)}</time>
           </button>)}
+          <div ref={sentinel} className="p-4 text-center text-xs text-slate-400" aria-live="polite">{loading ? "正在加载…" : listError ? <><p>{listError}</p><button className="mt-2 text-blue-600" onClick={() => void loadMore()}>点击重试</button></> : hasMore ? <button className="text-blue-600" onClick={() => void loadMore()}>加载更多</button> : sessions.length > 0 ? "已加载全部" : null}</div>
         </div>
       </aside>
       <article aria-busy={detailLoading} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70 shadow-sm">

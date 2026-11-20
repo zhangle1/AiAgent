@@ -45,7 +45,7 @@ public interface IAdminService
     Task<(bool Succeeded, string? Error)> UpdateUserProjectsAsync(AuthenticatedUser administrator, string userId, IReadOnlyCollection<long> projectIds, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> UpdateUserCodeCommitPermissionAsync(AuthenticatedUser administrator, string userId, bool canCommitCode, CancellationToken cancellationToken);
     Task<(bool Succeeded, string? Error)> UpdateUserStatusAsync(AuthenticatedUser administrator, string userId, bool isDisabled, CancellationToken cancellationToken);
-    Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken);
+    Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken, int offset = 0, bool ascending = false);
     Task<ChatSessionDetailDto?> GetSessionAsync(AuthenticatedUser administrator, string userId, string sessionId, CancellationToken cancellationToken);
     Task<AdminUsageReportDto> GetUsageReportAsync(AuthenticatedUser administrator, string period, int days, string? userId, CancellationToken cancellationToken, string? startDate = null, string? endDate = null, long? projectId = null);
 }
@@ -190,14 +190,14 @@ public sealed class AdminService : IAdminService
         return Task.FromResult((true, (string?)null));
     }
 
-    public Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken)
+    public Task<List<AdminSessionSummaryDto>> ListSessionsAsync(AuthenticatedUser administrator, string? userId, int limit, CancellationToken cancellationToken, int offset = 0, bool ascending = false)
     {
         RequireAdministrator(administrator);
         cancellationToken.ThrowIfCancellationRequested();
         var users = _db.Queryable<AiUser>().ToList().ToDictionary(item => item.Id, item => item.Username);
         var query = _db.Queryable<AiChatSession>().Where(item => !item.IsDeleted);
         if (!string.IsNullOrWhiteSpace(userId)) query = query.Where(item => item.UserId == userId.Trim());
-        var sessions = query.OrderByDescending(item => item.UpdatedAt).Take(Math.Clamp(limit, 1, 200)).ToList();
+        var sessions = query.OrderBy(item => new { item.UpdatedAt, item.Id }, ascending ? OrderByType.Asc : OrderByType.Desc).Skip(Math.Max(0, offset)).Take(Math.Clamp(limit, 1, 200)).ToList();
         var sessionIds = sessions.Select(item => item.Id).ToList();
         var messages = sessionIds.Count == 0 ? [] : _db.Queryable<AiChatMessage>().Where(item => sessionIds.Contains(item.SessionId)).ToList();
         var projectIds = sessions.Where(item => item.CodeProjectId.HasValue).Select(item => item.CodeProjectId!.Value).Distinct().ToList();

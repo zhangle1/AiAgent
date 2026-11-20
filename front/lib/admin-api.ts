@@ -28,7 +28,7 @@ export async function importAdminUsers(file: File) {
   return payload as { created_count: number; errors: string[] };
 }
 export const adminUserImportTemplateUrl = "/api/v1/admin/users/import-template";
-export function getAdminSessions(userId?: string) { return request<AdminSession[]>(`/api/v1/admin/sessions?${new URLSearchParams({ limit: "100", ...(userId ? { user_id: userId } : {}) })}`); }
+export function getAdminSessions(userId?: string, offset = 0, ascending = false) { return request<AdminSession[]>(`/api/v1/admin/sessions?${new URLSearchParams({ limit: "50", offset: String(offset), ascending: String(ascending), ...(userId ? { user_id: userId } : {}) })}`); }
 export function getAdminSession(userId: string, sessionId: string) { return request<SessionDetail>(`/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`); }
 export function getAdminUsage(period: "day" | "week" | "month" | "year", days: number, userId?: string, filters: AdminUsageFilters = {}, signal?: AbortSignal) {
   return request<AdminUsageReport>(`/api/v1/admin/usage?${new URLSearchParams({ period, days: String(days), ...(userId ? { user_id: userId } : {}), ...filters })}`, { signal });

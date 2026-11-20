@@ -13,6 +13,9 @@ try {
   page.on("pageerror", e => errors.push(e.message));
   const row = (id, user_id, title, day) => ({ id, user_id, username: user_id, title, updated_at: `2026-11-${day}T09:00:00Z`, created_at: `2026-11-${day}T09:00:00Z`, message_count: 2, project_name: "测试项目", last_message: "最后回复" });
   const rows = [row("new", "alice", "较新会话", "19"), row("old", "bob", "较早会话", "18")];
+  let pagination = false;
+  let failMore = true;
+  const offsets = [];
   await page.route("**/api/**", async route => {
     const url = new URL(route.request().url());
     let body = [];
@@ -21,7 +24,18 @@ try {
     else if (url.pathname.endsWith("/sessions/project-preferences")) body = { preferences: [] };
     else if (url.pathname.endsWith("/sessions/list")) body = { sessions: [] };
     else if (url.pathname === "/api/v1/admin/users") body = [{ id: "alice", username: "alice", alias: "小艾" }, { id: "bob", username: "bob", alias: "小波" }];
-    else if (url.pathname === "/api/v1/admin/sessions") body = rows.filter(r => !url.searchParams.get("user_id") || r.user_id === url.searchParams.get("user_id"));
+    else if (url.pathname === "/api/v1/admin/sessions") {
+      const offset = Number(url.searchParams.get("offset"));
+      offsets.push(offset);
+      if (pagination) {
+        if (offset === 50 && failMore) {
+          failMore = false;
+          await route.fulfill({ status: 500, json: { message: "模拟分页失败" } });
+          return;
+        }
+        body = Array.from({ length: 65 }, (_, i) => row(`page-${i}`, "alice", `分页会话 ${i}`, "19")).slice(offset, offset + 50);
+      } else body = rows.filter(r => !url.searchParams.get("user_id") || r.user_id === url.searchParams.get("user_id"));
+    }
     else if (url.pathname.includes("/sessions/")) {
       const id = url.pathname.split("/").at(-1);
       if (id === "new") await new Promise(r => setTimeout(r, 600));
@@ -30,10 +44,11 @@ try {
     await route.fulfill({ json: body });
   });
   await page.goto(`${process.env.ADMIN_TEST_URL || "http://127.0.0.1:3783"}/settings/admin/sessions`);
-  const buttons = page.locator("section aside button");
+  const buttons = page.locator("section aside button[aria-pressed]");
   await page.getByRole("button", { name: /较新会话/ }).waitFor();
   assert.match(await buttons.first().innerText(), /较新会话/);
   await page.getByRole("button", { name: /更新时间/ }).click();
+  await page.getByRole("button", { name: /较早会话/ }).waitFor();
   assert.match(await buttons.first().innerText(), /较早会话/);
   await page.getByRole("textbox", { name: "搜索会话" }).fill("小波");
   assert.equal(await buttons.count(), 1);
@@ -58,6 +73,19 @@ try {
   await page.locator("article table").waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  pagination = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByRole("button", { name: /分页会话 0 / }).waitFor();
+  const list = page.locator("aside [aria-busy]");
+  await list.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.getByRole("button", { name: "点击重试" }).waitFor();
+  assert.equal(await page.locator("aside button[aria-pressed]").count(), 50);
+  await page.getByRole("button", { name: "点击重试" }).click();
+  await page.getByText("已加载全部", { exact: true }).waitFor();
+  assert.equal(await page.locator("aside button[aria-pressed]").count(), 65);
+  assert.deepEqual(offsets.slice(-3), [0, 50, 50]);
+  assert.ok(await list.evaluate(el => el.scrollTop > 0));
   assert.deepEqual(errors, []);
   console.log("PASS: sorting, alias search, person filtering, Markdown, stale detail isolation and mobile layout");
 } finally { await browser.close(); }
