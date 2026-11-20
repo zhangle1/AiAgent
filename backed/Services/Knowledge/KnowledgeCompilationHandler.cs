@@ -7,7 +7,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 internal static class KnowledgeCompilationHandler
 {
     public static async Task ExecuteAsync(IKnowledgeIngestionService ingestion, KnowledgeResourceSemanticService? semantic,
-        AiKnowledgeBase kb, AiKnowledgeDocument document, KnowledgeCompilerSettingsDto config, bool parseOnly,
+        AiKnowledgeBase kb, AiKnowledgeDocument document, KnowledgeCompilerSettingsDto config, bool parseOnly, bool markdownOnly,
         Action<string, int, string> progress, CancellationToken ct, string? ownerRoot = null)
     {
         progress("validating", 1, "正在校验知识整理设置");
@@ -22,7 +22,9 @@ internal static class KnowledgeCompilationHandler
             return;
         }
         progress("parsing", 1, "正在解析正文 L2");
-        await ingestion.ParseResourceAsync(kb, document, request, ct, (value, message) => progress("parsing", value * 35 / 100, message));
+        await ingestion.ParseResourceAsync(kb, document, request, ct,
+            (value, message) => progress("parsing", markdownOnly ? value : value * 35 / 100, message));
+        if (markdownOnly) return;
         progress("semantic", 35, "正文 L2 已保存，等待生成语义 L0/L1");
         if (semantic is null) throw new InvalidOperationException("语义生成服务未配置；正文已保存，请修复服务配置后重新解析。");
         await semantic.GenerateAsync(kb, document, config, (value, message) => progress("semantic", value, message), ct, ownerRoot);

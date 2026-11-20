@@ -7,6 +7,9 @@ console.info(`[AiAgent] API proxy target: ${backendUrl}`);
 const nextConfig = {
   // The deployment script packages this minimal Node.js runtime for a server.
   output: "standalone",
+  outputFileTracingIncludes: {
+    "/pdfjs/wasm/*": ["./node_modules/pdfjs-dist/wasm/*"],
+  },
   experimental: {
     // /api rewrites clone the body too; the default 10 MB truncates PDF uploads.
     // Match the backend request ceiling; individual documents remain limited to 25 MB.

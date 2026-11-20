@@ -22,7 +22,8 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         get { using var db = database.CopyNew(); return httpContextAccessor is null ? null : KnowledgeUserScope.Resolve(db, httpContextAccessor); }
     }
 
-    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool? parseOnly = null, KnowledgeCompilerSettingsDto? configuration = null)
+    public KnowledgeCompilationJobDto Enqueue(string name, long documentId, bool? parseOnly = null,
+        KnowledgeCompilerSettingsDto? configuration = null, bool markdownOnly = false)
     {
         RetryPendingFinishes();
         using var db = database.CopyNew();
@@ -32,6 +33,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         var config = configuration is null ? settings.Get()
             : JsonSerializer.Deserialize<KnowledgeCompilerSettingsDto>(JsonSerializer.Serialize(configuration))!;
         if (configuration is null) { config.TargetUri = null; config.SkillId = null; config.SkillName = null; config.SkillInstructions = null; }
+        var resourceTask = markdownOnly || (parseOnly ?? document.ResourceUri != null);
         var ownerRoot = CurrentOwnerRoot;
         var sourceUri = KnowledgeResourceService.DocumentUri(kb, document);
         if (ownerRoot is not null && sourceUri.StartsWith("viking://user/", StringComparison.Ordinal) && !sourceUri.StartsWith(ownerRoot, StringComparison.Ordinal))
@@ -46,6 +48,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                 throw new UnauthorizedAccessException("个人来源不能发布到公共目录。");
             config.TargetUri = target;
         }
+        var configurationJson = JsonSerializer.Serialize(config);
         lock (_sync)
         {
             var finishedIds = _pendingFinishes.Keys.ToArray();
@@ -54,16 +57,17 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                 .WhereIF(finishedIds.Length > 0, x => !finishedIds.Contains(x.Id)).First();
             if (active is not null)
             {
-                if (configuration is not null && (active.ConfigurationJson != JsonSerializer.Serialize(config) || active.ParseOnly != parseOnly))
+                if ((active.MarkdownOnly == true) != markdownOnly ||
+                    configuration is not null && (active.ConfigurationJson != configurationJson || active.ParseOnly != resourceTask))
                     throw new InvalidOperationException("该文件已有不同配置的活动任务，请等待完成或在任务中心取消后再提交。");
                 return Map(active);
             }
-            var job = new AiKnowledgeJob { OwnerRoot = ownerRoot, ParseOnly = parseOnly ?? document.ResourceUri != null,
-                ConfigurationJson = JsonSerializer.Serialize(config),
-                KnowledgeBaseId = kb.Id, DocumentId = documentId, JobType = "wiki_compile", Stage = "queued", Message = "等待正文解析与语义生成" };
+            var job = new AiKnowledgeJob { OwnerRoot = ownerRoot, ParseOnly = resourceTask, MarkdownOnly = markdownOnly,
+                ConfigurationJson = configurationJson, KnowledgeBaseId = kb.Id, DocumentId = documentId,
+                JobType = "wiki_compile", Stage = "queued", Message = markdownOnly ? "等待解析为 Markdown" : "等待正文解析与语义生成" };
             job.Id = db.Insertable(job).ExecuteReturnBigIdentity();
             _cancellations[job.Id] = new CancellationTokenSource();
-            if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id, job.ParseOnly.Value, ownerRoot)))
+            if (!_queue.Writer.TryWrite(new Work(kb, document, config, job.Id, resourceTask, markdownOnly, ownerRoot)))
             {
                 _cancellations.Remove(job.Id, out var rejected);
                 rejected?.Dispose();
@@ -138,6 +142,7 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
             {
                 CancellationTokenSource? source = null;
                 var stage = "准备任务";
+                var parsingPdf = false;
                 try
                 {
                     lock (_sync)
@@ -156,13 +161,19 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                             !validationDb.Queryable<AiKnowledgeDocument>().Any(x => x.Id == work.Document.Id && !x.IsDeleted))
                             throw new InvalidOperationException("The source was deleted before compilation.");
                     await KnowledgeCompilationHandler.ExecuteAsync(ingestion, semantic, work.Base, work.Document,
-                        work.Config, work.ParseOnly, (phase, value, message) => {
+                        work.Config, work.ParseOnly, work.MarkdownOnly, (phase, value, message) => {
                             stage = message;
+                            parsingPdf = phase == "parsing" && string.Equals(Path.GetExtension(work.Document.StoragePath), ".pdf", StringComparison.OrdinalIgnoreCase);
                             UpdateProgress(work.JobId, phase, value, message);
                         }, execution.Token, work.OwnerRoot);
-                    Finish(work.JobId, "success", work.ParseOnly ? work.OwnerRoot is null
-                        ? "正文解析与语义整理完成，可查看目录 L0/L1。"
-                        : "正文解析完成，概览与摘要已保存到「我的工作区 → 摘要」。" : "知识整理完成。");
+                    var completionMessage = (work.MarkdownOnly, work.ParseOnly, work.OwnerRoot) switch
+                    {
+                        (true, _, _) => "Markdown 解析完成，可查看正文与章节。",
+                        (false, true, null) => "正文解析与语义整理完成，可查看目录 L0/L1。",
+                        (false, true, _) => "正文解析完成，概览与摘要已保存到「我的工作区 → 摘要」。",
+                        _ => "知识整理完成。"
+                    };
+                    Finish(work.JobId, "success", completionMessage);
                 }
                 catch (Exception ex)
                 {
@@ -174,9 +185,17 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
                         lock (_sync)
                         {
                             if (!_pendingFinishes.ContainsKey(work.JobId))
-                                Finish(work.JobId, cancelled ? "cancelled" : "error", cancelled ? "已取消，可重新解析。" :
-                                    ex is OperationCanceledException ? $"知识任务超时（{stage}），请检查模型连接或拆分资料后重试。" :
-                                    $"知识任务失败（{stage}）：{SafeError(ex)}");
+                            {
+                                var message = (cancelled, parsingPdf, ex) switch
+                                {
+                                    (true, true, _) => "已取消 PDF 解析，重试时将复用已完成的页面。",
+                                    (true, false, _) => "已取消，可重新解析。",
+                                    (false, true, OperationCanceledException) => $"PDF 解析超时（{stage}），重试时将复用已完成的页面。",
+                                    (false, false, OperationCanceledException) => $"知识任务超时（{stage}），请检查模型连接或拆分资料后重试。",
+                                    _ => $"知识任务失败（{stage}）：{SafeError(ex)}"
+                                };
+                                Finish(work.JobId, cancelled ? "cancelled" : "error", message);
+                            }
                         }
                     }
                     catch (Exception persistenceError)
@@ -278,5 +297,6 @@ public sealed class KnowledgeCompilationWorker(ISqlSugarClient database, Knowled
         };
     }
     private sealed record TerminalState(string Status, string Message, DateTime At);
-    private sealed record Work(AiKnowledgeBase Base, AiKnowledgeDocument Document, KnowledgeCompilerSettingsDto Config, long JobId, bool ParseOnly, string? OwnerRoot);
+    private sealed record Work(AiKnowledgeBase Base, AiKnowledgeDocument Document, KnowledgeCompilerSettingsDto Config,
+        long JobId, bool ParseOnly, bool MarkdownOnly, string? OwnerRoot);
 }

@@ -92,7 +92,7 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
     private const long MaxArchiveExpandedBytes = 100L * 1024 * 1024;
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".doc", ".xls", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"
+        ".md", ".markdown", ".txt", ".csv", ".tsv", ".rtf", ".epub", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".doc", ".xls", ".docx", ".xlsx", ".xlsm", ".xlsb", ".xltx", ".xltm", ".pptx", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"
     };
     private static readonly HashSet<string> LegacyOfficeExtensions = new(StringComparer.OrdinalIgnoreCase) { ".doc", ".xls", ".ppt" };
     private readonly ISqlSugarClient _db;
@@ -321,8 +321,16 @@ public sealed class KnowledgeBaseManager : IKnowledgeBaseManager
                     // Preserve names and nested ZIP paths; suffix conflicting files without overwriting raw.
                     if (existingDocuments.Any(x => x.ResourceUri == resourceUri || x.ResourceUri?.StartsWith(resourceUri + "/", StringComparison.Ordinal) == true))
                         resourceUri = KnowledgeResourceService.Parent(resourceUri) + Uri.EscapeDataString(Path.GetFileNameWithoutExtension(candidate.Name) + "-" + document.Id + document.Extension);
+                    var target = KnowledgeResourceRawStore.PathFor(_paths, kb.Name, resourceUri);
+                    if (File.Exists(target)) target = Path.Combine(Path.GetDirectoryName(target)!, Path.GetFileNameWithoutExtension(target) + "-" + Guid.NewGuid().ToString("N") + Path.GetExtension(target));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    var previous = document.StoragePath;
+                    File.Move(previous, target, false);
                     document.ResourceUri = resourceUri;
-                    _db.Updateable(document).UpdateColumns(x => x.ResourceUri).ExecuteCommand();
+                    document.StoragePath = target;
+                    document.FileName = Path.GetFileName(target);
+                    try { _db.Updateable(document).UpdateColumns(x => new { x.ResourceUri, x.StoragePath, x.FileName }).ExecuteCommand(); }
+                    catch { File.Move(target, previous, false); throw; }
                     existingDocuments.Add(document);
                 }
                 documents.Add(document);

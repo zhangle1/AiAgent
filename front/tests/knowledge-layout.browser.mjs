@@ -19,6 +19,10 @@ let recovered = false;
 let failRead = false;
 let processingCalls = 0;
 let activeTask = false;
+let currentPage = 21;
+let queueStatus = "processing";
+const pageProgress = () => `解析第 ${currentPage}/80 页 · 第 2/4 批 · 已完成 ${currentPage - 1} 页`;
+const failedProgress = "已保留 79/80 页。第 23 页未完成，重试时仅处理未完成的页面。";
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
@@ -39,10 +43,24 @@ await page.route("**/api/**", async route => {
     processingCalls++;
     if (failRead) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "模拟读取失败" }) });
     body = [
-      { node: nodes[0], task_status: activeTask ? "processing" : "success", stage: activeTask ? "parsing" : "completed", progress: activeTask ? 12 : 100 },
+      { node: nodes[0], task_status: activeTask ? "processing" : "success", stage: activeTask ? "parsing" : "completed", progress: activeTask ? 25 : 100, message: activeTask ? pageProgress() : null },
       { node: nodes[1], task_status: recovered ? "success" : "error", stage: recovered ? "completed" : "semantic", error_message: recovered ? null : "模型连接超时；正文已保存", progress: recovered ? 100 : 35 },
       { node: nodes[2] },
     ];
+  }
+  if (url.pathname.endsWith("/task-center/list")) {
+    body = {
+      summary: { total: 1, queued: 0, processing: queueStatus === "processing" ? 1 : 0, completed: 0, failed: queueStatus === "failed" ? 1 : 0, cancelled: 0 },
+      tasks: [{ id: 81, domain: "knowledge", task_type: "wiki_compile", title: "book.pdf", status: queueStatus,
+        stage: "parsing", progress: queueStatus === "failed" ? 84 : 25, message: pageProgress(),
+        error_message: queueStatus === "failed" ? failedProgress : null, created_at: "2026-11-20T00:00:00Z",
+        cancellable: queueStatus === "processing", retryable: queueStatus === "failed" }],
+    };
+  }
+  if (url.pathname.endsWith("/task-center/knowledge/81/retry")) {
+    queueStatus = "processing";
+    currentPage = 23;
+    body = { id: 81, status: "queued" };
   }
   await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
 });
@@ -90,7 +108,10 @@ try {
   const beforePolling = processingCalls;
   await dialog.getByRole("button", { name: "刷新", exact: true }).click();
   await dialog.getByText("处理中", { exact: true }).waitFor();
+  await dialog.getByText(pageProgress(), { exact: true }).waitFor();
+  currentPage = 22;
   await page.waitForResponse(response => response.url().includes("/knowledge-resources/processing"), { timeout: 5000 });
+  await dialog.getByText(pageProgress(), { exact: true }).waitFor();
   assert.ok(processingCalls >= beforePolling + 2, "Active tasks auto-refresh");
   activeTask = false;
   await page.keyboard.press("Escape");
@@ -104,7 +125,14 @@ try {
   assert.deepEqual(errors, []);
   assert.ok(processingCalls >= 3);
   if (process.env.KNOWLEDGE_TEST_MOBILE_SCREENSHOT) await page.screenshot({ path: process.env.KNOWLEDGE_TEST_MOBILE_SCREENSHOT, fullPage: true });
-  console.log("PASS: panel drag/keyboard/persistence, single preview scrollbar, file statuses/errors/refresh, modal Escape/focus and mobile layout");
+  await page.goto(`${process.env.KNOWLEDGE_TEST_URL ?? "http://127.0.0.1:3782"}/task-center?domain=knowledge`);
+  await page.getByText(pageProgress(), { exact: true }).waitFor();
+  queueStatus = "failed";
+  await page.getByText(new RegExp(failedProgress.split("。")[0])).waitFor();
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await page.getByText(pageProgress(), { exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log("PASS: knowledge layout, file and queue page progress, failure and retry");
 } catch (error) {
   console.log("Browser errors:", errors);
   console.log((await page.locator("body").innerText()).slice(0,1200));

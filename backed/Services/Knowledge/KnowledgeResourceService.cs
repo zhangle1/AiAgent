@@ -87,9 +87,24 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
             if (!VisibleProject(uri)) continue;
             if (uri.StartsWith(Roots[2], StringComparison.Ordinal) && !uri.StartsWith(userRoot, StringComparison.Ordinal) && !(allSessions && KnowledgeUserScope.IsSessionScope(uri))) continue;
             AddDirectory(Parent(uri));
+            string? relative = null;
+            if (paths is not null)
+            {
+                var rawRoot = Path.GetFullPath(paths.GetRawPath(kb.Name)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                try
+                {
+                    if (Path.IsPathFullyQualified(doc.StoragePath))
+                    {
+                        var stored = Path.GetFullPath(doc.StoragePath);
+                        if (stored.StartsWith(rawRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                            relative = "raw/" + Path.GetRelativePath(rawRoot, stored).Replace(Path.DirectorySeparatorChar, '/');
+                    }
+                }
+                catch (ArgumentException) { /* Preserve invalid historical records for explicit cleanup. */ }
+            }
             nodes[uri] = new() { Uri = uri, ParentUri = Parent(uri), Name = doc.OriginalFileName,
                 Kind = "file", DocumentId = doc.Id, KnowledgeBaseName = kb.Name,
-                Extension = doc.Extension, Size = doc.FileSize, Status = doc.Status };
+                Extension = doc.Extension, Size = doc.FileSize, Status = doc.Status, RawRelativePath = relative };
         }
         var visibleSourceIds = nodes.Values.Where(n => n.DocumentId.HasValue).Select(n => n.DocumentId!.Value).ToList();
         var latestParsedIds = db.Queryable<AiKnowledgeParsedDocument>().Where(x => x.DocumentId.HasValue && visibleSourceIds.Contains(x.DocumentId.Value))
@@ -110,7 +125,12 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
             {
                 var uri = root + string.Join('/', entry.Path.Split('/').Select(Uri.EscapeDataString));
                 var parent = Parent(uri); AddDirectory(parent);
-                for (var directory = parent; directory.StartsWith(root, StringComparison.Ordinal); directory = Parent(directory)) SetMetadata(nodes[directory]);
+                for (var directory = parent; directory.StartsWith(root, StringComparison.Ordinal) && directory != root; directory = Parent(directory))
+                {
+                    var folder = nodes[directory];
+                    SetMetadata(folder);
+                    folder.SectionOrder = Math.Min(folder.SectionOrder ?? entry.Order, entry.Order);
+                }
                 var node = new KnowledgeResourceNodeDto { Uri = uri, ParentUri = parent, Name = entry.Path.Split('/').Last(),
                     Kind = "file", Extension = ".md", Status = "processed", SectionOrder = entry.Order };
                 SetMetadata(node); nodes[uri] = node;
@@ -212,6 +232,7 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
             var existing = Tree().FirstOrDefault(x => x.Uri == uri || x.Uri == uri.TrimEnd('/'));
             if (existing is not null) throw new InvalidOperationException("该名称已存在，请使用其他名称。");
             using var db = database.CopyNew();
+            Directory.CreateDirectory(KnowledgeResourceRawStore.PathFor(paths, StoreName, uri));
             var row = new AiKnowledgeDirectory { Uri = uri, ParentUri = parent, Name = name, CreatedAt = DateTime.UtcNow };
             row.Id = db.Insertable(row).ExecuteReturnBigIdentity();
             return new() { Uri = uri, ParentUri = parent, Name = name, Kind = "directory" };
@@ -237,7 +258,7 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
             if (request.Process && !KnowledgeUserScope.IsSessionScope(parent))
                 foreach (var doc in result.Documents)
                 {
-                    try { response.Tasks.Add(worker.Enqueue(kb.Name, doc.Id, parseOnly: true)); }
+                    try { response.Tasks.Add(worker.Enqueue(kb.Name, doc.Id, markdownOnly: true)); }
                     catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
                     { response.Warnings.Add($"{doc.OriginalFileName} 已保存，解析未入队：{ex.Message}"); }
                 }
@@ -302,10 +323,11 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
                 var path = SourcePath(kb, doc);
                 var fileInfo = new FileInfo(path);
                 if (fileInfo.Exists && fileInfo.Length <= 2 * 1024 * 1024)
-                    source = await System.IO.File.ReadAllTextAsync(path, Encoding.UTF8, ct);
+                    source = await Parsing.DocumentTextConverters.ReadAsync(path, ct);
             }
             catch (FileNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
             catch (DirectoryNotFoundException) { /* Parsed content may still be available after raw cleanup. */ }
+            catch (InvalidDataException) { /* A bad raw text encoding must not hide an already published body. */ }
         }
         var outputs = Tree().Where(item => item.Kind == "file" && item.DocumentId == doc.Id && IsGeneratedUri(item.Uri)).ToList();
         return new() { Node = node, SourceText = source, ParsedContent = ParsedMarkdown(kb, doc, content.ParsedDocumentId, content.ParsedContent),
@@ -518,7 +540,7 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
         return source.Path!;
     }
 
-    private static bool IsText(string? extension) => extension?.ToLowerInvariant() is ".md" or ".markdown" or ".txt" or ".csv" or ".json" or ".jsonl" or ".xml" or ".yaml" or ".yml" or ".html" or ".htm";
+    private static bool IsText(string? extension) => extension?.ToLowerInvariant() is ".md" or ".markdown" or ".txt" or ".csv" or ".tsv" or ".json" or ".jsonl" or ".xml" or ".yaml" or ".yml" or ".html" or ".htm";
     private static string LegacyDirectory(AiKnowledgeBase kb)
     {
         var org = KnowledgeWorkspaceService.ReadOrganization(kb.MetadataJson);

@@ -13,6 +13,7 @@ using AiAgent.Backend.Services.Parsing;
 using AiAgent.Backend.Services.Rag;
 using AiAgent.Backend.Services.TaskQueue;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AiAgent.Backend.Tests;
@@ -84,6 +85,103 @@ public sealed partial class KnowledgeWorkspaceTests
         Assert.Contains("END_OF_PDF", ingestion.GetContent(kb, doc).ParsedContent);
         var documentRoot = Path.GetDirectoryName(Path.GetDirectoryName(parsed.ContentPath!)!)!;
         Assert.Empty(Directory.GetDirectories(documentRoot, ".staging-*"));
+    }
+
+    [Fact]
+    public async Task CSharpPdfPublishesRealImagesAndChaptersThroughExistingResourceContract()
+    {
+        using var db = Database(); using var files = new SemanticFiles(); db.CodeFirst.InitTables(typeof(AiKnowledgeDirectory));
+        var kb = CreateBase(db); var doc = files.Document(kb, "viking://resources/csharp.pdf");
+        var pdf = Path.ChangeExtension(doc.StoragePath, ".pdf"); File.Move(doc.StoragePath, pdf);
+        File.WriteAllBytes(pdf, CSharpPdfParsingTests.LayoutPdf());
+        doc.StoragePath = pdf; doc.OriginalFileName = "csharp.pdf"; doc.Extension = ".pdf"; doc.FileHash = files.Paths.ComputeFileHash(pdf);
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["DocumentParsing:AllowedRoots:0"] = files.Paths.RootPath,
+            ["PythonWorkers:Parsing:PythonPath"] = Path.Combine(files.Paths.RootPath, "missing-python.exe")
+        }).Build();
+        var parser = new DocumentParsingService(config, NullLogger<DocumentParsingService>.Instance);
+        var settings = new KnowledgeCompilerSettings(db); var api = new Llm(); var cli = new Codex();
+        var ingestion = new KnowledgeIngestionService(db, files.Paths, parser, api, cli, settings);
+        var result = await ingestion.ParseResourceAsync(kb, doc, new(), default);
+        var row = db.Queryable<AiKnowledgeParsedDocument>().InSingle(result.ParsedDocumentId);
+        var store = new KnowledgeParsedDocumentStore(files.Paths); var manifest = store.ReadManifest(kb, row)!;
+        Assert.Equal("pdfpig-pdfium-layout", row.Parser);
+        Assert.Equal(3, manifest.Assets!.Count);
+        Assert.NotEmpty(manifest.Files);
+        using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        var semantic = new KnowledgeResourceSemanticService(db, ingestion, files.Paths, new(files.Paths), api, cli);
+        var resources = new KnowledgeResourceService(db, files.Paths, ingestion, worker, settings, api, cli, NullLogger<KnowledgeBaseManager>.Instance, new HttpContextAccessor(), semantic);
+        var images = resources.Tree().Where(n => n.Extension == ".png").ToList();
+        Assert.Equal(3, images.Count);
+        var read = await resources.ReadAsync(doc.ResourceUri!, default);
+        Assert.Contains("# Manufacturing", read.ParsedContent);
+        Assert.Contains("| Name | Value |", read.ParsedContent);
+        foreach (var image in images)
+        {
+            Assert.Contains(image.Uri, read.ParsedContent);
+            Assert.Equal("image/png", resources.File(image.Uri, result.ParsedDocumentId).ContentType);
+        }
+        Assert.Empty(api.Inputs);
+    }
+
+    [Fact]
+    public async Task UnifiedWordConversionPublishesRealImagesThroughKnowledgeResources()
+    {
+        using var db = Database(); using var files = new SemanticFiles(); db.CodeFirst.InitTables(typeof(AiKnowledgeDirectory));
+        var kb = CreateBase(db); var doc = files.Document(kb, "viking://resources/word.docx");
+        var path = Path.ChangeExtension(doc.StoragePath, ".docx"); File.Move(doc.StoragePath, path);
+        File.WriteAllBytes(path, DocumentConversionTests.Word());
+        doc.StoragePath = path; doc.OriginalFileName = "word.docx"; doc.Extension = ".docx"; doc.FileHash = files.Paths.ComputeFileHash(path);
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        var settings = new KnowledgeCompilerSettings(db); var api = new Llm(); var cli = new Codex();
+        var ingestion = new KnowledgeIngestionService(db, files.Paths, null!, api, cli, settings);
+        var parsed = await ingestion.ParseResourceAsync(kb, doc, new(), default);
+        using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        var semantic = new KnowledgeResourceSemanticService(db, ingestion, files.Paths, new(files.Paths), api, cli);
+        var resources = new KnowledgeResourceService(db, files.Paths, ingestion, worker, settings, api, cli, NullLogger<KnowledgeBaseManager>.Instance, new HttpContextAccessor(), semantic);
+        var image = Assert.Single(resources.Tree(), n => n.Extension == ".png");
+        var read = await resources.ReadAsync(doc.ResourceUri!, default);
+        Assert.Contains("# Word heading", read.ParsedContent); Assert.Contains(image.Uri, read.ParsedContent);
+        Assert.Equal("image/png", resources.File(image.Uri, parsed.ParsedDocumentId).ContentType);
+        Assert.Empty(api.Inputs);
+    }
+
+    [Fact]
+    public async Task PdfImagesArePublishedWithSectionsAndReadThroughOwnedResourceUris()
+    {
+        using var db = Database(); using var files = new SemanticFiles(); db.CodeFirst.InitTables(typeof(AiKnowledgeDirectory));
+        var kb = CreateBase(db); var doc = files.Document(kb, "viking://resources/book.pdf");
+        var pdf = Path.ChangeExtension(doc.StoragePath, ".pdf"); File.Move(doc.StoragePath, pdf); doc.StoragePath = pdf; doc.OriginalFileName = "book.pdf";
+        doc.Id = db.Insertable(doc).ExecuteReturnBigIdentity();
+        var parser = new FixtureDocumentParser { WithAssets = true };
+        var settings = new KnowledgeCompilerSettings(db); var api = new Llm(); var cli = new Codex();
+        var ingestion = new KnowledgeIngestionService(db, files.Paths, parser, api, cli, settings);
+        var result = await ingestion.ParseResourceAsync(kb, doc, new(), default);
+        var row = db.Queryable<AiKnowledgeParsedDocument>().InSingle(result.ParsedDocumentId);
+        var store = new KnowledgeParsedDocumentStore(files.Paths); var layout = store.ReadManifest(kb, row)!;
+        var asset = Assert.Single(layout.Assets!);
+        var physical = store.AssetPath(kb, row, asset);
+        Assert.True(File.Exists(physical));
+        var imageSection = layout.Files.Select(entry => store.SectionPath(kb, row, entry)).Single(path => File.ReadAllText(path).Contains("![figure]"));
+        var relative = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(imageSection), @"!\[figure\]\(([^)]+)\)").Groups[1].Value;
+        Assert.Equal(Path.GetFullPath(physical), Path.GetFullPath(Path.Combine(Path.GetDirectoryName(imageSection)!, relative)));
+        using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance);
+        var semantic = new KnowledgeResourceSemanticService(db, ingestion, files.Paths, new(files.Paths), api, cli);
+        var resources = new KnowledgeResourceService(db, files.Paths, ingestion, worker, settings, api, cli, NullLogger<KnowledgeBaseManager>.Instance, new HttpContextAccessor(), semantic);
+        var node = Assert.Single(resources.Tree(), n => n.Extension == ".png");
+        Assert.Equal(physical, resources.File(node.Uri).Path);
+        Assert.Equal("image/png", resources.File(node.Uri).ContentType);
+        Assert.Throws<InvalidOperationException>(() => resources.File(node.Uri, result.ParsedDocumentId - 1));
+        var read = await resources.ReadAsync(doc.ResourceUri!, default);
+        Assert.Contains(node.Uri, read.ParsedContent);
+        Assert.All(read.ParsedOutputs, output => Assert.Equal(".md", output.Extension));
+        await File.WriteAllTextAsync(physical, "tampered");
+        Assert.Throws<InvalidOperationException>(() => resources.File(node.Uri));
+        parser.WithAssets = false;
+        await ingestion.ParseResourceAsync(kb, doc, new(), default);
+        Assert.DoesNotContain(resources.Tree(), n => n.Extension == ".png");
+        Assert.Throws<KeyNotFoundException>(() => resources.File(node.Uri));
     }
 
     [Fact]
@@ -205,6 +303,7 @@ public sealed partial class KnowledgeWorkspaceTests
 
     private sealed class FixtureDocumentParser : IDocumentParsingService
     {
+        public bool WithAssets;
         public bool Cancel; public string? OutputDirectory;
         public Task<RagOperationResult> PreflightAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public async Task<DocumentParseResult> ParsePdfAsync(DocumentParseRequest request, CancellationToken cancellationToken = default)
@@ -213,7 +312,17 @@ public sealed partial class KnowledgeWorkspaceTests
             var path = Path.Combine(request.OutputDir, "pdf.md");
             await File.WriteAllTextAsync(path, "# PDF 标题\n\n" + new string('字', 6000) + "\n\nEND_OF_PDF", cancellationToken);
             if (Cancel) throw new OperationCanceledException();
-            return new() { Ok = true, MarkdownPath = path, Engine = "fixture-pdf", PageCount = 12 };
+            var result = new DocumentParseResult { Ok = true, MarkdownPath = path, Engine = "fixture-pdf", PageCount = 12 };
+            if (WithAssets)
+            {
+                var bytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1cAAAAASUVORK5CYII=");
+                Directory.CreateDirectory(Path.Combine(request.OutputDir, "assets"));
+                await File.WriteAllBytesAsync(Path.Combine(request.OutputDir, "assets", "page-0001-001.png"), bytes, cancellationToken);
+                await File.AppendAllTextAsync(path, "\n\n![figure](assets/page-0001-001.png)\n", cancellationToken);
+                result.Assets.Add(new() { Path = "assets/page-0001-001.png", Page = 1,
+                    Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant() });
+            }
+            return result;
         }
     }
 }

@@ -92,6 +92,7 @@ export type KnowledgeContextNode = {
 };
 
 export type KnowledgeResourceNode = {
+  raw_relative_path?: string | null;
   can_publish?: boolean;
   source_status?: "available" | "missing" | "outside_root" | "invalid_path" | "unsafe_path" | "unreadable" | null;
   source_message?: string | null;

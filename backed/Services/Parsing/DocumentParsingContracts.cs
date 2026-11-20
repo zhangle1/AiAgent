@@ -7,6 +7,16 @@ namespace AiAgent.Backend.Services.Parsing;
 /// </summary>
 public sealed class DocumentParseRequest
 {
+    [JsonPropertyName("parsing")]
+    public MarkdownParsingOptions Parsing { get; set; } = new();
+
+    /// <summary>调用方可使用原文件名，避免受控临时文件名变成章节名称。</summary>
+    [JsonPropertyName("source_name")]
+    public string? SourceName { get; set; }
+
+    /// <summary>仅提取文本的聊天／项目入口可以跳过临时章节文件。</summary>
+    [JsonPropertyName("write_bundle")]
+    public bool WriteBundle { get; set; } = true;
     /// <summary>
     /// 原始文件路径。
     /// </summary>
@@ -20,16 +30,30 @@ public sealed class DocumentParseRequest
     public string OutputDir { get; set; } = string.Empty;
 
     /// <summary>
-    /// 解析引擎，例如 pymupdf4llm、pymupdf。
+    /// 兼容旧请求的引擎字段；当前 PDF 固定使用 C# PdfPig / PDFium 布局解析。
     /// </summary>
     [JsonPropertyName("engine")]
-    public string Engine { get; set; } = "pymupdf4llm";
+    public string Engine { get; set; } = "pdfpig-pdfium-layout";
 
     /// <summary>
     /// 是否导出图片资源。
     /// </summary>
     [JsonPropertyName("write_images")]
-    public bool WriteImages { get; set; }
+    public bool WriteImages { get; set; } = true;
+
+    /// <summary>仅用于显式图片转录；不自动启用模型或扫描 PDF OCR。</summary>
+    [JsonPropertyName("vlm_model_id")]
+    public string? VlmModelId { get; set; }
+
+    internal string? PdfCheckpointDirectory { get; init; }
+    internal Action<PdfParseProgress>? PdfProgress { get; init; }
+}
+
+internal sealed record PdfParseProgress(int Page, int Total, int Completed, int Reused, int Failed)
+{
+    internal const int BatchSize = 20;
+    internal int Batch => (Page - 1) / BatchSize + 1;
+    internal int TotalBatches => (Total - 1) / BatchSize + 1;
 }
 
 /// <summary>
@@ -37,6 +61,20 @@ public sealed class DocumentParseRequest
 /// </summary>
 public sealed class DocumentParseResult
 {
+    [JsonPropertyName("layout_path")]
+    public string? LayoutPath { get; set; }
+
+    [JsonPropertyName("index_path")]
+    public string? IndexPath { get; set; }
+
+    [JsonPropertyName("section_count")]
+    public int SectionCount { get; set; }
+    [JsonPropertyName("assets")]
+    public List<DocumentParseAsset> Assets { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<string> Warnings { get; set; } = [];
+
     /// <summary>
     /// 解析是否成功。
     /// </summary>

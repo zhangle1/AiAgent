@@ -11,9 +11,10 @@ const source = { uri: root.uri + "manual.md", parent_uri: root.uri, name: "manua
 const parsedRoot = { uri: root.uri + "_parsed/", parent_uri: root.uri, name: "解析正文", kind: "directory" };
 const documentRoot = { uri: parsedRoot.uri + "manual-1/", parent_uri: parsedRoot.uri, name: "manual", kind: "directory", source_uri: source.uri };
 const section = { uri: documentRoot.uri + "Linux.md", parent_uri: documentRoot.uri, name: "Linux.md", kind: "file", status: "processed", document_id: 1, parsed_document_id: 2, source_uri: source.uri };
+const index = { ...section, uri: documentRoot.uri + "_index.md", name: "目录索引.md", extension: ".md", is_navigation: true };
 const savedChapter = { uri: root.uri + "saved-chapter.md", parent_uri: root.uri, name: "saved-chapter.md", kind: "file", extension: ".md", size: 3 * 1024 * 1024, source_status: "available" };
 const embeddedImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/5FoAAAAASUVORK5CYII=";
-const nodes = [root, source, parsedRoot, documentRoot, section, savedChapter];
+const nodes = [root, source, parsedRoot, documentRoot, section, index, savedChapter];
 const options = { compiler: { generator: "llm_api", retrieval_mode: "wiki", max_steps: 0, timeout_minutes: 20, parsing: { split_content: true, max_section_tokens: 2048, max_section_chars: 6000, min_section_tokens: 512 } }, llm_models: [{ id: "fixture", name: "测试模型", context_window: 1000000, native_tools: true, is_default: true }], cli_policy: { models: [], allowed_model_ids: [] }, skills: [{ id: "llm-wiki", name: "内置", builtin: true }] };
 const errors = []; const compileRequests = []; const tasksRead = [];
 page.on("pageerror", e => errors.push(e.message));
@@ -27,7 +28,7 @@ await page.route("**/api/**", async route => {
   if (name.endsWith("/knowledge-resources/tree")) body = nodes;
   if (name.endsWith("/knowledge-resources/read")) {
     const node = nodes.find(n => n.uri === url.searchParams.get("uri")) ?? root;
-    body = { node, children: nodes.filter(n => n.parent_uri === node.uri), semantic_status: node.uri.includes("/_parsed/") ? "not_applicable" : "missing_or_stale", source_text: node === section ? "## Linux 安装\n\n| 参数 | 值 |\n| --- | --- |\n| 模式 | 本地 |" : "完整原文", parsed_content: node === source ? "完整解析正文" : null, parsed_outputs: node === source ? [section] : [] };
+    body = { node, children: nodes.filter(n => n.parent_uri === node.uri), semantic_status: node.uri.includes("/_parsed/") ? "not_applicable" : "missing_or_stale", parsed_index: node === source ? index : null, source_text: node === index ? `# 手册目录\n\n[Linux 章节](${section.uri})` : node === section ? "## Linux 安装\n\n| 参数 | 值 |\n| --- | --- |\n| 模式 | 本地 |" : "完整原文", parsed_content: node === source ? "完整解析正文" : null, parsed_outputs: node === source ? [section] : [] };
     if (node === savedChapter) body.source_text = null;
   }
   if (name.endsWith("/knowledge-resources/file") && url.searchParams.get("uri") === savedChapter.uri)
@@ -46,7 +47,11 @@ try {
   await page.getByRole("button", { name: "manual.md", exact: true }).first().click();
   await page.getByRole("button", { name: "解析正文", exact: true }).last().click();
   await page.getByText("解析章节 · 1 个文件", { exact: true }).click();
-  await page.getByRole("button", { name: "manual-1/Linux.md", exact: true }).click();
+  await page.getByRole("button", { name: "打开目录索引", exact: true }).click();
+  await page.getByRole("heading", { name: "目录索引.md", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "重新解析", exact: true }).isDisabled(), true);
+  await page.screenshot({ path: "C:/Users/zhang/AppData/Local/Temp/aiagent-bundle-index-desktop.png", fullPage: true });
+  await page.getByRole("button", { name: "Linux 章节", exact: true }).click();
   await page.getByRole("heading", { name: "Linux.md", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "重新解析", exact: true }).isDisabled(), true);
   await page.getByRole("table").waitFor();
@@ -55,6 +60,7 @@ try {
     await page.getByRole("cell", { name: "本地" }).evaluate(fontSize));
   assert.equal(await page.getByRole("button", { name: "解析章节", exact: true }).count(), 1);
   assert.equal(await page.getByRole("link", { name: "下载", exact: true }).getAttribute("href"), `/api/v1/knowledge-resources/file?uri=${encodeURIComponent(section.uri)}&download=true`);
+  assert(!tasksRead.includes(index.uri), "Indexes must not poll source jobs");
   assert(!tasksRead.includes(section.uri), "Parsed sections must not poll source compilation jobs");
   await page.screenshot({ path: process.env.KNOWLEDGE_PARSING_SCREENSHOT ?? "C:/Users/zhang/AppData/Local/Temp/aiagent-parsing-desktop.png", fullPage: true });
   await page.getByRole("button", { name: "返回原始文件", exact: true }).click();
@@ -74,7 +80,11 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.querySelector("main")?.getBoundingClientRect().left === 0);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-  await page.screenshot({ path: "C:/Users/zhang/AppData/Local/Temp/aiagent-parsing-mobile.png", fullPage: true });
+  await page.getByRole("button", { name: "解析正文", exact: true }).last().click();
+  await page.getByText("解析章节 · 1 个文件", { exact: true }).click();
+  await page.getByRole("button", { name: "打开目录索引", exact: true }).click();
+  await page.getByRole("heading", { name: "目录索引.md", exact: true }).waitFor();
+  await page.screenshot({ path: "C:/Users/zhang/AppData/Local/Temp/aiagent-bundle-index-mobile.png", fullPage: true });
   assert.deepEqual(errors, []);
-  console.log("PASS: parsed layout links, readonly preview/download, GFM tables, no task polling, parser options snapshot, source filtering and mobile width");
+  console.log("PASS: directory indexes and chapter navigation, parsed layout links, readonly preview/download, GFM tables, no task polling, parser options snapshot, source filtering and mobile width");
 } finally { await browser.close(); }

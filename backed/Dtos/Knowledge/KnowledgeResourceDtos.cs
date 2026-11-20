@@ -15,6 +15,7 @@ public sealed class KnowledgeResourceNodeDto
     [JsonPropertyName("knowledge_base_name")] public string? KnowledgeBaseName { get; set; }
     [JsonPropertyName("extension")] public string? Extension { get; set; }
     [JsonPropertyName("size")] public long? Size { get; set; }
+    [JsonPropertyName("raw_relative_path")] public string? RawRelativePath { get; set; }
     [JsonPropertyName("source_uri")] public string? SourceUri { get; set; }
     [JsonPropertyName("is_navigation")] public bool IsNavigation { get; set; }
     [JsonPropertyName("parsed_document_id")] public long? ParsedDocumentId { get; set; }

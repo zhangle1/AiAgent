@@ -15,6 +15,9 @@ public sealed class AiKnowledgeJob
     public bool? ParseOnly { get; set; }
 
     [SugarColumn(IsNullable = true)]
+    public bool? MarkdownOnly { get; set; }
+
+    [SugarColumn(IsNullable = true)]
     public DateTime? UpdatedAt { get; set; }
 
     [SugarColumn(Length = 32, IsNullable = true)]

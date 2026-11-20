@@ -3,9 +3,12 @@ using AiAgent.Backend.Dtos.Knowledge;
 using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Services.Knowledge;
 using AiAgent.Backend.Services.Knowledge.Core;
+using AiAgent.Backend.Services.TaskCenter;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.IO;
+using System.Text;
 
 namespace AiAgent.Backend.Tests;
 
@@ -208,6 +211,61 @@ public sealed partial class KnowledgeWorkspaceTests
         await service.GenerateAsync(kb, doc, config, (_, _) => { }, default);
         Assert.Empty(api.Replies);
         Assert.Equal("恢复后的文件摘要。", service.Read(doc.ResourceUri!)!.Abstract);
+    }
+
+    [Fact]
+    public async Task ResourceImportAndRetryPublishMarkdownWithoutCallingKnowAgent()
+    {
+        using var db = Database(); using var files = new SemanticFiles();
+        db.CodeFirst.InitTables(typeof(AiKnowledgeDirectory));
+        var settings = new KnowledgeCompilerSettings(db);
+        settings.Save(new() { Generator = "llm_api" });
+        var api = new Llm(); var cli = new Codex();
+        var ingestion = new KnowledgeIngestionService(db, files.Paths, null!, api, cli, settings);
+        var semantic = new KnowledgeResourceSemanticService(db, ingestion, files.Paths, new(files.Paths), api, cli);
+        var httpContext = new HttpContextAccessor();
+        using var worker = new KnowledgeCompilationWorker(db, settings, ingestion, NullLogger<KnowledgeCompilationWorker>.Instance, semantic, httpContext);
+        var resources = new KnowledgeResourceService(db, files.Paths, ingestion, worker, settings, api, cli,
+            NullLogger<KnowledgeBaseManager>.Instance, httpContext, semantic);
+        await worker.StartAsync(default);
+        try
+        {
+            using var source = new MemoryStream(Encoding.UTF8.GetBytes("# 发布\n\n每周三发布。"));
+            var result = await resources.UploadAsync(new() {
+                Files = [new FormFile(source, 0, source.Length, "Files", "manual.md") {
+                    Headers = new HeaderDictionary(), ContentType = "text/markdown"
+                }]
+            }, default);
+            var task = Assert.Single(result.Tasks);
+            Assert.Empty(result.Warnings);
+            var center = new TaskCenterService(db, worker);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await AssertMarkdownCompleted(task.Id);
+
+            var retry = center.Retry("knowledge", task.Id);
+            Assert.NotEqual(task.Id, retry.Id);
+            await AssertMarkdownCompleted(retry.Id);
+
+            async Task AssertMarkdownCompleted(long taskId)
+            {
+                var status = center.List().Tasks.Single(x => x.Id == taskId);
+                while (status.Status is "queued" or "processing")
+                {
+                    await Task.Delay(20, deadline.Token);
+                    status = center.List().Tasks.Single(x => x.Id == taskId);
+                }
+                Assert.Equal("completed", status.Status);
+                Assert.Equal(100, status.Progress);
+                Assert.Contains("Markdown", status.Message);
+                var resource = await resources.ReadAsync("viking://resources/manual.md", deadline.Token);
+                Assert.Contains("每周三发布", resource.ParsedContent);
+                Assert.NotNull(resource.ParsedIndex);
+                Assert.NotEmpty(resource.ParsedOutputs);
+                Assert.Empty(api.Inputs);
+                Assert.Empty(resource.CompiledOutputs);
+            }
+        }
+        finally { await worker.StopAsync(default); }
     }
 
     [Fact]

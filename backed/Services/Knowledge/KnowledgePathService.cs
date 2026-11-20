@@ -67,24 +67,23 @@ public sealed class KnowledgePathService : IKnowledgePathService
     /// <summary>
     /// 知识库数据根目录，默认落到 data/knowledge_bases。
     /// </summary>
-    public string RootPath
-    {
-        get
-        {
-            var configured = _configuration["KnowledgeStorage:RootPath"];
-            if (!string.IsNullOrWhiteSpace(configured))
-            {
-                if (!Path.IsPathFullyQualified(configured)) throw new InvalidOperationException("KnowledgeStorage:RootPath 必须为绝对路径。");
-                return Path.Combine(Path.GetFullPath(configured), "storage", "knowledge_bases");
-            }
-            var dataPath = _configuration["DataPath"];
-            if (string.IsNullOrWhiteSpace(dataPath))
-            {
-                dataPath = "data";
-            }
+    public string RootPath => ResolveRootPath(_configuration);
 
-            return Path.GetFullPath(Path.Combine(dataPath, "knowledge_bases"));
+    public static string ResolveRootPath(IConfiguration configuration)
+    {
+        var configured = configuration["KnowledgeStorage:RootPath"];
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (!Path.IsPathFullyQualified(configured)) throw new InvalidOperationException("KnowledgeStorage:RootPath 必须为绝对路径。");
+            return Path.Combine(Path.GetFullPath(configured), "storage", "knowledge_bases");
         }
+        var dataPath = configuration["DataPath"];
+        if (string.IsNullOrWhiteSpace(dataPath))
+        {
+            dataPath = "data";
+        }
+
+        return Path.GetFullPath(Path.Combine(dataPath, "knowledge_bases"));
     }
 
     /// <summary>

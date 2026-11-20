@@ -21,6 +21,10 @@
     <EmbeddedResource Include="Resources\Models\models.dev.json" LogicalName="AiAgent.Models.models.dev.json" />
 
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+    <PackageReference Include="PDFtoImage" Version="5.4.0" />
+    <PackageReference Include="ReverseMarkdown" Version="6.3.0" />
+    <PackageReference Include="RtfPipe" Version="2.0.7677.4303" />
     <PackageReference Include="Furion" Version="4.9.6.17" />
     <PackageReference Include="SharpCompress" Version="0.50.5" />
     <PackageReference Include="SqlSugarCore" Version="5.1.4.200" />
@@ -39,6 +43,8 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Remove="PythonWorkers\sandboxes\**\*" />
+    <!-- PDF 主链路已使用 C#；旧解析脚本只保留为参考，不随服务发布。 -->
+    <Content Remove="PythonWorkers\parsing\**\*" />
     <Content Remove="PythonWorkers\**\.venv\**\*" />
   </ItemGroup>
 

@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.Knowledge;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -258,6 +259,7 @@ public sealed class PythonWorkerHost : IPythonWorkerHost
         var resolvedRoots = allowedRoots
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .SelectMany(BuildPathCandidates)
+            .Append(KnowledgePathService.ResolveRootPath(_configuration))
             .Select(Path.GetFullPath)
             .ToList();
 
@@ -271,6 +273,9 @@ public sealed class PythonWorkerHost : IPythonWorkerHost
         {
             throw new UnauthorizedAccessException($"Path is outside Python worker allowed roots: {target}");
         }
+        for (var current = target; current is not null; current = Path.GetDirectoryName(current))
+            if ((Directory.Exists(current) || File.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                throw new UnauthorizedAccessException("Python worker paths cannot contain symbolic links.");
     }
 
     private string? GetWorkerSetting(string workerName, string settingName)
@@ -330,7 +335,7 @@ public sealed class PythonWorkerHost : IPythonWorkerHost
     {
         var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var normalizedPath = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+        return normalizedPath.StartsWith(normalizedRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     }
 
     private static string? GetString(JsonElement element, string property)

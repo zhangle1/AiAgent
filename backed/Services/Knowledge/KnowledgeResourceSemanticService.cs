@@ -125,7 +125,8 @@ public sealed class KnowledgeResourceSemanticService(ISqlSugarClient database, I
         var bases = db.Queryable<AiKnowledgeBase>().Where(x => !x.IsDeleted).ToList().ToDictionary(x => x.Id);
         var parsed = db.Queryable<AiKnowledgeParsedDocument>().ToList().Where(x => x.DocumentId.HasValue)
             .GroupBy(x => x.DocumentId!.Value).ToDictionary(x => x.Key, x => x.MaxBy(p => p.Id)!);
-        var jobs = db.Queryable<AiKnowledgeJob>().Where(x => x.JobType == "wiki_compile" && x.DocumentId != null).OrderByDescending(x => x.Id).ToList();
+        var jobs = db.Queryable<AiKnowledgeJob>().Where(x => x.JobType == "wiki_compile" && x.DocumentId != null &&
+            (x.MarkdownOnly == null || x.MarkdownOnly == false)).OrderByDescending(x => x.Id).ToList();
         var outputs = jobs.Select(j => (Job: j, Config: ConfigurationFor(j)))
             .Where(x => x.Job.OwnerRoot == ownerRoot && ownerRoot is not null || x.Config.TargetUri is { } target && !target.StartsWith("viking://user/", StringComparison.Ordinal))
             .DistinctBy(x => (x.Job.DocumentId, x.Config.TargetUri)).ToLookup(x => x.Job.DocumentId!.Value);

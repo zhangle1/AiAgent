@@ -97,16 +97,22 @@ export function KnowledgeFileProcessingDialog({ onClose, onOpen }: { onClose: ()
 
 function ProcessingRow({ row, label, color, expanded, onToggle, onOpen }: { row: KnowledgeResourceProcessing; label: string; color: string; expanded: boolean; onToggle: () => void; onOpen: (uri: string) => void }) {
   const failed = row.task_status === "error" || (!row.task_status && row.node.status === "error");
+  const running = active.has(row.task_status ?? "");
+  const detail = failed ? row.error_message || row.message : row.message;
   return <>
     <tr className={`border-t border-slate-100 ${failed ? "bg-rose-50/50" : "hover:bg-slate-50"}`}>
       <td className="max-w-0 px-4 py-3"><div className="flex min-w-0 items-center gap-2"><FileText size={15} className="shrink-0 text-slate-400" /><span title={row.node.name} className="truncate font-medium">{row.node.name}</span></div><p title={readableUri(row.node.parent_uri ?? "")} className="mt-1 truncate text-[11px] text-slate-400">{readableUri(row.node.parent_uri ?? "")}</p></td>
-      <td className="whitespace-nowrap px-3 py-3"><button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`查看 ${row.node.name} 处理详情`} className="inline-flex items-center gap-1"><span className={`rounded-full px-2 py-1 text-[11px] ${color}`}>{label}</span><ChevronDown size={12} className={`text-slate-400 transition ${expanded ? "rotate-180" : ""}`} /></button>{active.has(row.task_status ?? "") && <p className="mt-1 text-[11px] text-slate-500">{stages[row.stage ?? ""] ?? "等待阶段信息"} · {row.progress ?? 0}%</p>}</td>
+      <td className="w-[44%] px-3 py-3">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`查看 ${row.node.name} 处理详情`} className="inline-flex items-center gap-1 whitespace-nowrap"><span className={`rounded-full px-2 py-1 text-[11px] ${color}`}>{label}</span><ChevronDown size={12} className={`text-slate-400 transition ${expanded ? "rotate-180" : ""}`} /></button>
+        {running && <p className="mt-1 text-[11px] text-slate-500">{stages[row.stage ?? ""] ?? "等待阶段信息"} · {row.progress ?? 0}%</p>}
+        {!expanded && (running || failed) && detail && <p title={detail} className={`mt-1 line-clamp-2 break-words text-[11px] leading-4 ${failed ? "text-rose-700" : "text-slate-600"}`}>{detail}</p>}
+      </td>
       <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{size(row.node.size)}</td>
       <td className="whitespace-nowrap px-3 py-3"><button type="button" onClick={() => onOpen(row.node.uri)} className="text-xs text-blue-600 hover:underline" aria-label={`预览 ${row.node.name}`}>预览</button></td>
     </tr>
     {expanded && <tr className="border-t border-slate-100 bg-slate-50"><td colSpan={4} className="space-y-2 px-4 py-3 text-xs leading-5 text-slate-600">
       <p>正文状态：{row.node.status === "processed" ? "正文已解析并保存" : row.node.status === "error" ? "正文解析失败" : row.node.status === "parsing" ? "正在解析正文" : "尚未确认解析完成"}；任务阶段：{row.stage ? stages[row.stage] ?? row.stage : "未记录，历史任务不能确认语义是否生成"}</p>
-      <p className={failed ? "break-words text-rose-700" : "break-words"}>{failed ? `错误：${row.error_message || row.message || "未返回详细原因，请在任务中心重新处理"}` : row.message || "尚无处理任务，可在文件预览中点击重新解析"}</p>
+      <p className={failed ? "break-words text-rose-700" : "break-words"}>{failed ? `错误：${detail || "未返回详细原因，请在任务中心重新处理"}` : detail || "尚无处理任务，可在文件预览中点击重新解析"}</p>
     </td></tr>}
   </>;
 }

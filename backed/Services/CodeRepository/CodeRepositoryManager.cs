@@ -99,7 +99,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     private const long MaxProjectDocumentUploadBytes = 25L * 1024 * 1024;
     private const long MaxProjectArchiveExpandedBytes = 100L * 1024 * 1024;
     private const int MaxProjectImportFiles = 50;
-    private static readonly HashSet<string> ProjectDocumentExtensions = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".csv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx" };
+    private static readonly HashSet<string> ProjectDocumentExtensions = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".csv", ".tsv", ".rtf", ".epub", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx" };
     private const string ProjectUploadDirectoryName = "uploads";
     private const string ProjectAiAgentDocumentsDirectoryName = "aiagent-documents";
     private const string UploadedDocumentRepositoryName = "aiagent-uploads";
@@ -112,17 +112,19 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     private readonly List<string> _allowedRoots;
     private readonly List<string> _registeredProjectRoots;
     private readonly ILogger<CodeRepositoryManager> _logger;
-    private readonly IDocumentParsingService _documentParser;
+    private readonly IDocumentConversionService _documentConversion;
+    private readonly string _documentConversionRoot;
 
     /// <summary>
     /// Initializes the manager and resolves the allowed local roots.
     /// </summary>
-    public CodeRepositoryManager(ISqlSugarClient db, IConfiguration configuration, ILogger<CodeRepositoryManager> logger, IDocumentParsingService documentParser)
+    public CodeRepositoryManager(ISqlSugarClient db, IConfiguration configuration, ILogger<CodeRepositoryManager> logger, IDocumentParsingService documentParser, IDocumentConversionService? conversion = null)
     {
         _db = db;
         _allowedRoots = ResolveAllowedRoots(configuration);
         _logger = logger;
-        _documentParser = documentParser;
+        _documentConversion = conversion ?? new DocumentConversionService(configuration, documentParser);
+        _documentConversionRoot = DocumentConversionPaths.Validate(configuration, Path.Combine(AiAgent.Backend.Services.Knowledge.KnowledgePathService.ResolveRootPath(configuration), "conversion-workspaces", "projects"));
         _registeredProjectRoots = LoadRegisteredProjectRoots();
     }
 
@@ -784,7 +786,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
                     document.HasOriginal = true;
                 }
                 result.Documents.Add(document);
-                result.Items.Add(new() { FileName = candidate.Name, Status = "imported", Message = $"已导入为 {markdownName}" });
+                result.Items.Add(new() { FileName = candidate.Name, Status = "imported", Message = $"已导入为 {markdownName}" + (originalExtension is ".pdf" or ".docx" or ".pptx" or ".epub" or ".rtf" ? "（文本模式，图片请查看原文件）" : "") });
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or InvalidDataException or XmlException)
             {
@@ -830,37 +832,24 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
     {
         var extension = Path.GetExtension(name).ToLowerInvariant();
         if (!ProjectDocumentExtensions.Contains(extension)) throw new ArgumentException($"不支持 {extension} 文件；旧版 .doc/.xls/.ppt 请另存为新版格式。" );
-        if (extension == ".pdf")
+        var workingDirectory = Path.Combine(_documentConversionRoot, $"{projectId}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workingDirectory);
+        try
         {
-            var workingDirectory = Path.Combine(EnsureProjectUploadDirectory(projectId), $".pdf-import-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(workingDirectory);
+            var sourcePath = Path.Combine(workingDirectory, "source" + extension);
+            await File.WriteAllBytesAsync(sourcePath, bytes, cancellationToken);
+            var parsed = await _documentConversion.ConvertAsync(new DocumentParseRequest { FilePath = sourcePath, OutputDir = workingDirectory, WriteImages = false, WriteBundle = false }, cancellationToken);
+            if (!parsed.Ok || string.IsNullOrWhiteSpace(parsed.MarkdownPath) || !File.Exists(parsed.MarkdownPath)) throw new InvalidDataException(parsed.ErrorMessage ?? "文档转换失败。");
+            return await File.ReadAllTextAsync(parsed.MarkdownPath, Encoding.UTF8, cancellationToken);
+        }
+        finally
+        {
             try
             {
-                var sourcePath = Path.Combine(workingDirectory, "source.pdf");
-                await File.WriteAllBytesAsync(sourcePath, bytes, cancellationToken);
-                var parsed = await _documentParser.ParsePdfAsync(new DocumentParseRequest { FilePath = sourcePath, OutputDir = workingDirectory }, cancellationToken);
-                if (!parsed.Ok || string.IsNullOrWhiteSpace(parsed.MarkdownPath) || !File.Exists(parsed.MarkdownPath)) throw new InvalidDataException(parsed.ErrorMessage ?? "PDF 解析失败。");
-                return await File.ReadAllTextAsync(parsed.MarkdownPath, Encoding.UTF8, cancellationToken);
+                if (IsPathWithin(_documentConversionRoot, workingDirectory)) Directory.Delete(workingDirectory, true);
             }
-            finally { try { Directory.Delete(workingDirectory, true); } catch (Exception ex) { _logger.LogWarning(ex, "Unable to clean PDF import workspace {WorkingDirectory}.", workingDirectory); } }
+            catch (Exception ex) { _logger.LogWarning(ex, "Unable to clean document import workspace."); }
         }
-        if (extension == ".xlsx")
-        {
-            using var workbook = new XLWorkbook(new MemoryStream(bytes, writable: false)); var output = new StringBuilder();
-            foreach (var sheet in workbook.Worksheets) { output.AppendLine($"# Sheet: {sheet.Name}"); var range = sheet.RangeUsed(); if (range is null) continue; foreach (var row in range.Rows()) output.AppendLine($"- Row {row.RowNumber()}: {string.Join(" | ", row.Cells().Select(cell => cell.GetFormattedString()))}"); }
-            return output.ToString();
-        }
-        if (extension is ".docx" or ".pptx")
-        {
-            using var archive = new ZipArchive(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read);
-            var prefix = extension == ".docx" ? "word/document.xml" : "ppt/slides/slide"; var output = new StringBuilder();
-            foreach (var entry in archive.Entries.Where(item => item.FullName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && item.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(item => item.FullName)) { using var stream = entry.Open(); var xml = XDocument.Load(stream); var extractedText = string.Join(" ", xml.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value).Where(value => !string.IsNullOrWhiteSpace(value))); if (extractedText.Length > 0) output.AppendLine($"# {entry.FullName}\n\n{extractedText}\n"); }
-            if (output.Length == 0) throw new InvalidDataException("Office 文档中没有可提取文本。"); return output.ToString();
-        }
-        var text = new UTF8Encoding(false, true).GetString(bytes);
-        if (extension is ".html" or ".htm") text = Regex.Replace(Regex.Replace(text, "<script[\\s\\S]*?</script>|<style[\\s\\S]*?</style>", "", RegexOptions.IgnoreCase), "<[^>]+>", " ");
-        if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException("文档中没有可提取文本。");
-        return text;
     }
 
     public CodeProjectAgentMarkdownIndexDto GetProjectAgentMarkdownIndex(long projectId)
@@ -1505,7 +1494,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         || IsLegacyProjectDocument(path)
         || Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsLegacyProjectDocument(string path) => Path.GetExtension(path).ToLowerInvariant() is ".doc" or ".xls" or ".ppt" or ".rtf";
+    private static bool IsLegacyProjectDocument(string path) => Path.GetExtension(path).ToLowerInvariant() is ".doc" or ".xls" or ".ppt";
 
     private static string GetProjectDocumentPreviewKind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
@@ -1524,6 +1513,8 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         ".html" or ".htm" => "text/html; charset=utf-8",
         ".txt" => "text/plain; charset=utf-8",
         ".csv" => "text/csv; charset=utf-8",
+        ".tsv" => "text/tab-separated-values; charset=utf-8",
+        ".epub" => "application/epub+zip",
         ".doc" => "application/msword",
         ".xls" => "application/vnd.ms-excel",
         ".ppt" => "application/vnd.ms-powerpoint",

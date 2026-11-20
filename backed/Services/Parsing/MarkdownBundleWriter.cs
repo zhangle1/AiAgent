@@ -29,10 +29,11 @@ public static class MarkdownBundleWriter
         }
         if (next != content.Length || plan.Sections.Count is 0 or > 10000) throw new InvalidOperationException("解析计划为空、超限或未完整覆盖正文。");
         var sections = new List<MarkdownBundleSection>();
+        var knownAssets = assetPaths.ToHashSet(StringComparer.Ordinal);
         foreach (var (section, order) in plan.Sections.Select((value, index) => (value, index)))
         {
             var target = Target(output, "sections/" + section.RelativePath);
-            var text = RewriteAssetLinks(section.Content, assetPaths, asset =>
+            var text = RewriteAssetLinks(section.Content, knownAssets, asset =>
                 Path.GetRelativePath(Path.GetDirectoryName(target)!, Target(output, asset)).Replace('\\', '/'));
             await WriteNew(target, text, ct);
             sections.Add(new(section.RelativePath, order, section.SourceStart, section.SourceEnd, section.RepeatedHeader.Length,
@@ -89,15 +90,15 @@ public static class MarkdownBundleWriter
         });
     }
 
-    public static string RewriteAssetLinks(string text, IReadOnlyList<string> paths, Func<string, string> resolve)
-    {
-        var known = paths.ToHashSet(StringComparer.Ordinal);
-        return Regex.Replace(text, @"!\[([^\]\r\n]*)\]\(([^)\r\n]+)\)", match => {
+    public static string RewriteAssetLinks(string text, IReadOnlyList<string> paths, Func<string, string> resolve) =>
+        RewriteAssetLinks(text, paths.ToHashSet(StringComparer.Ordinal), resolve);
+
+    private static string RewriteAssetLinks(string text, HashSet<string> known, Func<string, string> resolve) =>
+        Regex.Replace(text, @"!\[([^\]\r\n]*)\]\(([^)\r\n]+)\)", match => {
             var path = match.Groups[2].Value;
             while (path.StartsWith("../", StringComparison.Ordinal)) path = path[3..];
             return known.Contains(path) ? $"![{match.Groups[1].Value}]({resolve(path)})" : match.Value;
         });
-    }
 
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("[", "\\[").Replace("]", "\\]").Replace("*", "\\*").Replace("_", "\\_").Replace("`", "\\`");
     public static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));

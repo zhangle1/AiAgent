@@ -157,6 +157,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<KnowledgeCompilati
 builder.Services.AddSingleton<ITaskCenterService, TaskCenterService>();
 builder.Services.AddSingleton<IPythonWorkerHost, PythonWorkerHost>();
 builder.Services.AddSingleton<IDocumentParsingService, DocumentParsingService>();
+builder.Services.AddSingleton<IDocumentConversionService, DocumentConversionService>();
 builder.Services.AddSingleton<IRagPipelineFactory, RagPipelineFactory>();
 builder.Services.AddSingleton<IRagService, RagService>();
 builder.Services.AddSingleton<LlamaIndexPipeline>();

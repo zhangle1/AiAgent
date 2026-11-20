@@ -111,7 +111,7 @@ public sealed class KnowledgeAppService : IDynamicApiController
     }
 
     /// <summary>
-    /// 检测文档解析 worker 的运行环境。
+    /// 检测 C# 文档文字解析及原生渲染环境。
     /// </summary>
     [HttpGet("parsing/preflight")]
     public Task<RagOperationResult> CheckParsingEnvironment(CancellationToken cancellationToken)

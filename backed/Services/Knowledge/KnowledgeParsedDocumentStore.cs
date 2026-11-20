@@ -10,6 +10,7 @@ namespace AiAgent.Backend.Services.Knowledge;
 /// <summary>A database row publishes one complete immutable parse generation, never a partially written layout.</summary>
 public sealed class KnowledgeParsedDocumentStore(IKnowledgePathService paths)
 {
+    private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
     public sealed record Entry(string Path, int Order, int SourceStart, int SourceEnd, int RepeatedHeaderCharacters, int EstimatedTokens, string Hash);
     public sealed record Asset(string Path, string Hash, int Page, string Kind);
     public sealed record Manifest(string Version, string RootName, string ContentHash, MarkdownParsingOptions Options, List<Entry> Files, List<Asset>? Assets = null, List<MarkdownBundleNavigation>? Navigation = null);
@@ -21,30 +22,56 @@ public sealed class KnowledgeParsedDocumentStore(IKnowledgePathService paths)
         Directory.CreateDirectory(directory); return directory;
     }
 
+    internal string PdfCheckpointDirectory(AiKnowledgeBase kb, long documentId) =>
+        Guard(Path.Combine(paths.GetKnowledgeBasePath(kb.Name), "parsed", documentId.ToString(), ".pdf-checkpoints"));
+
+    internal void ClearPdfCheckpoints(AiKnowledgeBase kb, long documentId)
+    {
+        try { DeleteOwnedDirectory(PdfCheckpointDirectory(kb, documentId)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Cleanup is best effort after a successful save. Kept checkpoints still have their original identity.
+        }
+    }
+
     public async Task<Published> PublishAsync(string staging, string content, MarkdownDocumentPlan plan, MarkdownParsingOptions options, CancellationToken ct,
         IReadOnlyList<DocumentParseAsset>? sourceAssets = null, string? assetSourceRoot = null)
     {
         staging = Guard(staging);
         if (!Path.GetFileName(staging).StartsWith(".staging-", StringComparison.Ordinal)) throw new InvalidOperationException("Invalid parsing staging directory.");
         var assets = new List<Asset>();
-        long assetBytes = 0;
+        var assetPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var conversion = Guard(Path.Combine(staging, "conversion"));
+        var ownsConversion = string.Equals(assetSourceRoot, conversion, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         foreach (var asset in sourceAssets ?? [])
         {
             ct.ThrowIfCancellationRequested(); ValidateRelative(asset.Path);
             if (!asset.Path.StartsWith("assets/", StringComparison.Ordinal) || !asset.Path.EndsWith(".png", StringComparison.Ordinal) ||
-                assets.Count >= 5000 || assets.Any(a => a.Path == asset.Path)) throw new InvalidOperationException("Invalid parsed image manifest.");
+                !assetPaths.Add(asset.Path)) throw new InvalidOperationException("Invalid parsed image manifest.");
             var source = Guard(Path.Combine(assetSourceRoot ?? throw new InvalidOperationException("Missing image source root."), asset.Path));
-            var length = new FileInfo(source).Length;
-            if (length > 32 * 1024 * 1024 || (assetBytes += length) > 256 * 1024 * 1024) throw new InvalidOperationException("Parsed images exceed size limits.");
-            var bytes = await File.ReadAllBytesAsync(source, ct);
-            var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            if (!bytes.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) || hash != asset.Sha256)
-                throw new InvalidOperationException("Parsed image validation failed.");
             var target = Guard(Path.Combine(staging, asset.Path));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            await File.WriteAllBytesAsync(target, bytes, ct);
+            string hash;
+            await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true))
+            {
+                var signature = new byte[PngSignature.Length];
+                if (await input.ReadAtLeastAsync(signature, signature.Length, false, ct) != signature.Length ||
+                    !signature.AsSpan().SequenceEqual(PngSignature))
+                    throw new InvalidOperationException("Parsed image validation failed.");
+                input.Position = 0;
+                hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(input, ct));
+                if (hash != asset.Sha256) throw new InvalidOperationException("Parsed image validation failed.");
+                if (!ownsConversion)
+                {
+                    input.Position = 0;
+                    await using var destination = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+                    await input.CopyToAsync(destination, ct);
+                }
+            }
+            if (ownsConversion) File.Move(source, target);
             assets.Add(new(asset.Path, hash, asset.Page, asset.Kind));
         }
+        if (ownsConversion) DeleteOwnedDirectory(conversion);
         var contentPath = Guard(Path.Combine(staging, "document.md"));
         await File.WriteAllTextAsync(contentPath, content, new UTF8Encoding(false), ct);
         var output = await MarkdownBundleWriter.WriteAsync(staging, content, plan, assets.Select(a => a.Path).ToList(), ct);
@@ -115,26 +142,35 @@ public sealed class KnowledgeParsedDocumentStore(IKnowledgePathService paths)
     {
         ValidateRelative(asset.Path);
         var path = Guard(Path.Combine(GenerationRoot(kb, row), asset.Path));
-        if (!File.Exists(path) || Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant() != asset.Hash)
+        if (!File.Exists(path)) throw new InvalidOperationException("解析图片缺失或校验失败，请重新解析。");
+        using var image = File.OpenRead(path);
+        if (Convert.ToHexStringLower(SHA256.HashData(image)) != asset.Hash)
             throw new InvalidOperationException("解析图片缺失或校验失败，请重新解析。");
         return path;
     }
 
-    public static string RewriteAssetLinks(string text, IReadOnlyList<Asset> assets, Func<Asset, string> resolve) =>
-        Regex.Replace(text, @"!\[([^\]\r\n]*)\]\(([^)\r\n]+)\)", match => {
+    public static string RewriteAssetLinks(string text, IReadOnlyList<Asset> assets, Func<Asset, string> resolve)
+    {
+        var byPath = assets.ToDictionary(asset => asset.Path, StringComparer.Ordinal);
+        return Regex.Replace(text, @"!\[([^\]\r\n]*)\]\(([^)\r\n]+)\)", match => {
             var path = match.Groups[2].Value;
             while (path.StartsWith("../", StringComparison.Ordinal)) path = path[3..];
-            var asset = assets.FirstOrDefault(a => a.Path == path);
-            return asset is null ? match.Value : $"![{match.Groups[1].Value}]({resolve(asset)})";
+            return byPath.TryGetValue(path, out var asset) ? $"![{match.Groups[1].Value}]({resolve(asset)})" : match.Value;
         });
+    }
 
     public void DiscardStaging(string staging)
     {
         staging = Guard(staging);
         if (!Path.GetFileName(staging).StartsWith(".staging-", StringComparison.Ordinal)) throw new InvalidOperationException("Invalid parsing staging directory.");
-        if (!Directory.Exists(staging)) return;
-        // Only the staging directory created by this parse is removable; reject links anywhere in it.
-        CheckChildren(staging); Directory.Delete(staging, true);
+        DeleteOwnedDirectory(staging);
+    }
+
+    private void DeleteOwnedDirectory(string root)
+    {
+        if (!Directory.Exists(root)) return;
+        CheckChildren(root);
+        Directory.Delete(root, true);
         void CheckChildren(string directory)
         {
             foreach (var entry in Directory.EnumerateFileSystemEntries(directory))

@@ -1536,7 +1536,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div ref={contextPickerRef} className="flex min-w-0 items-center gap-2">
                   <input
                     type="file"
-                    accept={`${canAttachImages ? "image/png,image/jpeg,image/webp,image/gif," : ""}.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.zip,.rar,.dll`}
+                    accept={`${canAttachImages ? "image/png,image/jpeg,image/webp,image/gif," : ""}.pdf,.doc,.docx,.xls,.xlt,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ppt,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.tsv,.rtf,.epub,.json,.jsonl,.xml,.yaml,.yml,.zip,.rar,.dll`}
                     multiple
                     className="hidden"
                     onChange={(event) => {

@@ -38,18 +38,16 @@ public sealed partial class ChatFileAttachmentService : IChatFileAttachmentServi
 {
     private const int HeaderLength = 16;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".csv" };
-    private static readonly HashSet<string> ExcelExtensions = new(StringComparer.OrdinalIgnoreCase) { ".xls", ".xlt", ".xlsx", ".xlsm", ".xlsb", ".xltx", ".xltm" };
     private readonly IConfiguration _configuration;
-    private readonly IDocumentParsingService _documentParsing;
+    private readonly IDocumentConversionService _conversion;
     private readonly ILogger<ChatFileAttachmentService> _logger;
     private readonly string _rootPath;
     private readonly ConcurrentDictionary<string, StoredAttachment> _attachments = new(StringComparer.Ordinal);
 
-    public ChatFileAttachmentService(IConfiguration configuration, IDocumentParsingService documentParsing, ILogger<ChatFileAttachmentService> logger)
+    public ChatFileAttachmentService(IConfiguration configuration, IDocumentParsingService documentParsing, ILogger<ChatFileAttachmentService> logger, IDocumentConversionService? conversion = null)
     {
         _configuration = configuration;
-        _documentParsing = documentParsing;
+        _conversion = conversion ?? new DocumentConversionService(configuration, documentParsing);
         _logger = logger;
         _rootPath = ResolveRootPath(configuration);
     }
@@ -223,106 +221,23 @@ public sealed partial class ChatFileAttachmentService : IChatFileAttachmentServi
         var extension = Path.GetExtension(path).ToLowerInvariant();
         if (extension is ".zip" or ".rar") return await ReadArchiveTextAsync(path, cancellationToken);
         if (extension == ".dll") return ReadDllText(path, cancellationToken);
-        if (ExcelExtensions.Contains(extension)) return ReadSpreadsheetText(path, cancellationToken);
-        if (extension == ".doc")
-        {
-            using var converted = await KnowledgeOfficePreviewService.ConvertLegacyAsync(path, _configuration["Knowledge:LibreOfficePath"], cancellationToken);
-            return await ExtractTextAsync(converted.Path, cancellationToken);
-        }
-        if (TextExtensions.Contains(extension)) return await ReadUtf8Async(path, cancellationToken);
-        if (extension is ".html" or ".htm") return HtmlToText(await ReadUtf8Async(path, cancellationToken));
-        if (extension == ".docx") return ReadOfficeXml(path, "word/document.xml", document => string.Join("\n", document.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value)));
-        if (extension == ".pptx") return ReadPowerPointText(path);
-        if (extension == ".pdf") return await ReadPdfTextAsync(path, cancellationToken);
-        throw new InvalidOperationException("This document format cannot be converted to text.");
-    }
-
-    private async Task<string> ReadPdfTextAsync(string path, CancellationToken cancellationToken)
-    {
         var parseRoot = Path.Combine(RootPath, "parse");
         var outputPath = Path.Combine(parseRoot, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(outputPath);
         try
         {
-            var result = await _documentParsing.ParsePdfAsync(new DocumentParseRequest { FilePath = path, OutputDir = outputPath, WriteImages = false }, cancellationToken);
-            if (!result.Ok || string.IsNullOrWhiteSpace(result.TextPath) || !IsPathInsideRoot(result.TextPath, outputPath) || !File.Exists(result.TextPath)) throw new InvalidOperationException($"PDF text extraction failed: {result.ErrorMessage ?? result.ErrorCode ?? "parser unavailable"}");
-            return await ReadUtf8Async(result.TextPath, cancellationToken);
+            var result = await _conversion.ConvertAsync(new DocumentParseRequest { FilePath = path, OutputDir = outputPath, WriteImages = false, WriteBundle = false }, cancellationToken);
+            if (!result.Ok || string.IsNullOrWhiteSpace(result.MarkdownPath) || !IsPathInsideRoot(result.MarkdownPath, outputPath) || !File.Exists(result.MarkdownPath))
+                throw new InvalidOperationException($"Document conversion failed: {result.ErrorMessage ?? result.ErrorCode}");
+            return await ReadUtf8Async(result.MarkdownPath, cancellationToken);
         }
-        finally
-        {
-            TryDeleteDirectory(outputPath, parseRoot);
-        }
+        finally { TryDeleteDirectory(outputPath, parseRoot); }
     }
-
-    private static string ReadPowerPointText(string path)
-    {
-        using var archive = OpenOfficeArchive(path);
-        var slides = archive.Entries.Where(entry => entry.FullName.StartsWith("ppt/slides/slide", StringComparison.OrdinalIgnoreCase) && entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(entry => entry.FullName, StringComparer.OrdinalIgnoreCase);
-        return string.Join("\n\n", slides.Select(entry => $"# {Path.GetFileNameWithoutExtension(entry.Name)}\n{ReadXmlEntry(entry, document => string.Join("\n", document.Descendants().Where(item => item.Name.LocalName == "t").Select(item => item.Value)))}"));
-    }
-
-    private string ReadSpreadsheetText(string path, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        using var stream = File.OpenRead(path);
-        using var reader = ExcelReaderFactory.CreateReader(stream);
-        var text = new StringBuilder();
-        do
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            text.Append("# ").AppendLine(reader.Name);
-            while (reader.Read())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var cells = new List<string>();
-                for (var column = 0; column < reader.FieldCount; column++)
-                {
-                    var value = reader.GetValue(column);
-                    cells.Add(value is DateTime date ? date.ToString("O", CultureInfo.InvariantCulture)
-                        : Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty);
-                }
-                // Keep gaps inside a row so values retain their column positions.
-                while (cells.Count > 0 && string.IsNullOrWhiteSpace(cells[^1])) cells.RemoveAt(cells.Count - 1);
-                if (cells.Count > 0) text.AppendLine(string.Join(" | ", cells));
-                if (text.Length > MaxCharactersPerFile) return text.ToString();
-            }
-            text.AppendLine();
-        } while (reader.NextResult());
-        return text.ToString();
-    }
-
-    private static string ReadOfficeXml(string path, string entryName, Func<XDocument, string> extractor)
-    {
-        using var archive = OpenOfficeArchive(path);
-        var entry = archive.GetEntry(entryName) ?? throw new InvalidOperationException("The Office package is missing its main document XML.");
-        return ReadXmlEntry(entry, extractor);
-    }
-
-    private static T ReadXmlEntry<T>(ZipArchiveEntry entry, Func<XDocument, T> extractor)
-    {
-        using var stream = entry.Open();
-        using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 4_000_000 });
-        return extractor(XDocument.Load(reader, LoadOptions.None));
-    }
-
-    private static ZipArchive OpenOfficeArchive(string path) => ZipFile.OpenRead(path);
 
     private static async Task<string> ReadUtf8Async(string path, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
         using var reader = new StreamReader(stream, StrictUtf8, detectEncodingFromByteOrderMarks: true, bufferSize: 81920, leaveOpen: false);
         return await reader.ReadToEndAsync(cancellationToken);
-    }
-
-    private static string HtmlToText(string html)
-    {
-        var withoutHiddenContent = Regex.Replace(html, @"<(script|style|noscript|template)\b[^>]*>[\s\S]*?</\1\s*>", " ", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        var withLineBreaks = Regex.Replace(withoutHiddenContent, @"</?(?:address|article|aside|blockquote|br|div|footer|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|td|th|tr|ul)\b[^>]*>", "\n", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        var withoutTags = Regex.Replace(withLineBreaks, @"<[^>]+>", " ", RegexOptions.CultureInvariant);
-        var decoded = WebUtility.HtmlDecode(withoutTags).Replace('\u00a0', ' ');
-        var compactLines = decoded.Split('\n').Select(line => Regex.Replace(line, @"[\t\f\v ]+", " ").Trim()).Where(line => line.Length > 0);
-        return string.Join("\n", compactLines);
     }
 
     private static async Task CopyWithLimitAsync(Stream source, Stream target, long limit, CancellationToken cancellationToken)
@@ -352,6 +267,11 @@ public sealed partial class ChatFileAttachmentService : IChatFileAttachmentServi
             && header[0] == 0x09 && header[1] is 0x00 or 0x02 or 0x04;
         if (definition.IsLegacyOffice && !rawBiff && (count < 8 || !header[..8].SequenceEqual(new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }))) throw new InvalidOperationException("The file is not a valid legacy Office document.");
         if (definition.IsModernOffice) ValidateOfficePackage(path, definition.Extension);
+        if (definition.Extension == ".epub")
+        {
+            using var package = new DocumentPackage(path);
+            if (package.Archive.GetEntry("META-INF/container.xml") is null) throw new InvalidOperationException("The EPUB package is missing its container.");
+        }
         if (definition.IsText) _ = ReadUtf8Async(path, CancellationToken.None).GetAwaiter().GetResult();
     }
 
@@ -428,6 +348,10 @@ public sealed partial class ChatFileAttachmentService : IChatFileAttachmentServi
         ".html" or ".htm" => new FileDefinition(extension, "text/html", "ready", false, false, false, true),
         ".txt" => new FileDefinition(extension, "text/plain", "ready", false, false, false, true),
         ".csv" => new FileDefinition(extension, "text/csv", "ready", false, false, false, true),
+        ".tsv" => new FileDefinition(extension, "text/tab-separated-values", "ready", false, false, false, true),
+        ".rtf" => new FileDefinition(extension, "application/rtf", "ready", false, false, false, false),
+        ".epub" => new FileDefinition(extension, "application/epub+zip", "ready", false, false, false, false),
+        ".json" or ".jsonl" or ".xml" or ".yaml" or ".yml" => new FileDefinition(extension, "text/plain", "ready", false, false, false, true),
         _ => null
     };
     private long MaxFileBytes => Math.Clamp(_configuration.GetValue<long?>("ChatFileAttachments:MaxFileBytes") ?? 20L * 1024 * 1024, 1024 * 1024, 20L * 1024 * 1024);
