@@ -69,6 +69,7 @@ type ChatMessage = {
   model?: string | null;
   status?: "streaming" | "done" | "stopped" | "error";
   startedAt?: number;
+  timestamp?: number;
   lastEventAt?: number;
   observedAt?: number;
   streamHealth?: ChatStreamRecord["health"];
@@ -107,6 +108,7 @@ function toHistoryMessages(session: SessionDetail): ChatMessage[] {
     id: String(message.id),
     role: message.role,
     content: message.content,
+    timestamp: Date.parse(message.created_at),
     thinking: message.thinking ?? undefined,
     citations: message.citations ?? undefined,
     model: message.metadata?.model ?? null,
@@ -208,6 +210,7 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
       ...message,
       status: stream.status === "streaming" ? message.status : stream.status,
       lastEventAt: stream.lastEventAt,
+      timestamp: stream.status === "streaming" ? undefined : stream.observedAt,
       observedAt: stream.observedAt,
       streamHealth: stream.health,
       streamTerminalReason: stream.terminalReason,
@@ -2673,6 +2676,9 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   const selectionRangeRef = useRef<Range | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<{ text: string; top: number; left: number } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const errorAttempt = `${message.id}:${message.startedAt}:${message.observedAt}`;
+  const timestamp = message.timestamp !== undefined && Number.isFinite(message.timestamp) ? new Date(message.timestamp) : null;
   const runState = !isUser ? chatRunState(message) : null;
   const quietSeconds = message.streamHealth === "quiet" && message.lastEventAt && message.observedAt
     ? Math.max(1, Math.round((message.observedAt - message.lastEventAt) / 1000))
@@ -2723,11 +2729,11 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   }
 
   return (
-    <article className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+    <article className={`group/message flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`${isUser ? "max-w-[82%] rounded-2xl bg-blue-600 px-4 py-3 text-[13px] leading-6 text-white" : "w-full max-w-[860px] text-zinc-900"}`}>
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
-            {runState && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{runState.label}</span>}
+            {runState && !(message.status === "error" && dismissedError === errorAttempt) && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{runState.label}{message.status === "error" && <button type="button" onClick={() => setDismissedError(errorAttempt)} className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-rose-100 focus-visible:outline focus-visible:outline-2" aria-label="关闭失败标签" title="隐藏失败标签，保留诊断记录"><X size={12} aria-hidden="true" /></button>}</span>}
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}
             {message.totalTokens ? <span>- {formatCompactNumber(message.totalTokens)} tokens</span> : null}
@@ -2824,6 +2830,11 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
               <button type="button" onClick={onRetry} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-zinc-100" aria-label={String(t("common.retry"))}>
                 <RefreshCw size={14} />
               </button>
+            )}
+            {timestamp && message.status !== "streaming" && (
+              <time dateTime={timestamp.toISOString()} title="消息时间（本地时区）" className="ml-auto text-[11px] tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
+                {timestamp.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+              </time>
             )}
           </div>
         )}

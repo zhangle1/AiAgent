@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CircleAlert, RefreshCw } from "lucide-react";
+import { CircleAlert, RefreshCw, X } from "lucide-react";
 import type { ChatStreamRecord } from "./ChatStreamProvider";
 
 export function ChatRetryNotice({ stream, onRetry, onCancel }: {
@@ -10,6 +10,8 @@ export function ChatRetryNotice({ stream, onRetry, onCancel }: {
   onCancel: () => void;
 }) {
   const [now, setNow] = useState(Date.now);
+  const [dismissedAttempt, setDismissedAttempt] = useState<string | null>(null);
+  const attempt = `${stream.id}:${stream.startedAt}:${stream.observedAt}`;
   useEffect(() => {
     setNow(Date.now());
     if (stream.retryAt === undefined) return;
@@ -17,6 +19,7 @@ export function ChatRetryNotice({ stream, onRetry, onCancel }: {
     return () => window.clearInterval(timer);
   }, [stream.retryAt]);
   const seconds = Math.max(0, Math.ceil(((stream.retryAt ?? now) - now) / 1000));
+  if (dismissedAttempt === attempt) return null;
 
   return (
     <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
@@ -30,6 +33,9 @@ export function ChatRetryNotice({ stream, onRetry, onCancel }: {
           {stream.serverRejected ? "重新执行本轮" : stream.retryAt === undefined ? "查询执行结果" : `${seconds} 秒后查询 · 立即查询`}
         </button>
         {stream.retryAt !== undefined && <button type="button" onClick={onCancel} className="min-h-8 rounded-lg px-2 hover:bg-rose-100">取消自动查询</button>}
+        <button type="button" onClick={() => { onCancel(); setDismissedAttempt(attempt); }} className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-rose-100 focus-visible:outline focus-visible:outline-2" aria-label="关闭错误提示" title="关闭提示并取消自动查询，保留回复和诊断记录">
+          <X size={15} aria-hidden="true" />
+        </button>
       </div>
     </div>
   );
