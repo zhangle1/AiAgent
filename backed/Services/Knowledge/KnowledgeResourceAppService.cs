@@ -36,10 +36,17 @@ public sealed class KnowledgeResourceAppService(KnowledgeResourceService resourc
     public async Task<PlatformSessionImportResultDto> ImportPlatformSessions([FromBody] PlatformSessionImportRequest request, CancellationToken ct)
         => await sessions.ImportPlatformSessionsAsync(await RequireUser(ct), request.SessionIds, ct);
     [HttpGet("file")]
-    public IActionResult File([FromQuery] string uri, [FromQuery] bool download = false)
+    public IActionResult File([FromQuery] string uri, [FromQuery] bool download = false, [FromQuery(Name = "parsed_document_id")] long? parsedDocumentId = null)
     {
-        var file = resources.File(uri);
-        return new PhysicalFileResult(file.Path, file.ContentType) { FileDownloadName = download ? file.Name : null, EnableRangeProcessing = true };
+        try
+        {
+            var file = resources.File(uri, parsedDocumentId);
+            return new PhysicalFileResult(file.Path, file.ContentType) { FileDownloadName = download ? file.Name : null, EnableRangeProcessing = true };
+        }
+        catch (UnauthorizedAccessException) when (parsedDocumentId.HasValue) { return new StatusCodeResult(403); }
+        catch (KeyNotFoundException) when (parsedDocumentId.HasValue) { return new NotFoundResult(); }
+        catch (InvalidOperationException) when (parsedDocumentId.HasValue) { return new ConflictResult(); }
+        catch (ArgumentException) when (parsedDocumentId.HasValue) { return new BadRequestResult(); }
     }
 
     private async Task<AuthenticatedUser> RequireUser(CancellationToken ct)

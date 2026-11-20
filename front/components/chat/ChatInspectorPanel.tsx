@@ -2,8 +2,8 @@
 
 import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, ChevronRight, Download, FileText, Folder, FolderOpen, FolderPlus, Globe2, Code2, FileCode2, ListTodo, Loader2, PanelRightClose, Plus, RefreshCw, Terminal, Trash2, X } from "lucide-react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownDocumentPreview } from "@/components/MarkdownDocumentPreview";
+import { readKnowledgeChapter, type KnowledgeChapterReference } from "@/lib/knowledge-api";
 import { getCodeProjectRuntime, getCodeRuntimeLogs } from "@/lib/code-runtime-api";
 import { createProjectMarkdownDirectory, deleteProjectMarkdownDocument, getCodeFile, getProjectMarkdownDirectories, getProjectMarkdownDocuments, importProjectDocuments, previewProjectDocument, projectDocumentFileUrl, projectMarkdownDocumentDownloadUrl } from "@/lib/code-repository-api";
 import type { CodeProject, CodeProjectMarkdownDirectory, CodeProjectMarkdownDocument, CodeProjectMarkdownDocumentContent } from "@/lib/code-repository-types";
@@ -13,14 +13,13 @@ import type { ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatPrototypePanel } from "@/components/prototype-studio/ChatPrototypePanel";
 import { OntologyWorkbench } from "@/components/ontology/OntologyWorkbench";
 import { ChatLibraryPanel } from "@/components/chat/ChatLibraryPanel";
-import { MermaidDiagram, mermaidSourceFromPre } from "@/components/chat/MermaidDiagram";
 
 export type ChatCodeFileReference = {
   repositoryName: string;
   filePath: string;
   line?: number;
 };
-type WorkspaceTab = "preview" | "file" | "documents" | "uploads" | "tasks" | "terminal" | "ontology" | "prototype";
+type WorkspaceTab = "preview" | "file" | "documents" | "chapter" | "uploads" | "tasks" | "terminal" | "ontology" | "prototype";
 
 function terminalPanelWidth(viewportWidth: number) {
   const minimum = Math.min(360, Math.max(280, Math.round(viewportWidth * 0.45)));
@@ -28,7 +27,7 @@ function terminalPanelWidth(viewportWidth: number) {
   return Math.max(minimum, Math.min(maximum, Math.round(viewportWidth / 2)));
 }
 
-export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, requestToken, requestedMarkdownDocument, requestedDocumentAttachment, refreshToken, onAttachLibraryFile, libraryScope, onInsertMarkdownReference, onPrepareAgentMarkdown, onInsertOntologyContext, onClose, prototypeMessages = [], requestedPrototypeDocument, requestedPrototypeOutput }: { requestedPrototypeOutput?: ChatPrototypeOutput | null; requestedPrototypeDocument?: CodeProjectMarkdownDocument | null; prototypeMessages?: { id: string; content: string }[]; isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; requestToken?: number; requestedMarkdownDocument?: CodeProjectMarkdownDocument | null; requestedDocumentAttachment?: ChatFileAttachment | null; refreshToken?: number; libraryScope?: string; onAttachLibraryFile?: (file: File) => Promise<void>; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onPrepareAgentMarkdown?: (prompt: string) => void; onInsertOntologyContext?: (text: string) => void; onClose: () => void }) {
+export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTab, requestToken, requestedMarkdownDocument, requestedKnowledgeChapter, requestedDocumentAttachment, refreshToken, onAttachLibraryFile, libraryScope, onInsertMarkdownReference, onPrepareAgentMarkdown, onInsertOntologyContext, onClose, prototypeMessages = [], requestedPrototypeDocument, requestedPrototypeOutput }: { requestedPrototypeOutput?: ChatPrototypeOutput | null; requestedPrototypeDocument?: CodeProjectMarkdownDocument | null; prototypeMessages?: { id: string; content: string }[]; isOpen: boolean; project: CodeProject | null; fileReference: ChatCodeFileReference | null; requestedTab?: WorkspaceTab | null; requestToken?: number; requestedMarkdownDocument?: CodeProjectMarkdownDocument | null; requestedKnowledgeChapter?: KnowledgeChapterReference | null; requestedDocumentAttachment?: ChatFileAttachment | null; refreshToken?: number; libraryScope?: string; onAttachLibraryFile?: (file: File) => Promise<void>; onInsertMarkdownReference?: (document: CodeProjectMarkdownDocument) => void; onPrepareAgentMarkdown?: (prompt: string) => void; onInsertOntologyContext?: (text: string) => void; onClose: () => void }) {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   const [activeTab, setActiveTab] = useState<WorkspaceTab | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -364,7 +363,7 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
   const line = fileReference?.line;
 
   return (
-    <aside style={{ width: panelWidth }} className={`relative flex h-full min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white shadow-[-16px_0_40px_rgba(15,23,42,0.08)] ${resizing ? "select-none" : ""}`}>
+    <aside style={{ width: panelWidth }} className={`relative flex h-full min-h-0 max-w-full shrink-0 flex-col border-l border-slate-200 bg-white shadow-[-16px_0_40px_rgba(15,23,42,0.08)] ${resizing ? "select-none" : ""}`}>
       <div role="separator" aria-orientation="vertical" aria-label="调整聊天与右侧工作区宽度" onPointerDown={startResize} className="absolute -left-1.5 inset-y-0 z-20 w-3 cursor-col-resize touch-none before:absolute before:inset-y-0 before:left-1.5 before:w-px before:bg-transparent hover:before:bg-blue-400 active:before:bg-blue-500"/>
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -394,6 +393,8 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
         </div>
       ) : activeTab === "uploads" ? (
         <>{requestedExtraction ? <UploadsTab uploads={uploads} selectedUpload={selectedUpload} requestedExtraction={requestedExtraction} loading={loadingUploads} onSelect={(item) => { setRequestedExtraction(null); setSelectedUpload(item); }} /> : <ChatLibraryPanel key={`${project?.id}:${libraryScope}`} projectId={project?.id ?? null} refreshToken={refreshToken} onInsert={onInsertMarkdownReference} onAttach={onAttachLibraryFile} onPreview={(document) => { setSelectedMarkdownDocument(document); openTab("documents"); }} />}{requestedExtraction && <button type="button" onClick={() => setRequestedExtraction(null)} className="border-t border-slate-200 p-3 text-xs text-blue-600">返回资料库</button>}</>
+      ) : activeTab === "chapter" && requestedKnowledgeChapter ? (
+        <KnowledgeChapterTab chapter={requestedKnowledgeChapter} />
       ) : activeTab === "documents" ? (
         <ProjectDocumentsTab
           projectId={project?.id ?? null}
@@ -428,6 +429,7 @@ function workspaceTabMeta(tab: WorkspaceTab) {
   if (tab === "ontology") return { label: "本体模型", icon: FolderPlus };
   if (tab === "file") return { label: "文件", icon: FileCode2 };
   if (tab === "documents") return { label: "项目文档", icon: FileText };
+  if (tab === "chapter") return { label: "资料库章节", icon: FileText };
   if (tab === "uploads") return { label: "资料库", icon: FolderOpen };
   if (tab === "tasks") return { label: "侧边任务", icon: ListTodo };
   if (tab === "preview") return { label: "浏览器", icon: Globe2 };
@@ -447,6 +449,27 @@ function AddTabMenu({ tabs, onOpen }: { tabs: WorkspaceTab[]; onOpen: (tab: Work
 function EmptyWorkspace({ onOpen }: { onOpen: (tab: WorkspaceTab) => void }) {
   const options: WorkspaceTab[] = ["prototype", "ontology", "uploads", "documents", "file", "preview"];
   return <div className="flex min-h-0 flex-1 items-center justify-center p-6"><div className="w-full max-w-sm space-y-2">{options.map((tab) => { const { label, icon: Icon } = workspaceTabMeta(tab); return <button key={tab} type="button" onClick={() => onOpen(tab)} className="flex h-11 w-full items-center gap-2.5 rounded-lg bg-slate-50 px-3 text-left text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"><Icon size={16}/><span className="flex-1">{label}</span><Plus size={15} className="text-slate-400"/></button>; })}</div></div>;
+}
+
+function KnowledgeChapterTab({ chapter }: { chapter: KnowledgeChapterReference }) {
+  const [result, setResult] = useState<{ chapter: KnowledgeChapterReference; text: string; parsedDocumentId: number } | { chapter: KnowledgeChapterReference; error: string } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    void readKnowledgeChapter(chapter, signal)
+      .then(resource => { if (!signal.aborted) setResult({ chapter, ...resource }); })
+      .catch(ex => { if (!signal.aborted) setResult({ chapter, error: ex instanceof Error ? ex.message : "读取章节失败。" }); });
+    return () => controller.abort();
+  }, [chapter]);
+  const current = result?.chapter === chapter ? result : null;
+  return <section aria-label="资料库章节预览" className="flex min-h-0 flex-1 flex-col">
+    <header className="border-b border-slate-100 px-4 py-3"><h2 className="break-words text-sm font-semibold text-slate-800">{chapter.name}</h2></header>
+    <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-4">
+      {!current ? <p role="status" className="text-sm text-slate-500">正在读取章节…</p> : "error" in current ?
+        <p role="alert" className="text-sm text-rose-700">{current.error}</p> :
+        <MarkdownDocumentPreview content={current.text} knowledge={{ parsedDocumentId: current.parsedDocumentId }} />}
+    </div>
+  </section>;
 }
 
 function UploadsTab({ uploads, selectedUpload, requestedExtraction, loading, onSelect }: { uploads: ChatUploadFile[]; selectedUpload: ChatUploadFile | null; requestedExtraction: ChatFileExtractionPreview | null; loading: boolean; onSelect: (item: ChatUploadFile) => void }) {
@@ -497,27 +520,6 @@ function buildMarkdownDocumentTree(documents: CodeProjectMarkdownDocument[], dir
 
 // Keep renderer identities stable across runtime polling and panel resizing.
 // Recreating them remounts Mermaid diagrams and discards their open preview state.
-const projectDocumentMarkdownComponents: Components = {
-          h1: ({ className, ...props }) => <h1 className={`mb-5 border-b border-slate-200 pb-3 text-2xl font-bold tracking-tight text-slate-950 ${className ?? ""}`} {...props}/>,
-          h2: ({ className, ...props }) => <h2 className={`mb-3 mt-8 border-b border-slate-100 pb-2 text-xl font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
-          h3: ({ className, ...props }) => <h3 className={`mb-2 mt-6 text-base font-bold text-slate-900 ${className ?? ""}`} {...props}/>,
-          h4: ({ className, ...props }) => <h4 className={`mb-2 mt-5 text-sm font-bold text-slate-800 ${className ?? ""}`} {...props}/>,
-          p: ({ className, ...props }) => <p className={`my-3 text-[14px] leading-7 text-slate-700 ${className ?? ""}`} {...props}/>,
-          a: ({ className, ...props }) => <a className={`font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900 ${className ?? ""}`} target="_blank" rel="noreferrer" {...props}/>,
-          ul: ({ className, ...props }) => <ul className={`my-3 list-disc space-y-1 pl-6 marker:text-slate-400 ${className ?? ""}`} {...props}/>,
-          ol: ({ className, ...props }) => <ol className={`my-3 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500 ${className ?? ""}`} {...props}/>,
-          li: ({ className, ...props }) => <li className={`pl-1 ${className ?? ""}`} {...props}/>,
-          blockquote: ({ className, ...props }) => <blockquote className={`my-4 border-l-4 border-blue-300 bg-blue-50 px-4 py-2 text-slate-700 ${className ?? ""}`} {...props}/>,
-          hr: ({ className, ...props }) => <hr className={`my-7 border-slate-200 ${className ?? ""}`} {...props}/>,
-          table: ({ className, ...props }) => <table className={`my-4 min-w-full border-collapse text-left text-[13px] leading-6 ${className ?? ""}`} {...props}/>,
-          thead: ({ className, ...props }) => <thead className={`bg-slate-100 text-slate-800 ${className ?? ""}`} {...props}/>,
-          th: ({ className, ...props }) => <th className={`border border-slate-200 px-3 py-2 font-semibold ${className ?? ""}`} {...props}/>,
-          td: ({ className, ...props }) => <td className={`border border-slate-200 px-3 py-2 align-top ${className ?? ""}`} {...props}/>,
-          pre: ({ className, children, ...props }) => { const chart = mermaidSourceFromPre(children); return chart ? <MermaidDiagram chart={chart}/> : <pre className={`my-4 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-[12px] leading-6 text-slate-100 shadow-sm ${className ?? ""}`} {...props}>{children}</pre>; },
-          code: ({ className, ...props }) => <code className={`${className ? "font-mono" : "rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-rose-700"} ${className ?? ""}`} {...props}/>,
-          img: ({ className, alt, ...props }) => <img className={`my-4 max-w-full rounded-lg border border-slate-200 shadow-sm ${className ?? ""}`} alt={alt ?? "文档图片"} {...props}/>,
-        };
-
 function ProjectDocumentsTab({ projectId, documents, directories, loadingDocuments, selectedDocument, selectedDirectory, content, loadingContent, onSelect, onSelectDirectory, onInsert, uploadInputRef, onUpload, importing, importSummary, onCreateDirectory, onDownload, onDelete, onPrepareAgentMarkdown, onRefresh }: {
   projectId: number | null;
   documents: CodeProjectMarkdownDocument[];
@@ -560,7 +562,7 @@ function ProjectDocumentsTab({ projectId, documents, directories, loadingDocumen
         : selectedDocument && projectId && selectedDocument.preview_kind === "pdf" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} className="min-h-0 flex-1 border-0 bg-slate-100"/>
         : selectedDocument && projectId && selectedDocument.preview_kind === "html" ? <iframe title={selectedDocument.name} src={projectDocumentFileUrl(projectId, selectedDocument.repository_name, selectedDocument.path)} sandbox="" className="min-h-0 flex-1 border-0 bg-white"/>
         : loadingContent ? <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>正在预览文档…</div>
-        : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><article className="markdown-document-preview mx-auto max-w-4xl"><ReactMarkdown remarkPlugins={[remarkGfm]} components={projectDocumentMarkdownComponents}>{content.content}</ReactMarkdown></article>{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>
+        : content ? <div className="workspace-scroll min-h-0 flex-1 overflow-auto px-5 py-5 text-sm leading-7 text-slate-700"><MarkdownDocumentPreview className="markdown-document-preview mx-auto max-w-4xl" content={content.content} />{content.is_truncated && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">预览已达到安全长度上限；引用聊天时将使用同一受控内容。</p>}</div>
           : <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm leading-6 text-slate-500">从左侧树状目录选择文档后即可预览，文档内容不会作为代码文件暴露。</div>}
     </div>
   </div>;

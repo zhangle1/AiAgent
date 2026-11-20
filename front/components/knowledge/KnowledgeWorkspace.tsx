@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import ReactMarkdown from "react-markdown";
+import { MarkdownDocumentPreview } from "@/components/MarkdownDocumentPreview";
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks, MessageSquarePlus, Trash2 } from "lucide-react";
-import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResource, uploadKnowledgeResources } from "@/lib/knowledge-api";
+import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResourceForPreview, uploadKnowledgeResources } from "@/lib/knowledge-api";
 import { KnowledgeSemanticPreview } from "./KnowledgeSemanticPreview";
 import { KnowledgeParsedSections } from "./KnowledgeParsedSections";
-import remarkGfm from "remark-gfm";
 import { KnowledgeWorkspacePanels } from "./KnowledgeWorkspacePanels";
 import { KnowledgeAgentChatPanel } from "./KnowledgeAgentChatPanel";
 import { KnowledgeFileProcessingDialog } from "./KnowledgeFileProcessingDialog";
@@ -48,6 +47,7 @@ export function KnowledgeWorkspace() {
   const [job, setJob] = useState<KnowledgeCompilationJob | null>(null);
   const [showTaskLink, setShowTaskLink] = useState(false);
   const readSequence = useRef(0);
+  const previewRead = useRef<AbortController | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -80,18 +80,22 @@ export function KnowledgeWorkspace() {
   }
   async function open(uri: string, tree = nodes) {
     const sequence = ++readSequence.current;
+    previewRead.current?.abort();
+    const controller = new AbortController();
+    previewRead.current = controller;
     setSelectedUri(uri); setResource(null); setJob(null); setReading(true); setError(""); setPreviewMode("source");
     try {
-      const value = await readKnowledgeResource(uri); if (sequence !== readSequence.current) return; setResource(value);
+      const value = await readKnowledgeResourceForPreview(uri, controller.signal); if (sequence !== readSequence.current) return; setResource(value);
       const node = tree.find(item => item.uri === uri);
       setExpanded(current => { const next = new Set(current); for (const ancestor of tree) if (ancestor.kind === "directory" && uri.startsWith(ancestor.uri)) next.add(ancestor.uri); if (node?.kind === "directory" || value.node.kind === "directory") next.add(uri); return next; });
-    } catch (ex) { if (sequence === readSequence.current) setError(ex instanceof Error ? ex.message : "资源读取失败"); }
+    } catch (ex) { if (sequence === readSequence.current && !controller.signal.aborted) setError(ex instanceof Error ? ex.message : "资源读取失败"); }
     finally { if (sequence === readSequence.current) setReading(false); }
   }
-  useEffect(() => { void loadTree(); }, []);
+  useEffect(() => { void loadTree(); return () => previewRead.current?.abort(); }, []);
   useEffect(() => {
     if (selected?.kind !== "file" || isGeneratedResource(selected.uri)) return;
     const uri = selected.uri;
+    const controller = new AbortController();
     let disposed = false;
     let busy = false;
     let lastTask = "";
@@ -106,7 +110,7 @@ export function KnowledgeWorkspace() {
         const task = next ? `${next.id}:${next.status}` : "";
         if (next && task !== lastTask && ["success", "error", "cancelled"].includes(next.status)) {
           setNotice(next.message ?? "任务结束");
-          const value = await readKnowledgeResource(uri);
+          const value = await readKnowledgeResourceForPreview(uri, controller.signal);
           if (disposed || sequence !== readSequence.current) return;
           setResource(value);
           const tree = await getKnowledgeResourceTree();
@@ -119,7 +123,7 @@ export function KnowledgeWorkspace() {
     }
     void poll();
     const timer = setInterval(() => void poll(), 1800);
-    return () => { disposed = true; clearInterval(timer); };
+    return () => { disposed = true; controller.abort(); clearInterval(timer); };
   }, [selected?.uri, selected?.kind]);
 
   async function upload(files: File[], targetUri: string): Promise<boolean> {
@@ -232,4 +236,4 @@ function DirectoryPreview({ node, children, onOpen, resource }: { resource: Know
   </div>;
 }
 
-function FilePreview({ node, resource, mode, setMode, activeText, isPdf, isImage, job, onOpen }: { node?: KnowledgeResourceNode; resource: KnowledgeResourceRead | null; mode: "source" | "parsed" | "semantic"; setMode: (value: "source" | "parsed" | "semantic") => void; activeText?: string | null; isPdf?: boolean; isImage?: boolean; job: KnowledgeCompilationJob | null; onOpen: (uri: string) => void }) { if (!node) return null; const generated = isGeneratedResource(node.uri); const modes: ("source" | "parsed" | "semantic")[] = generated ? ["source"] : ["source", "parsed", "semantic"]; const fileUrl = knowledgeResourceFileUrl(node.uri); return <div className="mx-auto flex max-w-4xl flex-col"><div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold">{node.name}</h1><div className="mt-1 text-xs text-slate-400">{node.extension || "文件"} {formatBytes(node.size) && `· ${formatBytes(node.size)}`} {resource?.parser && `· ${resource.parser}`}</div></div>{job && ["queued", "processing", "cancelling"].includes(job.status) && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] text-amber-700">正在解析 {job.progress}%</span>}</div><div className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">{modes.map(value => <button key={value} type="button" onClick={() => setMode(value)} className={`rounded-md px-3 py-1.5 ${mode === value ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"}`}>{value === "source" ? node.source_uri ? "解析章节" : generated ? "知识产物" : "原文" : value === "parsed" ? "解析正文" : "知识摘要"}</button>)}</div>{node.source_uri && <button type="button" onClick={() => onOpen(node.source_uri!)} className="mb-3 text-left text-xs text-blue-700 underline">返回原始文件</button>}{mode === "parsed" && <KnowledgeParsedSections sections={resource?.parsed_outputs ?? []} onOpen={onOpen} />}{mode === "semantic" && !!resource?.compiled_outputs?.length && <section className="mb-3 space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs"><p className="font-medium text-blue-800">已关联编译产物</p>{resource.compiled_outputs.map(output => <button key={output.uri} type="button" onClick={() => onOpen(output.uri)} className="block w-full break-all text-left text-blue-700 underline">{decodeURI(output.uri)} · {output.status === "processed" ? "已生成" : "待编译 / 缓存已失效"}</button>)}</section>}{isPdf && mode === "source" ? <iframe title={node.name} src={fileUrl} className="min-h-[620px] flex-1 rounded-lg border border-slate-200 bg-white" sandbox="allow-same-origin" /> : isImage && mode === "source" ? <div className="flex min-h-[420px] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white p-4"><img src={fileUrl} alt={node.name} className="max-h-[620px] max-w-full object-contain" /></div> : activeText ? <article className={`${styles.markdown} min-h-[420px] flex-1 rounded-lg border border-slate-200 bg-white p-6 text-sm leading-7 break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words`}><ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={url => url.startsWith("viking://") ? url : ""} components={{ img: () => null, a: ({ href, children }) => href?.startsWith("viking://") ? <button type="button" className="text-blue-600 underline" onClick={() => onOpen(href)}>{children}</button> : <span>{children}</span> }}>{activeText ?? ""}</ReactMarkdown></article> : <div className="flex min-h-[420px] flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-400">尚未生成该视图。正文可重新解析；知识摘要请使用「编译资料 /compiler」并选择产物目录。</div>}</div>; }
+function FilePreview({ node, resource, mode, setMode, activeText, isPdf, isImage, job, onOpen }: { node?: KnowledgeResourceNode; resource: KnowledgeResourceRead | null; mode: "source" | "parsed" | "semantic"; setMode: (value: "source" | "parsed" | "semantic") => void; activeText?: string | null; isPdf?: boolean; isImage?: boolean; job: KnowledgeCompilationJob | null; onOpen: (uri: string) => void }) { if (!node) return null; const generated = isGeneratedResource(node.uri); const modes: ("source" | "parsed" | "semantic")[] = generated ? ["source"] : ["source", "parsed", "semantic"]; const fileUrl = knowledgeResourceFileUrl(node.uri); return <div className="mx-auto flex max-w-4xl flex-col"><div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold">{node.name}</h1><div className="mt-1 text-xs text-slate-400">{node.extension || "文件"} {formatBytes(node.size) && `· ${formatBytes(node.size)}`} {resource?.parser && `· ${resource.parser}`}</div></div>{job && ["queued", "processing", "cancelling"].includes(job.status) && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] text-amber-700">正在解析 {job.progress}%</span>}</div><div className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">{modes.map(value => <button key={value} type="button" onClick={() => setMode(value)} className={`rounded-md px-3 py-1.5 ${mode === value ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"}`}>{value === "source" ? node.source_uri ? "解析章节" : generated ? "知识产物" : "原文" : value === "parsed" ? "解析正文" : "知识摘要"}</button>)}</div>{node.source_uri && <button type="button" onClick={() => onOpen(node.source_uri!)} className="mb-3 text-left text-xs text-blue-700 underline">返回原始文件</button>}{mode === "parsed" && <KnowledgeParsedSections sections={resource?.parsed_outputs ?? []} onOpen={onOpen} />}{mode === "semantic" && !!resource?.compiled_outputs?.length && <section className="mb-3 space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs"><p className="font-medium text-blue-800">已关联编译产物</p>{resource.compiled_outputs.map(output => <button key={output.uri} type="button" onClick={() => onOpen(output.uri)} className="block w-full break-all text-left text-blue-700 underline">{decodeURI(output.uri)} · {output.status === "processed" ? "已生成" : "待编译 / 缓存已失效"}</button>)}</section>}{isPdf && mode === "source" ? <iframe title={node.name} src={fileUrl} className="min-h-[620px] flex-1 rounded-lg border border-slate-200 bg-white" sandbox="allow-same-origin" /> : isImage && mode === "source" ? <div className="flex min-h-[420px] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white p-4"><img src={fileUrl} alt={node.name} className="max-h-[620px] max-w-full object-contain" /></div> : activeText ? <MarkdownDocumentPreview className="min-h-[420px] flex-1 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" content={activeText} knowledge={{ parsedDocumentId: resource?.node.parsed_document_id ?? node.parsed_document_id, onOpen }} /> : <div className="flex min-h-[420px] flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-400">尚未生成该视图。正文可重新解析；知识摘要请使用「编译资料 /compiler」并选择产物目录。</div>}</div>; }
