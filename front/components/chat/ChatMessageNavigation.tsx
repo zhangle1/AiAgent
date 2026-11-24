@@ -3,6 +3,7 @@
 import { type RefObject, useEffect, useState } from "react";
 
 type NavigationMessage = { id: string; role: string; content: string };
+const MAX_MARKERS = 8;
 
 export function ChatMessageNavigation({ messages, scrollRef }: {
   messages: NavigationMessage[];
@@ -44,12 +45,20 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
 
   if (!questions.length) return null;
 
-  return <nav aria-label="会话导航" className="absolute bottom-8 left-0 top-8 z-20 flex w-8 flex-col justify-center">
-    <div className="workspace-scroll max-h-full overflow-y-auto py-2">
-      {questions.map((question, index) => {
-        const active = question.id === activeId;
+  const markerCount = Math.min(questions.length, MAX_MARKERS);
+  const markerIndexes = Array.from({ length: markerCount }, (_, slot) =>
+    Math.round(slot * (questions.length - 1) / Math.max(1, markerCount - 1)),
+  );
+  const activeIndex = questions.findIndex(question => question.id === activeId);
+
+  return <nav aria-label="会话导航" className="pointer-events-none absolute inset-y-3 left-0 z-20 flex w-8 flex-col justify-center">
+    <div className="workspace-scroll pointer-events-auto flex max-h-full flex-col gap-1 overflow-y-auto py-1">
+      {markerIndexes.map((index, slot) => {
+        const question = questions[index];
+        const nextIndex = markerIndexes[slot + 1] ?? questions.length;
+        const active = activeIndex >= index && activeIndex < nextIndex;
         const preview = question.content.trim().replace(/\s+/g, " ") || "附件消息";
-        return <div key={question.id} className="group" onMouseEnter={() => setDismissed(false)}>
+        return <div key={question.id} className="group shrink-0" onMouseEnter={() => setDismissed(false)}>
           <button type="button" aria-label={`跳转到第 ${index + 1} 条提问：${preview.slice(0, 80)}`} aria-current={active ? "step" : undefined}
             onKeyDown={event => { if (event.key === "Escape") setDismissed(true); }}
             onFocus={() => setDismissed(false)}
@@ -61,8 +70,8 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
               setActiveId(question.id);
               setDismissed(true);
             }}
-            className="flex h-5 w-8 items-center justify-start rounded px-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
-            <span className={`h-0.5 rounded-full transition-all group-hover:w-6 group-hover:bg-blue-500 ${active ? "w-6 bg-slate-700" : "w-3 bg-slate-300"}`} />
+            className="flex h-7 w-8 items-center justify-start rounded-md px-1 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-blue-500">
+            <span aria-hidden="true" className={`h-[3px] rounded-full motion-safe:transition-all group-hover:w-6 group-hover:bg-blue-500 group-focus-within:bg-blue-500 ${active ? "w-6 bg-slate-700" : "w-3 bg-slate-300"}`} />
           </button>
           {!dismissed && <div className="pointer-events-none absolute left-10 top-1/2 hidden w-64 max-w-[65vw] -translate-y-1/2 rounded-xl border border-slate-200 bg-white/95 p-3 text-xs leading-5 text-slate-600 shadow-lg backdrop-blur group-hover:block group-focus-within:block">
             <p className="mb-1 font-semibold text-slate-800">第 {index + 1} 条提问</p>
