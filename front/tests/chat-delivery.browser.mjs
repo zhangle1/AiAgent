@@ -53,7 +53,7 @@ await page.route("**/api/**", async route => {
   await route.fulfill({ json: body });
 });
 
-function message(role, content, created_at) { history.push({ id: ++sequence, role, content, created_at }); }
+function message(role, content, created_at, metadata) { history.push({ id: ++sequence, role, content, created_at, metadata }); }
 function emit(socket, type, content) { socket.send(JSON.stringify({ type, content })); }
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw => {
   const request = JSON.parse(String(raw)); sent.push(request);
@@ -167,7 +167,7 @@ try {
   const historyTimes = ["2026-11-23T16:15:00.1234567", "2026-11-24T01:45:00+09:00"];
   for (let index = 1; index <= 22; index++) {
     message("user", `导航测试提问 ${index}`);
-    message("assistant", `导航测试回复 ${index}\n\n` + "回复正文。\n\n".repeat(30), historyTimes[index - 1]);
+    message("assistant", `导航测试回复 ${index}\n\n` + "回复正文。\n\n".repeat(30), historyTimes[index - 1], { model: "Codex" });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?session=long-navigation`);
@@ -180,6 +180,14 @@ try {
     "2026-11-23T16:15:00.123Z",
     "2026-11-23T16:45:00.000Z",
   ]);
+  const firstTimestamp = timestamps.first();
+  const model = firstTimestamp.locator("..").getByText("Codex", { exact: true });
+  const modelBox = await model.boundingBox();
+  const timeBox = await firstTimestamp.boundingBox();
+  assert.ok(modelBox && timeBox, "The model name and timestamp should have a layout box");
+  const gap = timeBox.x - (modelBox.x + modelBox.width);
+  assert.ok(Math.abs(modelBox.y - timeBox.y) <= 1 && gap >= 0 && gap <= 12,
+    "The timestamp should sit beside the model name on a narrow screen");
   assert.equal(await markers.count(), 8);
   const markerPositions = await markers.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top));
   assert.ok(markerPositions.slice(1).every((top, index) => top - markerPositions[index] >= 30), "Markers should be spaced apart");

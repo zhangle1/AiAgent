@@ -2694,7 +2694,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   const [copied, setCopied] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const errorAttempt = `${message.id}:${message.startedAt}:${message.observedAt}`;
-  const timestamp = message.timestamp !== undefined && Number.isFinite(message.timestamp) ? new Date(message.timestamp) : null;
+  const timestamp = message.status !== "streaming" && message.timestamp !== undefined && Number.isFinite(message.timestamp) ? new Date(message.timestamp) : null;
   const runState = !isUser ? chatRunState(message) : null;
   const quietSeconds = message.streamHealth === "quiet" && message.lastEventAt && message.observedAt
     ? Math.max(1, Math.round((message.observedAt - message.lastEventAt) / 1000))
@@ -2815,10 +2815,19 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
             {message.thinking && <div className="mt-2 whitespace-pre-wrap break-words border-t border-zinc-100 pt-2 leading-5">{message.thinking}</div>}
           </details>
         )}
-        {!isUser && message.model && (
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
-            <UserRound size={12} />
-            {message.model}
+        {!isUser && (message.model || timestamp) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
+            {message.model && (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <UserRound size={12} className="shrink-0" />
+                <span className="min-w-0 break-words">{message.model}</span>
+              </span>
+            )}
+            {timestamp && (
+              <time dateTime={timestamp.toISOString()} title="消息时间（北京时间 UTC+8）" className="whitespace-nowrap tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
+                {chatMessageTimeFormatter.format(timestamp)}
+              </time>
+            )}
           </div>
         )}
         {!isUser && message.citations && message.citations.length > 0 && (
@@ -2846,11 +2855,6 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
               <button type="button" onClick={onRetry} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-zinc-100" aria-label={String(t("common.retry"))}>
                 <RefreshCw size={14} />
               </button>
-            )}
-            {timestamp && message.status !== "streaming" && (
-              <time dateTime={timestamp.toISOString()} title="消息时间（北京时间 UTC+8）" className="ml-auto text-[11px] tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
-                {chatMessageTimeFormatter.format(timestamp)}
-              </time>
             )}
           </div>
         )}
