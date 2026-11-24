@@ -11,7 +11,7 @@ const artifacts = process.env.CHAT_TEST_ARTIFACTS ?? path.join(os.tmpdir(), "cha
 await mkdir(artifacts, { recursive: true });
 const executablePath = process.env.CHAT_TEST_BROWSER_EXECUTABLE;
 const browser = await chromium.launch(executablePath ? { executablePath } : { channel: "msedge" });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, timezoneId: "America/Los_Angeles" });
 const errors = []; const sent = []; let uploads = 0; let goalState = null;
 let deliveriesUnavailable = true;
 const queue = []; const canceled = []; const sockets = new Map(); const history = []; let sequence = 0;
@@ -53,7 +53,7 @@ await page.route("**/api/**", async route => {
   await route.fulfill({ json: body });
 });
 
-function message(role, content) { history.push({ id: ++sequence, role, content }); }
+function message(role, content, created_at) { history.push({ id: ++sequence, role, content, created_at }); }
 function emit(socket, type, content) { socket.send(JSON.stringify({ type, content })); }
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw => {
   const request = JSON.parse(String(raw)); sent.push(request);
@@ -164,15 +164,22 @@ try {
   assert.equal(queue.length, 0);
 
   history.length = 0;
+  const historyTimes = ["2026-11-23T16:15:00.1234567", "2026-11-24T01:45:00+09:00"];
   for (let index = 1; index <= 22; index++) {
     message("user", `导航测试提问 ${index}`);
-    message("assistant", `导航测试回复 ${index}\n\n` + "回复正文。\n\n".repeat(30));
+    message("assistant", `导航测试回复 ${index}\n\n` + "回复正文。\n\n".repeat(30), historyTimes[index - 1]);
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?session=long-navigation`);
   const markers = navigation.getByRole("button");
   const lastQuestion = navigation.getByRole("button", { name: /^跳转到第 22 条提问/ });
   await lastQuestion.waitFor();
+  const timestamps = page.locator('time[title="消息时间（北京时间 UTC+8）"]');
+  assert.deepEqual(await timestamps.allTextContents(), ["2026/11/24 00:15:00", "2026/11/24 00:45:00"]);
+  assert.deepEqual(await timestamps.evaluateAll(elements => elements.map(element => element.dateTime)), [
+    "2026-11-23T16:15:00.123Z",
+    "2026-11-23T16:45:00.000Z",
+  ]);
   assert.equal(await markers.count(), 8);
   const markerPositions = await markers.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top));
   assert.ok(markerPositions.slice(1).every((top, index) => top - markerPositions[index] >= 30), "Markers should be spaced apart");
@@ -191,5 +198,5 @@ try {
     return question && Math.abs(question.getBoundingClientRect().top - question.parentElement.getBoundingClientRect().top - 16) < 2;
   });
   assert.deepEqual(errors, []);
-  console.log(`PASS: continuous delivery, queue/steer intent, refresh and resume, 390px layout, and long-session navigation sampling and scrolling. Screenshots: ${artifacts}`);
+  console.log(`PASS: continuous delivery, queue/steer intent, refresh and resume, 390px layout, long-session navigation, and Beijing timestamps. Screenshots: ${artifacts}`);
 } finally { await browser.close(); }

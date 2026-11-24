@@ -94,6 +94,16 @@ type ChatMessage = {
 type SessionDraft = { content: string; imageAttachments: ChatImageAttachment[]; imageWarning?: string };
 
 const CHAT_DEBUG_STORAGE_PREFIX = "aiagent:chat-debug:";
+const chatMessageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
 
 function chatDebugStorageKey(sessionId: string | null) {
   return `${CHAT_DEBUG_STORAGE_PREFIX}${sessionId ?? "new"}`;
@@ -103,12 +113,18 @@ function createClientId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function parseHistoryMessageTime(value: string): number {
+  // Stored chat messages use UTC, even when the database round-trip drops the zone suffix.
+  const hasNoZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value);
+  return Date.parse(hasNoZone ? `${value}Z` : value);
+}
+
 function toHistoryMessages(session: SessionDetail): ChatMessage[] {
   return session.messages.map((message) => ({
     id: String(message.id),
     role: message.role,
     content: message.content,
-    timestamp: Date.parse(message.created_at),
+    timestamp: parseHistoryMessageTime(message.created_at),
     thinking: message.thinking ?? undefined,
     citations: message.citations ?? undefined,
     model: message.metadata?.model ?? null,
@@ -2832,8 +2848,8 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
               </button>
             )}
             {timestamp && message.status !== "streaming" && (
-              <time dateTime={timestamp.toISOString()} title="消息时间（本地时区）" className="ml-auto text-[11px] tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
-                {timestamp.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+              <time dateTime={timestamp.toISOString()} title="消息时间（北京时间 UTC+8）" className="ml-auto text-[11px] tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
+                {chatMessageTimeFormatter.format(timestamp)}
               </time>
             )}
           </div>
