@@ -10,6 +10,8 @@
 
 用户明确要求 SSH 远程访问、部署或探测时，先读 `docs/codex-remote-access-policy.md`，核对 Codex 实际执行位置、SSH 认证及任务范围。策略文本不赋予网络或执行权限；以真实 SSH 和 HTTP 探测报告结果，不将人工终端或客户端在线视为模型已可远程执行。
 
+协作提交详情的个人检查点按用户、项目、仓库与完整 SHA 持久化会话 ID。读写重查快照及本人会话归属；交付校验按完整 SHA 与仓库匹配，任务名称限本人。会话正文不进入 Git。见 `docs/chat-collaboration.md`。
+
 资料库图片放大使用原生模态 dialog，沿用本人附件内容接口，不引入外部图片地址；保持键盘关闭、焦点恢复与会话卸载关闭。客户本体 Agent 面板原型保留于 `design/customer-ontology/agent-workbench.md` 与同名 HTML，首轮实际工作台范围见 `design/customer-ontology/phase-1.md`，采用聊天、节点画布和检查器并列布局；对象关系与工具链执行图分别表达业务语义与执行依赖。不将模拟测试、工具运行或发布描述为已实现服务能力。
 
 聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。

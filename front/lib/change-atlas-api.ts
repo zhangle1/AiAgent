@@ -1,4 +1,4 @@
-import type { AtlasAnalysis, AtlasAnalysisRequest, AtlasCreateRequest, AtlasEvidence, AtlasSnapshot } from "./change-atlas-types";
+import type { AtlasAnalysis, AtlasAnalysisRequest, AtlasCheckpoint, AtlasCreateRequest, AtlasEvidence, AtlasSnapshot } from "./change-atlas-types";
 
 async function request<T>(projectId: number, path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
   const response = await fetch(`/api/v1/projects/${projectId}/change-atlas/${path}`, {
@@ -21,6 +21,8 @@ async function request<T>(projectId: number, path: string, signal?: AbortSignal,
 }
 export const createAtlasSnapshot = (projectId: number, body: AtlasCreateRequest, signal?: AbortSignal) => request<AtlasSnapshot>(projectId, "snapshots", signal, body);
 export const readAtlasSnapshot = (projectId: number, snapshotId: string, signal?: AbortSignal) => request<AtlasSnapshot>(projectId, `snapshots/${encodeURIComponent(snapshotId)}`, signal);
+export const atlasCheckpoint = (projectId: number, snapshotId: string, commitId: string, signal?: AbortSignal, update?: { session_id: string | null }) =>
+  request<AtlasCheckpoint>(projectId, `snapshots/${encodeURIComponent(snapshotId)}/checkpoint?${new URLSearchParams({ commit_id: commitId })}`, signal, update);
 export const readAtlasEvidence = (projectId: number, snapshotId: string, commitId: string, fileId: string, signal?: AbortSignal) =>
   request<AtlasEvidence>(projectId, `snapshots/${encodeURIComponent(snapshotId)}/evidence?${new URLSearchParams({ commit_id: commitId, file_id: fileId })}`, signal);
 export async function readAtlasAnalysisStream(response: Response, onStatus?: (message: string) => void): Promise<AtlasAnalysis> {

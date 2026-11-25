@@ -57,6 +57,22 @@ public sealed class ChangeAtlasStore(IConfiguration configuration)
     }
     public Task SaveAnalysisAsync(string userId, string snapshotId, string key, AtlasAnalysis value, CancellationToken token) =>
         AtomicWrite(Path.Combine(AnalysisWorkspace(userId, snapshotId), ChangeAtlasGitReader.Hash(key) + ".json"), value, token);
+    private string CheckpointPath(string userId, long projectId, long repositoryId, string sha) =>
+        Path.Combine(SafeDirectory(Path.Combine("owners", ChangeAtlasGitReader.Hash(userId), "checkpoints")), ChangeAtlasGitReader.Hash($"{projectId}:{repositoryId}:{sha}") + ".json");
+
+    public async Task<string?> ReadCheckpointAsync(string userId, long projectId, long repositoryId, string sha, CancellationToken token)
+    {
+        var path = CheckpointPath(userId, projectId, repositoryId, sha);
+        var file = new FileInfo(path);
+        if (file.LinkTarget != null) throw new InvalidOperationException("无效的检查点文件。");
+        if (!file.Exists) return null;
+        if (file.Length > 1024) throw new InvalidOperationException("无效的检查点文件。");
+        return JsonSerializer.Deserialize<string>(await File.ReadAllTextAsync(path, token), Json);
+    }
+
+    public Task SaveCheckpointAsync(string userId, long projectId, long repositoryId, string sha, string? sessionId, CancellationToken token) =>
+        AtomicWrite(CheckpointPath(userId, projectId, repositoryId, sha), sessionId, token);
+
     private static async Task AtomicWrite<T>(string path, T value, CancellationToken token)
     {
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";

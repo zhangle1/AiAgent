@@ -13,3 +13,8 @@ export type AtlasFilters = { until: string; daily: boolean; authorId: string };
 
 export type AtlasImportEdge = { id: string; source: string; target: string; line: number; text: string };
 export type AtlasImportGraph = { snapshot_id: string; head_sha: string; files: AtlasFile[]; edges: AtlasImportEdge[]; scanned: number; skipped: number; unresolved: number; warnings: string[] };
+export type AtlasCheckpoint = {
+  session: { id: string; title: string } | null;
+  sessions: { id: string; title: string }[];
+  delivery: { task_title: string | null; validation_status: string | null } | null;
+};

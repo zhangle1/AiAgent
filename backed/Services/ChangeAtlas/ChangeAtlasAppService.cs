@@ -17,6 +17,10 @@ public sealed class ChangeAtlasAppService(ChangeAtlasService service, ChangeAtla
     public Task<IActionResult> Get(long projectId, string snapshotId, CancellationToken token) => Act(user => service.GetAsync(user, projectId, snapshotId, token), token);
     [HttpGet("{projectId:long}/change-atlas/snapshots/{snapshotId}/evidence")]
     public Task<IActionResult> Evidence(long projectId, string snapshotId, [FromQuery(Name = "commit_id")] string commitId, [FromQuery(Name = "file_id")] string fileId, CancellationToken token) => Act(user => service.EvidenceAsync(user, projectId, snapshotId, commitId, fileId, token), token);
+    [HttpGet("{projectId:long}/change-atlas/snapshots/{snapshotId}/checkpoint")]
+    public Task<IActionResult> ReadCheckpoint(long projectId, string snapshotId, [FromQuery(Name = "commit_id")] string commitId, CancellationToken token) => Act(user => service.CheckpointAsync(user, projectId, snapshotId, commitId, token), token);
+    [HttpPost("{projectId:long}/change-atlas/snapshots/{snapshotId}/checkpoint")]
+    public Task<IActionResult> SaveCheckpoint(long projectId, string snapshotId, [FromQuery(Name = "commit_id")] string commitId, [FromBody] AtlasCheckpointRequest request, CancellationToken token) => Act(user => service.CheckpointAsync(user, projectId, snapshotId, commitId, token, request), token);
     [HttpPost("{projectId:long}/change-atlas/snapshots/{snapshotId}/analysis")]
     public Task<IActionResult> Analyze(long projectId, string snapshotId, [FromBody] AtlasAnalysisRequest request, CancellationToken token) => Act(user => analysis.AnalyzeAsync(user, projectId, snapshotId, request, token), token);
     [HttpGet("{projectId:long}/change-atlas/snapshots/{snapshotId}/imports")]
