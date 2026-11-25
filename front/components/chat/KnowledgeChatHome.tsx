@@ -96,6 +96,16 @@ type ChatMessage = {
 type SessionDraft = { content: string; imageAttachments: ChatImageAttachment[]; imageWarning?: string };
 
 const CHAT_DEBUG_STORAGE_PREFIX = "aiagent:chat-debug:";
+const chatMessageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
 
 function chatDebugStorageKey(sessionId: string | null) {
   return `${CHAT_DEBUG_STORAGE_PREFIX}${sessionId ?? "new"}`;
@@ -105,12 +115,18 @@ function createClientId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function parseHistoryMessageTime(value: string): number {
+  // Stored chat messages use UTC, even when the database round-trip drops the zone suffix.
+  const hasNoZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value);
+  return Date.parse(hasNoZone ? `${value}Z` : value);
+}
+
 function toHistoryMessages(session: SessionDetail): ChatMessage[] {
   return session.messages.map((message) => ({
     id: String(message.id),
     role: message.role,
     content: message.content,
-    timestamp: Date.parse(message.created_at),
+    timestamp: parseHistoryMessageTime(message.created_at),
     thinking: message.thinking ?? undefined,
     citations: message.citations ?? undefined,
     model: message.metadata?.model ?? null,
@@ -2738,7 +2754,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   const [copied, setCopied] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const errorAttempt = `${message.id}:${message.startedAt}:${message.observedAt}`;
-  const timestamp = message.timestamp !== undefined && Number.isFinite(message.timestamp) ? new Date(message.timestamp) : null;
+  const timestamp = message.status !== "streaming" && message.timestamp !== undefined && Number.isFinite(message.timestamp) ? new Date(message.timestamp) : null;
   const runState = !isUser ? chatRunState(message) : null;
   const quietSeconds = message.streamHealth === "quiet" && message.lastEventAt && message.observedAt
     ? Math.max(1, Math.round((message.observedAt - message.lastEventAt) / 1000))
@@ -2859,10 +2875,19 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
             {message.thinking && <div className="mt-2 whitespace-pre-wrap break-words border-t border-zinc-100 pt-2 leading-5">{message.thinking}</div>}
           </details>
         )}
-        {!isUser && message.model && (
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
-            <UserRound size={12} />
-            {message.model}
+        {!isUser && (message.model || timestamp) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
+            {message.model && (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <UserRound size={12} className="shrink-0" />
+                <span className="min-w-0 break-words">{message.model}</span>
+              </span>
+            )}
+            {timestamp && (
+              <time dateTime={timestamp.toISOString()} title="消息时间（北京时间 UTC+8）" className="whitespace-nowrap tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
+                {chatMessageTimeFormatter.format(timestamp)}
+              </time>
+            )}
           </div>
         )}
         {!isUser && message.citations && message.citations.length > 0 && (
@@ -2890,11 +2915,6 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
               <button type="button" onClick={onRetry} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-zinc-100" aria-label={String(t("common.retry"))}>
                 <RefreshCw size={14} />
               </button>
-            )}
-            {timestamp && message.status !== "streaming" && (
-              <time dateTime={timestamp.toISOString()} title="消息时间（本地时区）" className="ml-auto text-[11px] tabular-nums text-zinc-400 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none">
-                {timestamp.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
-              </time>
             )}
           </div>
         )}

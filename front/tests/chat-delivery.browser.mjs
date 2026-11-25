@@ -9,8 +9,9 @@ const { chromium } = require("playwright");
 const skills = JSON.parse(await readFile(new URL("../../backed/Resources/ChatSkills/catalog-v1.json", import.meta.url), "utf8"));
 const artifacts = process.env.CHAT_TEST_ARTIFACTS ?? path.join(os.tmpdir(), "chat-delivery-evidence");
 await mkdir(artifacts, { recursive: true });
-const browser = await chromium.launch({ headless: true, channel: "msedge" });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const executablePath = process.env.CHAT_TEST_BROWSER_EXECUTABLE;
+const browser = await chromium.launch(executablePath ? { executablePath } : { channel: "msedge" });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, timezoneId: "America/Los_Angeles" });
 const errors = []; const sent = []; let uploads = 0; let goalState = null;
 let deliveriesUnavailable = true;
 const queue = []; const canceled = []; const sockets = new Map(); const history = []; let sequence = 0;
@@ -52,7 +53,7 @@ await page.route("**/api/**", async route => {
   await route.fulfill({ json: body });
 });
 
-function message(role, content) { history.push({ id: ++sequence, role, content }); }
+function message(role, content, created_at, metadata) { history.push({ id: ++sequence, role, content, created_at, metadata }); }
 function emit(socket, type, content) { socket.send(JSON.stringify({ type, content })); }
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw => {
   const request = JSON.parse(String(raw)); sent.push(request);
@@ -160,6 +161,50 @@ try {
   await page.getByText("恢复任务完成", { exact: true }).waitFor();
   const resumed = sent.find(request => request.resume_queued); assert.equal(resumed.command_id, e.command_id); assert.equal(resumed.message, "");
   await queuePanel.waitFor({ state: "detached" });
-  assert.equal(queue.length, 0); assert.deepEqual(errors, []);
-  console.log(`PASS: continuous delivery with pasted TXT and PNG, queue/steer intent, acknowledgement vs completion, stop/hold, refresh persistence, explicit resume and 390px layout. Screenshots: ${artifacts}`);
+  assert.equal(queue.length, 0);
+
+  history.length = 0;
+  const historyTimes = ["2026-11-23T16:15:00.1234567", "2026-11-24T01:45:00+09:00"];
+  for (let index = 1; index <= 22; index++) {
+    message("user", `导航测试提问 ${index}`);
+    message("assistant", `导航测试回复 ${index}\n\n` + "回复正文。\n\n".repeat(30), historyTimes[index - 1], { model: "Codex" });
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?session=long-navigation`);
+  const markers = navigation.getByRole("button");
+  const lastQuestion = navigation.getByRole("button", { name: /^跳转到第 22 条提问/ });
+  await lastQuestion.waitFor();
+  const timestamps = page.locator('time[title="消息时间（北京时间 UTC+8）"]');
+  assert.deepEqual(await timestamps.allTextContents(), ["2026/11/24 00:15:00", "2026/11/24 00:45:00"]);
+  assert.deepEqual(await timestamps.evaluateAll(elements => elements.map(element => element.dateTime)), [
+    "2026-11-23T16:15:00.123Z",
+    "2026-11-23T16:45:00.000Z",
+  ]);
+  const firstTimestamp = timestamps.first();
+  const model = firstTimestamp.locator("..").getByText("Codex", { exact: true });
+  const modelBox = await model.boundingBox();
+  const timeBox = await firstTimestamp.boundingBox();
+  assert.ok(modelBox && timeBox, "The model name and timestamp should have a layout box");
+  const gap = timeBox.x - (modelBox.x + modelBox.width);
+  assert.ok(Math.abs(modelBox.y - timeBox.y) <= 1 && gap >= 0 && gap <= 12,
+    "The timestamp should sit beside the model name on a narrow screen");
+  assert.equal(await markers.count(), 8);
+  const markerPositions = await markers.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top));
+  assert.ok(markerPositions.slice(1).every((top, index) => top - markerPositions[index] >= 30), "Markers should be spaced apart");
+  await firstQuestion.click();
+  await navigation.locator('button[aria-current="step"]').and(firstQuestion).waitFor();
+  await page.locator("[data-chat-question]").nth(4).evaluate(question => {
+    const container = question.parentElement;
+    container.scrollTop += question.getBoundingClientRect().top - container.getBoundingClientRect().top - 16;
+  });
+  const fourthQuestion = navigation.getByRole("button", { name: /^跳转到第 4 条提问/ });
+  await navigation.locator('button[aria-current="step"]').and(fourthQuestion).waitFor();
+  await lastQuestion.click();
+  await navigation.locator('button[aria-current="step"]').and(lastQuestion).waitFor();
+  await page.waitForFunction(() => {
+    const question = Array.from(document.querySelectorAll("[data-chat-question]")).at(-1);
+    return question && Math.abs(question.getBoundingClientRect().top - question.parentElement.getBoundingClientRect().top - 16) < 2;
+  });
+  assert.deepEqual(errors, []);
+  console.log(`PASS: continuous delivery, queue/steer intent, refresh and resume, 390px layout, long-session navigation, and Beijing timestamps. Screenshots: ${artifacts}`);
 } finally { await browser.close(); }
