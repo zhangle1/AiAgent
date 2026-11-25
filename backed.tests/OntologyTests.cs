@@ -9,6 +9,40 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class OntologyTests
 {
+    [Theory]
+    [InlineData("sqlserver", 1888)]
+    [InlineData("mysql", 3306)]
+    [InlineData("postgresql", 5432)]
+    [InlineData("oracle", 2484)]
+    public void NewPublicDatabaseCanBeTestedWithoutRegistration(string driver, int port)
+    {
+        var config = new Microsoft.Extensions.Configuration.ConfigurationManager();
+        var store = new OntologyStore(new TestEnvironment(Path.GetTempPath()), new EphemeralDataProtectionProvider());
+        var sources = new OntologySources(store, config);
+        var connection = new OntologyConnection(driver, "93.184.216.34", port, "sample", "tester");
+        using var direct = sources.OpenTarget(7, connection, "fixture");
+        Assert.Equal(System.Data.ConnectionState.Closed, direct.State);
+        config["Ontology:Projects:7:Targets:0"] = $"{driver}/db.example.invalid:{port}/sample";
+        Assert.Throws<ArgumentException>(() => sources.OpenTarget(7, connection, "fixture"));
+        using var registered = sources.OpenTarget(7, connection with { Host = "db.example.invalid" }, "fixture");
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("169.254.169.254")]
+    [InlineData("10.0.0.10")]
+    [InlineData("::ffff:127.0.0.1")]
+    [InlineData("2002:7f00:1::")]
+    [InlineData("localhost")]
+    public void InternalAndNamedDatabasesRequireProjectTarget(string host)
+    {
+        var config = new Microsoft.Extensions.Configuration.ConfigurationManager();
+        var store = new OntologyStore(new TestEnvironment(Path.GetTempPath()), new EphemeralDataProtectionProvider());
+        var sources = new OntologySources(store, config);
+        var connection = new OntologyConnection("sqlserver", host, 1433, "sample", "tester");
+        Assert.Throws<ArgumentException>(() => sources.OpenTarget(7, connection, "fixture"));
+    }
+
     [Fact]
     public void OracleUsesRegisteredServiceAndBoundKeyForOrdinaryIdentifiers()
     {

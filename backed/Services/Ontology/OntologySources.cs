@@ -1,4 +1,6 @@
 using System.Data.Common;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
@@ -19,6 +21,31 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
 {
     private static bool Identifier(string? value) => value != null && Regex.IsMatch(value, @"\A[A-Za-z_][A-Za-z0-9_]{0,62}\z");
 
+    // New components can connect to public literals directly. Named and internal targets
+    // use the project's configured endpoints so the driver never re-resolves an unchecked host.
+    private static readonly IPNetwork[] NonPublicV4 =
+    [
+        IPNetwork.Parse("0.0.0.0/8"), IPNetwork.Parse("10.0.0.0/8"), IPNetwork.Parse("100.64.0.0/10"),
+        IPNetwork.Parse("127.0.0.0/8"), IPNetwork.Parse("169.254.0.0/16"), IPNetwork.Parse("172.16.0.0/12"),
+        IPNetwork.Parse("192.0.0.0/24"), IPNetwork.Parse("192.0.2.0/24"), IPNetwork.Parse("192.88.99.0/24"),
+        IPNetwork.Parse("192.168.0.0/16"), IPNetwork.Parse("198.18.0.0/15"), IPNetwork.Parse("198.51.100.0/24"),
+        IPNetwork.Parse("203.0.113.0/24"), IPNetwork.Parse("224.0.0.0/4"), IPNetwork.Parse("240.0.0.0/4")
+    ];
+    private static readonly IPNetwork GlobalV6 = IPNetwork.Parse("2000::/3");
+    private static readonly IPNetwork[] SpecialV6 =
+    [
+        IPNetwork.Parse("2001::/23"), IPNetwork.Parse("2001:db8::/32"),
+        IPNetwork.Parse("2002::/16"), IPNetwork.Parse("3fff::/20")
+    ];
+
+    private static bool IsPublicLiteral(string host)
+    {
+        if (!IPAddress.TryParse(host, out var ip)) return false;
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+            return ip.ToString() == host && !NonPublicV4.Any(range => range.Contains(ip));
+        return ip.ScopeId == 0 && GlobalV6.Contains(ip) && !SpecialV6.Any(range => range.Contains(ip));
+    }
+
     internal DbConnection OpenTarget(long project, OntologyConnection c, string password)
     {
         if (c.Type == "sqlite")
@@ -32,8 +59,15 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             string.IsNullOrWhiteSpace(c.Database) || string.IsNullOrWhiteSpace(c.Username))
             throw new ArgumentException("请填写有效的数据库主机、端口、库名和账号。");
         var target = $"{c.Type}/{c.Host}:{c.Port}/{c.Database}";
-        var allowed = config.GetSection($"Ontology:Projects:{project}:Targets").GetChildren().Any(item => string.Equals(item.Value, target, StringComparison.Ordinal));
-        if (!allowed) throw new ArgumentException("此数据库目标尚未登记到当前项目，请核对驱动、主机、端口和库名。");
+        var projectSettings = config.GetSection($"Ontology:Projects:{project}");
+        var targets = projectSettings.GetChildren().FirstOrDefault(section => section.Key.Equals("Targets", StringComparison.OrdinalIgnoreCase));
+        if (targets != null)
+        {
+            if (!targets.GetChildren().Any(item => string.Equals(item.Value, target, StringComparison.Ordinal)))
+                throw new ArgumentException("当前项目限制了可连接的数据库，请选择项目清单中的目标，或联系管理员添加该地址。");
+        }
+        else if (!IsPublicLiteral(c.Host))
+            throw new ArgumentException("可直接测试公网 IP。使用域名或内网地址时，请先在项目中配置该数据库目标。");
         if (c.Type == "oracle")
         {
             if (!Regex.IsMatch(c.Database, @"\A[A-Za-z0-9_.$-]{1,128}\z")) throw new ArgumentException("Oracle 服务名无效。");
