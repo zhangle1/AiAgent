@@ -22,6 +22,11 @@ import type {
 } from "@/lib/ontology-types";
 import styles from "./ObjectModelWorkspace.module.css";
 
+const treeViews = [
+  { id: "models", label: "对象模型", Icon: Boxes },
+  { id: "components", label: "组件树", Icon: FolderTree },
+] as const;
+
 const drivers: Record<string, [string, number]> = {
   sqlserver: ["SQL Server", 1433],
   oracle: ["Oracle", 2484],
@@ -595,12 +600,54 @@ function ModelProject({
         className={styles.body}
         style={{ "--tree-width": treeWidth + "%", "--config-width": configWidth + "%" } as CSSProperties}
       >
-        <aside id={workspaceId + "-tree"} className={styles.tree}>
-          <div className={styles.row}>
-            <strong>
-              <FolderTree size={14} /> 本体树
-            </strong>
+        <div role="tablist" aria-label="本体导航" aria-orientation="vertical" className={styles.tabs}>
+          {treeViews.map(({ id, label, Icon }) => (
             <button
+              key={id}
+              type="button"
+              role="tab"
+              id={workspaceId + "-tab-" + id}
+              aria-label={label}
+              title={label}
+              aria-selected={treeTab === id}
+              aria-controls={workspaceId + "-tree"}
+              tabIndex={treeTab === id ? 0 : -1}
+              onClick={() => setTreeTab(id)}
+              onKeyDown={(event) => {
+                let target: typeof treeTab;
+                switch (event.key) {
+                  case "Home":
+                    target = "models";
+                    break;
+                  case "End":
+                    target = "components";
+                    break;
+                  case "ArrowUp":
+                  case "ArrowDown":
+                    target = id === "models" ? "components" : "models";
+                    break;
+                  default:
+                    return;
+                }
+                event.preventDefault();
+                document.getElementById(workspaceId + "-tab-" + target)?.focus();
+                setTreeTab(target);
+              }}
+            >
+              <Icon size={18} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+        <aside
+          role="tabpanel"
+          aria-labelledby={workspaceId + "-tab-" + treeTab}
+          id={workspaceId + "-tree"}
+          className={styles.tree}
+        >
+          <div className={styles.row}>
+            <strong>{treeTab === "models" ? "对象模型" : "组件树"}</strong>
+            <button
+              title="新建模型"
               aria-label="新建模型"
               onClick={() => {
                 setTreeTab("models");
@@ -608,14 +655,6 @@ function ModelProject({
               }}
             >
               <Plus size={14} />
-            </button>
-          </div>
-          <div className={styles.tabs} aria-label="导航视图">
-            <button aria-pressed={treeTab === "models"} onClick={() => setTreeTab("models")}>
-              对象模型
-            </button>
-            <button aria-pressed={treeTab === "components"} onClick={() => setTreeTab("components")}>
-              组件树
             </button>
           </div>
           {treeTab === "models" ? (

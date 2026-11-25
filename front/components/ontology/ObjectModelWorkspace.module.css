@@ -96,14 +96,14 @@
 .body {
   display: grid;
   flex: 1 0 auto;
-  grid-template-columns: var(--tree-width) minmax(0, 1fr);
+  grid-template-columns: 42px var(--tree-width) minmax(0, 1fr);
   margin: 0;
   padding: 0;
   min-width: 0;
   border: 0;
 }
 .body:has(.inspector) {
-  grid-template-columns: var(--tree-width) minmax(0, 1fr) var(--config-width);
+  grid-template-columns: 42px var(--tree-width) minmax(0, 1fr) var(--config-width);
 }
 .tree,
 .inspector,
@@ -121,12 +121,37 @@
   line-height: 1.4;
 }
 .tabs {
-  display: grid;
-  gap: 4px;
-  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding-block: 8px;
+  background: #eff3f8;
+  border-right: 1px solid #dbe3ed;
 }
 .tabs button {
-  justify-content: flex-start;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  color: #526379;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+.tabs button[aria-selected="true"] {
+  color: #174ea3;
+  background: #dce9fc;
+}
+.tabs button:focus-visible {
+  outline: 2px solid #4273bb;
+  outline-offset: 1px;
+}
+.tree {
+  padding: 8px;
+}
+.tree .row {
+  min-height: 32px;
 }
 .modelRow {
   display: flex;
@@ -389,7 +414,7 @@
   }
   .body,
   .body:has(.inspector) {
-    grid-template-columns: max(90px, var(--tree-width)) minmax(0, 1fr);
+    grid-template-columns: 38px max(90px, var(--tree-width)) minmax(0, 1fr);
   }
   .inspector {
     grid-column: 1/-1;
@@ -409,11 +434,14 @@
   }
   .body,
   .body:has(.inspector) {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 38px minmax(0, 1fr);
   }
   .tree {
     border: 0;
     border-bottom: 1px solid #dde4ec;
+  }
+  .canvas {
+    grid-column: 1/-1;
   }
   .actions input {
     flex-basis: 100%;

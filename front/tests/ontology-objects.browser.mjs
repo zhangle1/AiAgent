@@ -83,6 +83,7 @@ try {
     console.error(error.message);
   });
   await page.goto("http://127.0.0.1:" + server.address().port);
+  const tab = (name) => page.getByRole("tab", { name, exact: true });
   const button = (name) => page.getByRole("button", { name, exact: true });
   await page.getByText("代码库 · AiAgent、AiAgent-Web", { exact: true }).waitFor();
   assert.equal(await button("旧版连接与流程").count(), 0);
@@ -119,9 +120,16 @@ try {
   assert.equal(await page.getByLabel("端口").inputValue(), "2484");
   await page.getByLabel("服务名（Service Name）").waitFor();
   await page.getByLabel("数据库账号").waitFor();
-  const modelNav = await button("对象模型").boundingBox();
-  const componentNav = await button("组件树").boundingBox();
+  const modelNav = await tab("对象模型").boundingBox();
+  const componentNav = await tab("组件树").boundingBox();
   assert.ok(componentNav.y >= modelNav.y + modelNav.height);
+  const list = await page.getByRole("tabpanel", { name: "对象模型" }).boundingBox();
+  assert.ok(modelNav.x + modelNav.width <= list.x && modelNav.y < list.y + 15);
+  await tab("对象模型").press("ArrowDown");
+  await page.getByRole("tabpanel", { name: "组件树" }).waitFor();
+  assert.equal(await tab("组件树").getAttribute("aria-selected"), "true");
+  await tab("组件树").press("Home");
+  await page.getByRole("tabpanel", { name: "对象模型" }).waitFor();
   const rootNode = await page.locator('[id$="-node-root"]').boundingBox();
   const onlyChild = await page.locator("main button[aria-pressed=true]").boundingBox();
   assert.ok(onlyChild.y > rootNode.y + rootNode.height);
@@ -190,7 +198,7 @@ try {
   await page.getByLabel("新模型名称").fill("接口字典");
   await button("保存名称").click();
   await page.getByRole("button", { name: /^接口字典 ✓$/ }).waitFor();
-  await button("组件树").click();
+  await tab("组件树").click();
   await button("接口字典").click();
   assert.ok(await page.locator('[id$="-node-root"]').evaluate((el) => el === document.activeElement));
   await button("编辑中的记录查询").click();
@@ -215,7 +223,7 @@ try {
     });
     await region.screenshot({ path: process.env.ONTOLOGY_SCREENSHOT });
   }
-  await button("对象模型").click();
+  await tab("对象模型").click();
   await button("接口字典的操作").click();
   page.once("dialog", async (dialog) => dialog.dismiss());
   await button("删除模型").click();
