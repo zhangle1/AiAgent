@@ -9,6 +9,8 @@ import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPi
 import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatCollaborationDialog } from "@/components/chat/ChatCollaborationDialog";
+import { ontologyApi } from "@/lib/ontology-api";
+import type { OntologyAttachment, OntologySummary } from "@/lib/ontology-types";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
 import { ChatMessageNavigation } from "@/components/chat/ChatMessageNavigation";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
@@ -267,6 +269,9 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [readyTaskHandoff, setReadyTaskHandoff] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [ontologyAttachment, setOntologyAttachment] = useState<OntologyAttachment | null>(null);
+  const [readingOntology, setReadingOntology] = useState(false);
+  const ontologyRequest = useRef<AbortController | null>(null);
   const [chatSkills, setChatSkills] = useState<ChatSkill[]>([]);
   const [skillError, setSkillError] = useState<string | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<ChatSkill[]>([]);
@@ -1015,6 +1020,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         },
       ]);
       setInput("");
+      setOntologyAttachment(null);
       setSelectedSkills(skillsForTurn.filter((skill): skill is ChatSkill => "multi_turn" in skill && skill.multi_turn === true));
       dismissSkillMenu();
       setSlashProjectCommand(null);
@@ -1125,6 +1131,33 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     void sendMessage(input.trim());
   }, [readyTaskHandoff, requestedTemplateHandoff, requestedSessionId, loading, catalog, sending, input, selectedAgentId, codexModelPolicy, imageOcrPolicy, imageAttachments, selectedProjectId]);
 
+  function updateAttachedModel(previous: OntologySummary, next: OntologySummary | null) {
+    setOntologyAttachment(attachment => {
+      if (!attachment || attachment.projectId !== effectiveProjectId ||
+          !attachment.models.some(model => model.id === previous.id)) return attachment;
+      const models = attachment.models.flatMap(model => {
+        if (model.id !== previous.id) return [model];
+        if (!next || model.version !== previous.version) return [];
+        return [{ ...model, name: next.name, version: next.version }];
+      });
+      return models.length ? { ...attachment, models } : null;
+    });
+  }
+
+  const latestSend = useRef(sendMessage);
+  latestSend.current = sendMessage;
+  const ontologyDraft = useMemo(
+    () => ({ effectiveProjectId, activeSessionId, requestedSessionId, requestedNewSessionKey, input, ontologyAttachment }),
+    [effectiveProjectId, activeSessionId, requestedSessionId, requestedNewSessionKey, input, ontologyAttachment],
+  );
+  const currentOntologyDraft = useRef(ontologyDraft);
+  useLayoutEffect(() => { currentOntologyDraft.current = ontologyDraft; }, [ontologyDraft]);
+  useEffect(() => {
+    setOntologyAttachment(null);
+    return () => ontologyRequest.current?.abort();
+  }, [effectiveProjectId, activeSessionId, requestedSessionId, requestedNewSessionKey]);
+  useEffect(() => () => ontologyRequest.current?.abort(), [input, ontologyAttachment]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const query = input.trim();
@@ -1132,7 +1165,27 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     const hasSources = imageAttachments.length > 0 || documentAttachments.length > 0 || pendingMarkdownDocuments.length > 0 || pendingProjectReferences.length > 0 || activeVisualizationCommits.length > 0;
     const typedSkill = embedded ? undefined : skillCommand(query, chatSkills);
     if ((typedSkill || selectedSkills.length > 0) && visualizationType) { setError("技能与图形模式请择一使用，先移除技能或关闭图形模式。"); return; }
-    await sendMessage(buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType, activeVisualizationCommits));
+    let message = buildVisualizationMessage(query || (!embedded && visualizationType && hasSources ? "请梳理已选资料中的关键关系。" : ""), embedded ? null : visualizationType, activeVisualizationCommits);
+    if (ontologyRequest.current) return;
+    if (ontologyAttachment && ontologyAttachment.projectId === effectiveProjectId && query) {
+      const controller = new AbortController();
+      ontologyRequest.current = controller;
+      setReadingOntology(true);
+      try {
+        const context = await Promise.all(ontologyAttachment.models.map(model =>
+          ontologyApi.lookup(ontologyAttachment.projectId, model.id, model.version, model.ids, ontologyAttachment.key, controller.signal)));
+        if (controller.signal.aborted || currentOntologyDraft.current !== ontologyDraft) return;
+        message += "\n\n" + context.map(item => item.text).join("\n\n");
+      } catch (ex) {
+        if (!controller.signal.aborted && currentOntologyDraft.current === ontologyDraft) setError(ex instanceof Error ? ex.message : "本体查询失败");
+        return;
+      } finally {
+        ontologyRequest.current = null;
+        if (!controller.signal.aborted) controller.abort();
+        setReadingOntology(false);
+      }
+    }
+    await latestSend.current(message);
   }
 
   async function addImages(files: File[]) {
@@ -1445,6 +1498,13 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               }}
               className={`relative mt-auto shrink-0 rounded-[24px] border border-slate-200 bg-white/95 px-2 py-2 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl transition focus-within:border-blue-300 focus-within:shadow-[0_20px_52px_rgba(37,99,235,0.15)] lg:mb-4 lg:rounded-2xl lg:px-4 lg:py-3 ${composerExpanded ? "lg:rounded-2xl" : ""}`}
             >
+              {ontologyAttachment && ontologyAttachment.projectId === effectiveProjectId && <div className="mb-1 flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-800">
+                <span>本轮本体 · {ontologyAttachment.models.map(model => model.name).join("、")}</span>
+                <input aria-label="本轮查询键值" className="max-w-44 rounded border px-2 py-1" placeholder="键值（留空仅附模型说明）" value={ontologyAttachment.key} maxLength={256}
+                  onChange={event => setOntologyAttachment({...ontologyAttachment,key:event.target.value})}/>
+                <button type="button" onClick={() => setOntologyAttachment(null)}>移除</button>
+                {readingOntology && <span role="status">正在读取查询来源…</span>}
+              </div>}
               {!embedded && <ChatGoalPanel key={`${effectiveProjectId}:${activeSessionId}:${selectedCodexModelId}`} sessionId={activeSessionId} enabled={!goalDisabledReason} sending={sending} onChange={setGoalRequest} activation={goalActivation} submission={goalSubmission} />}
               {!embedded && (selectedSkills.length > 0 || skillError) && <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs">
                 {selectedSkills.map(skill => <span key={skill.id} className="inline-flex max-w-full items-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
@@ -1661,7 +1721,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             </div>}
           </div>
         </section>
-        <ChatInspectorPanel requestedPrototypeOutput={requestedPrototypeOutput} requestedPrototypeDocument={requestedPrototypeDocument} prototypeMessages={displayMessages.filter(message => message.role === "assistant" && message.status !== "streaming" && message.status !== "error" && message.status !== "stopped")} key={`${selectedProject?.id}:${activeSessionId}`} libraryScope={activeSessionId ?? ""} onAttachLibraryFile={attachLibraryFile} isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestToken={inspectorRequestToken} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedKnowledgeChapter={requestedKnowledgeChapter} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onInsertOntologyContext={(text) => prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${text}` : text)} onClose={() => setRightPanelOpen(false)} />
+        <ChatInspectorPanel requestedPrototypeOutput={requestedPrototypeOutput} requestedPrototypeDocument={requestedPrototypeDocument} prototypeMessages={displayMessages.filter(message => message.role === "assistant" && message.status !== "streaming" && message.status !== "error" && message.status !== "stopped")} key={`${selectedProject?.id}:${activeSessionId}`} libraryScope={activeSessionId ?? ""} onAttachLibraryFile={attachLibraryFile} isOpen={rightPanelOpen} project={selectedProject} fileReference={fileReference} requestToken={inspectorRequestToken} requestedTab={requestedInspectorTab} requestedMarkdownDocument={requestedMarkdownDocument} requestedKnowledgeChapter={requestedKnowledgeChapter} requestedDocumentAttachment={requestedDocumentAttachment} refreshToken={markdownDocumentsRefreshToken} onInsertMarkdownReference={appendMarkdownDocumentReference} onPrepareAgentMarkdown={prefillAgentMarkdownPrompt} onAttachOntology={setOntologyAttachment} onOntologyModelChange={updateAttachedModel} onInsertOntologyContext={(text) => prefillAgentMarkdownPrompt(input.trim() ? `${input}\n\n${text}` : text)} onClose={() => setRightPanelOpen(false)} />
         {diagnosticDialogOpen && <ChatDiagnosticsDialog traces={storedDiagnostics} runs={agentRuns} loading={diagnosticsLoading} onClose={() => setDiagnosticDialogOpen(false)} />}
         {previewingImage && <ImageLightbox attachment={previewingImage} onClose={() => setPreviewingImage(null)} />}
       </div>

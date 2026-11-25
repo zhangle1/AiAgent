@@ -220,4 +220,6 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 本体模型入口为聊天右侧工作区的独立页签，可从空白页或「+」菜单打开，与资料库、文件、浏览器切换；不再使用模态弹窗。
 
+对象画布使用 ObjectModelWorkspace 和 OntologySources。测试、保存和按键读取均在服务端按用户、项目、目标清单和模型版本校验；连接信息及凭据不得填入聊天。勾选的模型仅作用于本轮，重试沿用已发送证据。目标配置及接口见 design/customer-ontology/object-workspace.md。
+
 聊天原型设计通过输入区「+」显式组合普通聊天提示，不改变工具权限或目标协议；切换会话／项目清除模式。`ChatPrototypePanel` 只提取非流式、非失败消息的完整 fenced HTML，项目文件复用授权文档解析和下载接口，迟到读取取消。预览 iframe 不授予脚本或同源权限；保存复用 design 阶段 prototype-html 模板与项目归属，注解使用 description。PSD 复用现有静态导出，修改的是 HTML 来源，不能标为任意 PSD 图层编辑器。见 docs/chat-prototype-design.md。

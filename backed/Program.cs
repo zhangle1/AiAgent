@@ -201,6 +201,11 @@ builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();
 builder.Services.AddSingleton<ICodeRuntimeManager, CodeRuntimeManager>();
 builder.Services.AddSingleton<ChatRuntimeService>();
 builder.Services.AddSingleton<AiAgent.Backend.Services.Ontology.OntologyStore>();
+builder.Services.AddSingleton<AiAgent.Backend.Services.Ontology.OntologySources>();
+builder.Services.AddHttpClient("ontology-readonly", client => {
+    client.Timeout = TimeSpan.FromSeconds(8);
+    client.MaxResponseContentBufferSize = 65536;
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
 builder.Services.AddTransient<CodeRuntimeAccessFilter>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ChatRuntimeService>());
 builder.Services.AddSingleton<IGitWorkspaceService, GitWorkspaceService>();

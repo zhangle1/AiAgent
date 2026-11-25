@@ -29,6 +29,7 @@ public sealed class OntologyModel
     public OntologyConnection Connection { get; set; } = new();
     public string? ProtectedPassword { get; set; }
     public OntologyGraph Graph { get; set; } = new([], []);
+    public List<StoredOntologySource> Sources { get; set; } = [];
 }
 public sealed class OntologyStore(IHostEnvironment environment, IDataProtectionProvider protection)
 {
@@ -43,10 +44,40 @@ public sealed class OntologyStore(IHostEnvironment environment, IDataProtectionP
         return Path.Combine(DirectoryFor(user, project), id + ".json");
     }
     private OntologyModel Read(string file) => JsonSerializer.Deserialize<OntologyModel>(protector.Unprotect(File.ReadAllText(file)))!;
-    public object View(OntologyModel m) => new { id = m.Id, name = m.Name, version = m.Version, connection = m.Connection, has_password = m.ProtectedPassword != null, graph = m.Graph };
+    public object View(OntologyModel m) => new { id = m.Id, name = m.Name, version = m.Version, connection = m.Connection, has_password = m.ProtectedPassword != null, graph = m.Graph, sources = m.Sources.Select(s => new { definition = s.Definition, checkedAt = s.CheckedAt }) };
+    internal string ReadPassword(StoredOntologySource source) => protector.Unprotect(source.ProtectedPassword);
+    internal object RemoveSource(string user, long project, string id, string sourceId, int version)
+    {
+        lock (gate)
+        {
+            var model = Get(user, project, id);
+            if (model.Version != version) throw new InvalidOperationException("模型已更新，请重新加载。");
+            if (model.Sources.RemoveAll(source => source.Definition.Id == sourceId) == 0)
+                throw new KeyNotFoundException("组件不存在。");
+            model.Version++;
+            Write(user, project, model);
+            return View(model);
+        }
+    }
+    internal object SaveSource(string user, long project, string id, int version, OntologySource source, string password, DateTimeOffset checkedAt)
+    {
+        lock (gate)
+        {
+            var model = Get(user, project, id);
+            if (model.Version != version) throw new InvalidOperationException("模型已更新，请重新加载。");
+            var index = model.Sources.FindIndex(s => s.Definition.Id == source.Id);
+            var entry = new StoredOntologySource(source, protector.Protect(password), checkedAt);
+            if (index >= 0) model.Sources[index] = entry;
+            else if (model.Sources.Count < 32) model.Sources.Add(entry);
+            else throw new ArgumentException("每个模型最多可保存 32 个组件。");
+            model.Version++;
+            Write(user, project, model);
+            return View(model);
+        }
+    }
     public object List(string user, long project)
     {
-        lock (gate) { var directory = DirectoryFor(user, project); return Directory.Exists(directory) ? Directory.GetFiles(directory, "*.json").Select(Read).Select(m => new { id = m.Id, name = m.Name }).ToArray() : []; }
+        lock (gate) { var directory = DirectoryFor(user, project); return Directory.Exists(directory) ? Directory.GetFiles(directory, "*.json").Select(Read).Select(m => new { id = m.Id, name = m.Name, version = m.Version }).ToArray() : []; }
     }
     public OntologyModel Get(string user, long project, string id)
     {
@@ -63,6 +94,29 @@ public sealed class OntologyStore(IHostEnvironment environment, IDataProtectionP
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100) throw new ArgumentException("模型名称应为 1–100 字符。");
         lock (gate) { var model = new OntologyModel { Name = name.Trim() }; Write(user, project, model); return View(model); }
+    }
+    public object Rename(string user, long project, string id, int version, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100) throw new ArgumentException("模型名称应为 1–100 字符。");
+        lock (gate)
+        {
+            var model = Get(user, project, id);
+            if (model.Version != version) throw new InvalidOperationException("模型已更新，请重新加载。");
+            model.Name = name.Trim();
+            model.Version++;
+            Write(user, project, model);
+            return View(model);
+        }
+    }
+    public object Delete(string user, long project, string id, int version)
+    {
+        lock (gate)
+        {
+            var model = Get(user, project, id);
+            if (model.Version != version) throw new InvalidOperationException("模型已更新，请重新加载。");
+            File.Delete(FileFor(user, project, id));
+            return new { id };
+        }
     }
     public object Update(string user, long project, string id, int version, OntologyGraph? graph, OntologyConnection? connection, string? password)
     {
