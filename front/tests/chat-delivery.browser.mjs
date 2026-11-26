@@ -29,6 +29,8 @@ await page.route("**/api/**", async route => {
   }
   else if (/\/chat\/commands\/[^/]+\/cancel$/.test(name)) {
     const command = decodeURIComponent(name.split("/").at(-2)); canceled.push(command);
+    const running = queue.findIndex(row => row.command_id === command && row.status === "running");
+    if (running !== -1) queue.splice(running, 1);
     for (const row of queue) { row.queue_held = true; sockets.get(row.command_id)?.socket.send(JSON.stringify({ type: "delivery_held", content: "排队消息保留，等待恢复。" })); }
     body = { accepted: true };
   }
@@ -163,6 +165,21 @@ try {
   await queuePanel.waitFor({ state: "detached" });
   assert.equal(queue.length, 0);
 
+  // Reopening with no browser recovery pointers still exposes the server's running turn.
+  queue.push(
+    { command_id: "previous-browser-run", session_id: d.session_id, message: "另一个浏览器的任务", status: "running", queue_held: false, position: 1 },
+    { command_id: "previous-browser-queued", session_id: d.session_id, message: "上一轮后的待处理消息", status: "queued", queue_held: false, position: 2 },
+  );
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?session=${d.session_id}`);
+  await queuePanel.getByText("另一个浏览器的任务", { exact: true }).waitFor();
+  await queuePanel.getByRole("button", { name: "停止当前任务", exact: true }).click();
+  await queuePanel.getByRole("button", { name: "恢复执行", exact: true }).waitFor();
+  assert.deepEqual(canceled, [d.command_id, "previous-browser-run"]);
+  assert.equal(queue[0].command_id, "previous-browser-queued");
+  assert.equal(queue[0].queue_held, true);
+  queue.length = 0;
+
   history.length = 0;
   const historyTimes = ["2026-11-23T16:15:00.1234567", "2026-11-24T01:45:00+09:00"];
   for (let index = 1; index <= 22; index++) {
@@ -206,5 +223,5 @@ try {
     return question && Math.abs(question.getBoundingClientRect().top - question.parentElement.getBoundingClientRect().top - 16) < 2;
   });
   assert.deepEqual(errors, []);
-  console.log(`PASS: continuous delivery, queue/steer intent, refresh and resume, 390px layout, long-session navigation, and Beijing timestamps. Screenshots: ${artifacts}`);
+  console.log(`PASS: continuous delivery, queue/steer intent, refresh and resume, stopping across browser sessions, 390px layout, long-session navigation, and Beijing timestamps. Screenshots: ${artifacts}`);
 } finally { await browser.close(); }

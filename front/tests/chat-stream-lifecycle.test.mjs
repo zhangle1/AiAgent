@@ -119,6 +119,7 @@ test("an SSE response that stops producing bytes reaches an error terminal state
       getReader: () => ({
         read: async () => new Promise(() => {}),
         cancel: async () => undefined,
+        releaseLock() {},
       }),
     },
   });
@@ -127,4 +128,30 @@ test("an SSE response that stops producing bytes reaches an error terminal state
     streamCompleteChat({ session_id: "idle-sse-stream", message: "test", agent: "codex" }, () => {}),
     (error) => error?.name === "ChatStreamError" && /没有收到/.test(error.message),
   );
+});
+
+test("stopping after SSE headers aborts the open response body", async () => {
+  globalThis.WebSocket = class FailedWebSocket {
+    constructor() { queueMicrotask(() => this.onerror?.()); }
+    close() {}
+  };
+  let fetchSignal;
+  globalThis.fetch = async (_, { signal }) => {
+    fetchSignal = signal;
+    return new Response(new ReadableStream({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode('data: {"type":"session_ready"}\n\n'));
+        signal.addEventListener("abort", () => stream.error(signal.reason), { once: true });
+      },
+    }));
+  };
+  const controller = new AbortController();
+  await assert.rejects(
+    streamCompleteChat({ command_id: "stop-sse", session_id: "session", message: "test" }, (event) => {
+      assert.equal(event.type, "session_ready");
+      controller.abort();
+    }, controller.signal),
+    { name: "AbortError" },
+  );
+  assert.equal(fetchSignal.aborted, true);
 });

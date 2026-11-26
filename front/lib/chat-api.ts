@@ -395,13 +395,29 @@ async function streamCompleteChatSse(
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await openSseResponse(payload, signal);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+    const response = await openSseResponse(payload, controller);
+    if (!response.ok || !response.body) {
+      throw new Error(`Request failed with HTTP ${response.status}`);
+    }
 
-  if (!response.ok || !response.body) {
-    throw new Error(`Request failed with HTTP ${response.status}`);
+    await readSseEvents(response.body, payload, onEvent);
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    controller.abort();
   }
+}
 
-  const reader = response.body.getReader();
+async function readSseEvents(
+  body: ReadableStream<Uint8Array>,
+  payload: ChatCompleteRequest,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let completed = false;
@@ -412,31 +428,31 @@ async function streamCompleteChatSse(
     if (event.type === "done") sawDone = true;
   };
 
-  while (true) {
-    const { value, done } = await readSseChunk(reader);
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      const event = parseSseFrame(frame);
+  try {
+    while (true) {
+      const { value, done } = await readSseChunk(reader);
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        const event = parseSseFrame(frame);
+        if (event) handleEvent(event);
+      }
+    }
+
+    if (buffer.trim()) {
+      const event = parseSseFrame(buffer);
       if (event) handleEvent(event);
     }
-  }
 
-  if (buffer.trim()) {
-    const event = parseSseFrame(buffer);
-    if (event) handleEvent(event);
+    if (!completed && (payload.command_id || !sawDone)) throw new Error("Chat stream ended before completion.");
+  } finally {
+    reader.releaseLock();
   }
-
-  if (!completed && (payload.command_id || !sawDone)) throw new Error("Chat stream ended before completion.");
 }
 
-async function openSseResponse(payload: ChatCompleteRequest, signal?: AbortSignal): Promise<Response> {
-  if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  signal?.addEventListener("abort", abort, { once: true });
+async function openSseResponse(payload: ChatCompleteRequest, controller: AbortController): Promise<Response> {
   let connectTimer: number | null = null;
   try {
     return await Promise.race([
@@ -455,7 +471,6 @@ async function openSseResponse(payload: ChatCompleteRequest, signal?: AbortSigna
     ]);
   } finally {
     if (connectTimer !== null) window.clearTimeout(connectTimer);
-    signal?.removeEventListener("abort", abort);
   }
 }
 

@@ -23,9 +23,11 @@ namespace AiAgent.Backend.Tests;
 public sealed partial class ChatCommandTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task DeliveryAdmissionIsSharedBySseAndWebsocketAndPersistsInExecutionOrder(bool websocket)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task DeliveryAdmissionIsSharedBySseAndWebsocketAndPreservesOrderingOnCompletionOrDisconnect(bool websocket, bool disconnect)
     {
         var root = Directory.CreateTempSubdirectory("aiagent-steer-attachments-");
         try
@@ -73,25 +75,31 @@ public sealed partial class ChatCommandTests
             var sessions = Stub<IChatSessionService>(); var deliveries = new ChatDeliveryService(db, sessions);
             using var services = new ServiceCollection().AddSingleton(store).AddSingleton(deliveries).BuildServiceProvider();
             var engine = new DeliveryEngine();
-            async Task<string> Run(string command)
+            using var firstConnection = new CancellationTokenSource();
+            FixtureSocket? firstSocket = null;
+            async Task<string> Run(string command, bool resume = false)
             {
                 var request = Request(command);
                 request.Message = command;
                 request.Agent = "codex";
                 request.DeliveryIntent = command is "C" or "expired" ? "steer" : "queue";
+                request.ResumeQueued = resume;
                 if (command == "C") { request.AttachmentIds = [image.Id]; request.DocumentAttachmentIds = fileIds; }
                 if (command == "expired") request.DocumentAttachmentIds = [foreignFile.Id];
                 var context = new DefaultHttpContext { RequestServices = services }; context.Response.Body = new MemoryStream();
+                if (command == "A") context.RequestAborted = firstConnection.Token;
                 if (websocket)
                 {
-                    using var socket = new FixtureSocket(JsonSerializer.Serialize(request)); context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
+                    using var socket = new FixtureSocket(JsonSerializer.Serialize(request), waitForPeer: command == "A");
+                    if (command == "A") firstSocket = socket;
+                    context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
                     var handler = new ChatWebSocketHandler(engine, Stub<IAuthService>(), sessions, images, files, Stub<IUsageStatisticsService>(), Stub<IMemoryService>(),
                         Stub<IProjectReferenceContextService>(), Stub<IMarkdownDocumentReferenceContextService>(), Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(), Stub<IChatDebugTraceStore>(), NullLogger<ChatWebSocketHandler>.Instance);
                     await handler.HandleClientAsync(context); return string.Join("\n", socket.Sent);
                 }
                 var app = new ChatAppService(new HttpContextAccessor { HttpContext = context }, engine, Stub<IAuthService>(), sessions, images, files, Stub<IChatUploadLibraryService>(), Stub<IUsageStatisticsService>(), Stub<IMemoryService>(),
                     Stub<IProjectReferenceContextService>(), Stub<IMarkdownDocumentReferenceContextService>(), Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexChatService>(), Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(), Stub<IChatDebugTraceStore>());
-                await app.CompleteStream(request, default); context.Response.Body.Position = 0; return await new StreamReader(context.Response.Body).ReadToEndAsync();
+                await app.CompleteStream(request, context.RequestAborted); context.Response.Body.Position = 0; return await new StreamReader(context.Response.Body).ReadToEndAsync();
             }
             var first = Run("A"); await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
             var second = Run("B"); var duplicate = Run("B");
@@ -113,7 +121,32 @@ public sealed partial class ChatCommandTests
             Assert.Contains("Document attachment was not found", await Run("expired"));
             Assert.Single(engine.Steered);
             Assert.False(second.IsCompleted);
+            if (disconnect)
+            {
+                if (websocket) firstSocket!.Disconnect();
+                else firstConnection.Cancel();
+                var interrupted = await Task.WhenAll(first, second, duplicate).WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.DoesNotContain("\"type\":\"completed\"", interrupted[0]);
+                Assert.Contains("delivery_held", interrupted[1]);
+                Assert.Contains("delivery_held", interrupted[2]);
+                Assert.Equal(["A"], engine.Calls);
+                var pending = Assert.Single(await deliveries.ListAsync(user, "session", default));
+                Assert.Equal("B", pending.CommandId);
+                Assert.True(pending.QueueHeld);
+                Assert.Contains("answer B", await Run("B", resume: true));
+                Assert.Equal(["A", "B"], engine.Calls);
+                Assert.Empty(await deliveries.ListAsync(user, "session", default));
+                return;
+            }
+
             engine.Release.TrySetResult();
+            if (websocket)
+            {
+                await firstSocket!.CloseOutputSent.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                var rows = await deliveries.ListAsync(user, "session", default);
+                Assert.DoesNotContain(rows, row => row.CommandId == "A");
+                firstSocket.Disconnect();
+            }
             var outputs = await Task.WhenAll(first, second, duplicate).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(new[] { "A", "B" }, engine.Calls);
             Assert.Equal(new[] { "RecordUserMessageAsync:A", "RecordUserMessageAsync:C", "RecordAssistantMessageAsync:A", "RecordUserMessageAsync:B", "RecordAssistantMessageAsync:B" }, calls);

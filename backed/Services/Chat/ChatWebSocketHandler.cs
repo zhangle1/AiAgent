@@ -73,7 +73,11 @@ public sealed class ChatWebSocketHandler
             return;
         }
 
-        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        using var socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(20),
+            KeepAliveTimeout = TimeSpan.FromSeconds(20)
+        });
         using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         var cancellationToken = cancellationSource.Token;
         Task? clientCloseMonitor = null;
@@ -84,6 +88,7 @@ public sealed class ChatWebSocketHandler
         ChatCommandStore.Lease? command = null;
         ChatDeliveryService.Admission? delivery = null;
         CancellationTokenSource? deliveryCancellation = null;
+        var closeStatus = WebSocketCloseStatus.NormalClosure;
         async Task Emit(AgentStreamEvent value, CancellationToken token)
         {
             command?.Append(value);
@@ -111,7 +116,6 @@ public sealed class ChatWebSocketHandler
             {
                 await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
                     Content = delivery.Kind == "steered" ? "追加指令已投递给当前任务，等待 Agent 处理。" : delivery.Kind == "cancelled" ? "排队消息已取消，未执行。" : delivery.Kind == "uncertain" ? "本次投递结果待确认，请核对已有结果；不会自动重新执行。" : "排队消息已保留，等待显式恢复。" }, cancellationToken);
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "delivery", CancellationToken.None);
                 return;
             }
             request.ResumeQueued = false;
@@ -121,7 +125,6 @@ public sealed class ChatWebSocketHandler
             if (command is { IsOwner: false })
             {
                 await command.ReplayAsync((value, token) => SendEventAsync(socket, value, token), cancellationToken);
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "recovered", CancellationToken.None);
                 return;
             }
             if (delivery is not null)
@@ -187,24 +190,16 @@ public sealed class ChatWebSocketHandler
             await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
             await Emit(new AgentStreamEvent { Type = "completed" }, cancellationToken);
             if (delivery is not null) delivery.Succeeded = true;
-
-            if (socket.State == WebSocketState.Open)
-            {
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None);
-            }
         }
         catch (OperationCanceledException)
         {
             if (providerRequestStarted) await SendTraceAsync(socket, trace?.CancelProvider(), CancellationToken.None);
             await SendTraceAsync(socket, trace?.Cancel("request_completed"), CancellationToken.None);
             if (user != null && request != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
-            {
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "cancelled", CancellationToken.None);
-            }
         }
         catch (Exception exception)
         {
+            closeStatus = WebSocketCloseStatus.InternalServerError;
             var clientException = exception;
             if (exception is not ChatDeliveryException && request != null && string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
             {
@@ -222,20 +217,34 @@ public sealed class ChatWebSocketHandler
                 Type = "error",
                 Content = ToClientError(clientException, request)
             }, CancellationToken.None);
-
-            if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
-            {
-                await socket.CloseAsync(WebSocketCloseStatus.InternalServerError, "error", CancellationToken.None);
-            }
         }
         finally
         {
-            try { command?.Dispose(); }
-            finally { deliveryCancellation?.Dispose(); if (delivery is not null) await delivery.DisposeAsync(); }
-            cancellationSource.Cancel();
-            if (clientCloseMonitor != null)
+            try
             {
-                try { await clientCloseMonitor; } catch (OperationCanceledException) { }
+                try { command?.Dispose(); }
+                finally { deliveryCancellation?.Dispose(); if (delivery is not null) await delivery.DisposeAsync(); }
+            }
+            finally
+            {
+                // Release the execution slot before waiting for the peer. The monitor owns the only read.
+                try
+                {
+                    using var closing = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                        await socket.CloseOutputAsync(closeStatus, null, closing.Token);
+                    if (clientCloseMonitor is not null && socket.State == WebSocketState.CloseSent)
+                        await clientCloseMonitor.WaitAsync(closing.Token);
+                }
+                catch (Exception exception) when (exception is OperationCanceledException or WebSocketException)
+                {
+                    socket.Abort();
+                }
+                finally
+                {
+                    cancellationSource.Cancel();
+                    if (clientCloseMonitor is not null) await clientCloseMonitor;
+                }
             }
         }
     }
@@ -304,14 +313,9 @@ public sealed class ChatWebSocketHandler
                 }
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (exception is OperationCanceledException or WebSocketException)
         {
-            // The response completed normally or the client requested cancellation.
-        }
-        catch (WebSocketException)
-        {
-            // A dropped browser connection must stop the agent just like an explicit stop click.
-            cancellationSource.Cancel();
+            if (!cancellationToken.IsCancellationRequested) cancellationSource.Cancel();
         }
     }
 

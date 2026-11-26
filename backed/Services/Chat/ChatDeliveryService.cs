@@ -237,6 +237,13 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         await state.Gate.WaitAsync();
         try
         {
+            // A held item may already have been explicitly resumed on a new connection.
+            if (!state.Attached.TryGetValue(waiting.Row.Id, out var attached) || !ReferenceEquals(attached, waiting))
+            {
+                waiting.Registered.TrySetCanceled();
+                waiting.Cancel.Dispose();
+                return;
+            }
             using var db = database.CopyNew();
             var active = ReferenceEquals(state.Active, waiting);
             var row = db.Queryable<AiChatDelivery>().InSingle(waiting.Row.Id);
