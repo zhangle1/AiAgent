@@ -4,7 +4,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const require = process.env.DIAGNOSTICS_TEST_TOOLS ? createRequire(path.resolve(process.env.DIAGNOSTICS_TEST_TOOLS, "package.json")) : createRequire(import.meta.url);
 const { chromium } = require("playwright");
-const browser = await chromium.launch({ headless: true, channel: "msedge" });
+const executablePath = process.env.CHAT_TEST_BROWSER_EXECUTABLE;
+const browser = await chromium.launch(executablePath ? { executablePath } : { channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const base = process.env.DIAGNOSTICS_TEST_URL ?? "http://127.0.0.1:3782";
 const output = process.env.DIAGNOSTICS_TEST_OUTPUT ?? process.env.TEMP;
@@ -38,6 +39,7 @@ await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw =>
   requests.push(JSON.parse(raw));
   socket.send(JSON.stringify({ type: "debug_trace", debug_trace: { ...failure, status: "started", error_code: null, message: null, stage: "codex_process_start" } }));
   socket.send(JSON.stringify({ type: "debug_trace", debug_trace: failure }));
+  socket.send(JSON.stringify({ type: "content", content: "失败前的部分回复" }));
   socket.send(JSON.stringify({ type: "error", content: `Codex 执行失败：${failure.message} 阶段：${failure.stage}；错误码：${failure.error_code}；诊断编号：${diagnosticId}` }));
 }));
 try {
@@ -50,7 +52,8 @@ try {
   await timeline.getByText("失败详情", { exact: true }).waitFor();
   assert.equal(requests.length, 1);
   assert.equal(Boolean(requests[0].debug_trace), false, "Diagnostics must be visible without the Debug switch");
-  await page.getByRole("button", { name: "取消自动重试", exact: true }).click();
+  const closeFailure = page.getByRole("button", { name: "关闭错误提示", exact: true });
+  assert.equal(await closeFailure.evaluate(button => !!button.closest(".workspace-scroll")), true);
   assert.match(await timeline.innerText(), /CLI 退出校验/);
   assert.match(await timeline.innerText(), /codex_authentication/);
   assert.match(await timeline.innerText(), new RegExp(diagnosticId));
@@ -73,12 +76,22 @@ try {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Mobile diagnostic view must not overflow");
   await dialog.screenshot({ path: path.join(output, "diagnostics-mobile.png") });
   await page.getByRole("button", { name: "关闭诊断日志", exact: true }).click();
+  await closeFailure.click();
+  await timeline.waitFor({ state: "detached" });
+  assert.equal(await page.getByText("失败前的部分回复", { exact: true }).count(), 0);
+  assert.equal(await page.locator("[data-chat-question]").filter({ hasText: "fixture request" }).count(), 1);
+  await composer.fill("another fixture request");
+  await composer.press("Enter");
+  await timeline.waitFor();
+  await page.getByRole("button", { name: "移除失败回复", exact: true }).click();
+  await timeline.waitFor({ state: "detached" });
   session.messages = [{ id: 1, role: "user", content: "fixture request", created_at: session.created_at }, { id: 2, role: "assistant", content: "Historical fixture reply", created_at: session.created_at }];
   await page.reload();
   await composer.waitFor();
   // History loads diagnostics from owner-scoped storage after the live trace is gone.
   await page.getByRole("button", { name: "查看诊断日志", exact: true }).first().click();
   await dialog.getByText("失败详情", { exact: true }).waitFor();
+  assert.equal(requests.length, 2, "Reload must not recover either dismissed attempt");
   assert.deepEqual(errors, []);
   console.log("PASS: default live failure, classified stage/ID, stored diagnostics, safe clipboard, desktop/mobile layout; no real backend or model");
 } catch (error) {

@@ -33,7 +33,7 @@ type ChatStreamContextValue = {
   startStream: (request: ChatCompleteRequest) => string;
   cancelStream: (streamId: string) => void;
   retryStream: (streamId: string) => void;
-  cancelRetry: (streamId: string) => void;
+  dismissFailedStream: (streamId: string) => boolean;
   markSessionViewed: (sessionId: string) => void;
   clearFinishedStreams: (sessionId: string) => void;
   activateCodexRuntime: (projectId: number, codexModelId?: string, codexReasoningEffort?: string, codexSandboxMode?: CodexSandboxMode) => void;
@@ -98,6 +98,8 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     const streamId = retryId ?? createStreamId();
     if (controllersRef.current.has(streamId)) return streamId;
     request = request.goal ? request : { ...request, command_id: request.command_id ?? streamId };
+    const previousCommandId = requestsRef.current.get(streamId)?.command_id;
+    if (previousCommandId && previousCommandId !== request.command_id) removeRecoveryPointer(previousCommandId);
     requestsRef.current.set(streamId, request);
     if (!request.goal) saveRecoveryPointer(streamId, request);
     const controller = new AbortController();
@@ -145,6 +147,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       }));
       flushUpdates();
       const completed = streamsRef.current[streamId];
+      if (!completed) return;
       if (completed?.deliveryState === "held" || completed?.deliveryState === "steered") {
         if (completed.deliveryState === "steered") removeRecoveryPointer(request.command_id ?? streamId);
         window.dispatchEvent(new Event("aiagent:sessions-updated"));
@@ -165,6 +168,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new Event("aiagent:sessions-updated"));
     }).catch((error) => {
       flushUpdates();
+      if (!streamsRef.current[streamId]) return;
       const stopped = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
       const message = error instanceof Error ? error.message : "Chat stream failed.";
       const idleTimeout = !stopped && message.includes("6 分钟没有收到服务端事件");
@@ -199,6 +203,21 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     update(streamId, (current) => ({ ...current, retryAt: undefined }));
     flushUpdates();
   }, [flushUpdates, update]);
+
+  const dismissFailedStream = useCallback((streamId: string) => {
+    flushUpdates();
+    const current = streamsRef.current;
+    if (current[streamId]?.status !== "error") return false;
+    const commandId = requestsRef.current.get(streamId)?.command_id;
+    if (commandId) removeRecoveryPointer(commandId);
+    requestsRef.current.delete(streamId);
+    const next = { ...current };
+    delete next[streamId];
+    streamsRef.current = next;
+    setStreams(next);
+    controllersRef.current.get(streamId)?.abort();
+    return true;
+  }, [flushUpdates]);
 
   const retryStream = useCallback((streamId: string) => {
     const stream = streamsRef.current[streamId];
@@ -302,7 +321,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     controllersRef.current.forEach((controller) => controller.abort());
     if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
   }, []);
-  const value = useMemo(() => ({ streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
+  const value = useMemo(() => ({ streams, startStream, cancelStream, retryStream, dismissFailedStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, cancelStream, retryStream, dismissFailedStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
 
