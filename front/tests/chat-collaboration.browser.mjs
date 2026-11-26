@@ -13,13 +13,16 @@ const snapshot = id => ({ id: `snapshot-${id}`, project_id: id, created_at: "202
   { id: "c3", repository_id: id + 20, sha: "3".repeat(40), author_id: "a", author: "甲", committed_at: "2026-11-18T17:00:00Z", subject: "补充接口", files: [] },
   { id: "c4", repository_id: id, sha: "4".repeat(40), author_id: "b", author: "乙", committed_at: "2026-11-16T08:00:00Z", subject: "更新说明", files: [] },
 ] });
-const browser = await chromium.launch({ headless: true, channel: process.env.ATLAS_TEST_BROWSER_CHANNEL || "chrome" });
+const executablePath = process.env.ATLAS_TEST_BROWSER_EXECUTABLE;
+const browser = await chromium.launch(executablePath ? { executablePath } : { channel: process.env.ATLAS_TEST_BROWSER_CHANNEL || "chrome" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
 const errors = []; page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
 let failSnapshot = false;
 let historyRequests = 0;
+const ownSession = { id: "session-1", title: "库存修复" };
+let linkedSession = null;
 await page.route("**/api/**", async route => {
   const pathname = new URL(route.request().url()).pathname;
   let value = [];
@@ -30,6 +33,15 @@ await page.route("**/api/**", async route => {
   else if (pathname.endsWith("/sidebar-preference")) value = { project_sort_mode: "recent" };
   else if (pathname.endsWith("/settings")) value = { ui: { preferred_agent: "none" }, catalog: { services: { llm: { profiles: [] } } } };
   else if (pathname.endsWith("/codex-model-policy")) value = { models: [], allowed_model_ids: [], allowed_reasoning_efforts: [] };
+  else if (pathname.endsWith("/checkpoint")) {
+    assert.equal(new URL(route.request().url()).searchParams.get("commit_id"), "c1");
+    if (route.request().method() === "POST") {
+      const { session_id } = route.request().postDataJSON();
+      assert.ok(session_id === ownSession.id || session_id === null);
+      linkedSession = session_id ? ownSession : null;
+    }
+    value = { session: linkedSession, sessions: [ownSession], delivery: { task_title: "库存任务", validation_status: "passed" } };
+  }
   else if (pathname.includes("/change-atlas/snapshots")) {
     if (route.request().method() === "POST") {
       historyRequests++;
@@ -99,8 +111,20 @@ try {
   assert.equal(await page.locator("pre img").count(), 0);
   await page.getByText("差异已截断，不能视为完整审阅。").waitFor();
   await page.getByText("2026-11-18 01:00", { exact: false }).waitFor();
+  await page.goto(base + "/change-atlas/review?project=1&snapshot=snapshot-1&commit=c1");
+  await page.getByText("交付校验：通过 · 任务：库存任务").waitFor();
+  await page.getByLabel("关联本人会话").selectOption(ownSession.id);
+  await page.getByRole("button", { name: "保存关联" }).click();
+  const sessionLink = page.getByRole("link", { name: /打开关联会话/ });
+  await sessionLink.waitFor();
+  assert.equal(await sessionLink.getAttribute("href"), "/chat?session=session-1");
+  await page.reload();
+  await sessionLink.waitFor();
+  await page.getByLabel("关联本人会话").selectOption("");
+  await page.getByRole("button", { name: "保存关联" }).click();
+  await sessionLink.waitFor({ state: "detached" });
   failSnapshot = true;
   await page.reload(); await page.getByRole("alert").getByText("无权访问该项目或地图。").waitFor();
   assert.deepEqual(errors, []);
-  console.log("PASS: 14-day Beijing timeline, person/repository lanes, commit selection, prompt, project switch, narrow viewport and protected review");
+  console.log("PASS: Beijing timeline, commit selection, protected review, and checkpoint save/reload/unlink");
 } finally { await browser.close(); }

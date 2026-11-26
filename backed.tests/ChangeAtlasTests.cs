@@ -9,8 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using AiAgent.Backend.Dtos.ChangeAtlas;
 using AiAgent.Backend.Dtos.Chat;
+using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Entities.CodeRepository;
 using AiAgent.Backend.Entities.Git;
+using AiAgent.Backend.Entities.Task;
 using AiAgent.Backend.Services.Admin;
 using AiAgent.Backend.Services.Auth;
 using AiAgent.Backend.Services.ChangeAtlas;
@@ -26,6 +28,53 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class ChangeAtlasTests
 {
+    [Fact]
+    public async Task CheckpointUsesExactCommitAndOnlyExposesOwnedSessionsAndTasks()
+    {
+        using var f = new Fixture();
+        await f.Initialize();
+        f.Db.CodeFirst.InitTables<AiChatSession, AiProjectTask, AiCodeChangeSet, AiCodeChangeSetRepository>();
+        f.Db.Insertable(new[] {
+            new AiChatSession { Id = "mine", UserId = Owner.Id, CodeProjectId = 1, Title = "本人会话" },
+            new AiChatSession { Id = "other", UserId = "other", CodeProjectId = 1 },
+            new AiChatSession { Id = "different-project", UserId = Owner.Id, CodeProjectId = 2 },
+        }).ExecuteCommand();
+        var taskId = f.Db.Insertable(new AiProjectTask { UserId = "other", CodeProjectId = 1, Title = "他人任务" }).ExecuteReturnBigIdentity();
+        var changeId = f.Db.Insertable(new AiCodeChangeSet { ProjectId = 1, TaskId = taskId }).ExecuteReturnBigIdentity();
+        var snapshot = await f.Service.CreateAsync(Owner, 1, new() { HistoryOnly = true }, CancellationToken.None);
+        var commit = snapshot.Commits[0];
+        f.Db.Insertable(new AiCodeChangeSetRepository { ChangeSetId = changeId, RepositoryId = f.RepositoryId, CommitSha = commit.Sha,
+            DeliveryStatus = "delivered", ValidationStatus = "passed" }).ExecuteCommand();
+
+        Task<AtlasCheckpoint> Read(string id, AtlasCheckpointRequest? request = null) =>
+            f.Service.CheckpointAsync(Owner, 1, id, commit.Id, CancellationToken.None, request);
+
+        var initial = await Read(snapshot.Id);
+        Assert.Null(initial.Session);
+        Assert.Equal("mine", Assert.Single(initial.Sessions).Id);
+        Assert.Equal("passed", initial.Delivery?.ValidationStatus);
+        Assert.Null(initial.Delivery?.TaskTitle);
+        Assert.Null((await f.Service.CheckpointAsync(Owner, 1, snapshot.Id, snapshot.Commits[1].Id, CancellationToken.None)).Delivery);
+        await Assert.ThrowsAsync<ArgumentException>(() => Read(snapshot.Id, new AtlasCheckpointRequest("other")));
+        await Assert.ThrowsAsync<ArgumentException>(() => Read(snapshot.Id, new AtlasCheckpointRequest("different-project")));
+        Assert.Equal("mine", (await Read(snapshot.Id, new AtlasCheckpointRequest("mine"))).Session?.Id);
+        var refresh = await f.Service.CreateAsync(Owner, 1, new() { HistoryOnly = true }, CancellationToken.None);
+        Assert.Equal("mine", (await Read(refresh.Id)).Session?.Id);
+        var other = new AuthenticatedUser("other", "other");
+        var otherSnapshot = await f.Service.CreateAsync(other, 1, new() { HistoryOnly = true }, CancellationToken.None);
+        var otherCheckpoint = await f.Service.CheckpointAsync(other, 1, otherSnapshot.Id, commit.Id, CancellationToken.None);
+        Assert.Null(otherCheckpoint.Session);
+        Assert.Equal("other", Assert.Single(otherCheckpoint.Sessions).Id);
+        Assert.Equal("他人任务", otherCheckpoint.Delivery?.TaskTitle);
+        Assert.Null((await Read(refresh.Id, new AtlasCheckpointRequest(null))).Session);
+        Assert.Null((await Read(snapshot.Id)).Session);
+        await Read(snapshot.Id, new AtlasCheckpointRequest("mine"));
+        f.Db.Deleteable<AiChatSession>().Where(item => item.Id == "mine").ExecuteCommand();
+        Assert.Null((await Read(snapshot.Id)).Session);
+        f.Access.Enabled = false;
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Read(snapshot.Id));
+    }
+
     private static readonly AuthenticatedUser Owner = new("atlas-owner", "owner");
     public class AtlasAuth : DispatchProxy
     {
