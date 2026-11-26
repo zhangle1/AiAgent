@@ -71,6 +71,36 @@ public sealed class ChatDeliveryTests : IDisposable
         Assert.True(Assert.Single(await _service.ListAsync(_user, "session", default)).QueueHeld);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisconnectOfOldQueueConnectionDoesNotOverwriteResumedExecution(bool alreadyCompleted)
+    {
+        await using var active = (await Enter(Request("A")))!;
+        active.Registered();
+        using var oldConnection = new CancellationTokenSource();
+        var queueHeartbeat = QueuedSignal();
+        var oldWaiting = _service.EnterAsync(_user, Request("B"), async (_, ct) =>
+        {
+            queueHeartbeat.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+        }, oldConnection.Token);
+        await queueHeartbeat.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await active.DisposeAsync();
+
+        var request = _service.Restore(_user, new() { SessionId = "session", CommandId = "B", ResumeQueued = true });
+        await using var resumed = (await Enter(request))!;
+        resumed.Registered();
+        resumed.Succeeded = true;
+        if (alreadyCompleted) await resumed.DisposeAsync();
+        oldConnection.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => oldWaiting);
+
+        var row = _db.Queryable<AiChatDelivery>().First(row => row.CommandId == "B");
+        Assert.Equal(alreadyCompleted ? "completed" : "running", row.Status);
+        Assert.False(row.Held);
+    }
+
     [Fact]
     public async Task DuplicateCommandsNeverAcquireASecondExecutionAndChangedInputIsRejected()
     {

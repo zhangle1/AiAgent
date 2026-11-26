@@ -331,10 +331,13 @@ public sealed partial class ChatCommandTests : IDisposable
         public bool IsWebSocketRequest => true;
         public Task<WebSocket> AcceptAsync(WebSocketAcceptContext context) => Task.FromResult(socket);
     }
-    private sealed class FixtureSocket(string request) : WebSocket
+    private sealed class FixtureSocket(string request, bool waitForPeer = false) : WebSocket
     {
         private WebSocketState state = WebSocketState.Open;
         private bool received;
+        private readonly TaskCompletionSource peerClose = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource CloseOutputSent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Disconnect() => peerClose.TrySetResult();
         public List<string> Sent { get; } = [];
         public override WebSocketCloseStatus? CloseStatus => WebSocketCloseStatus.NormalClosure;
         public override string? CloseStatusDescription => "fixture";
@@ -342,15 +345,29 @@ public sealed partial class ChatCommandTests : IDisposable
         public override string? SubProtocol => null;
         public override void Abort() => state = WebSocketState.Aborted;
         public override void Dispose() => state = WebSocketState.Closed;
-        public override Task CloseAsync(WebSocketCloseStatus status, string? description, CancellationToken token) { state = WebSocketState.Closed; return Task.CompletedTask; }
-        public override Task CloseOutputAsync(WebSocketCloseStatus status, string? description, CancellationToken token) => CloseAsync(status, description, token);
+        public override async Task CloseAsync(WebSocketCloseStatus status, string? description, CancellationToken token)
+        {
+            await CloseOutputAsync(status, description, token);
+            if (state == WebSocketState.CloseSent) await peerClose.Task.WaitAsync(token);
+        }
+        public override Task CloseOutputAsync(WebSocketCloseStatus status, string? description, CancellationToken token)
+        {
+            state = waitForPeer && state == WebSocketState.Open ? WebSocketState.CloseSent : WebSocketState.Closed;
+            CloseOutputSent.TrySetResult();
+            return Task.CompletedTask;
+        }
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType type, bool end, CancellationToken token)
         {
             Sent.Add(Encoding.UTF8.GetString(buffer)); return Task.CompletedTask;
         }
         public override async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken token)
         {
-            if (received) await Task.Delay(Timeout.Infinite, token);
+            if (received)
+            {
+                await peerClose.Task.WaitAsync(token);
+                state = state == WebSocketState.CloseSent ? WebSocketState.Closed : WebSocketState.CloseReceived;
+                return new WebSocketReceiveResult(0, WebSocketMessageType.Close, true);
+            }
             received = true;
             var bytes = Encoding.UTF8.GetBytes(request);
             bytes.AsSpan().CopyTo(buffer.AsSpan());

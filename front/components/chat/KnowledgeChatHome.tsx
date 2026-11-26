@@ -1492,7 +1492,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             {failedStream && <ChatRetryNotice stream={failedStream} onRetry={() => retryStream(failedStream.id)} onCancel={() => cancelRetry(failedStream.id)} />}
 
             {!embedded && activeSessionId && (
-              <ChatDeliveryQueue key={activeSessionId} sessionId={activeSessionId}
+              <ChatDeliveryQueue key={activeSessionId} sessionId={activeSessionId} sending={sending}
                 onResume={commandId => { startStream({ session_id: activeSessionId, command_id: commandId, message: "", resume_queued: true, delivery_intent: "queue" }); }} />
             )}
 
