@@ -10,7 +10,7 @@ const require = createRequire(path.join(front, "package.json"));
 const tools = process.env.RUNTIME_TEST_TOOLS ? createRequire(path.resolve(process.env.RUNTIME_TEST_TOOLS, "package.json")) : require;
 const { chromium } = tools("playwright");
 const { build } = tools("esbuild");
-const { css } = await require("postcss")([require("tailwindcss")({ content: [path.join(front, "components/chat/ChatRunDialog.tsx"), path.join(front, "components/chat/ChatRuntimeFloat.tsx"), path.join(front, "components/chat/ChatRuntimeToolbar.tsx")] })]).process("@tailwind base; @tailwind components; @tailwind utilities;", { from: undefined });
+const { css } = await require("postcss")([require("tailwindcss")({ content: [path.join(front, "components/chat/ChatRunDialog.tsx"), path.join(front, "components/chat/ChatRuntimeProcesses.tsx"), path.join(front, "components/chat/ChatRuntimeToolbar.tsx")] })]).process("@tailwind base; @tailwind components; @tailwind utilities;", { from: undefined });
 const bundle = await build({
   stdin: { contents: `import React,{useState} from 'react'; import {createRoot} from 'react-dom/client';
     import {ChatRuntimeToolbar} from './components/chat/ChatRuntimeToolbar';
@@ -55,7 +55,7 @@ const server = http.createServer(async (q,r) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 let browser;
 try {
-  browser = await chromium.launch({headless:true});
+  browser = await chromium.launch({headless:true, executablePath:process.env.RUNTIME_TEST_BROWSER});
   const page = await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[]; page.on("pageerror",e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -75,9 +75,11 @@ try {
   const prompt=await page.getByLabel("prompt").inputValue();
   assert.match(prompt, /本次用户选择重新分析/);
   assert.ok(prompt.includes("/login")&&prompt.includes("connect API before frontend")&&prompt.includes(`${server.address().port}`));
-  await page.getByRole("button",{name:"AI 进程浮窗"}).click();
+  assert.equal(await page.getByRole("button", { name: "AI 进程浮窗" }).count(), 0);
+  await page.getByRole("button",{name:/项目程序运行：|代码已同步：/}).click();
+  await page.getByRole("button",{name:"查看运行进程"}).click();
   await page.getByText("等待 AI 清单",{exact:true}).waitFor();
-  assert.equal(visits,0,"opening float must not keep idle jobs alive");
+  assert.equal(visits,0,"opening the process list must not keep idle jobs alive");
   jobs=[{...jobs[0],status:"running",message:"ready",runs:[{run_id:"run1",project_id:7,repository_name:"web",entry_path:"src/package.json",role:"frontend",port:preview.address().port,process_id:12345,status:"running"}],targets:[{repository_name:"web",entry_path:"src/package.json",page_path:"/login"}]}];
   await page.getByRole("button",{name:"刷新运行进程"}).click();
   await page.getByText(/PID 12345/).waitFor();
@@ -127,6 +129,7 @@ try {
   assert.equal(await page.getByText(/当前项目暂无托管运行进程/).count(),0);
   invalidJobs=false;
   await page.getByRole("button",{name:"收起运行进程"}).click();
+  await page.getByRole("button",{name:/项目程序运行：|代码已同步：/}).click();
   await page.setViewportSize({width:390,height:844});
   await open();
   assert.ok(await page.getByRole("dialog").isVisible());

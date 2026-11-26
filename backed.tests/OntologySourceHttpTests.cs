@@ -73,7 +73,7 @@ public sealed class OntologySourceHttpTests
             var connectionId = (await connectionModel.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
             var connectionApi = "/api/v1/ontology/43/models/" + connectionId;
             var connectionSource = new { id = Guid.NewGuid().ToString("N"), label = "项目数据库", connection = new { type = "sqlite", database = "sample" } };
-            var connectionBody = new { version = 1, source = connectionSource };
+            var connectionBody = new { version = 1, source = connectionSource, password = "fixture-only-credential" };
             using var testedConnection = await client.PostAsJsonAsync(connectionApi + "/sources/test", connectionBody);
             testedConnection.EnsureSuccessStatusCode();
             var incomplete = new { version = 1, source = new { connectionSource.id, connectionSource.label, connectionSource.connection, relation = "unfinished" } };
@@ -89,7 +89,12 @@ public sealed class OntologySourceHttpTests
             using var connectionPreview = await client.PostAsJsonAsync(connectionApi + "/lookup", new LookupRequest(2, [connectionSource.id], "7"));
             connectionPreview.EnsureSuccessStatusCode();
             var connectionText = (await connectionPreview.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString();
+            Assert.Contains("数据库连接已验证", connectionText);
+            Assert.Contains("main.records", connectionText);
             Assert.Contains("未配置按键查询", connectionText);
+            Assert.DoesNotContain(dbPath, connectionText);
+            Assert.DoesNotContain("fixture-only-credential", connectionText);
+            Assert.DoesNotContain("ready", connectionText);
             Assert.DoesNotContain("读取时间", connectionText);
             using var created = await client.PostAsJsonAsync("/api/v1/ontology/43/models", new { name = "Test" });
             created.EnsureSuccessStatusCode();
@@ -134,6 +139,12 @@ public sealed class OntologySourceHttpTests
             deleted.EnsureSuccessStatusCode();
             using var missing = await client.GetAsync(endpoint);
             Assert.Equal(System.Net.HttpStatusCode.NotFound, missing.StatusCode);
+            builder.Configuration["Ontology:Projects:43:Sqlite:sample"] = Path.Combine(root.FullName, "offline.db");
+            using var offline = await client.PostAsJsonAsync(connectionApi + "/lookup", new LookupRequest(2, [connectionSource.id], null));
+            offline.EnsureSuccessStatusCode();
+            var offlineText = (await offline.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString();
+            Assert.Contains("本轮数据库连接验证失败", offlineText);
+            Assert.DoesNotContain("数据库连接已验证", offlineText);
             await app.StopAsync();
         }
         finally { root.Delete(true); }

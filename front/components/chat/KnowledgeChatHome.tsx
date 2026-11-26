@@ -10,7 +10,7 @@ import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatCollaborationDialog } from "@/components/chat/ChatCollaborationDialog";
 import { ontologyApi } from "@/lib/ontology-api";
-import type { OntologyAttachment, OntologySummary } from "@/lib/ontology-types";
+import type { OntologyAttachment, OntologyModel, OntologySummary } from "@/lib/ontology-types";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
 import { ChatMessageNavigation } from "@/components/chat/ChatMessageNavigation";
 import type { ChatGoalRequest } from "@/lib/chat-goal-types";
@@ -1147,14 +1147,15 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     void sendMessage(input.trim());
   }, [readyTaskHandoff, requestedTemplateHandoff, requestedSessionId, loading, catalog, sending, input, selectedAgentId, codexModelPolicy, imageOcrPolicy, imageAttachments, selectedProjectId]);
 
-  function updateAttachedModel(previous: OntologySummary, next: OntologySummary | null) {
+  function updateAttachedModel(previous: OntologySummary, next: OntologyModel | null) {
     setOntologyAttachment(attachment => {
       if (!attachment || attachment.projectId !== effectiveProjectId ||
           !attachment.models.some(model => model.id === previous.id)) return attachment;
       const models = attachment.models.flatMap(model => {
         if (model.id !== previous.id) return [model];
         if (!next || model.version !== previous.version) return [];
-        return [{ ...model, name: next.name, version: next.version }];
+        const ids = model.ids.filter(id => next.sources?.some(source => source.definition.id === id));
+        return ids.length ? [{ ...model, name: next.name, version: next.version, ids }] : [];
       });
       return models.length ? { ...attachment, models } : null;
     });
@@ -1516,7 +1517,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             >
               {ontologyAttachment && ontologyAttachment.projectId === effectiveProjectId && <div className="mb-1 flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-800">
                 <span>本轮本体 · {ontologyAttachment.models.map(model => model.name).join("、")}</span>
-                <input aria-label="本轮查询键值" className="max-w-44 rounded border px-2 py-1" placeholder="键值（留空仅附模型说明）" value={ontologyAttachment.key} maxLength={256}
+                <input aria-label="本轮查询键值" className="max-w-44 rounded border px-2 py-1" placeholder="记录键值（可选）" value={ontologyAttachment.key} maxLength={256}
                   onChange={event => setOntologyAttachment({...ontologyAttachment,key:event.target.value})}/>
                 <button type="button" onClick={() => setOntologyAttachment(null)}>移除</button>
                 {readingOntology && <span role="status">正在读取查询来源…</span>}

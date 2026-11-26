@@ -334,6 +334,25 @@
   justify-content: center;
   text-align: center;
 }
+.shell .node:is([data-connection-status="passed"], [data-connection-status="saved"]) {
+  border-color: #86c5a4;
+}
+.shell .node[data-connection-status="passed"] {
+  background: #edf9f0;
+}
+.node .connectionStatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+.node:is([data-connection-status="passed"], [data-connection-status="saved"]) .connectionStatus {
+  color: #16613b;
+}
+.node[data-connection-status="failed"] .connectionStatus {
+  color: #a12a27;
+}
 .branches:has(.node:only-child) {
   width: min(100%, 180px);
   padding: 0;

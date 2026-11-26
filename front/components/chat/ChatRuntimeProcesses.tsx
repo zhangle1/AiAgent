@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { Activity, ExternalLink, RefreshCw, Square, X } from "lucide-react";
 import { listChatRuntimeJobs, stopChatRuntime } from "@/lib/chat-runtime-api";
 import { getCodeProjectRuntime, stopCodeProjectRuntime } from "@/lib/code-runtime-api";
@@ -10,7 +9,7 @@ import { runtimeTestHref, runtimeJobAccessUrl, runtimeAccessUrl } from "@/lib/ch
 import type { ChatRuntimeJob } from "@/lib/chat-runtime-types";
 
 const labels = { waiting: "等待 AI 清单", starting: "启动 / 就绪检查中", running: "可测试", failed: "运行失败", stopped: "已关闭", expired: "请求已过期" };
-export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onLogs: () => void }) {
+export function ChatRuntimeProcesses({ projectId, onLogs }: { projectId: number; onLogs: () => void }) {
   const [open, setOpen] = useState(false);
   const [jobs, setJobs] = useState<ChatRuntimeJob[]>([]);
   const [runs, setRuns] = useState<CodeRuntimeRun[]>([]);
@@ -19,6 +18,7 @@ export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onL
   const [revision, setRevision] = useState(0);
   useEffect(() => { setJobs([]); setRuns([]); setError(""); }, [projectId]);
   useEffect(() => {
+    if (!open) return;
     let active = true; let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
       try {
@@ -38,7 +38,7 @@ export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onL
     const changed = () => setRevision(value => value + 1);
     window.addEventListener("aiagent:runtime-refresh", changed);
     return () => { active = false; clearTimeout(timer); window.removeEventListener("aiagent:runtime-refresh", changed); };
-  }, [projectId, revision]);
+  }, [projectId, revision, open]);
   async function stop(id: string, individual = false) {
     setBusy(id);
     try { if (individual) await stopCodeProjectRuntime(projectId, id); else await stopChatRuntime(projectId, id); setRevision(value => value + 1); }
@@ -48,11 +48,10 @@ export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onL
   if (typeof document === "undefined") return null;
   const groupedIds = new Set(jobs.flatMap(job => job.runs.map(run => run.run_id)));
   const otherRuns = runs.filter(run => !groupedIds.has(run.run_id));
-  const activeRuns = otherRuns.filter(run => ["starting", "running", "stopping"].includes(run.status));
   const canStopJob = (job: ChatRuntimeJob) => ["waiting", "starting", "running"].includes(job.status) || job.runs.some(run => ["starting", "running", "stopping"].includes(run.status));
-  const active = jobs.filter(canStopJob);
-  return createPortal(<div className="fixed bottom-24 right-4 z-[80] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2 sm:bottom-5">
-    {open && <section aria-label="AI 运行进程" className="flex max-h-[65dvh] w-96 max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+  return <div className="mt-2 space-y-2">
+    {!open && <button type="button" onClick={() => setOpen(true)} className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700"><Activity size={14}/>查看运行进程</button>}
+    {open && <section aria-label="AI 运行进程" className="flex max-h-[55dvh] w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
       <header className="flex items-center gap-2 border-b p-3"><Activity size={17}/><strong className="flex-1 text-sm">AI 运行进程</strong><button aria-label="刷新运行进程" onClick={() => setRevision(value => value + 1)}><RefreshCw size={15}/></button><button aria-label="收起运行进程" onClick={() => setOpen(false)}><X size={17}/></button></header>
       <div className="space-y-3 overflow-y-auto p-3">{error && <p role="alert" className="text-xs text-rose-600">{error}</p>}{!error && !jobs.length && !otherRuns.length && <p className="text-xs text-slate-500">当前项目暂无托管运行进程。选择“配置 AI 运行”并发送聊天后，启动状态和对应进程会显示在这里。</p>}{jobs.map(job => <article key={job.request_id} className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
         <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{labels[job.status]}</span>{canStopJob(job) && <button disabled={busy === job.request_id} onClick={() => void stop(job.request_id)} className="inline-flex items-center gap-1 text-xs text-rose-600 disabled:opacity-50"><Square size={12}/>关闭整组</button>}</div>
@@ -66,8 +65,7 @@ export function ChatRuntimeFloat({ projectId, onLogs }: { projectId: number; onL
         <p className="break-all">{run.entry_path}</p><p>PID {run.process_id ?? "—"} · :{run.port} · {run.status}</p>
         {["starting", "running", "stopping"].includes(run.status) && <button disabled={busy === run.run_id} onClick={() => void stop(run.run_id, true)} className="text-rose-600 disabled:opacity-50">结束对应进程</button>}
         {run.status === "running" && <a href={runtimeAccessUrl(window.location.origin, run.port)} target="_blank" rel="noopener noreferrer" className="ml-3 text-blue-600">打开应用 :{run.port} ↗</a>}
-      </article>)}</div><footer className="border-t p-3"><button onClick={onLogs} className="text-xs text-blue-600">打开实时终端与日志</button><p className="mt-1 text-[10px] text-slate-500">每 3 秒探测。直接打开应用和查看浮窗均不续期；需要续期请打开“管理 / 续期”。</p></footer>
+      </article>)}</div><footer className="border-t p-3"><button onClick={onLogs} className="text-xs text-blue-600">打开实时终端与日志</button><p className="mt-1 text-[10px] text-slate-500">每 3 秒探测。直接打开应用和查看进程均不续期；需要续期请打开“管理 / 续期”。</p></footer>
     </section>}
-    <button onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label="AI 进程浮窗" className="flex items-center gap-2 rounded-full bg-slate-900 px-4 py-3 text-xs font-medium text-white shadow-xl ring-1 ring-white/20"><Activity size={16} className={(active.length + activeRuns.length) ? "text-emerald-400" : "text-slate-400"}/>运行进程{(active.length + activeRuns.length) ? ` · ${active.length + activeRuns.length}` : ""}</button>
-  </div>, document.body);
+  </div>;
 }

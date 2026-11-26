@@ -3,6 +3,7 @@
 import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import {
   Boxes,
+  CircleCheck,
   Database,
   FileText,
   FolderTree,
@@ -41,7 +42,7 @@ type Props = {
   onClose: () => void;
   onInsert: (text: string) => void;
   onAttach?: (attachment: OntologyAttachment) => void;
-  onModelChange?: (previous: OntologySummary, next: OntologySummary | null) => void;
+  onModelChange?: (previous: OntologySummary, next: OntologyModel | null) => void;
 };
 type Selection = { name: string; version: number; ids: string[] };
 
@@ -267,7 +268,8 @@ function ModelProject({
   const [source, setSource] = useState<OntologySource | null>(null);
   const [password, setPassword] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [tested, setTested] = useState(false);
+  const [testStatus, setTestStatus] = useState<"passed" | "failed" | "testing" | null>(null);
+  const tested = testStatus === "passed";
   const [selected, setSelected] = useState<Record<string, Selection>>({});
   const [key, setKey] = useState("");
   const [preview, setPreview] = useState("");
@@ -280,10 +282,10 @@ function ModelProject({
   function inspect(item: OntologySource | null) {
     setSource(item);
     setPassword("");
-    setTested(false);
+    setTestStatus(null);
     setDirty(false);
   }
-  function show(next: OntologyModel | null) {
+  function show(next: OntologyModel | null, preserveSelection = false) {
     setModel(next);
     if (next)
       setModels((items) =>
@@ -293,7 +295,7 @@ function ModelProject({
       );
     inspect(next?.sources?.[0]?.definition ?? null);
     setPreview("");
-    if (next)
+    if (next && !preserveSelection)
       setSelected((old) => {
         if (!old[next.id] || old[next.id].version === next.version) return old;
         const updated = { ...old };
@@ -301,7 +303,7 @@ function ModelProject({
         return updated;
       });
   }
-  async function run<T>(task: () => Promise<T>, done: (value: T) => void) {
+  async function run<T>(task: () => Promise<T>, done: (value: T) => void, failed?: () => void) {
     if (lock.current) return;
     lock.current = true;
     const epoch = generation.current;
@@ -312,7 +314,10 @@ function ModelProject({
       const value = await task();
       if (epoch === generation.current) done(value);
     } catch (e) {
-      if (epoch === generation.current) setError(e instanceof Error ? e.message : "请求失败");
+      if (epoch === generation.current) {
+        setError(e instanceof Error ? e.message : "请求失败");
+        failed?.();
+      }
     } finally {
       if (epoch === generation.current) {
         lock.current = false;
@@ -350,7 +355,7 @@ function ModelProject({
     setSource(next);
     setDirty(true);
     if (passwordChanged || next.connection !== source?.connection || next.connection.type === "http")
-      setTested(false);
+      setTestStatus(null);
     setPreview("");
     setNotice("");
     setError("");
@@ -391,18 +396,20 @@ function ModelProject({
     ...entries.map((s) => (s.definition.id === source?.id ? source : s.definition)),
     ...(source && !entries.some((s) => s.definition.id === source.id) ? [source] : []),
   ];
-  function updateSelection(previous: OntologySummary, renamed: OntologySummary | null) {
+  function updateSelection(previous: OntologySummary, saved: OntologyModel | null) {
     setSelected((old) => {
       const next = { ...old };
       const entry = next[previous.id];
-      if (renamed && entry?.version === previous.version) {
-        next[previous.id] = { ...entry, name: renamed.name, version: renamed.version };
+      if (!entry) return old;
+      const ids = entry.ids.filter((id) => saved?.sources?.some((item) => item.definition.id === id));
+      if (saved && entry.version === previous.version && ids.length) {
+        next[previous.id] = { ids, name: saved.name, version: saved.version };
       } else {
         delete next[previous.id];
       }
       return next;
     });
-    onModelChange?.(previous, renamed);
+    onModelChange?.(previous, saved);
     setPreview("");
   }
   function focusNode(item: OntologySource | null) {
@@ -543,7 +550,7 @@ function ModelProject({
                 setKey(e.target.value);
                 setPreview("");
               }}
-              placeholder="记录键值（可选）"
+              placeholder="留空时验证数据库并读取表清单"
             />
             <button
               disabled={!count || dirty}
@@ -778,34 +785,52 @@ function ModelProject({
                 <small>对象模型 · v{model.version}</small>
               </div>
               <div className={styles.branches}>
-                {nodes.map((item) => (
-                  <button
-                    className={styles.node}
-                    id={workspaceId + "-node-" + item.id}
-                    key={item.id}
-                    aria-pressed={source?.id === item.id}
-                    onClick={() => {
-                      if (source?.id !== item.id && discard()) {
-                        inspect(item);
-                        setError("");
-                        setNotice("");
-                      }
-                    }}
-                  >
-                    <SourceIcon type={item.connection.type} />
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>
-                        {item.connection.type === "note" ? "文本说明" : drivers[item.connection.type]?.[0]} ·{" "}
-                        {entries.some((s) => s.definition.id === item.id)
-                          ? dirty && source?.id === item.id
-                            ? "未保存"
-                            : "已保存"
-                          : "草稿"}
-                      </small>
-                    </span>
-                  </button>
-                ))}
+                {nodes.map((item) => {
+                  const saved = entries.find((entry) => entry.definition.id === item.id);
+                  const active = source?.id === item.id;
+                  const status =
+                    (active && testStatus) ||
+                    (item.connection.type !== "note" && saved?.checkedAt && !(active && dirty)
+                      ? "saved"
+                      : null);
+                  return (
+                    <button
+                      data-connection-status={status ?? undefined}
+                      className={styles.node}
+                      id={workspaceId + "-node-" + item.id}
+                      key={item.id}
+                      aria-pressed={source?.id === item.id}
+                      onClick={() => {
+                        if (source?.id !== item.id && discard()) {
+                          inspect(item);
+                          setError("");
+                          setNotice("");
+                        }
+                      }}
+                    >
+                      <SourceIcon type={item.connection.type} />
+                      <span>
+                        <strong>{item.label}</strong>
+                        <small>
+                          {item.connection.type === "note" ? "文本说明" : drivers[item.connection.type]?.[0]}{" "}
+                          · {saved ? (dirty && active ? "未保存" : "已保存") : "草稿"}
+                        </small>
+                        {status && (
+                          <small className={styles.connectionStatus}>
+                            {(status === "passed" || status === "saved") && <CircleCheck size={12} />}
+                            {status === "passed"
+                              ? "测试通过"
+                              : status === "saved"
+                                ? "上次保存时已验证"
+                                : status === "testing"
+                                  ? "正在测试…"
+                                  : "测试失败"}
+                          </small>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               {!entries.length && !source && <small>点击「添加组件」创建第一个组件。</small>}
             </div>
@@ -998,17 +1023,18 @@ function ModelProject({
               {source.connection.type !== "note" && (
                 <button
                   onClick={() => {
-                    setTested(false);
+                    setTestStatus("testing");
                     void run(
                       () => ontologyApi.testSource(projectId, model, source, password),
                       () => {
-                        setTested(true);
+                        setTestStatus("passed");
                         setNotice(
                           source.connection.type === "http"
                             ? "接口读取成功，可以保存组件。"
                             : "数据库连接成功，可以保存组件。",
                         );
                       },
+                      () => setTestStatus("failed"),
                     );
                   }}
                 >
@@ -1026,7 +1052,8 @@ function ModelProject({
                   void run(
                     () => ontologyApi.saveSource(projectId, model, source, password),
                     (next) => {
-                      show(next);
+                      show(next, true);
+                      updateSelection(model, next);
                       inspect(next.sources?.find((s) => s.definition.id === source.id)?.definition ?? null);
                       setNotice("组件已保存，可勾选带入聊天。");
                     },
@@ -1046,7 +1073,8 @@ function ModelProject({
                   void run(
                     () => ontologyApi.removeSource(projectId, model, source.id),
                     (next) => {
-                      show(next);
+                      show(next, true);
+                      updateSelection(model, next);
                       setNotice("组件已移除。");
                     },
                   );

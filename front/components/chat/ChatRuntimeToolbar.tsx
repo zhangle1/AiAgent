@@ -8,7 +8,7 @@ import { discardCodeRepositoryChangesAndPull, discardProjectGitChangesAndPull, g
 import type { CodeProject, CodeRepository, ConfiguredCodeFile, GitDiffComparison, GitWorkspaceDiff, GitWorkspaceDiffFile, GitWorkspaceStatus, ProjectGitBatchOperationResult, ProjectGitRepositoryStatus, ProjectGitStatus } from "@/lib/code-repository-types";
 import { ChatPackageDialog } from "@/components/chat/ChatPackageDialog";
 import { ChatRunDialog } from "@/components/chat/ChatRunDialog";
-import { ChatRuntimeFloat } from "@/components/chat/ChatRuntimeFloat";
+import { ChatRuntimeProcesses } from "@/components/chat/ChatRuntimeProcesses";
 import type { CodeProjectRuntime, CodeRuntimeProfile, CodeRuntimeRun } from "@/lib/code-runtime-types";
 
 type ChatConfigDraft = ConfiguredCodeFile & { repositoryName: string; repositoryDisplayName: string };
@@ -272,6 +272,7 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
             {activeRuns.map((run) => <RunCard key={run.run_id} run={run} busy={busy} onForceStop={() => void forceStop(run.run_id)}/>) }
             <button type="button" onClick={onOpenRuntimePanel} className="mt-1 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100"><Terminal size={14}/>打开实时终端</button>
           </div> : runtime && runtime.profiles.length ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">尚未启动；点击“运行”选择工程并填写要求，发送聊天后由 AI 分析并启动。</p> : null}
+          {project && <ChatRuntimeProcesses key={project.id} projectId={project.id} onLogs={onOpenRuntimePanel}/>}
           {error && <p className="mt-2 rounded-md bg-rose-50 px-2.5 py-2 text-[11px] leading-4 text-rose-700">{error}</p>}
         </div>, document.body)}
       </div>
@@ -279,7 +280,6 @@ export function ChatRuntimeToolbar({ project, rightPanelOpen, onToggleRightPanel
     </div>
     {packageTarget && packageTarget.projectId === project?.id && <ChatPackageDialog key={`${packageTarget.projectId}:${packageTarget.repository.id}`} projectId={packageTarget.projectId} repository={packageTarget.repository} onClose={() => setPackageTarget(null)} onApply={(prompt) => { onPackagePrompt(prompt); setPackageTarget(null); }} />}
     {project && runTarget?.projectId === project.id && <ChatRunDialog key={`${project.id}:${runTarget.repository}`} project={project} initialRepository={runTarget.repository} onClose={() => setRunTarget(null)} onApply={prompt => { onPackagePrompt(prompt); setRunTarget(null); }}/>}
-    {project && <ChatRuntimeFloat key={project.id} projectId={project.id} onLogs={onOpenRuntimePanel}/>}
     {configDraft && <ChatConfigurationEditor draft={configDraft} busy={busy} onChange={setConfigDraft} onClose={() => !busy && setConfigDraft(null)} onSave={() => void saveConfiguration()} />}
     {pushTarget && <CommitPushDialog repository={pushTarget} busy={busy} error={error} onClose={() => !busy && setPushTarget(null)} onSubmit={(message) => void pushRepository(pushTarget, message)} />}
     {batchAction && project && <ProjectGitBatchDialog action={batchAction} rows={visibleGitRows} busy={busy} error={error} result={batchResult} onClose={() => !busy && setBatchAction(null)} onSubmit={(message) => void runProjectGitBatch(batchAction, message)} />}

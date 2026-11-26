@@ -112,7 +112,40 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
     private static bool HasMapping(OntologySource source) =>
         !string.IsNullOrWhiteSpace(source.Relation) || !string.IsNullOrWhiteSpace(source.KeyColumn) || !string.IsNullOrWhiteSpace(source.ValueColumn);
 
-    private async Task<string?> Read(long project, OntologySource source, string password, string? key, CancellationToken token, bool connectionOnly = false)
+    private const int CatalogLimit = 12;
+    private static string CatalogSql(string driver) => driver switch
+    {
+        "sqlserver" => $"SELECT TOP ({CatalogLimit + 1}) TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_SCHEMA, TABLE_NAME",
+        "postgresql" => $"SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA NOT IN ('pg_catalog', 'information_schema') ORDER BY TABLE_SCHEMA, TABLE_NAME LIMIT {CatalogLimit + 1}",
+        "mysql" => $"SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_SCHEMA, TABLE_NAME LIMIT {CatalogLimit + 1}",
+        "oracle" => $"SELECT OWNER, OBJECT_NAME FROM (SELECT OWNER, OBJECT_NAME FROM ALL_OBJECTS WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AND OBJECT_TYPE IN ('TABLE', 'VIEW') ORDER BY OWNER, OBJECT_NAME) WHERE ROWNUM <= {CatalogLimit + 1}",
+        "sqlite" => $"SELECT 'main', name FROM sqlite_master WHERE type IN ('table', 'view') AND substr(name, 1, 7) <> 'sqlite_' ORDER BY name LIMIT {CatalogLimit + 1}",
+        _ => throw new ArgumentException("不支持此数据库驱动。")
+    };
+
+    private static async Task<string> ReadVisibleRelations(DbCommand command, string driver, CancellationToken token)
+    {
+        command.CommandText = CatalogSql(driver);
+        try
+        {
+            await using var rows = await command.ExecuteReaderAsync(token);
+            var relations = new List<string>();
+            while (await rows.ReadAsync(token))
+            {
+                if (relations.Count == CatalogLimit)
+                    return $"可见表和视图（前 {CatalogLimit} 项）{JsonSerializer.Serialize(relations)}";
+                var name = $"{rows.GetString(0)}.{rows.GetString(1)}";
+                relations.Add(name.Length > 160 ? name[..160] + "…" : name);
+            }
+            return relations.Count == 0 ? "当前账号未发现可见表或视图。" : $"可见表和视图 {JsonSerializer.Serialize(relations)}";
+        }
+        catch (DbException) when (!token.IsCancellationRequested)
+        {
+            return "表和视图清单读取失败。";
+        }
+    }
+
+    private async Task<string?> Read(long project, OntologySource source, string password, string? key, CancellationToken token, bool connectionOnly = false, bool includeCatalog = false)
     {
         if (source.Connection?.Type == "http")
             return await ReadHttp(project, source, password, key, token);
@@ -131,7 +164,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             {
                 cmd.CommandText = driver == "oracle" ? "SELECT 1 FROM DUAL" : "SELECT 1";
                 await cmd.ExecuteScalarAsync(deadline.Token);
-                return null;
+                return includeCatalog ? await ReadVisibleRelations(cmd, driver, deadline.Token) : null;
             }
             var sql = SelectStatements(source);
             cmd.CommandText = key == null ? sql.Metadata : sql.Lookup;
@@ -271,12 +304,25 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
                 lines.Add($"模型说明 · {source.Label}\n{source.Note}");
                 continue;
             }
-            if (source.Connection.Type != "http" && !HasMapping(source))
+            var database = source.Connection.Type != "http";
+            var mapped = HasMapping(source);
+            if (mapped)
+                lines.Add($"{source.Label} · {source.Relation} · 查询键 {source.KeyColumn} · 返回字段 {source.ValueColumn}");
+            if (database && (!mapped || key == null))
             {
-                lines.Add($"{source.Label} · {source.Connection.Type} 数据库连接 · 未配置按键查询");
+                var mappingStatus = mapped ? "本轮未填写记录键" : "未配置按键查询";
+                try
+                {
+                    var catalog = await Read(project, source, store.ReadPassword(entry), null, token, connectionOnly: true, includeCatalog: true);
+                    lines.Add($"{source.Label} · {source.Connection.Type} 数据库连接已验证 · {DateTimeOffset.UtcNow:O} · {mappingStatus}");
+                    if (catalog != null) lines.Add(catalog);
+                }
+                catch (ArgumentException e)
+                {
+                    lines.Add($"{source.Label} · 本轮数据库连接验证失败 · {e.Message}");
+                }
                 continue;
             }
-            lines.Add($"{source.Label} · {source.Relation} · 查询键 {source.KeyColumn} · 返回字段 {source.ValueColumn}");
             if (key != null)
             {
                 var result = await Read(project, source, store.ReadPassword(entry), key, token);
@@ -285,7 +331,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             }
         }
         if (readRecord) lines.Add("以上为本次只读查询的结果。");
-        else lines.Add("本轮附加模型说明，尚未读取业务记录。");
+        else lines.Add("本轮未读取业务记录。");
         return new { text = string.Join("\n", lines), version = model.Version };
     }
 }
