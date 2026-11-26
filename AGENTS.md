@@ -217,13 +217,13 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 变化地图文件导入试点使用固定 head 的普通 Git blob，保持敏感文件阻止与用户/项目授权。`lexical-imports-v1` 只展示 JS/TS 单行相对导入候选，禁止标成 AST/Graphify/运行验证；新关系不混入旧 Git 改动或 AI 证据。入口显式触发，取消与迟到响应隔离、读取/遍历预算及覆盖缺口见 `docs/change-atlas.md`。
 
-本体模型首轮实现位于 Services/Ontology、components/ontology 及 lib/ontology-*。按用户和项目隔离，加密原子文件存储；所有接口重新检查项目权限，图更新做版本及 DAG 校验。密码不回显、不进入上下文。流程只定义不执行；不改 Codex 原生链路。规格与 API 见 design/customer-ontology/phase-1.md、api-plugins.md；旧 HTML 为模拟原型。
+本体模型首轮实现位于 Services/Ontology、components/ontology 及 lib/ontology-*。按用户和项目隔离，加密原子文件存储；所有接口重新检查项目权限，图更新做版本及 DAG 校验。普通预览与保存响应不回显密码。通过显式选择附带数据库密码时，仅当前用户所选网络数据库的凭据可随本轮消息发送。流程只定义不执行；不改 Codex 原生链路。规格与 API 见 design/customer-ontology/phase-1.md、api-plugins.md；旧 HTML 为模拟原型。
 
 ?? Markdown ???????????????????????????????????????????????????????process=false????????????????????????????
 
 
 本体模型入口为聊天右侧工作区的独立页签，可从空白页或「+」菜单打开，与资料库、文件、浏览器切换；不再使用模态弹窗。
 
-对象画布使用 ObjectModelWorkspace 和 OntologySources。测试、保存和按键读取均在服务端按用户、项目、目标清单和模型版本校验；连接信息及凭据不得填入聊天。勾选的模型仅作用于本轮，重试沿用已发送证据。目标配置及接口见 design/customer-ontology/object-workspace.md。
+对象画布使用 ObjectModelWorkspace 和 OntologySources。测试、保存和按键读取均在服务端按用户、项目、目标清单和模型版本校验；连接配置使用 JSON-LD，普通挂载只包含凭据引用。用户勾选附带数据库密码时，发送接口可解析本轮选中连接的密码，页面须说明其进入消息和聊天记录。勾选的模型仅作用于本轮，重试沿用已发送证据。目标配置及接口见 design/customer-ontology/object-workspace.md。
 
 聊天原型设计通过输入区「+」显式组合普通聊天提示，不改变工具权限或目标协议；切换会话／项目清除模式。`ChatPrototypePanel` 只提取非流式、非失败消息的完整 fenced HTML，项目文件复用授权文档解析和下载接口，迟到读取取消。预览 iframe 不授予脚本或同源权限；保存复用 design 阶段 prototype-html 模板与项目归属，注解使用 description。PSD 复用现有静态导出，修改的是 HTML 来源，不能标为任意 PSD 图层编辑器。见 docs/chat-prototype-design.md。

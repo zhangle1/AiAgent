@@ -14,7 +14,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { ontologyApi } from "@/lib/ontology-api";
+import { formatOntologyContext, ontologyApi } from "@/lib/ontology-api";
 import type {
   OntologyAttachment,
   OntologyModel,
@@ -44,7 +44,20 @@ type Props = {
   onAttach?: (attachment: OntologyAttachment) => void;
   onModelChange?: (previous: OntologySummary, next: OntologyModel | null) => void;
 };
-type Selection = { name: string; version: number; ids: string[] };
+type Selection = { name: string; version: number; ids: string[]; hasNetworkDatabase: boolean };
+
+function selectionFor(model: OntologyModel, ids: string[]): Selection {
+  return {
+    name: model.name,
+    version: model.version,
+    ids,
+    hasNetworkDatabase:
+      model.sources?.some(
+        ({ definition }) =>
+          ids.includes(definition.id) && !["http", "note", "sqlite"].includes(definition.connection.type),
+      ) ?? false,
+  };
+}
 
 function WidthDivider({
   side,
@@ -272,6 +285,7 @@ function ModelProject({
   const tested = testStatus === "passed";
   const [selected, setSelected] = useState<Record<string, Selection>>({});
   const [key, setKey] = useState("");
+  const [includeDatabasePasswords, setIncludeDatabasePasswords] = useState(false);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -383,10 +397,11 @@ function ModelProject({
       return;
     }
     setPreview("");
+    setIncludeDatabasePasswords(false);
     setError("");
     setSelected((old) => {
       const next = { ...old };
-      if (ids.length) next[model.id] = { name: model.name, version: model.version, ids };
+      if (ids.length) next[model.id] = selectionFor(model, ids);
       else delete next[model.id];
       return next;
     });
@@ -403,7 +418,7 @@ function ModelProject({
       if (!entry) return old;
       const ids = entry.ids.filter((id) => saved?.sources?.some((item) => item.definition.id === id));
       if (saved && entry.version === previous.version && ids.length) {
-        next[previous.id] = { ids, name: saved.name, version: saved.version };
+        next[previous.id] = selectionFor(saved, ids);
       } else {
         delete next[previous.id];
       }
@@ -411,6 +426,7 @@ function ModelProject({
     });
     onModelChange?.(previous, saved);
     setPreview("");
+    setIncludeDatabasePasswords(false);
   }
   function focusNode(item: OntologySource | null) {
     if (item?.id !== source?.id) {
@@ -422,6 +438,7 @@ function ModelProject({
     element?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   const chosen = model ? (selected[model.id]?.ids ?? []) : [];
+  const canIncludePasswords = Object.values(selected).some((item) => item.hasNetworkDatabase);
   const count = Object.values(selected).reduce((sum, item) => sum + item.ids.length, 0);
   const textField = (title: string, value: string, update: (value: string) => void, placeholder = "") => (
     <label>
@@ -550,7 +567,7 @@ function ModelProject({
                 setKey(e.target.value);
                 setPreview("");
               }}
-              placeholder="留空时验证数据库并读取表清单"
+              placeholder="记录键值（可选）"
             />
             <button
               disabled={!count || dirty}
@@ -562,13 +579,26 @@ function ModelProject({
                       ontologyApi.lookup(projectId, id, s.version, s.ids, key),
                     ),
                   );
-                  return parts.map((p) => p.text).join("\n\n");
+                  return formatOntologyContext(parts);
                 }, setPreview)
               }
             >
-              {key.trim() ? "查询并预览" : "预览 Prompt"}
+              {key.trim() ? "查询并预览" : "预览 JSON-LD"}
             </button>
           </div>
+          {onAttach && canIncludePasswords && (
+            <div>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={includeDatabasePasswords}
+                  onChange={(event) => setIncludeDatabasePasswords(event.target.checked)}
+                />
+                本轮附带数据库密码
+              </label>
+              <small>预览隐藏密码。勾选后，密码随消息发给 AI，并保存在聊天记录中。</small>
+            </div>
+          )}
           {onAttach && (
             <button
               className={styles.primary}
@@ -577,8 +607,15 @@ function ModelProject({
                 onAttach({
                   projectId,
                   key,
-                  models: Object.entries(selected).map(([id, s]) => ({ id, ...s })),
+                  includeDatabasePasswords: canIncludePasswords && includeDatabasePasswords,
+                  models: Object.entries(selected).map(([id, item]) => ({
+                    id,
+                    name: item.name,
+                    version: item.version,
+                    ids: item.ids,
+                  })),
                 });
+                setIncludeDatabasePasswords(false);
                 setNotice("已挂载到左侧输入框，发送时读取所选来源。");
                 setPromptOpen(false);
                 promptButton.current?.focus();

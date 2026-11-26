@@ -5,11 +5,16 @@ async function request<T>(project: number, path: string, method = "GET", body?: 
   if (!response.ok) { const error = await response.json().catch(() => null); throw new Error(error?.message ?? `请求失败 (${response.status})`); }
   return response.json();
 }
+export function formatOntologyContext(parts: { text: string }[]): string {
+  if (parts.length === 1) return parts[0].text;
+  return `[${parts.map(({ text }) => text).join(",")}]`;
+}
+
 export const ontologyApi = {
   removeSource: (p: number, m: OntologyModel, sourceId: string) => request<OntologyModel>(p, `models/${m.id}/sources/${sourceId}?version=${m.version}`, "DELETE"),
   testSource: (p: number, m: OntologyModel, source: OntologySource, password: string) => request<{checkedAt:string}>(p, `models/${m.id}/sources/test`, "POST", {version:m.version, source, password}),
   saveSource: (p: number, m: OntologyModel, source: OntologySource, password: string) => request<OntologyModel>(p, `models/${m.id}/sources`, "PUT", {version:m.version, source, password}),
-  lookup: (p: number, id: string, version: number, sourceIds: string[], key: string, signal?: AbortSignal) => request<{text:string;version:number}>(p, `models/${id}/lookup`, "POST", {version, sourceIds, key}, signal),
+  lookup: (p: number, id: string, version: number, sourceIds: string[], key: string, options?: { includeDatabasePasswords?: boolean; signal?: AbortSignal }) => request<{text:string;version:number}>(p, `models/${id}/lookup`, "POST", {version, sourceIds, key, includeDatabasePasswords: options?.includeDatabasePasswords}, options?.signal),
   plugins: (p: number) => request<OntologyPlugin[]>(p, "plugins"),
   list: (p: number) => request<OntologySummary[]>(p, "models"),
   rename: (p: number, m: OntologySummary, name: string) => request<OntologyModel>(p, `models/${m.id}/name`, "PUT", {version:m.version,name}),

@@ -4,4 +4,4 @@ export type OntologySource = { id: string; label: string; connection: OntologyCo
 export type OntologySummary = { id: string; name: string; version: number };
 export type OntologyModel = { id: string; name: string; version: number; connection: OntologyConnection; has_password: boolean; graph: OntologyGraph; sources?: { definition: OntologySource; checkedAt: string }[] };
 export type OntologyPlugin = { id: string; label: string; version: number };
-export type OntologyAttachment = { projectId: number; key: string; models: { id: string; name: string; version: number; ids: string[] }[] };
+export type OntologyAttachment = { projectId: number; key: string; includeDatabasePasswords?: boolean; models: { id: string; name: string; version: number; ids: string[] }[] };

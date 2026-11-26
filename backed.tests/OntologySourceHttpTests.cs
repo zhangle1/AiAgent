@@ -89,13 +89,46 @@ public sealed class OntologySourceHttpTests
             using var connectionPreview = await client.PostAsJsonAsync(connectionApi + "/lookup", new LookupRequest(2, [connectionSource.id], "7"));
             connectionPreview.EnsureSuccessStatusCode();
             var connectionText = (await connectionPreview.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString();
-            Assert.Contains("数据库连接已验证", connectionText);
-            Assert.Contains("main.records", connectionText);
-            Assert.Contains("未配置按键查询", connectionText);
+            var connectionContext = JsonSerializer.Deserialize<JsonElement>(connectionText!);
+            var sqlite = connectionContext.GetProperty("sources")[0];
+            Assert.Equal("OntologyModel", connectionContext.GetProperty("@type").GetString());
+            Assert.Equal("sample", sqlite.GetProperty("databaseAlias").GetString());
+            Assert.True(sqlite.TryGetProperty("verifiedAt", out _));
+            Assert.False(sqlite.TryGetProperty("result", out _));
+            Assert.DoesNotContain("main.records", connectionText);
             Assert.DoesNotContain(dbPath, connectionText);
             Assert.DoesNotContain("fixture-only-credential", connectionText);
             Assert.DoesNotContain("ready", connectionText);
-            Assert.DoesNotContain("读取时间", connectionText);
+
+            const string fixturePassword = "fixture-sql-password";
+            var sqlServer = new OntologySource(Guid.NewGuid().ToString("N"), "MES", new(
+                "sqlserver", "db.example.invalid", 1888, "mes_demo", "reader", TrustServerCertificate: true));
+            app.Services.GetRequiredService<OntologyStore>().SaveSource("fixture", 43, connectionId!, 2, sqlServer, fixturePassword, DateTimeOffset.UtcNow);
+            using var previewRequest = await client.PostAsJsonAsync(connectionApi + "/lookup", new LookupRequest(3, [sqlServer.Id], null));
+            previewRequest.EnsureSuccessStatusCode();
+            var previewText = (await previewRequest.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString()!;
+            var database = JsonSerializer.Deserialize<JsonElement>(previewText).GetProperty("sources")[0];
+            Assert.Equal("db.example.invalid", database.GetProperty("host").GetString());
+            Assert.Equal(1888, database.GetProperty("port").GetInt32());
+            Assert.Equal("mes_demo", database.GetProperty("database").GetString());
+            Assert.Equal("reader", database.GetProperty("username").GetString());
+            Assert.True(database.GetProperty("trustServerCertificate").GetBoolean());
+            Assert.EndsWith($"#source-{sqlServer.Id}-credential", database.GetProperty("credential").GetProperty("@id").GetString());
+            Assert.DoesNotContain(fixturePassword, previewText);
+
+            using var sendRequest = await client.PostAsJsonAsync(connectionApi + "/lookup",
+                new LookupRequest(3, [sqlServer.Id], null, IncludeDatabasePasswords: true));
+            sendRequest.EnsureSuccessStatusCode();
+            Assert.True(sendRequest.Headers.CacheControl?.NoStore);
+            var sendText = (await sendRequest.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString()!;
+            var sentDatabase = JsonSerializer.Deserialize<JsonElement>(sendText).GetProperty("sources")[0];
+            Assert.Equal(fixturePassword, sentDatabase.GetProperty("credential").GetProperty("password").GetString());
+            using var wrongProject = await client.PostAsJsonAsync(connectionApi.Replace("/43/", "/44/") + "/lookup",
+                new LookupRequest(3, [sqlServer.Id], null, IncludeDatabasePasswords: true));
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden, wrongProject.StatusCode);
+            using var outdated = await client.PostAsJsonAsync(connectionApi + "/lookup",
+                new LookupRequest(2, [sqlServer.Id], null, IncludeDatabasePasswords: true));
+            Assert.Equal(System.Net.HttpStatusCode.Conflict, outdated.StatusCode);
             using var created = await client.PostAsJsonAsync("/api/v1/ontology/43/models", new { name = "Test" });
             created.EnsureSuccessStatusCode();
             var model = await created.Content.ReadFromJsonAsync<JsonElement>();
@@ -111,7 +144,9 @@ public sealed class OntologySourceHttpTests
             Assert.Equal("id", data.GetProperty("sources")[0].GetProperty("definition").GetProperty("keyColumn").GetString());
             using var read = await client.PostAsJsonAsync(endpoint + "/lookup",new {version=2,sourceIds=new[]{sourceId},key="7"});
             read.EnsureSuccessStatusCode();
-            Assert.Contains("ready",(await read.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString());
+            var dataText = (await read.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString()!;
+            var row = JsonSerializer.Deserialize<JsonElement>(dataText).GetProperty("sources")[0].GetProperty("result");
+            Assert.Equal("ready", row.GetProperty("values").GetProperty("status").GetString());
             using var stale = await client.DeleteAsync(endpoint + "/sources/" + sourceId + "?version=1");
             Assert.Equal(System.Net.HttpStatusCode.Conflict,stale.StatusCode);
             using var removed = await client.DeleteAsync(endpoint + "/sources/" + sourceId + "?version=2");
@@ -139,12 +174,6 @@ public sealed class OntologySourceHttpTests
             deleted.EnsureSuccessStatusCode();
             using var missing = await client.GetAsync(endpoint);
             Assert.Equal(System.Net.HttpStatusCode.NotFound, missing.StatusCode);
-            builder.Configuration["Ontology:Projects:43:Sqlite:sample"] = Path.Combine(root.FullName, "offline.db");
-            using var offline = await client.PostAsJsonAsync(connectionApi + "/lookup", new LookupRequest(2, [connectionSource.id], null));
-            offline.EnsureSuccessStatusCode();
-            var offlineText = (await offline.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString();
-            Assert.Contains("本轮数据库连接验证失败", offlineText);
-            Assert.DoesNotContain("数据库连接已验证", offlineText);
             await app.StopAsync();
         }
         finally { root.Delete(true); }

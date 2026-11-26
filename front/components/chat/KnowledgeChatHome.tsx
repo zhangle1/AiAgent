@@ -9,7 +9,7 @@ import { ChatSkillPicker, ChatSkillPreview } from "@/components/chat/ChatSkillPi
 import { ChatGoalPanel } from "@/components/chat/ChatGoalPanel";
 import { chatPrototypeOutputs, type ChatPrototypeOutput } from "@/lib/chat-prototype";
 import { ChatCollaborationDialog } from "@/components/chat/ChatCollaborationDialog";
-import { ontologyApi } from "@/lib/ontology-api";
+import { formatOntologyContext, ontologyApi } from "@/lib/ontology-api";
 import type { OntologyAttachment, OntologyModel, OntologySummary } from "@/lib/ontology-types";
 import { ChatComposerMenu } from "@/components/chat/ChatComposerMenu";
 import { ChatMessageNavigation } from "@/components/chat/ChatMessageNavigation";
@@ -1157,7 +1157,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
         const ids = model.ids.filter(id => next.sources?.some(source => source.definition.id === id));
         return ids.length ? [{ ...model, name: next.name, version: next.version, ids }] : [];
       });
-      return models.length ? { ...attachment, models } : null;
+      return models.length ? { ...attachment, models, includeDatabasePasswords: false } : null;
     });
   }
 
@@ -1190,9 +1190,12 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
       setReadingOntology(true);
       try {
         const context = await Promise.all(ontologyAttachment.models.map(model =>
-          ontologyApi.lookup(ontologyAttachment.projectId, model.id, model.version, model.ids, ontologyAttachment.key, controller.signal)));
+          ontologyApi.lookup(ontologyAttachment.projectId, model.id, model.version, model.ids, ontologyAttachment.key, {
+            includeDatabasePasswords: ontologyAttachment.includeDatabasePasswords,
+            signal: controller.signal,
+          })));
         if (controller.signal.aborted || currentOntologyDraft.current !== ontologyDraft) return;
-        message += "\n\n" + context.map(item => item.text).join("\n\n");
+        message += "\n\n" + formatOntologyContext(context);
       } catch (ex) {
         if (!controller.signal.aborted && currentOntologyDraft.current === ontologyDraft) setError(ex instanceof Error ? ex.message : "本体查询失败");
         return;
@@ -1519,6 +1522,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <span>本轮本体 · {ontologyAttachment.models.map(model => model.name).join("、")}</span>
                 <input aria-label="本轮查询键值" className="max-w-44 rounded border px-2 py-1" placeholder="记录键值（可选）" value={ontologyAttachment.key} maxLength={256}
                   onChange={event => setOntologyAttachment({...ontologyAttachment,key:event.target.value})}/>
+                {ontologyAttachment.includeDatabasePasswords && (
+                  <button type="button" onClick={() => setOntologyAttachment({...ontologyAttachment,includeDatabasePasswords:false})}>
+                    已选附带数据库密码 · 取消
+                  </button>
+                )}
                 <button type="button" onClick={() => setOntologyAttachment(null)}>移除</button>
                 {readingOntology && <span role="status">正在读取查询来源…</span>}
               </div>}

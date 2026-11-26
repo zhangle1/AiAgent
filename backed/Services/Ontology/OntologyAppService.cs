@@ -25,7 +25,7 @@ public sealed class OntologyAppService(OntologyStore store, OntologySources sour
     {
         var user = await auth.TryGetCurrentUserAsync(context.HttpContext!, token);
         if (user == null) return new UnauthorizedResult();
-        if (!access.CanAccess(user, projectId)) return new ForbidResult();
+        if (!access.CanAccess(user, projectId)) return new StatusCodeResult(StatusCodes.Status403Forbidden);
         context.HttpContext!.Response.Headers.CacheControl = "no-store";
         try { return new OkObjectResult(await operation(user.Id)); }
         catch (ArgumentException e) { return new BadRequestObjectResult(new { message = e.Message }); }

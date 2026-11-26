@@ -3,7 +3,9 @@ using System.Data.Common;
 using System.Security.Authentication;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
@@ -17,7 +19,7 @@ public sealed record OntologySource(string Id, string Label, OntologyConnection 
     string Relation = "", string KeyColumn = "", string ValueColumn = "", string? ProbeKey = null, string? Note = null);
 public sealed record StoredOntologySource(OntologySource Definition, string ProtectedPassword, DateTimeOffset CheckedAt);
 public sealed record SourceRequest(int Version, OntologySource Source, string? Password);
-public sealed record LookupRequest(int Version, string[] SourceIds, string? Key);
+public sealed record LookupRequest(int Version, string[] SourceIds, string? Key, bool IncludeDatabasePasswords = false);
 
 public sealed class OntologySources(OntologyStore store, IConfiguration config, IHttpClientFactory? clients = null)
 {
@@ -112,40 +114,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
     private static bool HasMapping(OntologySource source) =>
         !string.IsNullOrWhiteSpace(source.Relation) || !string.IsNullOrWhiteSpace(source.KeyColumn) || !string.IsNullOrWhiteSpace(source.ValueColumn);
 
-    private const int CatalogLimit = 12;
-    private static string CatalogSql(string driver) => driver switch
-    {
-        "sqlserver" => $"SELECT TOP ({CatalogLimit + 1}) TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_SCHEMA, TABLE_NAME",
-        "postgresql" => $"SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA NOT IN ('pg_catalog', 'information_schema') ORDER BY TABLE_SCHEMA, TABLE_NAME LIMIT {CatalogLimit + 1}",
-        "mysql" => $"SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_SCHEMA, TABLE_NAME LIMIT {CatalogLimit + 1}",
-        "oracle" => $"SELECT OWNER, OBJECT_NAME FROM (SELECT OWNER, OBJECT_NAME FROM ALL_OBJECTS WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AND OBJECT_TYPE IN ('TABLE', 'VIEW') ORDER BY OWNER, OBJECT_NAME) WHERE ROWNUM <= {CatalogLimit + 1}",
-        "sqlite" => $"SELECT 'main', name FROM sqlite_master WHERE type IN ('table', 'view') AND substr(name, 1, 7) <> 'sqlite_' ORDER BY name LIMIT {CatalogLimit + 1}",
-        _ => throw new ArgumentException("不支持此数据库驱动。")
-    };
-
-    private static async Task<string> ReadVisibleRelations(DbCommand command, string driver, CancellationToken token)
-    {
-        command.CommandText = CatalogSql(driver);
-        try
-        {
-            await using var rows = await command.ExecuteReaderAsync(token);
-            var relations = new List<string>();
-            while (await rows.ReadAsync(token))
-            {
-                if (relations.Count == CatalogLimit)
-                    return $"可见表和视图（前 {CatalogLimit} 项）{JsonSerializer.Serialize(relations)}";
-                var name = $"{rows.GetString(0)}.{rows.GetString(1)}";
-                relations.Add(name.Length > 160 ? name[..160] + "…" : name);
-            }
-            return relations.Count == 0 ? "当前账号未发现可见表或视图。" : $"可见表和视图 {JsonSerializer.Serialize(relations)}";
-        }
-        catch (DbException) when (!token.IsCancellationRequested)
-        {
-            return "表和视图清单读取失败。";
-        }
-    }
-
-    private async Task<string?> Read(long project, OntologySource source, string password, string? key, CancellationToken token, bool connectionOnly = false, bool includeCatalog = false)
+    private async Task<object?> Read(long project, OntologySource source, string password, string? key, CancellationToken token, bool connectionOnly = false)
     {
         if (source.Connection?.Type == "http")
             return await ReadHttp(project, source, password, key, token);
@@ -164,7 +133,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             {
                 cmd.CommandText = driver == "oracle" ? "SELECT 1 FROM DUAL" : "SELECT 1";
                 await cmd.ExecuteScalarAsync(deadline.Token);
-                return includeCatalog ? await ReadVisibleRelations(cmd, driver, deadline.Token) : null;
+                return null;
             }
             var sql = SelectStatements(source);
             cmd.CommandText = key == null ? sql.Metadata : sql.Lookup;
@@ -193,7 +162,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             var text = reader.IsDBNull(1) ? "NULL" : reader.GetFieldType(1) == typeof(byte[]) ? "（二进制字段）" :
                 Convert.ToString(reader.GetValue(1), System.Globalization.CultureInfo.InvariantCulture) ?? "";
             if (await reader.ReadAsync(deadline.Token)) return "查询键匹配多条记录，请配置唯一查询键";
-            return JsonSerializer.Serialize(new Dictionary<string,string> { [source.ValueColumn] = text.Length > 1500 ? text[..1500] + "…" : text });
+            return new Dictionary<string, string> { [source.ValueColumn] = text.Length > 1500 ? text[..1500] + "…" : text };
         }
         catch (SqlException e) when (!opened)
         {
@@ -226,7 +195,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
         };
     }
 
-    private async Task<string?> ReadHttp(long project, OntologySource source, string secret, string? key, CancellationToken token)
+    private async Task<object?> ReadHttp(long project, OntologySource source, string secret, string? key, CancellationToken token)
     {
         if (!Identifier(source.Relation) || !Identifier(source.KeyColumn) || !Identifier(source.ValueColumn))
             throw new ArgumentException("请填写已登记的接口别名与 JSON 字段名。");
@@ -252,7 +221,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
                 !row.TryGetProperty(source.ValueColumn, out var value) || value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
                 throw new ArgumentException("接口结果与配置的记录键或标量返回字段不匹配。");
             var text = value.ToString();
-            return JsonSerializer.Serialize(new Dictionary<string,string> { [source.ValueColumn] = text.Length > 1500 ? text[..1500] + "…" : text });
+            return new Dictionary<string, string> { [source.ValueColumn] = text.Length > 1500 ? text[..1500] + "…" : text };
         }
         catch (Exception e) when (e is HttpRequestException or JsonException || e is OperationCanceledException && !token.IsCancellationRequested)
         { throw new ArgumentException("接口读取失败，请检查服务、响应格式和访问权限。"); }
@@ -287,51 +256,96 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
         return save ? store.SaveSource(user, project, id, request.Version, source, password ?? "", checkedAt) : new { checkedAt };
     }
 
+    private static readonly JsonSerializerOptions ContextJson = new()
+    {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
+
     public async Task<object> Lookup(string user, long project, string id, LookupRequest request, CancellationToken token)
     {
         var model = store.Get(user, project, id);
         if (model.Version != request.Version) throw new InvalidOperationException("模型版本已变化，请重新加载。");
-        if (request.SourceIds == null || request.SourceIds.Length is < 1 or > 8 || request.Key?.Length > 256) throw new ArgumentException("请选择 1–8 个组件并核对查询键。");
-        var lines = new List<string> { $"项目本体模型 {model.Name} · ontology://{project}/{id}@{model.Version}" };
+        if (request.SourceIds == null || request.SourceIds.Length is < 1 or > 8 || request.Key?.Length > 256)
+            throw new ArgumentException("请选择 1–8 个组件并核对查询键。");
+
+        var modelRef = $"ontology://{project}/{id}@{model.Version}";
         var key = string.IsNullOrWhiteSpace(request.Key) ? null : request.Key.Trim();
-        var readRecord = false;
+        var sources = new List<Dictionary<string, object?>>();
         foreach (var sourceId in request.SourceIds.Distinct())
         {
             var entry = model.Sources.FirstOrDefault(s => s.Definition.Id == sourceId) ?? throw new ArgumentException("组件已变更，请重新选择。");
             var source = entry.Definition;
-            if (source.Connection.Type == "note")
+            var sourceRef = $"{modelRef}#source-{source.Id}";
+            var driver = source.Connection.Type;
+            var item = new Dictionary<string, object?>
             {
-                lines.Add($"模型说明 · {source.Label}\n{source.Note}");
+                ["@id"] = sourceRef,
+                ["@type"] = driver switch
+                {
+                    "note" => "ModelNote",
+                    "http" => "HttpSource",
+                    _ => "DatabaseConnection"
+                },
+                ["label"] = source.Label
+            };
+            sources.Add(item);
+            if (driver == "note")
+            {
+                item["description"] = source.Note;
                 continue;
             }
-            var database = source.Connection.Type != "http";
-            var mapped = HasMapping(source);
-            if (mapped)
-                lines.Add($"{source.Label} · {source.Relation} · 查询键 {source.KeyColumn} · 返回字段 {source.ValueColumn}");
-            if (database && (!mapped || key == null))
+
+            item["verifiedAt"] = entry.CheckedAt;
+            if (driver != "http")
             {
-                var mappingStatus = mapped ? "本轮未填写记录键" : "未配置按键查询";
-                try
+                item["driver"] = driver;
+                if (driver == "sqlite")
                 {
-                    var catalog = await Read(project, source, store.ReadPassword(entry), null, token, connectionOnly: true, includeCatalog: true);
-                    lines.Add($"{source.Label} · {source.Connection.Type} 数据库连接已验证 · {DateTimeOffset.UtcNow:O} · {mappingStatus}");
-                    if (catalog != null) lines.Add(catalog);
+                    item["databaseAlias"] = source.Connection.Database;
                 }
-                catch (ArgumentException e)
+                else
                 {
-                    lines.Add($"{source.Label} · 本轮数据库连接验证失败 · {e.Message}");
+                    var connection = source.Connection;
+                    item["host"] = connection.Host;
+                    item["port"] = connection.Port;
+                    item[driver == "oracle" ? "serviceName" : "database"] = connection.Database;
+                    item["username"] = connection.Username;
+                    item["transport"] = driver == "oracle" ? "tcps" : "tls";
+                    if (driver == "sqlserver")
+                        item["trustServerCertificate"] = connection.TrustServerCertificate;
+                    var credential = new Dictionary<string, object?> { ["@id"] = $"{sourceRef}-credential" };
+                    if (request.IncludeDatabasePasswords)
+                        credential["password"] = store.ReadPassword(entry);
+                    item["credential"] = credential;
                 }
-                continue;
             }
+
+            if (!HasMapping(source)) continue;
+            item["lookup"] = new { relation = source.Relation, keyColumn = source.KeyColumn, valueColumn = source.ValueColumn };
             if (key != null)
             {
                 var result = await Read(project, source, store.ReadPassword(entry), key, token);
-                readRecord = true;
-                lines.Add($"读取时间 {DateTimeOffset.UtcNow:O} · 键值 {JsonSerializer.Serialize(key)} · 数据 {result}");
+                item["result"] = new Dictionary<string, object?>
+                {
+                    ["key"] = key,
+                    ["readAt"] = DateTimeOffset.UtcNow,
+                    [result is string ? "status" : "values"] = result
+                };
             }
         }
-        if (readRecord) lines.Add("以上为本次只读查询的结果。");
-        else lines.Add("本轮未读取业务记录。");
-        return new { text = string.Join("\n", lines), version = model.Version };
+        var context = new Dictionary<string, object?>
+        {
+            ["@context"] = new Dictionary<string, string>
+            {
+                ["@vocab"] = "urn:aiagent:ontology:",
+                ["label"] = "http://www.w3.org/2000/01/rdf-schema#label",
+                ["description"] = "http://www.w3.org/2000/01/rdf-schema#comment"
+            },
+            ["@id"] = modelRef,
+            ["@type"] = "OntologyModel",
+            ["label"] = model.Name,
+            ["sources"] = sources
+        };
+        return new { text = JsonSerializer.Serialize(context, ContextJson), version = model.Version };
     }
 }

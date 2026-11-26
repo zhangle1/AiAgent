@@ -26,6 +26,7 @@ const model = { id: "f".repeat(32), name: "项目对象模型", version: 1, sour
 let deleted = false;
 let lookupUnavailable = false;
 let testedConnection;
+let lookupBody;
 const server = http.createServer(async (req, res) => {
   const asset = bundle.outputFiles.find((file) => req.url === "/" + path.basename(file.path));
   if (asset) {
@@ -35,7 +36,7 @@ const server = http.createServer(async (req, res) => {
   if (!req.url.startsWith("/api/")) {
     res.setHeader("content-type", "text/html; charset=utf-8");
     return res.end(
-      '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/stdin.css"><style>*{box-sizing:border-box}body{margin:0;font:14px system-ui}#root{width:min(100%,850px);height:640px;display:flex}button{cursor:pointer}</style><div id="root"></div><output></output><script src="/stdin.js"></script>',
+      '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/stdin.css"><style>*{box-sizing:border-box}body{margin:0;font:14px system-ui}#root{width:min(100%,850px);height:640px;display:flex}button{cursor:pointer}output{display:block;overflow-wrap:anywhere}</style><div id="root"></div><output></output><script src="/stdin.js"></script>',
     );
   }
   res.setHeader("content-type", "application/json");
@@ -75,8 +76,15 @@ const server = http.createServer(async (req, res) => {
     res.statusCode = 503;
     return res.end(JSON.stringify({ message: "查询来源离线" }));
   }
-  if (req.url.endsWith("/lookup"))
-    return res.end(JSON.stringify({ text: "已读取记录 A1", version: model.version }));
+  if (req.url.endsWith("/lookup")) {
+    lookupBody = JSON.parse(raw);
+    return res.end(
+      JSON.stringify({
+        text: lookupBody.key ? "已读取记录 A1" : '{"@type":"OntologyModel"}',
+        version: model.version,
+      }),
+    );
+  }
   return res.end(JSON.stringify(model));
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -145,6 +153,16 @@ try {
   assert.equal(await certificateOption.isChecked(), true);
   await node.getByText("上次保存时已验证", { exact: true }).waitFor();
   assert.equal(await node.getAttribute("data-connection-status"), "saved");
+  await button("预览与注入").click();
+  await page.getByLabel("整份本体").check();
+  const sendPassword = page.getByRole("checkbox", { name: "本轮附带数据库密码" });
+  assert.equal(await sendPassword.isChecked(), false);
+  await sendPassword.check();
+  await button("预览 JSON-LD").click();
+  await page.getByLabel("Prompt 预览").waitFor();
+  assert.equal(lookupBody.includeDatabasePasswords, undefined);
+  await button("挂载到本轮提问").click();
+  assert.equal(JSON.parse(await page.locator("output").innerText()).includeDatabasePasswords, true);
   await page.getByLabel("数据库驱动").selectOption("oracle");
   assert.equal(await page.getByLabel("端口").inputValue(), "2484");
   await page.getByLabel("服务名（Service Name）").waitFor();
