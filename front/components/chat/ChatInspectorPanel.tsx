@@ -200,6 +200,9 @@ export function ChatInspectorPanel({ isOpen, project, fileReference, requestedTa
     void Promise.all([getProjectMarkdownDocuments(project.id), getProjectMarkdownDirectories(project.id)])
       .then(([items, directories]) => {
         if (disposed) return;
+        if (requestedMarkdownDocument && !items.some(item => item.repository_name === requestedMarkdownDocument.repository_name && item.path === requestedMarkdownDocument.path)) {
+          items = [requestedMarkdownDocument, ...items];
+        }
         setMarkdownDocuments(items);
         setMarkdownDirectories(directories);
         setSelectedMarkdownDirectory((current) => directories.find((item) => item.repository_name === current.repository_name && item.path === current.path) ?? directories[0] ?? { repository_name: "aiagent-uploads", path: "" });

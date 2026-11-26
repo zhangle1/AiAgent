@@ -76,9 +76,10 @@ export async function getChatProjectReferences(query: string, excludeProjectId?:
   return parseJson<CodeProjectReference[]>(await fetch(`/api/v1/code-repositories/projects/references${suffix}`, { cache: "no-store" }));
 }
 
-export async function getProjectMarkdownDocuments(projectId: number, query = ""): Promise<CodeProjectMarkdownDocument[]> {
+export async function getProjectMarkdownDocuments(projectId: number, query = "", referencePath?: string): Promise<CodeProjectMarkdownDocument[]> {
   const params = new URLSearchParams();
   if (query.trim()) params.set("query", query.trim());
+  if (referencePath) params.set("reference_path", referencePath);
   const suffix = params.size > 0 ? `?${params}` : "";
   return parseJson<CodeProjectMarkdownDocument[]>(await fetch(`/api/v1/code-repositories/projects/${projectId}/markdown-documents${suffix}`, { cache: "no-store" }));
 }
@@ -124,14 +125,16 @@ export function projectMarkdownDocumentDownloadUrl(projectId: number, repository
 // Resolve against the authorized document catalog before constructing any download URL.
 export async function resolveProjectDocumentReference(projectId: number, reference: string): Promise<CodeProjectMarkdownDocument> {
   const canonical = reference.trim().replace(/^\/([a-z]:[\\/])/i, "$1");
-  const normalized = canonical.replace(/\\/g, "/").replace(/(?::|#L)[1-9]\d{0,8}$/i, "").replace(/^\.\//, "").toLowerCase();
+  const relative = canonical.replace(/\\/g, "/").replace(/(?::|#L)[1-9]\d{0,8}$/i, "").replace(/^\.\//, "");
+  const normalized = relative.toLowerCase();
   if (/^[a-z][a-z\d+.-]*:/i.test(normalized) && !/^[a-z]:\//i.test(normalized)) throw new Error("请选择当前项目中的文档。");
-  const items = await getProjectMarkdownDocuments(projectId);
   let matches: CodeProjectMarkdownDocument[];
   if (/^(?:[a-z]:\/|\/)/i.test(normalized)) {
     const resolved = await resolveProjectCodeFileReference(projectId, canonical);
+    const items = await getProjectMarkdownDocuments(projectId, "", `${resolved.repository_name}/${resolved.file_path}`);
     matches = items.filter((item) => item.repository_name === resolved.repository_name && item.path.toLowerCase() === resolved.file_path.toLowerCase());
   } else {
+    const items = await getProjectMarkdownDocuments(projectId, "", relative);
     const exact = items.filter((item) => item.path.toLowerCase() === normalized || `${item.repository_name}/${item.path}`.toLowerCase() === normalized);
     matches = exact.length ? exact : items.filter((item) => item.path.toLowerCase().endsWith(`/${normalized}`) || item.name.toLowerCase() === normalized);
   }

@@ -50,6 +50,7 @@ test("download uses server-validated identity and preserves original filename an
   globalThis.window = { setTimeout: (callback) => { cleanup = callback; } };
   t.after(() => { delete globalThis.document; delete globalThis.window; });
   await api.downloadProjectDocumentReference(7, "方案.pptx");
+  assert.equal(new URL(requests[0], "https://fixture.test").searchParams.get("reference_path"), file.name);
   assert.equal(anchor.download, file.name);
   assert.equal(anchor.href, "blob:test");
   assert.ok(clicked && removed);
