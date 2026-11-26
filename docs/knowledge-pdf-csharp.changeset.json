@@ -1,0 +1,203 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "date": "2026-11-17",
+  "baseCommit": "1542ada179ae7df35478d9e73f751517d5e78119",
+  "objective": "PDF 主解析改为 C# PdfPig / PDFium；保留 raw 子目录、章节与图片原子发布、受控资源预览。",
+  "supersedes": "docs/knowledge-pdf-layout.changeset.json",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "c70144d1df15647ede68cecffc9150bbb47a3483935a77fb1a337832cf4036eb",
+      "bytes": 35751
+    },
+    {
+      "path": "README.md",
+      "sha256": "ff8e86c5e4a0009296f97ad16945bba9321ba8617982b682ee9a30f1a2482255",
+      "bytes": 41582
+    },
+    {
+      "path": "backed.tests/CSharpPdfParsingTests.cs",
+      "sha256": "3d12a11b552f40a877834c01c2bf4eef5c3c834f0d36d37040a8879ebb2663bc",
+      "bytes": 15888
+    },
+    {
+      "path": "backed.tests/KnowledgeBookUploadTests.cs",
+      "sha256": "c85766277e07fcca6159ce91133ea3659a1f1a2164f6305d5f8dbc169d2ba9c3",
+      "bytes": 5218
+    },
+    {
+      "path": "backed.tests/KnowledgeParsingTests.cs",
+      "sha256": "bde3d5b8f2e8fbcd1022be7d0ca1fc1fa04898e253fb21aaab232cfa891e848e",
+      "bytes": 29139
+    },
+    {
+      "path": "backed.tests/KnowledgeWorkerPathTests.cs",
+      "sha256": "d29d84c104d6dbad811ba5e7f5310a848c92b00fc3364a0abb98748e46e70a73",
+      "bytes": 1643
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "22bdd215089406019b70487f1c08e29017e447aeca84fcf4f8034b3bc2e46a56",
+      "bytes": 2897
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "7dffb36e4b451db85e7e200083a505d01f7c497d63dc49200ce47fa61fd739fa",
+      "bytes": 4612
+    },
+    {
+      "path": "backed/PythonWorkers/README.md",
+      "sha256": "3b56b2500ef265bbb7ec37950f6f24aa8a6e14066b9316502f715a1f3cb0fba9",
+      "bytes": 1312
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/document_parser_worker.py",
+      "sha256": "f84f0dd951f8d0e6fee5a6bac05ab2753a2e17bfdec2a9131e1760774dc98817",
+      "bytes": 3625
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/pdf_layout.py",
+      "sha256": "b5e37af8e566a817c9038020d259c026c2a8829a956a2c4f33869d06e2f678be",
+      "bytes": 8778
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/requirements.txt",
+      "sha256": "d9d37b6863fe353b68c3fe6d853e0fb7e4233120db829ab1099070370a9ca823",
+      "bytes": 16
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/test_pdf_layout.py",
+      "sha256": "fc547a338f1f403f9e956c1a612ad0ebce035cfcbb3ff55fee8639c931a9b778",
+      "bytes": 3832
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeAppService.cs",
+      "sha256": "b57fe154fc3a4c74dce9a5613e3e7d6f5bdc1b8fa01d5a1de34128ce8d3bff8e",
+      "bytes": 25969
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeBaseManager.cs",
+      "sha256": "0e2f146b3ebce8861be77ffa27bdc893c293c22c2861a173f6e028d989bc5d83",
+      "bytes": 27905
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "81ff2e6a3d3300f80f18837d9c663384d0d430340f60bf6f66352a484ce1ee2e",
+      "bytes": 25860
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeParsedDocumentStore.cs",
+      "sha256": "562d7d9334c95ee1a6a0e489fbd8ca5d2de2fb7b0da3c03608f2e0595e41c409",
+      "bytes": 11877
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgePathService.cs",
+      "sha256": "4a505fde064a71fbb2df7c57703e3d824ceb89562bd211640e43abf66bd041c9",
+      "bytes": 7432
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceAppService.cs",
+      "sha256": "5b213182f47fa03f63c673a427e1b908797d9ff13eb43c933f9b7b73dbb99e8d",
+      "bytes": 3154
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceRawStore.cs",
+      "sha256": "837b578a54d21e0893fe9c8149421a6a917959aa2ccd544945bdc37217334d24",
+      "bytes": 1784
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "972e9b903953ac3936079f722c7ffcb7cc23db13c8c4f66b8d900f00740e0c51",
+      "bytes": 35560
+    },
+    {
+      "path": "backed/Services/Parsing/CSharpPdfLayoutConverter.cs",
+      "sha256": "0dcd160cc4d725434659cf2829dc5b16265c2b22f624ff915c5b54b1ff64011c",
+      "bytes": 18376
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingContracts.cs",
+      "sha256": "d263499c7c5124fd5de59c3aaa717910cfcbb759b529cdf17e522a958063f349",
+      "bytes": 3036
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingService.cs",
+      "sha256": "edb18d75d814b04592ecc30d80ebe58b6404ef90f8b7f330e9808e49122033c9",
+      "bytes": 6912
+    },
+    {
+      "path": "backed/Services/PythonWorkers/PythonWorkerHost.cs",
+      "sha256": "5952f26955044f922061cdfe0248f93b58501acb38d7389db760e653330c8a76",
+      "bytes": 14475
+    },
+    {
+      "path": "backed/appsettings.dev.example.json",
+      "sha256": "ac3524769fec21bd8298f7d5af5d1238a78224d5c6b46fac027e745d418df4d5",
+      "bytes": 2232
+    },
+    {
+      "path": "docs/knowledge-document-parsing.md",
+      "sha256": "aede5adf7678a4e18b2add981b76d2cf5f3137ff2c166ce790cde994085028a2",
+      "bytes": 17349
+    },
+    {
+      "path": "front/components/knowledge/KnowledgePdfPreview.tsx",
+      "sha256": "e42c1211bcb14bb9d77ee8acb970596f44bc6655baca5a7b51d63dc0272eba21",
+      "bytes": 2706
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "f2994d61dcc6a27f9a25e72d4f778d9608f9121052e152dc7d63fa5e019ef675",
+      "bytes": 33048
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "8d42a1c27a19581482aab8819d029e5cec9aa8c93bedfc40e315ba25ca553957",
+      "bytes": 14972
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "bf3542907f214293ea0b7811cf41372f788643988413e1efe6f0a263122d49d1",
+      "bytes": 8175
+    },
+    {
+      "path": "front/next-env.d.ts",
+      "sha256": "7b550dda9686c16f36a17bf9051d5dbf31e98555b30d114ac49fc49a1e712651",
+      "bytes": 247
+    },
+    {
+      "path": "front/package-lock.json",
+      "sha256": "2662debec3b7bdb2a390b9ff3db8c805ba54f881b97165e529d61d778fc08b67",
+      "bytes": 188326
+    },
+    {
+      "path": "front/package.json",
+      "sha256": "777b0f6dbcd9837a8ded6ba1004e75f92425218505a3d0e378ba7ab8282bee43",
+      "bytes": 813
+    },
+    {
+      "path": "front/tests/knowledge-pdf-resources.browser.mjs",
+      "sha256": "76da2690c7a811c9a3547384c8047090cfb4a75d66a6acb942b0e28b6ccbd772",
+      "bytes": 9546
+    }
+  ],
+  "fingerprint": "89f17efb2f9f487cfc0ee644727754a84ccbaf2d010c01f240ca76f43bbe7bb2",
+  "fingerprintAlgorithm": "SHA256(UTF8(join(sorted(path + : + sha256 + : + bytes), LF)))",
+  "validation": {
+    "backend": "176 passed, 0 failed: CSharpPdfParsingTests; KnowledgeWorkspaceTests (all partial classes); KnowledgeWorkerPathTests; KnowledgeBookUploadTests; MarkdownDocumentPlannerTests; KnowledgeStaleResourceTests; KnowledgeCleanupHttpTests; KnowledgeResourceProcessingTests; OfficeMarkdownConverterTests; ChatFileAttachmentServiceTests; SwaggerDocumentTests.",
+    "focused": "14 CSharpPdfParsingTests passed again after adding an explicit temporary-directory cleanup guard.",
+    "realPdf": "C# generated fixtures verify bookmarks, font headings, grid tables, raster/vector assets, scan warnings, all rotations and nonzero CropBox, huge-page pixel budget, page-count limit, source-byte preservation, legacy/new roots, cancellation, no overwrite, preflight with missing Python path.",
+    "integration": "Real C# parser to SQLite/generation manifest/resource URI and actual chat upload/text extraction; no model calls.",
+    "browser": "knowledge-pdf-resources.browser.mjs passed: actual Next/PDF.js paging, nested upload/raw hint, controlled full-body/chapter images and 390px layout. Fixtures generated with Node, no Python.",
+    "visual": "Desktop PDF and mobile Markdown screenshots inspected at TEMP/knowledge-pdf-ui-bDXGsF.",
+    "publish": "Isolated dotnet publish succeeded. PdfPig and PDFtoImage DLLs plus win-x64 pdfium/libSkiaSharp native assets exist; PythonWorkers/parsing, actual appsettings.json and data absent.",
+    "configuration": "Example JSON valid; actual local configuration not read or modified.",
+    "whitespace": "git diff --check passed"
+  },
+  "compatibility": "Existing IDocumentParsingService and result/asset contracts preserved; old Engine requests accepted but actual engine fixed to pdfpig-pdfium-layout. Existing manifests/versions, source authorization/hash and image hashes remain. No schema change. Legacy Python allowed roots are fallback only, no worker invocation.",
+  "limits": "Scans require separate OCR. Grid tables and heading/reading order use heuristics. Native PDFium and single-page PdfPig calls cannot be forcibly interrupted in-process; cancellation waits until current call exits. Linux/macOS native runtime not executed here.",
+  "scope": "Existing goal/chat/scope and other pending changes preserved. Snapshot rehashes the prior PDF/raw feature sources and this migration; this is not an approval or remote delivery.",
+  "runtime": "Backend/debugger and real database not restarted or accessed. Existing frontend dev process used only with synthetic intercepted APIs. Temporary isolated build/publish outputs remain outside repo.",
+  "delivery": "Local changes only, no commit or push. Publish full backend including native assets and restart, then explicitly reparse failed PDF tasks."
+}

@@ -74,7 +74,7 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
 
         var query = _db.Queryable<AiUsageRecord>().Where(item => item.CreatedAt >= from && item.CreatedAt < to);
         if (!useAll) query = query.Where(item => item.UserId == user.Id);
-        var totals = query.Select(item => new UsageTotalsRow
+        var totals = query.Clone().Select(item => new UsageTotalsRow
         {
             TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
             PromptTokens = SqlFunc.AggregateSum(item.PromptTokens),
@@ -82,7 +82,7 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
             TurnCount = SqlFunc.AggregateCount(item.Id),
             EstimatedTurnCount = SqlFunc.AggregateSum(item.IsEstimated ? 1 : 0)
         }).First();
-        var activityByDay = query
+        var activityByDay = query.Clone()
             .GroupBy(item => SqlFunc.ToDateShort(item.CreatedAt))
             .Select(item => new UsageActivityAggregateRow
             {
@@ -143,7 +143,7 @@ public sealed class UsageStatisticsService : IUsageStatisticsService
         var to = from.AddDays(1);
         var query = _db.Queryable<AiUsageRecord>().Where(item => item.CreatedAt >= from && item.CreatedAt < to);
         if (!useAll) query = query.Where(item => item.UserId == user.Id);
-        var totals = query.Select(item => new UsageTotalsRow
+        var totals = query.Clone().Select(item => new UsageTotalsRow
         {
             TotalTokens = SqlFunc.AggregateSum(item.TotalTokens),
             PromptTokens = SqlFunc.AggregateSum(item.PromptTokens),

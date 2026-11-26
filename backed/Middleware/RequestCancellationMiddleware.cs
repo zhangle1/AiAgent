@@ -19,6 +19,13 @@ public sealed class RequestCancellationMiddleware(RequestDelegate next)
         {
             CompleteDisconnectedRequest(context);
         }
+        catch (BadHttpRequestException error) when (
+            context.RequestAborted.IsCancellationRequested
+            && error.StatusCode == StatusCodes.Status400BadRequest
+            && error.Message == "Unexpected end of request content.")
+        {
+            CompleteDisconnectedRequest(context);
+        }
     }
 
     private static void CompleteDisconnectedRequest(HttpContext context)

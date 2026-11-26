@@ -4,7 +4,8 @@ namespace AiAgent.Backend.Dtos.Chat;
 
 public sealed class ChatGoalRequest
 {
-    public const long MaxTokenBudget = 2_000_000;
+    public const long DefaultTokenBudget = 10_000_000;
+    public const long LargestTokenBudget = 9_007_199_254_740_991;
     [JsonPropertyName("action")]
     public string Action { get; set; } = "start";
     [JsonPropertyName("objective")]

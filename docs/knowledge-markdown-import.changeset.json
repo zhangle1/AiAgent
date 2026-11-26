@@ -1,0 +1,80 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "date": "2026-11-18",
+  "baseCommit": "0a4eb9f1562f05a09f8ad58f9674ec024ad8b88e",
+  "objective": "Complete resource uploads after Markdown publication. Preserve explicit KnowAgent compilation and keep import retries in the Markdown-only mode.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "52fee28d76ae50aea6a3005d097e524fe37f491f18c7e719a00c6a95c409df38",
+      "bytes": 37576
+    },
+    {
+      "path": "README.md",
+      "sha256": "cd08997e9acb0d947631a8d03770e3fe41ec05eae9b38d2c6bc7d3c2f110b3cf",
+      "bytes": 43588
+    },
+    {
+      "path": "backed.tests/KnowledgeSemanticTests.cs",
+      "sha256": "f6f223bf21a82a8b53a4a44c311a549e5d0c73840e638bcab750d1ec974d431c",
+      "bytes": 21018
+    },
+    {
+      "path": "backed/Entities/Knowledge/AiKnowledgeJob.cs",
+      "sha256": "045ffb25c98f712770627589a8b6398e6d51d1cb602a5d9c99ccdc3184733adc",
+      "bytes": 2590
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeCompilationHandler.cs",
+      "sha256": "05e03952d57484644232df88ee02a7758ffc2d3196fe8145bc0f6f400bc9bd08",
+      "bytes": 1918
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceSemanticService.cs",
+      "sha256": "a8c8e03ad4285ffbd0fdf4dc58af66b46e254f74d6f0778383f17561e812a1dd",
+      "bytes": 11615
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "c015b78a080278ca1067cbaafc12eec1ea05d7c1532b956ae74e5f7cc0d59e42",
+      "bytes": 41382
+    },
+    {
+      "path": "backed/Services/TaskCenter/TaskCenterService.cs",
+      "sha256": "98291b5a504abe394891b33daed944f49bc12f2df64a25ceec6f68cb74f410b7",
+      "bytes": 6915
+    },
+    {
+      "path": "backed/Services/TaskQueue/KnowledgeCompilationWorker.cs",
+      "sha256": "35d0664bf80e31d3d4aea954f7a3075dfb1bd215997123d0248c62663ee04d40",
+      "bytes": 17157
+    },
+    {
+      "path": "docs/knowledge-document-parsing.md",
+      "sha256": "214bb367711f42f386204450e424f3e18ffb509d7bba989f46db871fe6a9c074",
+      "bytes": 20970
+    },
+    {
+      "path": "docs/knowledge-resource-semantics.md",
+      "sha256": "4c60d0e1dfa2ff531237fa196d78f871ced37a3e5c132832bf9429e31dd24960",
+      "bytes": 7029
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "471fbcddbec919134c2b6a0a358552d07fbffe02b021dfdff03b06b56275f48a",
+      "bytes": 34497
+    },
+    {
+      "path": "front/components/task-center/TaskCenterPage.tsx",
+      "sha256": "8113f477453f26469e2c14d726468955ffa02b9f963297c69b61af4e3866cf05",
+      "bytes": 6462
+    }
+  ],
+  "validation": {
+    "backend": "194 knowledge tests passed in Release. Rebuilt and reran the two targeted import and semantic queue tests after extending the import assertion.",
+    "typescript": "tsc --noEmit --incremental false passed.",
+    "whitespace": "git diff --check passed."
+  },
+  "scope": "Full-file hashes include ongoing work in shared files. The snapshot is for local review."
+}

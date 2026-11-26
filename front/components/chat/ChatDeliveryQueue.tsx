@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { cancelChatCommand, getChatDeliveries, type ChatDelivery } from "@/lib/chat-api";
 import { removeRecoveryPointer } from "@/lib/chat-command-recovery";
 
-export function ChatDeliveryQueue({ sessionId, sending, onResume }: { sessionId: string; sending: boolean; onResume: (commandId: string) => void }) {
+export function ChatDeliveryQueue({ sessionId, sending, onResume, onRunning }: { sessionId: string; sending: boolean; onResume: (commandId: string) => void; onRunning: (row: ChatDelivery) => void }) {
   const [rows, setRows] = useState<ChatDelivery[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -13,13 +13,20 @@ export function ChatDeliveryQueue({ sessionId, sending, onResume }: { sessionId:
     let disposed = false; let timer: ReturnType<typeof setTimeout>; let request: AbortController | undefined;
     async function load() {
       request?.abort(); request = new AbortController();
-      try { const result = await getChatDeliveries(sessionId, request.signal); if (!disposed) { setRows(result); setError(""); } }
+      try {
+        const result = await getChatDeliveries(sessionId, request.signal);
+        if (disposed) return;
+        setRows(result);
+        setError("");
+        const running = result.find(row => row.status === "running");
+        if (running) onRunning(running);
+      }
       catch (ex) { if (!disposed && !request.signal.aborted) setError(ex instanceof Error ? ex.message : "队列读取失败"); }
       finally { if (!disposed) timer = setTimeout(load, 2000); }
     }
     void load();
     return () => { disposed = true; clearTimeout(timer); request?.abort(); };
-  }, [sessionId, revision]);
+  }, [sessionId, revision, onRunning]);
   async function remove(row: ChatDelivery) {
     setBusy(row.command_id); setError("");
     try {

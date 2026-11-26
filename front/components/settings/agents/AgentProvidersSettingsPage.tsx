@@ -44,6 +44,10 @@ export function AgentProvidersSettingsPage() {
 
   async function saveCodexModelPolicy() {
     if (!codexModelPolicy || !imageOcrPolicy) return;
+    if (!Number.isSafeInteger(codexModelPolicy.goal_max_token_budget) || codexModelPolicy.goal_max_token_budget <= 0) {
+      setError("目标 Token 上限须为正整数。");
+      return;
+    }
     setSaving(true);
     setSuccess(null);
     let modelPolicySaved = false;
@@ -56,6 +60,7 @@ export function AgentProvidersSettingsPage() {
         default_reasoning_effort: codexModelPolicy.default_reasoning_effort,
         allow_chat_reasoning_effort_override: codexModelPolicy.allow_chat_reasoning_effort_override,
         profile_models: codexModelPolicy.profile_models,
+        goal_max_token_budget: codexModelPolicy.goal_max_token_budget,
       });
       const unsupported = codexModelPolicy.profile_models.some((profile) => {
         const persisted = saved.profile_models.find((item) => item.profile_name === profile.profile_name);
@@ -63,6 +68,8 @@ export function AgentProvidersSettingsPage() {
           || (profile.supports_image_input && !saved.models.some((model) => model.profile_name === profile.profile_name && model.image_input === "native"));
       });
       if (unsupported) throw new Error("后端未保存原图能力，请更新并重启后端后再保存图片配置。");
+      if (saved.goal_max_token_budget !== codexModelPolicy.goal_max_token_budget)
+        throw new Error("后端未保存目标 Token 上限，请更新并重启后端后重试。");
       setCodexModelPolicy(saved);
       modelPolicySaved = true;
       const imagePolicy = await updateImageOcrPolicy({ native_image_input_enabled: imageOcrPolicy.native_image_input_enabled });
@@ -70,7 +77,7 @@ export function AgentProvidersSettingsPage() {
         throw new Error("后端未保存图片上传总开关，请更新后端后重试。");
       setImageOcrPolicy(imagePolicy);
       setError(null);
-      setSuccess("模型与图片上传配置已保存，返回聊天即可使用。");
+      setSuccess("模型、图片上传和目标预算配置已保存，返回聊天即可使用。");
     }
     catch (ex) { setError(`${modelPolicySaved ? "模型已保存，但图片总开关保存失败：" : ""}${ex instanceof Error ? ex.message : "Codex 模型策略保存失败。"}`); }
     finally { setSaving(false); }
@@ -188,6 +195,7 @@ function CodexAdvancedPolicySettings({ policy, saving, onChange, onSave }: { pol
   };
 
   return <section className="mb-4 space-y-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><label htmlFor="codex-goal-token-limit" className="block text-xs font-medium text-slate-700">目标模式 Token 上限</label><p id="codex-goal-token-help" className="mt-1 text-xs leading-5 text-slate-500">新目标默认使用此预算，上限默认 1000 万 Token。修改后对新目标生效，已有目标继续使用原预算。</p><input id="codex-goal-token-limit" aria-describedby="codex-goal-token-help" type="number" min={1} max={Number.MAX_SAFE_INTEGER} step={1} value={policy.goal_max_token_budget ?? 10_000_000} disabled={saving} onChange={event => onChange({ ...policy, goal_max_token_budget: Number(event.target.value) })} className="mt-2 h-9 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 disabled:opacity-50" /></div>
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">推理等级与第三方 Profile</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">内置 Codex 模型使用 app-server 推理等级。第三方 profile 使用 <code>codex exec --profile &lt;名称&gt; --json</code>，由后端将 JSONL 实时转发到聊天框。</p></div><button type="button" onClick={onSave} disabled={saving || policy.allowed_model_ids.length === 0 || !policy.default_model_id} className="inline-flex h-9 items-center rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:bg-slate-300">保存高级配置</button></div>
     <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><p className="text-xs font-medium text-slate-700">允许的推理等级</p><div className="mt-2 flex flex-wrap gap-2">{CODEX_REASONING_EFFORTS.map((effort) => <label key={effort.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-white px-2 py-1 text-xs text-slate-700 shadow-sm"><input type="checkbox" checked={policy.allowed_reasoning_efforts.includes(effort.id)} onChange={(event) => { const allowed = event.target.checked ? [...policy.allowed_reasoning_efforts, effort.id] : policy.allowed_reasoning_efforts.filter((id) => id !== effort.id); onChange({ ...policy, allowed_reasoning_efforts: allowed, default_reasoning_effort: allowed.includes(policy.default_reasoning_effort) ? policy.default_reasoning_effort : allowed[0] || "" }); }} className="h-3.5 w-3.5 rounded border-slate-300 text-violet-600"/>{effort.label}</label>)}</div></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium text-slate-600">默认推理等级<select value={policy.default_reasoning_effort} onChange={(event) => onChange({ ...policy, default_reasoning_effort: event.target.value })} className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs">{policy.allowed_reasoning_efforts.map((effort) => <option key={effort} value={effort}>{CODEX_REASONING_EFFORTS.find((item) => item.id === effort)?.label || effort}</option>)}</select></label><label className="mt-5 flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700"><input type="checkbox" checked={policy.allow_chat_reasoning_effort_override} onChange={(event) => onChange({ ...policy, allow_chat_reasoning_effort_override: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>允许聊天中切换</label></div></div>
     <div className="rounded-xl border border-slate-200 p-3"><div><p className="text-xs font-medium text-slate-700">第三方 Codex Profile</p><p className="mt-1 text-[11px] text-slate-500">只填第一个名称即可：输入 <code>deepseek</code> 后，AiAgent 会自动以 <code>codex exec --profile deepseek --json</code> 启动。模型 ID 留空时完全使用 profile 文件内配置。</p></div><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5"><input value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} placeholder="Profile 名称，例如 deepseek" className="h-9 rounded-md border border-slate-200 px-2 text-xs"/><input value={draft.profile_name} onChange={(event) => setDraft({ ...draft, profile_name: event.target.value })} placeholder="可选：覆盖 profile 名称" className="h-9 rounded-md border border-slate-200 px-2 font-mono text-xs"/><input value={draft.model_id ?? ""} onChange={(event) => setDraft({ ...draft, model_id: event.target.value })} placeholder="可选 model id" className="h-9 rounded-md border border-slate-200 px-2 font-mono text-xs"/><input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="说明（可选）" className="h-9 rounded-md border border-slate-200 px-2 text-xs"/><button type="button" onClick={addProfile} className="h-9 rounded-md border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-700 hover:bg-violet-100">添加 Profile</button></div><label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={draft.supports_reasoning_effort} onChange={(event) => setDraft({ ...draft, supports_reasoning_effort: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-violet-600"/>该 profile 允许在聊天中选择推理等级</label>

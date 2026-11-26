@@ -11,7 +11,7 @@
 | 环节 | 当前代码事实 | 对截图的意义 |
 | --- | --- | --- |
 | 确认目录 | 桌面选择器保存勾选 URI，从可见后代文件推导知识库名。发送时把 `knowledge_scope_uris`、旧单值字段、知识库名和代码项目一起交给流请求。 | “已选 1”表示选择状态。用户无需在消息正文里再粘贴路径。仅凭截图不能确认那次请求的实际载荷。[选择与发送](../front/components/chat/KnowledgeChatHome.tsx#L1050) |
-| 进入聊天编排 | Codex 命中默认 Provider 后直接执行。只有继续走普通 Agent 路径才创建携带 Scope 的 `AgentContext`。Scope 也会进入会话偏好和投递指纹，这两处只用于恢复选择和识别请求。 | 最近的 Provider 改造统一了执行入口，知识检索仍是另一层职责。[聊天路由](../backed/Services/Chat/ChatOrchestrator.cs#L73) · [上下文](../backed/Services/Chat/Agentic/AgentContext.cs#L107) · [投递指纹](../backed/Services/Chat/Codex/CodexTurnControl.cs#L11) |
+| 进入聊天编排 | Codex 命中默认 Provider 后直接执行。只有继续走普通 Agent 路径才创建携带 Scope 的 `AgentContext`。Scope 也会进入会话偏好和投递指纹，这两处只用于恢复选择和识别请求。 | 最近的 Provider 改造统一了执行入口，知识检索仍是另一层职责。[聊天路由](../backed/Services/Chat/Orchestration/ChatOrchestrator.cs) · [上下文](../backed/Services/Chat/Agentic/AgentContext.cs#L107) · [投递指纹](../backed/Services/Chat/Codex/CodexTurnControl.cs#L11) |
 | Codex 实际输入 | `BuildPromptText` 合并项目引用、显式 Markdown、项目 Agent 文档索引、附件和记忆。这个列表没有选中知识范围的章节、Wiki 摘录或知识引用。 | 模型能查看授权代码仓库及其中的 `docs/context`。回答里提到仓库文档，只能证明它声称使用了该来源，不能证明读过所选书籍。[提示构造](../backed/Services/Chat/Codex/CodexChatService.cs#L714) |
 | 普通知识检索 | 知识搜索工具被调用时，服务端从当前可见资源树把 Scope 解析成文档 ID，再按配置进入 Wiki 或 RAG。Wiki 查询在选中的文档 ID 内取页并返回引文。 | LLM Wiki 已经接入支持该检索工具的聊天路径。“工具可用”和“本轮确实取回引文”还要分开观察。[工具分发](../backed/Services/Chat/Agentic/ToolDispatch.cs#L124) · [检索分支](../backed/Services/Chat/Retrieval/KnowledgeRetrievalService.cs#L53) · [现行 Scope 契约](knowledge-chat-scope.md) |
 

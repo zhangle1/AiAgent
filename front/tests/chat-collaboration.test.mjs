@@ -45,3 +45,15 @@ test("the prompt includes the selected commit and evidence limits", () => {
   }
   assert.ok(!prompt.includes("def456"));
 });
+
+test("risk and revert draft distinct instructions for only the selected commits", () => {
+  const args = ["https://example.test", "示例项目", snapshot, [snapshot.commits[1]]];
+  const risk = collaborationPrompt(...args, "risk");
+  const revert = collaborationPrompt(...args, "revert");
+  assert.ok(risk.startsWith("请检查所选提交的回归风险"));
+  assert.ok(revert.startsWith("请拟定所选提交的撤回方案"));
+  for (const text of ["仅做只读检查", "不要执行撤回或任何写操作", "等待我明确确认", "def456", "cps-api"]) {
+    assert.ok(revert.includes(text), text);
+  }
+  assert.ok(!revert.includes("abc123"));
+});

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MarkdownDocumentPreview } from "@/components/MarkdownDocumentPreview";
 import dynamic from "next/dynamic";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks, MessageSquarePlus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, RefreshCw, Upload, UserRound, FolderKanban, Library, Download, RotateCw, X, Globe2, FolderPlus, Loader2, ListChecks, MessageSquarePlus, Trash2, Eraser } from "lucide-react";
 import { getKnowledgeResourceTask, createKnowledgeResourceDirectory, getKnowledgeResourceTree, knowledgeResourceFileUrl, parseKnowledgeResource, readKnowledgeResourceForPreview, uploadKnowledgeResources } from "@/lib/knowledge-api";
 import { KnowledgeSemanticPreview } from "./KnowledgeSemanticPreview";
 import { KnowledgeParsedSections } from "./KnowledgeParsedSections";
@@ -15,6 +15,7 @@ import styles from "./knowledge-workspace.module.css";
 import type { KnowledgeCompilationJob, KnowledgeResourceNode, KnowledgeResourceRead } from "@/lib/knowledge-types";
 import { KnowledgeSessionImportDialog } from "./KnowledgeSessionImportDialog";
 import { KnowledgeCleanupDialog } from "./KnowledgeCleanupDialog";
+import { KnowledgeResourceDeleteDialog } from "./KnowledgeResourceDeleteDialog";
 import { KnowledgeGitMenu } from "./KnowledgeGitMenu";
 
 const KnowledgePdfPreview = dynamic(() => import("./KnowledgePdfPreview"), { ssr: false });
@@ -54,6 +55,7 @@ export function KnowledgeWorkspace() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [showProcessing, setShowProcessing] = useState(false);
   const [showCleanup, setShowCleanup] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeResourceNode | null>(null);
   const [previewMode, setPreviewMode] = useState<"source" | "parsed" | "semantic">("source");
   const [job, setJob] = useState<KnowledgeCompilationJob | null>(null);
   const [showTaskLink, setShowTaskLink] = useState(false);
@@ -86,6 +88,8 @@ export function KnowledgeWorkspace() {
   const sourceNode = resource?.node.uri === selectedUri ? resource.node : selected;
   const taskNotice = job && ["success", "error", "cancelled"].includes(job.status) ? job.message ?? "任务结束" : null;
   const sourceUnavailable = sourceNode?.kind === "file" && !!sourceNode.source_status && sourceNode.source_status !== "available" && !isGeneratedResource(sourceNode.uri);
+  const canDelete = sourceNode?.kind === "file" && !!sourceNode.can_delete && !!sourceNode.document_id && !isGeneratedResource(sourceNode.uri);
+  const deleteBusy = !!job && ["queued", "pending", "processing", "cancelling"].includes(job.status) || ["parsing", "processing", "indexing", "cancelling"].includes(sourceNode?.status ?? "");
 
   async function loadTree(select = selectedUri) {
     setLoading(true); setError("");
@@ -185,7 +189,7 @@ export function KnowledgeWorkspace() {
           <div className="min-w-0"><div className="text-xs font-semibold text-slate-800">目录</div><div className="mt-0.5 truncate text-[10px] text-slate-400">Viking URI 资源树</div></div>
           <div className="flex shrink-0 items-center gap-1">
             <button type="button" onClick={() => setShowProcessing(true)} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-slate-500 hover:bg-blue-50 hover:text-blue-600"><ListChecks size={14} />文件处理</button>
-            <button type="button" onClick={() => setShowCleanup(true)} title="清理失效记录" aria-label="清理失效记录" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={14} /></button>
+            <button type="button" onClick={() => setShowCleanup(true)} title="清理失效记录" aria-label="清理失效记录" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-600"><Eraser size={14} /></button>
             <div ref={addMenuRef} className="relative"><button type="button" title="添加资源或导入会话" aria-label="添加资源或导入会话" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen(current => !current)} className={`grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-600 ${addMenuOpen ? "bg-blue-50 text-blue-600" : ""}`}><Plus size={15} /></button>{addMenuOpen && <div className="absolute right-0 top-9 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"><button type="button" onClick={() => { setAddMenuOpen(false); setShowResourceDialog(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-blue-50"><Upload size={14} className="text-blue-600" />添加资源</button><button type="button" onClick={() => { setAddMenuOpen(false); setShowSessionImport(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-blue-50"><MessageSquarePlus size={14} className="text-violet-600" />导入平台会话</button></div>}</div>
           </div>
         </div>
@@ -194,7 +198,7 @@ export function KnowledgeWorkspace() {
       preview={<section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#fbfcfe]">
         <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
           <div title={selectedUri} className="min-w-0 truncate font-mono text-[11px] text-slate-500">{selectedUri}</div>
-          {selected?.kind === "file" && <div className="flex shrink-0 items-center gap-2"><button type="button" disabled={isGeneratedResource(selected.uri) || sourceUnavailable} onClick={() => void parse()} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300 disabled:opacity-40"><RotateCw size={12} />重新解析</button>{!sourceUnavailable && <a href={knowledgeResourceFileUrl(selectedUri, true)} download className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300"><Download size={12} />下载</a>}</div>}
+          {selected?.kind === "file" && <div className="flex shrink-0 items-center gap-2"><button type="button" disabled={isGeneratedResource(selected.uri) || sourceUnavailable} onClick={() => void parse()} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300 disabled:opacity-40"><RotateCw size={12} />重新解析</button>{!sourceUnavailable && <a href={knowledgeResourceFileUrl(selectedUri, true)} download className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] hover:border-blue-300"><Download size={12} />下载</a>}{canDelete && <button type="button" disabled={reading || deleteBusy} title={deleteBusy ? "请先取消活动任务并等待结束" : "从资料库移除此文件"} onClick={() => setDeleteTarget({ ...sourceNode! })} className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2 py-1 text-[11px] text-rose-600 hover:bg-rose-50 disabled:opacity-40"><Trash2 size={12} />删除文件</button>}</div>}
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4 xl:p-6">
           {(taskNotice || notice) && <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700"><span>{taskNotice || notice}</span>{showTaskLink && <a href="/task-center?domain=knowledge" className="font-semibold underline underline-offset-2">查看任务中心</a>}</div>}
@@ -206,6 +210,13 @@ export function KnowledgeWorkspace() {
     />
     {showProcessing && <KnowledgeFileProcessingDialog onClose={() => setShowProcessing(false)} onOpen={uri => { setShowProcessing(false); void open(uri); }} />}
     {showCleanup && <KnowledgeCleanupDialog onClose={() => setShowCleanup(false)} onCleaned={removed => { setShowCleanup(false); setNotice(`已清理 ${removed} 条失效记录，磁盘文件和聊天历史已保留。`); const target = selected?.kind === "file" ? selected.parent_uri ?? "viking://resources/" : selectedUri; void loadTree(target); }} />}
+    {deleteTarget && <KnowledgeResourceDeleteDialog node={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={() => {
+      const target = deleteTarget;
+      setDeleteTarget(null); ++readSequence.current; setResource(null); setJob(null); setShowTaskLink(false);
+      setNodes(current => current.filter(node => node.document_id !== target.document_id));
+      setNotice(`已从资料库移除 ${target.name}，磁盘原文件和历史记录已保留。`);
+      void loadTree(target.parent_uri ?? "viking://resources/");
+    }} />}
     {showSessionImport && <KnowledgeSessionImportDialog onClose={() => setShowSessionImport(false)} onImported={async result => { setNotice(`已导入 ${result.imported_sessions} 个平台会话，追加 ${result.appended_messages} 条消息。`); setShowSessionImport(false); await loadTree(); }} />}
     {showResourceDialog && <ResourceDialog nodes={nodes.filter(node => !isGeneratedResource(node.uri))} parentUri={selected?.kind === "directory" ? selectedUri : selected?.parent_uri ?? "viking://resources/"} onClose={() => setShowResourceDialog(false)} onUploaded={async (files, targetUri) => { if (await upload(files, targetUri)) setShowResourceDialog(false); }} onDirectoryCreated={async (name, parentUri) => { await createKnowledgeResourceDirectory(parentUri, name); setNotice("目录已创建"); setShowResourceDialog(false); await loadTree(parentUri); }} />}
   </main>;

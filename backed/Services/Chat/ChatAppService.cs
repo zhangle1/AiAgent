@@ -1,8 +1,7 @@
+using AiAgent.Backend.Services.Chat.Orchestration;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
-using AiAgent.Backend.Services.Usage;
 using AiAgent.Backend.Services.Auth;
-using AiAgent.Backend.Services.Memory;
 using Furion.DynamicApiController;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
@@ -22,106 +21,36 @@ public sealed class ChatAppService : IDynamicApiController
     };
 
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IChatOrchestrator _orchestrator;
     private readonly IAuthService _authService;
-    private readonly IChatSessionService _sessions;
+    private readonly IChatDispatcher _dispatcher;
     private readonly IChatImageAttachmentService _attachments;
     private readonly IChatFileAttachmentService _fileAttachments;
     private readonly IChatUploadLibraryService _uploadLibrary;
-    private readonly IUsageStatisticsService _usage;
-    private readonly IMemoryService _memory;
-    private readonly IProjectReferenceContextService _projectReferences;
-    private readonly Knowledge.KnowledgeResourceService? _bookResources;
-    private readonly IMarkdownDocumentReferenceContextService _markdownDocuments;
-    private readonly IProjectAgentMarkdownIndexContextService _projectAgentMarkdownIndex;
     private readonly ICodexChatService _codex;
-    private readonly ICodexModelPolicyService _codexModelPolicy;
-    private readonly IImageOcrPolicyService _imageOcrPolicy;
-    private readonly IChatDebugTraceStore _debugTraceStore;
-    private readonly ILogger<ChatAppService> _logger;
 
-    /// <summary>
-    /// 初始化聊天 API 服务。
-    /// </summary>
-    public ChatAppService(IHttpContextAccessor httpContextAccessor, IChatOrchestrator orchestrator, IAuthService authService, IChatSessionService sessions, IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments, IChatUploadLibraryService uploadLibrary, IUsageStatisticsService usage, IMemoryService memory, IProjectReferenceContextService projectReferences, IMarkdownDocumentReferenceContextService markdownDocuments, IProjectAgentMarkdownIndexContextService projectAgentMarkdownIndex, ICodexChatService codex, ICodexModelPolicyService codexModelPolicy, IImageOcrPolicyService imageOcrPolicy, IChatDebugTraceStore debugTraceStore, ILogger<ChatAppService>? logger = null, Knowledge.KnowledgeResourceService? bookResources = null)
+    public ChatAppService(IHttpContextAccessor httpContextAccessor, IAuthService authService, IChatDispatcher dispatcher,
+        IChatImageAttachmentService attachments, IChatFileAttachmentService fileAttachments,
+        IChatUploadLibraryService uploadLibrary, ICodexChatService codex)
     {
         _httpContextAccessor = httpContextAccessor;
-        _orchestrator = orchestrator;
         _authService = authService;
-        _sessions = sessions;
+        _dispatcher = dispatcher;
         _attachments = attachments;
         _fileAttachments = fileAttachments;
         _uploadLibrary = uploadLibrary;
-        _usage = usage;
-        _memory = memory;
-        _projectReferences = projectReferences;
-        _bookResources = bookResources;
-        _markdownDocuments = markdownDocuments;
-        _projectAgentMarkdownIndex = projectAgentMarkdownIndex;
         _codex = codex;
-        _codexModelPolicy = codexModelPolicy;
-        _imageOcrPolicy = imageOcrPolicy;
-        _debugTraceStore = debugTraceStore;
-        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatAppService>.Instance;
     }
 
     /// <summary>
-    /// 执行一次聊天完成：创建 Agent 上下文、调用工具、调用 LLM，并返回最终回答。
+    /// 读取当前用户可用的聊天技能。
     /// </summary>
     [HttpGet("skills")]
-    public async Task<object> Skills(CancellationToken cancellationToken)
-    {
-        await RequireUser(cancellationToken);
-        return ChatSkillCatalog.All;
-    }
+    public Task<ActionResult<IReadOnlyList<JsonElement>>> Skills(CancellationToken cancellationToken)
+        => ReadBootstrapAsync(_ => Task.FromResult(ChatSkillCatalog.All), cancellationToken);
 
     [HttpPost("complete")]
-    public async Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
-    {
-        try { return await CompleteCore(request, cancellationToken); }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception) when (string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
-        {
-            var failure = CodexDiagnosticException.ForRequest(exception, request);
-            _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
-            throw failure;
-        }
-    }
-
-    private async Task<ChatCompleteResponse> CompleteCore(ChatCompleteRequest request, CancellationToken cancellationToken)
-    {
-        if (request.DeliveryIntent is not null || request.ResumeQueued) throw new ChatDeliveryException("消息投递需要使用聊天流接口。");
-        if (!string.IsNullOrWhiteSpace(request.CommandId)) throw new InvalidOperationException("Command IDs require the streaming endpoint.");
-        var trace = ChatDebugTrace.Create(request);
-        trace?.Complete("backend_received");
-        trace?.Start("auth_session_context");
-        var user = await RequireUser(cancellationToken);
-        request.RuntimeUserId = user.Id;
-        request.RuntimeUsername = user.Username;
-        await PrepareChatInputAsync(user, request, cancellationToken);
-        await _projectReferences.ResolveAsync(user, request, cancellationToken);
-        await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
-        await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
-        ChatSkillCatalog.Apply(request);
-        await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
-        request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
-        trace?.Complete("auth_session_context");
-        trace?.Start("request_started");
-        trace?.Complete("request_started");
-        trace?.Start("provider_request_started");
-        var result = await _orchestrator.CompleteAsync(request, cancellationToken);
-        trace?.CompleteProvider();
-        trace?.Start("persistence");
-        await _sessions.RecordAssistantMessageAsync(user, request, result.Content, null, result.Citations, result.ModelId, result.Model, cancellationToken);
-        await _usage.RecordAsync(user, request, result, cancellationToken);
-        trace?.Complete("persistence");
-        trace?.Start("frontend_push");
-        trace?.Complete("frontend_push");
-        trace?.Complete("request_completed");
-        result.DebugTrace = trace?.Events.ToList();
-        await _debugTraceStore.SaveAsync(user, request.SessionId, trace, cancellationToken);
-        return result;
-    }
+    public Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
+        => _dispatcher.CompleteAsync(request, RequireUser, cancellationToken);
 
     /// <summary>
     /// 执行一次流式聊天完成，通过 SSE 推送 label、工具、思考、内容和完成事件。
@@ -137,133 +66,16 @@ public sealed class ChatAppService : IDynamicApiController
         var trace = ChatDebugTrace.Create(request);
         await WriteTraceAsync(response, trace?.Complete("backend_received"), cancellationToken);
         await WriteTraceAsync(response, trace?.Start("auth_session_context"), cancellationToken);
-        AuthenticatedUser? user = null;
-        var content = new System.Text.StringBuilder();
-        var thinking = new System.Text.StringBuilder();
-        object? citations = null;
-        string? modelId = null;
-        string? model = null;
-        var providerRequestStarted = false;
-        ChatCommandStore.Lease? command = null;
-        ChatDeliveryService.Admission? delivery = null;
-        CancellationTokenSource? deliveryCancellation = null;
-        async Task Emit(AgentStreamEvent value, CancellationToken token)
-        {
-            command?.Append(value);
-            await WriteSseAsync(response, value, token);
-        }
-
         try
         {
-            user = await RequireUser(cancellationToken);
-            request.RuntimeUserId = user.Id;
-            request.RuntimeUsername = user.Username;
-            var dispatcher = _httpContextAccessor.HttpContext!.RequestServices.GetService<ChatDeliveryService>();
-            request = dispatcher?.Restore(user, request) ?? request;
-            _sessions.PrepareCommandSession(user, request);
-            delivery = dispatcher is null ? null : await dispatcher.EnterAsync(user, request, Emit, cancellationToken, PrepareChatInputAsync);
-            if (delivery is not null && delivery.Kind != "execute")
-            {
-                await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
-                    Content = delivery.Kind == "steered" ? "追加指令已投递给当前任务，等待 Agent 处理。" : delivery.Kind == "cancelled" ? "排队消息已取消，未执行。" : delivery.Kind == "uncertain" ? "本次投递结果待确认，请核对已有结果；不会自动重新执行。" : "排队消息已保留，等待显式恢复。" }, cancellationToken);
-                return;
-            }
-            request.ResumeQueued = false;
-
-            command = (request.RecoverOnly || (request.Goal == null && !string.IsNullOrWhiteSpace(request.CommandId))) ? _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatCommandStore>().Begin(request, user) : null;
-            delivery?.Registered();
-            if (command is { IsOwner: false })
-            {
-                await command.ReplayAsync((value, token) => WriteSseAsync(response, value, token), cancellationToken);
-                return;
-            }
-            if (delivery is not null)
-            {
-                deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, delivery.Stop);
-                cancellationToken = deliveryCancellation.Token;
-                user = await RequireUser(cancellationToken);
-            }
-            cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
-            await PrepareChatInputAsync(user, request, cancellationToken);
-            await _projectReferences.ResolveAsync(user, request, cancellationToken);
-            await _markdownDocuments.ResolveAsync(user, request, cancellationToken);
-            await _projectAgentMarkdownIndex.ResolveAsync(user, request, cancellationToken);
-            ChatSkillCatalog.Apply(request);
-            await _sessions.RecordUserMessageAsync(user, request, cancellationToken);
-            await Emit(new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
-            if (delivery is not null) await Emit(new AgentStreamEvent { Type = "delivery_started" }, cancellationToken);
-            request.ServerMemoryContext = await _memory.BuildPromptContextAsync(user, request, cancellationToken);
-            await WriteTraceAsync(response, trace?.Complete("auth_session_context"), cancellationToken);
-            await WriteTraceAsync(response, trace?.Start("request_started"), cancellationToken);
-            await WriteTraceAsync(response, trace?.Complete("request_started"), cancellationToken);
-            var result = await _orchestrator.CompleteStreamingAsync(request, async (streamEvent, token) =>
-            {
-                if (streamEvent.Type == "debug_trace") trace?.RecordProviderDiagnostic(streamEvent.DebugTrace);
-                if (streamEvent.Type == "provider_request_started")
-                {
-                    if (!providerRequestStarted)
-                    {
-                        providerRequestStarted = true;
-                        await WriteTraceAsync(response, trace?.Start("provider_request_started"), token);
-                    }
-                    return;
-                }
-                if (providerRequestStarted && streamEvent.Type != "debug_trace")
-                {
-                    await WriteTraceAsync(response, trace?.FirstStreamEvent(), token);
-                }
-                if (streamEvent.Type == "content") content.Append(streamEvent.Content);
-                if (streamEvent.Type == "thinking") thinking.Append(streamEvent.Content);
-                if (streamEvent.Type == "sources") citations = streamEvent.Citations;
-                modelId ??= streamEvent.ModelId;
-                model ??= streamEvent.Model;
-                await Emit(streamEvent, token);
-            }, cancellationToken);
-            await WriteTraceAsync(response, trace?.CompleteProvider(), cancellationToken);
-            providerRequestStarted = false;
-            var finalContent = content.Length > 0 ? content.ToString() : result.Content;
-            var finalModelId = modelId ?? result.ModelId;
-            var finalModel = model ?? result.Model;
-            await WriteTraceAsync(response, trace?.Start("persistence"), cancellationToken);
-            await _sessions.RecordAssistantMessageAsync(user, request, finalContent, thinking.ToString(), citations ?? result.Citations, finalModelId, finalModel, cancellationToken);
-            await _usage.RecordAsync(user, request, result, cancellationToken);
-            await WriteTraceAsync(response, trace?.Complete("persistence"), cancellationToken);
-            await WriteTraceAsync(response, trace?.Start("frontend_push"), cancellationToken);
-            await WriteTraceAsync(response, trace?.Complete("frontend_push"), cancellationToken);
-            await WriteTraceAsync(response, trace?.Complete("request_completed"), cancellationToken);
-            if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            await Emit(new AgentStreamEvent { Type = "completed" }, cancellationToken);
-            if (delivery is not null) delivery.Succeeded = true;
+            var user = await RequireUser(cancellationToken);
+            await _dispatcher.DispatchStreamAsync(user, request, trace,
+                (value, token) => WriteSseAsync(response, value, token), RequireUser, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception error) when (!cancellationToken.IsCancellationRequested)
         {
-            if (providerRequestStarted) await WriteTraceAsync(response, trace?.CancelProvider(), CancellationToken.None);
-            await WriteTraceAsync(response, trace?.Cancel("request_completed"), CancellationToken.None);
-            if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            var clientException = exception;
-            if (exception is not ChatDeliveryException && string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase))
-            {
-                var failure = CodexDiagnosticException.ForRequest(exception, request);
-                _logger.LogError("[CodexDiagnostic] Id={DiagnosticId} Stage={Stage} Code={Code} ExceptionType={ExceptionType}", failure.DiagnosticId, failure.Stage, failure.Code, exception.GetType().Name);
-                await WriteTraceAsync(response, trace?.ReportCodexFailure(failure), CancellationToken.None);
-                clientException = failure;
-            }
-            if (providerRequestStarted) await WriteTraceAsync(response, trace?.FailProvider("request_failed"), CancellationToken.None);
-            await WriteTraceAsync(response, trace?.Fail("request_completed", "request_failed"), CancellationToken.None);
-            if (user != null) await _debugTraceStore.SaveAsync(user, request.SessionId, trace, CancellationToken.None);
-            await Emit(new AgentStreamEvent
-            {
-                Type = "error",
-                Content = ToClientError(clientException, request)
-            }, cancellationToken);
-        }
-        finally
-        {
-            try { command?.Dispose(); }
-            finally { deliveryCancellation?.Dispose(); if (delivery is not null) await delivery.DisposeAsync(); }
+            await WriteSseAsync(response, new AgentStreamEvent { Type = "error", Content = ChatExecutionErrors.ToClientError(error, request) }, cancellationToken);
         }
     }
 
@@ -271,10 +83,14 @@ public sealed class ChatAppService : IDynamicApiController
     public async Task<object> CancelCommand(string commandId, [FromQuery(Name = "session_id")] string sessionId, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
-        var deliveries = _httpContextAccessor.HttpContext!.RequestServices.GetService<ChatDeliveryService>();
-        if (deliveries is not null && await deliveries.CancelAsync(user, sessionId, commandId, cancellationToken)) return new { accepted = true };
-        var store = _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatCommandStore>();
-        return new { accepted = store.Cancel(new ChatCompleteRequest { CommandId = commandId, SessionId = sessionId, RuntimeUserId = user.Id }, user) };
+        return new { accepted = await _dispatcher.CancelAsync(user, sessionId, commandId, cancellationToken) };
+    }
+
+    [HttpGet("active-sessions")]
+    public async Task<List<string>> ActiveSessions(CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        return _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatDeliveryService>().ActiveSessions(user);
     }
 
     [HttpGet("sessions/{sessionId}/deliveries")]
@@ -372,14 +188,32 @@ public sealed class ChatAppService : IDynamicApiController
         return new FileStreamResult(new FileStream(image.Path, FileMode.Open, FileAccess.Read, FileShare.Read), image.ContentType) { EnableRangeProcessing = true };
     }
 
-    private Task PrepareChatInputAsync(AuthenticatedUser user, ChatCompleteRequest request, CancellationToken cancellationToken)
-        => ChatAttachmentPreparation.ResolveAsync(user, request, _attachments, _fileAttachments, _codexModelPolicy, _imageOcrPolicy, cancellationToken, _bookResources);
-
     [HttpGet("codex/quota")]
-    public async Task<CodexQuotaResponse> GetCodexQuota(CancellationToken cancellationToken)
+    public Task<ActionResult<CodexQuotaResponse>> GetCodexQuota(CancellationToken cancellationToken)
+        => ReadBootstrapAsync(token => _codex.ReadQuotaAsync(token), cancellationToken);
+
+    private async Task<ActionResult<T>> ReadBootstrapAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken cancellationToken)
     {
-        await RequireUser(cancellationToken);
-        return await _codex.ReadQuotaAsync(cancellationToken);
+        var context = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("HttpContext is not available.");
+        bool Cancelled() => cancellationToken.IsCancellationRequested || context.RequestAborted.IsCancellationRequested;
+
+        // Navigation/Strict Mode can abort these read-only requests before auth starts.
+        // End at the action boundary instead of awaiting an already-cancelled lookup.
+        if (Cancelled()) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
+        try
+        {
+            var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken);
+            if (Cancelled()) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
+            if (user is null) throw new UnauthorizedAccessException();
+            var result = await read(cancellationToken);
+            if (Cancelled()) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
+            return new ActionResult<T>(result);
+        }
+        catch (OperationCanceledException) when (Cancelled())
+        {
+            return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
+        }
     }
 
     private async Task<AuthenticatedUser> RequireUser(CancellationToken cancellationToken) => await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
@@ -397,18 +231,4 @@ public sealed class ChatAppService : IDynamicApiController
         return streamEvent is null ? Task.CompletedTask : WriteSseAsync(response, streamEvent, cancellationToken);
     }
 
-    private static string ToClientError(Exception exception, ChatCompleteRequest request)
-    {
-        if (exception is ChatDeliveryException) return exception.Message;
-        if (exception is CodexDiagnosticException diagnostic) return diagnostic.Message;
-        var isCodex = string.Equals(request.Agent?.Trim(), "codex", StringComparison.OrdinalIgnoreCase);
-        if (isCodex && exception.Message.Contains("requires a newer version of Codex", StringComparison.OrdinalIgnoreCase))
-        {
-            return "当前本机 Codex CLI 版本过旧，无法运行所选 GPT-6 模型。请升级 Codex CLI 后重试。";
-        }
-        return isCodex && (exception.Message.StartsWith("Codex stopped after", StringComparison.Ordinal)
-            || exception.Message.StartsWith("Codex exceeded", StringComparison.Ordinal))
-            ? exception.Message
-            : "Chat request failed.";
-    }
 }

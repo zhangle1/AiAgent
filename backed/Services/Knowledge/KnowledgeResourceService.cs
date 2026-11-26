@@ -5,6 +5,8 @@ using AiAgent.Backend.Entities.Knowledge;
 using AiAgent.Backend.Entities.Auth;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Llm;
+using AiAgent.Backend.Services.Auth;
+using AiAgent.Backend.Services.Admin;
 using SqlSugar;
 using System.Text;
 using System.Text.Json;
@@ -52,6 +54,7 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
         using var db = database.CopyNew();
         var nodes = new Dictionary<string, KnowledgeResourceNodeDto>(StringComparer.Ordinal);
         var userRoot = CurrentUserRoot(db);
+        var currentUser = KnowledgeUserScope.ResolveUser(db, httpContextAccessor);
         var allSessions = KnowledgeUserScope.CanReadAllSessions(db, httpContextAccessor);
         foreach (var (root, name) in Roots.Zip(new[] { "资料", "项目", "人员" }))
             nodes[root] = new() { Uri = root, Name = name, Kind = "directory" };
@@ -104,7 +107,8 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
             }
             nodes[uri] = new() { Uri = uri, ParentUri = Parent(uri), Name = doc.OriginalFileName,
                 Kind = "file", DocumentId = doc.Id, KnowledgeBaseName = kb.Name,
-                Extension = doc.Extension, Size = doc.FileSize, Status = doc.Status, RawRelativePath = relative };
+                Extension = doc.Extension, Size = doc.FileSize, Status = doc.Status, RawRelativePath = relative,
+                CanDelete = currentUser is not null && CanDeleteSource(uri, currentUser) };
         }
         var visibleSourceIds = nodes.Values.Where(n => n.DocumentId.HasValue).Select(n => n.DocumentId!.Value).ToList();
         var latestParsedIds = db.Queryable<AiKnowledgeParsedDocument>().Where(x => x.DocumentId.HasValue && visibleSourceIds.Contains(x.DocumentId.Value))
@@ -337,6 +341,52 @@ public sealed partial class KnowledgeResourceService(ISqlSugarClient database, I
             SemanticContent = generated?.Overview ?? content.ArtifactContent, Parser = content.Parser, Model = generated?.Model ?? content.Model,
             SemanticGeneratedAt = generated?.GeneratedAt, SemanticStatus = generated is null ? "missing_or_stale" : "ready" };
     }
+
+    public async Task<KnowledgeResourceDeleteResultDto> DeleteAsync(string uri, long documentId, AuthenticatedUser user, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var canonical = NormalizeUri(uri);
+        if (documentId <= 0 || uri.EndsWith('/') || Roots.Contains(canonical) || IsGeneratedUri(canonical))
+            throw new ArgumentException("只能删除原始资料文件，目录和生成产物不能单独删除。");
+        if (!CanDeleteSource(canonical, user)) throw new UnauthorizedAccessException("只能删除本人资料；共享资料须由管理员删除，其他人员的会话保持只读。");
+        await _mutations.WaitAsync(ct);
+        try
+        {
+            using var db = database.CopyNew();
+            if (canonical.StartsWith("viking://projects/project-", StringComparison.Ordinal))
+            {
+                var ids = new ProjectAccessService(db).GetAccessibleProjectIds(user).ToHashSet();
+                if (!KnowledgeProjectDirectoryService.IsVisible(canonical, ids)) throw new UnauthorizedAccessException("项目已不可访问。");
+            }
+            db.Ado.BeginTran();
+            try
+            {
+                var document = db.Queryable<AiKnowledgeDocument>().Where(d => d.Id == documentId && !d.IsDeleted).First()
+                    ?? throw new KeyNotFoundException("文件已删除或不存在，请刷新目录。");
+                var kb = db.Queryable<AiKnowledgeBase>().Where(k => k.Id == document.KnowledgeBaseId && !k.IsDeleted).First()
+                    ?? throw new KeyNotFoundException("资料存储不存在。");
+                if (DocumentUri(kb, document) != canonical) throw new InvalidOperationException("资料与所选文件不一致，请刷新目录后重新确认。");
+                if (document.Status is "parsing" or "processing" or "indexing" or "cancelling" || db.Queryable<AiKnowledgeJob>().Any(j =>
+                    j.DocumentId == documentId && (j.Status == "queued" || j.Status == "pending" || j.Status == "processing" || j.Status == "cancelling")))
+                    throw new InvalidOperationException("文件存在活动处理任务，请先取消任务并等待结束后再删除。");
+                ct.ThrowIfCancellationRequested();
+                var now = DateTime.UtcNow;
+                var changed = db.Updateable<AiKnowledgeDocument>().SetColumns(d => new AiKnowledgeDocument { IsDeleted = true, DeletedAt = now, UpdatedAt = now })
+                    .Where(d => d.Id == documentId && !d.IsDeleted && d.ResourceUri == document.ResourceUri && d.StoragePath == document.StoragePath && d.FileHash == document.FileHash && d.Status == document.Status && d.UpdatedAt == document.UpdatedAt)
+                    .ExecuteCommand();
+                if (changed != 1) throw new InvalidOperationException("资料状态已变化，请刷新目录后重新确认。");
+                ct.ThrowIfCancellationRequested();
+                db.Ado.CommitTran();
+                return new() { Deleted = true, DocumentId = documentId, Uri = canonical };
+            }
+            catch { db.Ado.RollbackTran(); throw; }
+        }
+        finally { _mutations.Release(); }
+    }
+
+    private static bool CanDeleteSource(string uri, AuthenticatedUser user)
+        => !IsGeneratedUri(uri) && (uri.StartsWith(KnowledgeUserScope.RootFor(user.Username, user.Id), StringComparison.Ordinal)
+            || user.IsAdministrator && (uri.StartsWith(Roots[0], StringComparison.Ordinal) || uri.StartsWith(Roots[1], StringComparison.Ordinal)));
 
     public KnowledgeCompilationJobDto Parse(string uri)
     {

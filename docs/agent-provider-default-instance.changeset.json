@@ -1,0 +1,59 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-19T07:34:35.075260+00:00",
+  "baseCommit": "059fba5811f40d175bd4bd6406e09a5a378d5aa4",
+  "objective": "Route the existing Codex agent through one default provider instance for execution and CLI environment discovery.",
+  "scopeNote": "Program.cs includes an existing unrelated document conversion registration. Only the provider driver and registry registrations belong to this change.",
+  "files": [
+    {
+      "path": "backed.tests/AgentProviderRegistryTests.cs",
+      "sha256": "3fa9a62ecd9f55722d2b8cfcf2177e541c61f042b5c39ff6d1d0c2e2d81b6da8",
+      "bytes": 6573
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "6bec5dbebb9393e1cd8c640e46f902b62125438eee18a48d2d226b52ab264f50",
+      "bytes": 17572
+    },
+    {
+      "path": "backed/Services/Chat/AgentCliProbe.cs",
+      "sha256": "04c3fb843e6535b6e8a7a0b2489beeeab149860f260bce81aedea2abe4e24206",
+      "bytes": 2190
+    },
+    {
+      "path": "backed/Services/Chat/AgentProviderEnvironmentService.cs",
+      "sha256": "89f91bae56c70c5b972fd76a58853a051bda7cd0eac5ca292fa7640c6849eec6",
+      "bytes": 3778
+    },
+    {
+      "path": "backed/Services/Chat/AgentProviderRegistry.cs",
+      "sha256": "9d96a6a3e580810ebbcef84c2c721a3bfdfac1bd53a3b2cdcf9ef422f59737ff",
+      "bytes": 2478
+    },
+    {
+      "path": "backed/Services/Chat/ChatOrchestrator.cs",
+      "sha256": "106ea80e2eaf8aa9d61696d254eb150e0efc7ba817adf2fb43b3db18e195088a",
+      "bytes": 5321
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "94caf6dc46d784f1cae7e2078b857d9a77630b33df3fda8509ec58c1feb05d69",
+      "bytes": 68734
+    },
+    {
+      "path": "backed/Services/Chat/CodexAgentProviderDriver.cs",
+      "sha256": "ec058c05b01161b5d8d424362018f40db78cc712fcc8cc2428a6ec7cc58f3783",
+      "bytes": 2570
+    },
+    {
+      "path": "docs/third-party-agent-provider-spec.md",
+      "sha256": "40f32a946c2abf26620b6f02225e2814a7364dfa52179ab1c117244e828450bd",
+      "bytes": 3699
+    }
+  ],
+  "fingerprintSha256": "2763998b4958975918c5469c43112f063cd8b2ed6db182fbee405511fbd2ab84",
+  "validation": {
+    "backend": "105 focused Release tests passed with synthetic runtimes and isolated storage, including routing, version probes, concurrent registration, command replay, queues, steering and goals."
+  }
+}

@@ -49,6 +49,22 @@ public sealed class KnowledgeResourceAppService(KnowledgeResourceService resourc
         catch (ArgumentException) when (parsedDocumentId.HasValue) { return new BadRequestResult(); }
     }
 
+    [HttpDelete("file")]
+    public async Task<IActionResult> DeleteFile([FromQuery] string uri, [FromQuery(Name = "document_id")] long documentId, CancellationToken ct)
+    {
+        AuthenticatedUser? user = null;
+        try
+        {
+            user = await RequireUser(ct);
+            return new OkObjectResult(await resources.DeleteAsync(uri, documentId, user, ct));
+        }
+        catch (UnauthorizedAccessException ex) { return new ObjectResult(new { message = ex.Message }) { StatusCode = user is null ? 401 : 403 }; }
+        catch (KeyNotFoundException ex) { return new NotFoundObjectResult(new { message = ex.Message }); }
+        catch (ArgumentException ex) { return new BadRequestObjectResult(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return new ConflictObjectResult(new { message = ex.Message }); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return new StatusCodeResult(499); }
+    }
+
     private async Task<AuthenticatedUser> RequireUser(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

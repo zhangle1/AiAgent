@@ -1,5 +1,6 @@
 import type { KnowledgeBase, KnowledgeDetail, KnowledgeDocumentContent, KnowledgeDocumentImportResult, KnowledgeEnvironmentCheck, KnowledgeIndexVersion, KnowledgeJob, KnowledgeMutationResponse, KnowledgeProcessRequest, KnowledgeProcessingResult, KnowledgeProvider, KnowledgeProviderConfig, KnowledgeSearchResponse } from "@/lib/knowledge-types";
 import type { KnowledgeCleanupPreview, KnowledgeCleanupResult } from "@/lib/knowledge-cleanup-types";
+import type { KnowledgeResourceDeleteResult } from "@/lib/knowledge-types";
 
 import type { KnowledgeChainCheckResult, KnowledgeCompilationJob, KnowledgeCompilerSettings, KnowledgeContextNode, KnowledgeOrganization, KnowledgePage, KnowledgeResourceAnswer, KnowledgeResourceImport, KnowledgeResourceNode, KnowledgeResourceRead, PlatformSessionImportOptions, PlatformSessionImportResult } from "@/lib/knowledge-types";
 
@@ -10,6 +11,11 @@ export async function getKnowledgeResourceTree(signal?: AbortSignal): Promise<Kn
 }
 export async function previewKnowledgeCleanup(signal?: AbortSignal): Promise<KnowledgeCleanupPreview> {
   return parseJson(await fetch("/api/v1/knowledge-resources/cleanup/preview", { cache: "no-store", signal }));
+}
+export async function deleteKnowledgeResource(uri: string, documentId: number): Promise<KnowledgeResourceDeleteResult> {
+  const response = await fetch(`/api/v1/knowledge-resources/file?uri=${encodeURIComponent(uri)}&document_id=${documentId}`, { method: "DELETE" });
+  if (response.status === 405) throw new Error("删除接口尚未更新，请更新并重启后端后重试。");
+  return parseJson(response);
 }
 export async function cleanupKnowledgeResources(documentIds: number[], snapshot: string): Promise<KnowledgeCleanupResult> {
   const response = await fetch("/api/v1/knowledge-resources/cleanup", {

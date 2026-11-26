@@ -32,19 +32,42 @@ public sealed partial class ChatGoalTests
     }
 
     [Fact]
-    public async Task NewGoalUsesTwoMillionTokenBudgetWhenRequestOmitsIt()
+    public async Task NewGoalUsesTenMillionTokenBudgetWhenRequestOmitsIt()
     {
         using var fixture = new Fixture();
         using var service = fixture.Service();
         await service.CompleteAsync(fixture.Request(new() { Objective = "budget defaults" }), null, default);
-        Assert.Equal(2_000_000L, fixture.Goal().TokenBudget);
-        Assert.Equal(2_000_000L, fixture.Calls().Single(call => call.GetProperty("method").GetString() == "thread/goal/set").GetProperty("params").GetProperty("tokenBudget").GetInt64());
+        Assert.Equal(10_000_000L, fixture.Goal().TokenBudget);
+        Assert.Equal(10_000_000L, fixture.Calls().Single(call => call.GetProperty("method").GetString() == "thread/goal/set").GetProperty("params").GetProperty("tokenBudget").GetInt64());
+    }
+
+    [Theory]
+    [InlineData(null, 4_000_000)]
+    [InlineData(2_000_000L, 2_000_000)]
+    public async Task NewGoalUsesAdministratorLimitAndAllowsSmallerExplicitBudget(long? budget, long expected)
+    {
+        using var fixture = new Fixture();
+        fixture.GoalPolicy.GoalMaxTokenBudget = 4_000_000;
+        using var service = fixture.Service();
+        await service.CompleteAsync(fixture.Request(new() { Objective = "configured budget", TokenBudget = budget }), null, default);
+        Assert.Equal(expected, fixture.Goal().TokenBudget);
+        Assert.Equal(expected, fixture.Calls().Single(call => call.GetProperty("method").GetString() == "thread/goal/set").GetProperty("params").GetProperty("tokenBudget").GetInt64());
+    }
+
+    [Fact]
+    public async Task NewGoalRejectsBudgetAboveCurrentAdministratorLimit()
+    {
+        using var fixture = new Fixture();
+        fixture.GoalPolicy.GoalMaxTokenBudget = 4_000_000;
+        using var service = fixture.Service();
+        await Assert.ThrowsAnyAsync<Exception>(() => service.CompleteAsync(fixture.Request(new() { Objective = "limit", TokenBudget = 4_000_001 }), null, default));
+        Assert.Null(fixture.Db.Queryable<AiChatSession>().Single().GoalJson);
     }
 
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(2_000_001)]
+    [InlineData(10_000_001)]
     public async Task NewGoalRejectsInvalidOrAboveLimitTokenBudgets(long budget)
     {
         using var fixture = new Fixture();
@@ -127,8 +150,10 @@ public sealed partial class ChatGoalTests
         changedPermissions.CodexSandboxMode = "read-only";
         await Assert.ThrowsAnyAsync<Exception>(() => service.CompleteAsync(changedPermissions, null, default));
         Assert.Equal(paused.Version, fixture.Goal().Version);
+        fixture.GoalPolicy.GoalMaxTokenBudget = 1;
         fixture.Mode("complete");
         await service.CompleteAsync(fixture.Request(new() { Action = "resume", ExpectedVersion = paused.Version }), null, default);
+        Assert.Equal(paused.TokenBudget, fixture.Goal().TokenBudget);
         var calls = fixture.Calls();
         Assert.Single(calls, x => x.GetProperty("method").GetString() == "thread/start");
         Assert.Single(calls, x => x.GetProperty("method").GetString() == "thread/resume");
@@ -175,7 +200,8 @@ public sealed partial class ChatGoalTests
         }
         public void Mode(string mode) => File.WriteAllText(Path.Combine(Root, "mode"), mode);
         public ChatCompleteRequest Request(ChatGoalRequest? goal = null) => new() { Goal = goal, Agent = "codex", Message = "work", RuntimeUserId = "owner", SessionId = "session", ClientRuntimeId = "fixture", MaintenanceWorkspacePath = Root };
-        public CodexChatService Service() => new(Db, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Codex:Command"] = Command }).Build(), new Policy(), new NoOcr());
+        public CodexModelPolicyDto GoalPolicy { get; } = new();
+        public CodexChatService Service() => new(Db, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Codex:Command"] = Command }).Build(), new Policy(GoalPolicy), new NoOcr());
         public ChatGoalState Goal() => JsonSerializer.Deserialize<ChatGoalState>(Db.Queryable<AiChatSession>().Single().GoalJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         public JsonElement[] Calls() => File.ReadAllLines(Path.Combine(Root, "calls.jsonl")).Where(x => x.Length > 0).Select(x => JsonDocument.Parse(x).RootElement.Clone()).ToArray();
         public void Dispose()
@@ -190,10 +216,10 @@ public sealed partial class ChatGoalTests
         }
     }
 
-    private sealed class Policy : ICodexModelPolicyService
+    private sealed class Policy(CodexModelPolicyDto policy) : ICodexModelPolicyService
     {
         public CodexResolvedModel ResolveModel(string? id, string? effort) => new(new("fixture", "Fixture", "", "fixture", null, true, true), effort);
-        public CodexModelPolicyDto GetPolicy() => throw new NotSupportedException();
+        public CodexModelPolicyDto GetPolicy() => policy;
         public CodexModelPolicyDto UpdatePolicy(AuthenticatedUser user, CodexModelPolicyUpdateRequest request) => throw new NotSupportedException();
     }
     private sealed class NoOcr : IImageOcrService

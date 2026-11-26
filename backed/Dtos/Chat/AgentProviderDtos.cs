@@ -88,6 +88,9 @@ public sealed class CodexProfileModelDto
 
 public sealed class CodexModelPolicyDto
 {
+    [JsonPropertyName("goal_max_token_budget")]
+    public long GoalMaxTokenBudget { get; set; } = ChatGoalRequest.DefaultTokenBudget;
+
     [JsonPropertyName("models")]
     public List<CodexModelOptionDto> Models { get; set; } = [];
 
@@ -115,6 +118,9 @@ public sealed class CodexModelPolicyDto
 
 public sealed class CodexModelPolicyUpdateRequest
 {
+    [JsonPropertyName("goal_max_token_budget")]
+    public long? GoalMaxTokenBudget { get; set; }
+
     [JsonPropertyName("allowed_model_ids")]
     public List<string>? AllowedModelIds { get; set; }
 

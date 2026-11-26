@@ -10,6 +10,42 @@ namespace AiAgent.Backend.Tests;
 
 public sealed class CodexModelPolicyTests
 {
+    [Fact]
+    public void ExistingPolicyDefaultsToTenMillionAndAdministratorCanPersistNewLimit()
+    {
+        using var db = Database(5);
+        var service = new CodexModelPolicyService(db);
+        Assert.Equal(10_000_000, service.GetPolicy().GoalMaxTokenBudget);
+        var admin = new AuthenticatedUser("admin", "fixture-admin", "admin");
+        var saved = service.UpdatePolicy(admin, new() { GoalMaxTokenBudget = 20_000_000 });
+        Assert.Equal(20_000_000, saved.GoalMaxTokenBudget);
+        Assert.Equal(20_000_000, new CodexModelPolicyService(db).GetPolicy().GoalMaxTokenBudget);
+        Assert.Equal(20_000_000, service.UpdatePolicy(admin, new() { AllowChatModelOverride = false }).GoalMaxTokenBudget);
+        Assert.Contains("\"goal_max_token_budget\":20000000", JsonSerializer.Serialize(saved));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(9_007_199_254_740_992)]
+    public void InvalidGoalLimitsDoNotCreateSettingsVersion(long limit)
+    {
+        using var db = Database(5);
+        var service = new CodexModelPolicyService(db);
+        Assert.Throws<InvalidOperationException>(() => service.UpdatePolicy(new("admin", "admin", "admin"), new() { GoalMaxTokenBudget = limit }));
+        Assert.Equal(1, db.Queryable<AiSettingSnapshot>().Count());
+    }
+
+    [Fact]
+    public void NonAdministratorCannotChangeGoalLimit()
+    {
+        using var db = Database(5);
+        var service = new CodexModelPolicyService(db);
+        Assert.Throws<UnauthorizedAccessException>(() => service.UpdatePolicy(new("user", "user"), new() { GoalMaxTokenBudget = 1 }));
+        Assert.Equal(10_000_000, service.GetPolicy().GoalMaxTokenBudget);
+        Assert.Equal(1, db.Queryable<AiSettingSnapshot>().Count());
+    }
+
     private static SqlSugarScope Database(int version)
     {
         var db = new SqlSugarScope(new ConnectionConfig

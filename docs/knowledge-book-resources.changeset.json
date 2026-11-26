@@ -1,0 +1,93 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-13T09:14:44.998315+00:00",
+  "baseCommit": "d8c1edc4e918646789477b7a822bb8fc64c1f867",
+  "objective": "Fix PDF upload truncation and error feedback, show selectable source files in the chat knowledge tree with cascading selection.",
+  "diagnosis": {
+    "upload": "Installed Next.js resolve-routes attaches getCloneableBody to requests; router-server supplies its cloned stream to rewrites. Existing default truncates 16,882,074 synthetic bytes to 10,485,760. Numeric 200 MiB request limit now preserves byte length and SHA-256; backend per-file 25 MiB validation unchanged.",
+    "feedback": "Before fix, synthetic HTTP failure was only visible behind the upload modal, and all item failures could be reported as success.",
+    "selection": "Before fix, source files were filtered from both the tree and the available scope list. Non-Codex retrieval only resolved directory scopes."
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "86c806913288d4f4275a5e4f37f4cb8eabd7fc18f3d482f4dc64652c766e284c",
+      "bytes": 34946
+    },
+    {
+      "path": "README.md",
+      "sha256": "46c77eabaab8455de80501a874a3338f268f9d10b8bd85ee5031c326d148fbb3",
+      "bytes": 40806
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "b2866330ff5364928b15f5bf987b809ed6b2984f62a10b5a3591fc11f51a1c13",
+      "bytes": 16866
+    },
+    {
+      "path": "backed/Services/Chat/Retrieval/KnowledgeRetrievalService.cs",
+      "sha256": "458ab939b2d0190f1aa3381e899cfded192399323dede33a195998faaea611b4",
+      "bytes": 13904
+    },
+    {
+      "path": "backed.tests/KnowledgeBookUploadTests.cs",
+      "sha256": "cf2f434be2d3cc464d869d3c9634435f48fe136fe02a88e4ac6400f6d56345d4",
+      "bytes": 4721
+    },
+    {
+      "path": "backed.tests/KnowledgeFileScopeTests.cs",
+      "sha256": "26321a9282fe892f99fb70609bdde060fd148ba81f3b6c8a6b7745927934cf3c",
+      "bytes": 2447
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "3ea6ac8201c992acc5c7f4f41ae42381cf3f2cd6afef56868156a8d4c8d94056",
+      "bytes": 181559
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "050b9809314c2cd369bac9e2cb87a3fcf5d167633ad2d9baadb6c543dd5900aa",
+      "bytes": 32565
+    },
+    {
+      "path": "front/next.config.js",
+      "sha256": "914f050c113545c70ea9573c6168155b0570e2487b547e18a1a0a61344fec7d6",
+      "bytes": 1192
+    },
+    {
+      "path": "front/tests/knowledge-scope-picker.browser.mjs",
+      "sha256": "9079e4eb8b8951f295b7ec99b3cf08c7568191f4f25938c23872643be2c0652b",
+      "bytes": 13339
+    },
+    {
+      "path": "front/tests/knowledge-resource-upload.browser.mjs",
+      "sha256": "b8bd66524d3e309543d6bf485b3bcdef7e58c2b1fe33463f310684f17e0b275c",
+      "bytes": 5064
+    },
+    {
+      "path": "front/tests/knowledge-upload-proxy.mjs",
+      "sha256": "8d2942efb8cd653261a2ad0e272699415772b0cb5e9db8f0d161f815bd02c5e0",
+      "bytes": 1261
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "7b92e8aab598e8ebbd71907ab17469b25e066c3b5e86355660eac5c2923340f7",
+      "bytes": 5408
+    }
+  ],
+  "fingerprint": "9c7f3e05f30c18a9c0d7f68133798567f3530be114efa52577507a676187a77b",
+  "validation": {
+    "red": "Executed failing Next.js clone-length assertion, hidden modal error browser assertion, missing root PDF checkbox assertion and real resolver file-scope rejection before fixes.",
+    "proxy": "Passed: installed Next.js clone code preserves 16,882,074 bytes and SHA-256.",
+    "upload_http": "Passed: actual Dynamic API multipart upload of same-name 16.1 MiB synthetic PDF, raw bytes preserved, root node visible, parsing task queued; worker not started.",
+    "browser": "Passed synthetic APIs on real pages: error/retry and zero-import feedback; root and nested file selection, collapsed descendants, mixed-state exclusions preserving direct files, exact PDF/base request, same-prefix base exclusion, Codex agent unchanged, desktop/mobile. Screenshots inspected.",
+    "backend": "127 passed: KnowledgeWorkspaceTests, KnowledgeBookUploadTests, KnowledgeScopeContextTests, ChatCommandTests, SwaggerDocumentTests; then 2 focused tests passed after adding no-trailing-slash compatibility and queue assertions.",
+    "typescript": "Passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "whitespace": "Passed: git diff --check",
+    "encoding": "Strict UTF-8; original unchanged line endings preserved.",
+    "environment": "Synthetic API responses and isolated SQLite/storage/output; no user book, credentials, live database or model calls.",
+    "limits": "Real PDF conversion/OCR and the live user upload were not run. Frontend config requires restart; backend scope change requires rebuild/restart."
+  },
+  "delivery": "Local only, no commit, push or user-service restart. Includes the preceding pending cascade UI change. Previous auth cancellation fix remains separately recorded in chat-bootstrap-cancellation.changeset.json."
+}

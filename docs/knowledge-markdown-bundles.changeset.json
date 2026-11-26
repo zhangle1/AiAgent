@@ -1,0 +1,166 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-17T06:17:22.185644+00:00",
+  "baseCommit": "1542ada179ae7df35478d9e73f751517d5e78119",
+  "objective": "Optimize C# PDF/Word/TXT conversion into complete Markdown directory bundles informed by the supplied OpenViking analysis.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "c0b69fccffe5adfccdc60cf8bbd4ebef541f6b157601a42c63c040c6304017f1",
+      "bytes": 36454
+    },
+    {
+      "path": "README.md",
+      "sha256": "babb066bf0456d33f0465ab458a2c2edfa3d777959ab12aaa4ad0add2a91529f",
+      "bytes": 42954
+    },
+    {
+      "path": "backed.tests/DocumentBundleTests.cs",
+      "sha256": "4acae5bd03c7a100422eae998b27651723c03f4df362ec22fa73e4251bad2ecb",
+      "bytes": 9750
+    },
+    {
+      "path": "backed.tests/DocumentConversionTests.cs",
+      "sha256": "b189245c634f6f3d05f6a39ca89184730dd6a41f5239ce8de8f868931bee2ab9",
+      "bytes": 17580
+    },
+    {
+      "path": "backed.tests/KnowledgeBundleTests.cs",
+      "sha256": "ae3c63815ff5430da6e18957cdb556e50d1f9244044ea9f55f3b994e10861c62",
+      "bytes": 6180
+    },
+    {
+      "path": "backed.tests/KnowledgeParsingTests.cs",
+      "sha256": "18280fa27661856ec0c4ec759d86815aafcc4f8e44969fc70b3a208e21a1dfd9",
+      "bytes": 31029
+    },
+    {
+      "path": "backed.tests/MarkdownDocumentPlannerTests.cs",
+      "sha256": "f66b1813cd52bfe6f52888b308f6a0023290405823328db82959e235029b01d9",
+      "bytes": 7959
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "56b1419349df891d1d410809a019f889385a6403c7bebdf38ceee3290601eafc",
+      "bytes": 5131
+    },
+    {
+      "path": "backed/Services/Chat/ChatFileAttachmentService.cs",
+      "sha256": "a153d73d488578b3d48cafbdd7b4f1b7d47416bfbab8dd68ead6c7ae47e18353",
+      "bytes": 27368
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryManager.cs",
+      "sha256": "a334e9db1ecb4deff9b9b12cc8089119614b71134172787b6f583d2fe9f19a57",
+      "bytes": 116307
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "3951e8d60a002e31d5d120039085a9f1848ccafc6e0c5202fff8c026492013ac",
+      "bytes": 20148
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeParsedDocumentStore.cs",
+      "sha256": "1d8925032b6fcc99b319858fee1295d55c3c28b27ba1076d2a33a770c47a8098",
+      "bytes": 11509
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "9c48db931b15e0659213cdee7e8179ab8009d71f9e5c22d205fb0c7d7d4b2b3c",
+      "bytes": 41379
+    },
+    {
+      "path": "backed/Services/Parsing/CSharpPdfLayoutConverter.cs",
+      "sha256": "bd39690cb4997286d8b28a989bb7ad2afd2ad883cc3a6c860f4f0242ac3fcdee",
+      "bytes": 20403
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentConversionService.cs",
+      "sha256": "945ad2a848baaf1b124210b0d448436282c3bcb691425f941a07dfab249c2bc5",
+      "bytes": 12820
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingContracts.cs",
+      "sha256": "16572ca45d6cf6ac4a5f418fe1d7c26748536c81b7ff0b483bb1641f16230367",
+      "bytes": 3946
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentTextConverters.cs",
+      "sha256": "f554a9d9d2338e1083de3429932a14de13ebba781ca010a26b554aa329be1338",
+      "bytes": 7563
+    },
+    {
+      "path": "backed/Services/Parsing/MarkdownBundleWriter.cs",
+      "sha256": "cc04a39edad2ce329e99ab09bd0dd5cc849b6ed67b93da0541dc5344d7936a69",
+      "bytes": 7798
+    },
+    {
+      "path": "backed/Services/Parsing/MarkdownDocumentPlanner.cs",
+      "sha256": "f02f47a8189329713aa9bbf328fd5f68bcfade289b516b256b6159cc5c5fc664",
+      "bytes": 17955
+    },
+    {
+      "path": "backed/Services/Parsing/OfficeMarkdownConverter.cs",
+      "sha256": "45a546ea4bee1d02765380616b04cd2cf6c129308c93779ad91e4f41fa842f71",
+      "bytes": 16397
+    },
+    {
+      "path": "docs/knowledge-document-parsing.md",
+      "sha256": "ccc6863cd697162ee5d4b3b017d984f969aefa47ae2257a9e076031c8464bb72",
+      "bytes": 21000
+    },
+    {
+      "path": "docs/knowledge-markdown-bundles.md",
+      "sha256": "854afdcd11462aba81f065c554e1b7fdc1af4c040f2567cee6405e55b59d34f5",
+      "bytes": 7250
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeParsedSections.tsx",
+      "sha256": "14356d69dadb4374ead153fa40ed033ace5fa26953f5f31df8eb0e281f2eec12",
+      "bytes": 1277
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "e508dbb35026df161a5f5b18796de3b9cdf4b7dddd744c7e847bd17596e9f38e",
+      "bytes": 34544
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "a7234d824ddef2ee805e6ddb70f97beec4709fa02f520f2fdaf72de751b42dc4",
+      "bytes": 8373
+    },
+    {
+      "path": "front/tests/knowledge-parsing.browser.mjs",
+      "sha256": "7a97a839a5e92dbc41edcf694d811f103de2c7283d9b569a680956eacc47e5df",
+      "bytes": 7694
+    }
+  ],
+  "fingerprintSha256": "931296102eefc6b7689e50b746a06fd765dcd87aa07a8ed25005c385c58a949d",
+  "behavior": [
+    "Shared deterministic bundle writer produces sections and ordered per-directory indexes, relative media links and manifests; generic conversion returns bundle metadata.",
+    "Knowledge atomically publishes the same bundle format; indexes are readonly owned projections with controlled URI rewriting and a parsed_index UI entry.",
+    "Layout version 2 reads previous version 1; sections retain exact source interval coverage; index files excluded from body counts and coverage.",
+    "PDF samples up to 32 pages for body font, deduplicates rendered PNGs across pages and keeps existing table/image/vector/scan behavior.",
+    "Word preserves inline styles, safe links, numbering hierarchy, content-control tables, notes and embedded assets; TXT uses strict Unicode/BOM and guarded GB18030/GBK fallback with unchanged source bytes.",
+    "Fenced blocks and inline Markdown links/images remain atomic across splits; bounded section count and reserved index filenames.",
+    "Chat and project text-only consumers explicitly avoid unused intermediate bundles and keep prior storage behavior."
+  ],
+  "validation": {
+    "backend": "256 passed, 0 failed across DocumentConversionTests, CSharpPdfParsingTests, KnowledgeWorkspaceTests partials, MarkdownDocumentPlannerTests, OfficeMarkdownConverterTests, KnowledgeWorkerPathTests, KnowledgeBookUploadTests, KnowledgeCleanupHttpTests/CancellationTests, KnowledgeResourceDeletionHttpTests, ChatFileAttachmentServiceTests, ProjectPackageDocumentTests, SwaggerDocumentTests.",
+    "regression": "FencedCodeAndImageReferencesStayReadableAcrossSizeSplits failed before the atomic-range fix and passed after it.",
+    "integration": "Synthetic PDF/DOCX/TXT directory outputs with working filesystem links and hashes; real knowledge publication/navigation, corruption isolation and previous layout compatibility; GBK raw preview matches parsed body.",
+    "browser": [
+      "knowledge-parsing.browser.mjs: index entry, chapter click-through, readonly downloads, GFM, task polling exclusion, settings snapshots and mobile width passed.",
+      "knowledge-pdf-resources.browser.mjs: actual PDF.js/crops/chapters/mobile regression passed.",
+      "knowledge-resource-delete.browser.mjs: source/derived deletion UI regression passed."
+    ],
+    "visual": "Inspected desktop and 390px index navigation screenshots.",
+    "typescript": "npx tsc --noEmit --incremental false passed.",
+    "whitespace": "git diff --check passed after restoring original LF line endings."
+  },
+  "limitations": "No automatic OCR, audio/video extraction, adjacent-file/remote media fetch for TXT or ZIP export. Legacy .doc retains configured LibreOffice conversion before C# DOCX. Small documents may have one body section plus index. Complex layout/font detection remains heuristic.",
+  "scope": "Full-file hashes include preserved earlier uncommitted PDF/multiformat/deletion changes in shared files; not an isolated commit or approval.",
+  "runtime": "Only isolated generated fixtures, temporary databases, build output in TEMP and intercepted synthetic browser APIs. Real configuration/database/user documents not read or migrated; existing development processes left running.",
+  "delivery": "Local implementation only, no commit or push. Rebuild/restart backend, refresh frontend, explicitly reparse existing documents."
+}

@@ -1,0 +1,107 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "baseCommit": "476100ce3be30005217fc3a9040609244b7d59ef",
+  "objective": "向 Codex 普通消息及原生追加提供勾选范围的已发布 Markdown 章节目录",
+  "scopeNote": "指纹对应本地主仓库中的完整文件，部分文件含先前的本地改动。",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "afcabb33851c4df806622e256eac84d0e76a3bb63bec00afdbed89fbe878f2d7",
+      "bytes": 39583
+    },
+    {
+      "path": "backed.tests/ChatDeliveryTests.cs",
+      "sha256": "a54c00fa13093c96c1b44655eac98421b72ec630c8db8a4e12f58082662ab540",
+      "bytes": 13437
+    },
+    {
+      "path": "backed.tests/ChatGoalSteeringTests.cs",
+      "sha256": "28f2119b62d5bed00bbd3d8ea4d31aff9fba8ca540926bf7548eb4616acbfea4",
+      "bytes": 6597
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "614cd744e1220ad95ea2527c55cb9118a2ba7df91426d4c1a2ac9611d45323a1",
+      "bytes": 17373
+    },
+    {
+      "path": "backed.tests/CodexBookDirectoryTests.cs",
+      "sha256": "9d48b7abc7c74567cdf7d85d47d8546ae98887617dfabfe52a40c7d62bbc97b4",
+      "bytes": 5914
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "9f371bdf1230e15d4856d967a8936acd8bdb587c08dd27ad247680943e397184",
+      "bytes": 17617
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "288b5990733c0c3995e59b71bdc21c2d6ecfa13b02217065823e1530682b8bb6",
+      "bytes": 26129
+    },
+    {
+      "path": "backed/Services/Chat/ChatAttachmentPreparation.cs",
+      "sha256": "b7f599a4ff083c0eee875c99398aea6628ea5cdcb5f00e30324ee08eb772cb17",
+      "bytes": 1940
+    },
+    {
+      "path": "backed/Services/Chat/ChatDeliveryService.cs",
+      "sha256": "dbdebab9e1c9815a46e40121acd00e28358026897f5f536c30e3afc3e6c7d53d",
+      "bytes": 22418
+    },
+    {
+      "path": "backed/Services/Chat/ChatWebSocketHandler.cs",
+      "sha256": "cdad76136f271e512c0856e089391e3bf090b739819823902591ef30b99b1813",
+      "bytes": 19060
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexBookDirectories.cs",
+      "sha256": "fd7ab2bf76de0c2d6703a7c88ce11b8cdaea47d9b94552465fb82d80875d48e9",
+      "bytes": 2681
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Steering.cs",
+      "sha256": "13be5845414844dfc3dc785e32bda4722dc00698aa316e08a23b4b7857978785",
+      "bytes": 3830
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.cs",
+      "sha256": "a1844d84ea08e99b49628841517aabe7e0c0f1c0f527b2408b671b643c8140a6",
+      "bytes": 68885
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.Books.cs",
+      "sha256": "d5c38215ca082f93e445831b5904fcc68d1c66603600e2576a8768ae625e576a",
+      "bytes": 4336
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "d9d643ba61a515c117ee2283bd2a9ea3f329fc171a3a1b03eb4b89dd4f4fa47e",
+      "bytes": 41390
+    },
+    {
+      "path": "docs/chat-knowledge-scope-code-review.md",
+      "sha256": "8ef827c18e88f044ce700138662c86d82ac02386d4d398761ee181adae132a55",
+      "bytes": 9427
+    },
+    {
+      "path": "docs/chat-message-delivery.md",
+      "sha256": "e8db01ef302cabe3b4c06c63dcca1c71b453552154f69516b45336247f364f2a",
+      "bytes": 7892
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "0a194fe08191ef5a394694b15e4484af9722456d176a2dd8015ab5dc7abebcfa",
+      "bytes": 6873
+    }
+  ],
+  "verification": {
+    "configuration": "Release, .NET 9",
+    "passed": 205,
+    "filter": "KnowledgeWorkspaceTests, AgentProviderRegistryTests, ChatCommandTests, ChatDelivery, ChatGoal, CodexDiagnosticsTests",
+    "cli": "codex-cli 0.170.0, sandbox -P :read-only",
+    "fixture": "合成书籍与项目，app-server 协议替身，CLI 沙箱实际读盘",
+    "frontend": "干净目录重新生成 Next 路由类型后，TypeScript 检查通过"
+  }
+}

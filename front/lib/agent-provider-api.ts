@@ -32,6 +32,7 @@ export type CodexProfileModel = {
 };
 
 export type CodexModelPolicy = {
+  goal_max_token_budget: number;
   models: CodexModelOption[];
   allowed_model_ids: string[];
   default_model_id: string;
@@ -91,7 +92,7 @@ export async function getCodexModelPolicy(): Promise<CodexModelPolicy> {
   return parseJson<CodexModelPolicy>(await fetch("/api/v1/agent-providers/codex-model-policy", { cache: "no-store" }));
 }
 
-export async function updateCodexModelPolicy(payload: Pick<CodexModelPolicy, "allowed_model_ids" | "default_model_id" | "allow_chat_model_override" | "allowed_reasoning_efforts" | "default_reasoning_effort" | "allow_chat_reasoning_effort_override" | "profile_models">): Promise<CodexModelPolicy> {
+export async function updateCodexModelPolicy(payload: Pick<CodexModelPolicy, "allowed_model_ids" | "default_model_id" | "allow_chat_model_override" | "allowed_reasoning_efforts" | "default_reasoning_effort" | "allow_chat_reasoning_effort_override" | "profile_models" | "goal_max_token_budget">): Promise<CodexModelPolicy> {
   const saved = await parseJson<CodexModelPolicy>(await fetch("/api/v1/agent-providers/codex-model-policy", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

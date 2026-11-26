@@ -51,8 +51,7 @@ public sealed class ChatAttachmentHttpTests
             var parser = new DocumentParsingService(null!, NullLogger<DocumentParsingService>.Instance);
             var files = new ChatFileAttachmentService(builder.Configuration, parser, NullLogger<ChatFileAttachmentService>.Instance);
             builder.Services.AddSingleton(services => new ChatAppService(
-                services.GetRequiredService<IHttpContextAccessor>(), null!, auth, null!, images, files, null!, null!,
-                null!, null!, null!, null!, null!, null!, null!, null!));
+                services.GetRequiredService<IHttpContextAccessor>(), auth, null!, images, files, null!, null!));
 
             await using var app = builder.Build();
             app.UseDeveloperExceptionPage();
@@ -69,7 +68,7 @@ public sealed class ChatAttachmentHttpTests
                 ("日志.txt", "text/plain", Encoding.UTF8.GetBytes("中文文本"), "中文文本"),
                 ("说明.md", "text/markdown", Encoding.UTF8.GetBytes("# 中文标题"), "# 中文标题"),
                 ("表单.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", WordFixture(), "中文 Word"),
-                ("表格.csv", "text/csv", Encoding.UTF8.GetBytes("名称,数量\n测试零件,12"), "测试零件,12"),
+                ("表格.csv", "text/csv", Encoding.UTF8.GetBytes("名称,数量\n测试零件,12"), "| 测试零件 | 12 |"),
                 ("页面.html", "text/html", Encoding.UTF8.GetBytes("<p>中文网页</p><script>hidden()</script>"), "中文网页")
             })
             {

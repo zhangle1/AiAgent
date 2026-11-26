@@ -1,0 +1,43 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-19T05:36:34.896496+00:00",
+  "baseCommit": "059fba5811f40d175bd4bd6406e09a5a378d5aa4",
+  "priorLocalSnapshotFingerprintSha256": "31c43e3a3f9eaf56f77279568f14fd269e08a9d598e62e9392367ee87ce3d111",
+  "objective": "Dispatch one collaboration snapshot POST per opening and handle disconnected request bodies without obscuring ordinary HTTP errors.",
+  "files": [
+    {
+      "path": "backed.tests/RequestCancellationMiddlewareTests.cs",
+      "sha256": "33d1975005a4d25161aebe0b5726afffd375c004cc571c612b52ce488470b7f1",
+      "bytes": 8235
+    },
+    {
+      "path": "backed/Middleware/RequestCancellationMiddleware.cs",
+      "sha256": "99919205be4801bf25306d65b2b07a3d8d13101714d4939f23b13f93319e069e",
+      "bytes": 1309
+    },
+    {
+      "path": "docs/chat-collaboration.md",
+      "sha256": "81f7b530d0c1a669806db5f98f6145ec55cfb63cb6349710a8c55e60751ec1b4",
+      "bytes": 3457
+    },
+    {
+      "path": "front/components/chat/ChatCollaborationDialog.tsx",
+      "sha256": "a0337d0d3fabc1621f510a3524ac6a23b461fc880508ebae04ff15ddcfdae231",
+      "bytes": 15477
+    },
+    {
+      "path": "front/tests/chat-collaboration.browser.mjs",
+      "sha256": "4c4ba52f666c79c942349d2712601a67fd38e0714e8d1a980435cfab5db32100",
+      "bytes": 13650
+    }
+  ],
+  "fingerprintSha256": "b55f093de8f0abe766dfca5f3d3a835ed901c877bb982d45a38144b51ce90bbc",
+  "validation": {
+    "browser": "Development Strict Mode dispatched two POST attempts before the fix and one afterwards. The complete collaboration browser regression passed.",
+    "frontend": "34 targeted Node tests and TypeScript check passed.",
+    "backend": "13 request cancellation tests passed in Release.",
+    "kestrel": "A real incomplete request body reproduced the same exception. After the fix cancellation stayed inside the middleware with status 499 and the following complete POST returned 200.",
+    "whitespace": "Scoped git diff --check passed."
+  }
+}

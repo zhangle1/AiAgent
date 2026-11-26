@@ -16,6 +16,8 @@
 
 聊天 ZIP 下载支持项目根目录与关联代码库内受控路径；根目录内部标识 `__project_root__`，页面内通过 Blob 保存，见 `docs/chat-project-zip-download.md`。
 
+普通 Web 投递由 ChatDeliveryWorker 持有执行，SSE／WebSocket 连接只订阅。两入口通过 Chat/Orchestration 模块的 ChatDispatcher 分派，由 ChatTurnExecutor 执行，模型输出先追加命令事件再送达。恢复按本人会话和原命令只读订阅；停止以服务端终态确认。宿主重启沿用未决对账规则。见 `docs/chat-codex-background-delivery.md`。
+
 消息连续投递由 `ChatDeliveryService` 在两种流入口统一准入，先保存待执行请求，再进入原命令去重与执行；停止／失败挂起后续项。Codex 原生追加使用匹配当前轮次的 `turn/steer`，确认不等于整轮完成；追加附件复用普通消息的所有权、模型图片权限和正文提取，先保存历史，再提交同一轮次的文本和原图；服务端绑定复用排队会话，目标模式独立。修改前读 `docs/chat-message-delivery.md`。
 
 普通聊天命令去重必须在 HTTP／WebSocket 入口、用户消息持久化之前统一登记；同编号内容变化拒绝，恢复只读命令事件，不重调模型、工具、历史和用量。目标模式继续使用独立协议。新增展示事件先持久化再发送，只有历史保存后的 completed 确认成功。实现与验证见 `docs/chat-command-recovery.md`。
@@ -65,6 +67,8 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 修改知识原文件路径检查或历史清理前读 `docs/knowledge-stale-record-cleanup.md`。清理仅软删除经当前身份授权、预览指纹复核且无活动任务的失效来源记录；管理员可管理共享资料，其他人员会话仍只读。保留磁盘文件和聊天／任务历史，使用独立数据库客户端和事务；路径失效返回状态提示，继续执行根边界与链接检查。
 
+- 修改资料文件删除前读 `docs/knowledge-resource-deletion.md`。独立删除入口支持正常来源文件；服务端复核 URI／ID、身份与活动任务，生成内容跟随来源隐藏。`can_delete` 只控制界面展示，权限由服务端重新检查。
+
 - 修改坤伴安装包上传、更新检测、平台 URL 切换或版本脚本前读 `docs/kunbuddy-client-releases.md`：管理员发布不可变安装包，客户端更新绑定当前登录平台，切换账号／URL 取消旧请求并清空安装权限；下载及安装前校验哈希。验证使用合成账号、隔离目录和不执行的测试包。
 
 - 客户端登录首页、登录恢复或过期跳转改动前读 `docs/kunbuddy-account-home.md`：首页与订阅设置共用登录链路，平台会话检查区别于上游模型错误；令牌仍由 Rust 保存，公开账号提示不存凭据。
@@ -73,7 +77,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 模型发现与坤伴订阅改动前先读 `docs/kunbuddy-subscription-and-model-discovery.md`。可用模型以供应商列表为准，容量按端点 → 本地公开 `model.json` 补全，未知留空；公开能力不启用 Native V2。`kunbuddy-client` 会话独立于网页和插件会话，转发仅接受已配置模型和固定协议路径，平台密钥只在服务端补充；登录 IPC 限主窗口。验证使用合成账号与隔离数据。
 
-- 文档转换统一进入 `Services/Parsing/MarkdownDocumentPlanner` 的确定性标题／段落布局，保留完整 L2，不把章节阈值当模型窗口。解析配置 `parsing` 随任务 JSON 深拷贝，重试沿用。`KnowledgeParsedDocumentStore` 在受控临时目录写齐正文、章节与 manifest 后整体重命名，再用数据库行发布版本；不扫描磁盘选最新。版本标记 `markdown-layout-1`，旧单文件仍可读。资源 `_parsed/` 为只读来源投影，章节须校验来源可见性、最新解析 ID、来源哈希、清单路径及内容哈希，不进入原文编译／任务列表；原始文件 URI、个人范围和 RAG 索引不变。语义生成继续读取完整正文。修改前参见 `docs/knowledge-document-parsing.md`，验证全文区间覆盖、表格行、同名标题、取消／失败保留正文及个人隔离。
+- 多格式转换统一由 `Services/Parsing/DocumentConversionService` 调度，知识库、聊天、项目保留各自授权与产物生命周期；PDF 继续自有 C# 引擎，Office／EPUB 图片沿用 PNG 哈希协议，项目文本模式不得遗留临时图片链接。文档转换统一进入 `Services/Parsing/MarkdownDocumentPlanner` 的确定性标题／段落布局，保留完整 L2，不把章节阈值当模型窗口。解析配置 `parsing` 随任务 JSON 深拷贝，重试沿用。`KnowledgeParsedDocumentStore` 在受控临时目录写齐正文、章节与 manifest 后整体重命名，再用数据库行发布版本；不扫描磁盘选最新。版本标记 `markdown-layout-2`，兼容旧布局和单文件。章节与索引统一经 `MarkdownBundleWriter` 写入；改动目录产物、TXT 编码或 Word 结构前读 `docs/knowledge-markdown-bundles.md`。资源 `_parsed/` 为只读来源投影，章节须校验来源可见性、最新解析 ID、来源哈希、清单路径及内容哈希，不进入原文编译／任务列表；原始文件 URI、个人范围和 RAG 索引不变。语义生成继续读取完整正文。修改前参见 `docs/knowledge-document-parsing.md`，验证全文区间覆盖、表格行、同名标题、取消／失败保留正文及个人隔离。 PDF 图片随解析版本原子发布、写入 manifest 哈希并按章节层级改写相对链接；预览仅用受控 URI 和最新解析 ID，不外链。原文用 PDF.js 分页 canvas，依赖主库／worker 版本须一致。资源 raw 目录按 URI 命名空间组织，旧文件不自动搬迁。PDF 主解析由 C# PdfPig／PDFium 执行，不调用 Python；外置知识库根单独纳入受控范围，保留取消与发布边界；部署须携带原生库，配置和限制见同一解析文档。
 
 - L0/L1 生成按模型窗口及 JSON 转义开销动态分段，UTF-8 字节上界只用于输入估算，不能据此拒绝中文模型输出。API 编译输出使用供应商默认策略（客户端输出参数 0 时省略 max_tokens）；输出空间预留不是硬上限。新编译任务调用次数默认 0 表示不限，正整数为显式上限，历史快照保持；超时、取消、压缩不收敛和真实截断继续失败。与独立 Wiki 证据协议的字符／页数校验区分。见 `docs/knowledge-compilation-skills.md`。
 
@@ -83,10 +87,10 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - 知识产物归属与上下文预算：任务入队时从服务端身份捕获 `OwnerRoot`，后台执行沿用快照；个人摘要和 Wiki 写入本人工作区，原文与 L2 保留资源层。Wiki／语义生成通过 `Services/Knowledge/KnowAgent/`，原文证据完整保留，压缩与生成共用调用预算。修改归属、缓存、任务重试或模型预算时先读 `docs/knowledge-personal-workspace.md`，验证双用户隔离及失败后正文可读。
 
-- 知识任务队列位于 `Services/TaskQueue/KnowledgeCompilationWorker.cs`，领域处理位于 `Services/Knowledge/KnowledgeCompilationHandler.cs`。目录资料任务按 L2 → L0/L1 顺序执行，语义服务缺失必须失败，不得静默成功；任务 `Stage` 为可空列。任务中心须补写并覆盖内存终态，阶段缺失的历史任务不得声称已生成语义，可通过重新处理触发。
+- 知识任务队列位于 `Services/TaskQueue/KnowledgeCompilationWorker.cs`，领域处理位于 `Services/Knowledge/KnowledgeCompilationHandler.cs`。导入任务在 L2 发布后完成，重试沿用 `MarkdownOnly`。手动语义任务按 L2 → L0/L1 执行，缺少语义服务时报告失败。任务 `Stage` 为可空列。任务中心须补写并覆盖内存终态，阶段缺失的历史任务不得声称已生成语义，可通过重新处理触发。
 
 
-- 目录资源解析在 `wiki_compile` 队列内先保存 L2，再由 `KnowledgeResourceSemanticService` 生成文件摘要并自底向上生成 L1，L0 从简介提取，不单独调用模型。`KnowledgeSemanticStore` 用不可变版本和原子 manifest 发布 `.overview.md` / `.abstract.md`；指纹覆盖原文、解析正文哈希和后代资源，缓存失效不得展示为最新。个人语义只汇总到本人根目录，不汇总到 `viking://user/`；不改 RAG 活动索引。`ContentHash` 为可空列；已有无哈希记录回退解析 ID。详情见 `docs/knowledge-resource-semantics.md`。
+- 手动语义编译在 `wiki_compile` 队列内先保存 L2，再由 `KnowledgeResourceSemanticService` 生成文件摘要并自底向上生成 L1，L0 从简介提取。`KnowledgeSemanticStore` 用不可变版本和原子 manifest 发布 `.overview.md` / `.abstract.md`；指纹覆盖原文、解析正文哈希和后代资源，缓存失效不得展示为最新。个人语义只汇总到本人根目录，不汇总到 `viking://user/`；不改 RAG 活动索引。`ContentHash` 为可空列；已有无哈希记录回退解析 ID。详情见 `docs/knowledge-resource-semantics.md`。
 
 - 聊天文件粘贴从剪贴板的 `items` 与 `files` 中优先读取有正文的列表，按 MIME 或支持的图片后缀分流。空附件在前端提示通过文件选择器重试，文档和图片上传 API 对缺失或零字节的 `file` 返回 JSON 400。混合剪贴板保留 Excel 单元格文本优先的行为。
 
@@ -136,7 +140,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 
 - Codex 额度入口为 `CodexQuotaButton`，读取已登录接口 `/api/v1/chat/codex/quota`；服务端通过独立只读 app-server 调用 account/read 与 account/rateLimits/read，不启动 thread/turn，不读取认证文件。前端将 used_percent 转为剩余百分比与剩余进度条，按真实窗口长度命名；账号只显示固定文案“本地来源账号”；响应及缓存不含邮箱或脱敏账号字段。额度属于后端运行账号，内存缓存成功结果 30 分钟、错误 1 分钟，并发查询串行复用；不得混同网页用户的个人用量或输出原始账号／凭据。见 `docs/codex-local-quota.md`。
 
-- 聊天输入区入口集中在 `ChatComposerMenu` 的「+」菜单，未选择时收起技能、目标和可视化面板；`/` 共用技能／目标选择，选择不发送。目标设置用弹窗和已选标签；每次成功 startStream 后以 submission 序号消费本次选择，完成／结束状态隐藏标签；弹窗可删除草稿或通过既有 end 结束目标，保留历史和版本，活动目标须先暂停。新建请求预算固定 200 万，后端同设默认和上限；恢复已有目标沿用原预算。切换项目／会话关闭旧菜单，激活序号只响应当前组件内的显式操作。修改时同步 `docs/chat-goal-mode.md` 与 `docs/chat-explicit-skills.md`。
+- 聊天输入区入口集中在 `ChatComposerMenu` 的「+」菜单，未选择时收起技能、目标和可视化面板；`/` 共用技能／目标选择，选择不发送。目标设置用弹窗和已选标签；每次成功 startStream 后以 submission 序号消费本次选择，完成／结束状态隐藏标签；弹窗可删除草稿或通过既有 end 结束目标，保留历史和版本，活动目标须先暂停。新目标默认／上限 1000 万，管理员通过 Codex 模型策略的 goal_max_token_budget 修改；网页省略预算，由后端读取当前策略，显式预算不得超过上限；恢复已有目标沿用原预算。切换项目／会话关闭旧菜单，激活序号只响应当前组件内的显式操作。修改时同步 `docs/chat-goal-mode.md` 与 `docs/chat-explicit-skills.md`。
 
 - 聊天侧栏码云任务处理复用 `EnterpriseIssuePicker` 的可选 `onProcess`、工作项关联与聊天交接接口；使用 Portal 避免侧栏裁剪。仅显式处理产生的单次浏览器标记可自动发送，等待交接与聊天配置准备完成，普通关联／模板预填仍由用户发送。参见 `docs/chat-gitee-task-processing.md`。
 

@@ -1,0 +1,114 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-16T14:58:53.219179+08:00",
+  "baseCommit": "1542ada179ae7df35478d9e73f751517d5e78119",
+  "objective": "Default goal token budget and limit to 10 million, configurable by administrators in existing agent settings.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "c9ddadea3d4204ca1b0b4b0a71017656d6ba6d928323022f33701a73e4451fe6",
+      "bytes": 35242
+    },
+    {
+      "path": "README.md",
+      "sha256": "af50d9c608f74f7da58a34634788b56ec594e9a24e85d163a95ae8913404b05e",
+      "bytes": 41063
+    },
+    {
+      "path": "backed/Dtos/Chat/AgentProviderDtos.cs",
+      "sha256": "a5e2a4495a7833f5ceb8ddb79f01e8fc4ad13127668935f966554b0c584a5c08",
+      "bytes": 7032
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatGoalDtos.cs",
+      "sha256": "e0a132aaffb346b7cb329ce060840aa530e3a21e96fc5f70849849f7f6c88c74",
+      "bytes": 1323
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexModelPolicyService.cs",
+      "sha256": "559a7302840ed6944826e10fbbbfb958e871100323ee655ddbe9e1689ae38bb4",
+      "bytes": 21177
+    },
+    {
+      "path": "backed/Services/Chat/Codex/CodexChatService.Goals.cs",
+      "sha256": "ae79b00c1571cd8c2852e023be6fe7fe6128c36c5061e92e6da8b36be5dcd2cb",
+      "bytes": 16344
+    },
+    {
+      "path": "backed.tests/CodexModelPolicyTests.cs",
+      "sha256": "d869e7b33ec7bc9d9cf87d5c7e80b965ed2f602ae50b6ef3a688c2784cf829a7",
+      "bytes": 6645
+    },
+    {
+      "path": "backed.tests/ChatGoalTests.cs",
+      "sha256": "0bee46aec526d9501c3bd4e6e98f578ca2f6b0ceb98e9e89e4a959ddaea4a8c6",
+      "bytes": 15037
+    },
+    {
+      "path": "front/lib/agent-provider-api.ts",
+      "sha256": "635909040b4a1d6dc69f64372afabedc7075d097ae4f6a74949b1017ba973307",
+      "bytes": 4230
+    },
+    {
+      "path": "front/lib/chat-goal-types.ts",
+      "sha256": "6b016a20c6691d39a937535e0c7c4768550d6bf7bea82f712a1880f8132b7c72",
+      "bytes": 371
+    },
+    {
+      "path": "front/components/chat/ChatGoalPanel.tsx",
+      "sha256": "c9564974ebe6743b6315181bac65f7c93334f113a0b7765c51d16f53b6c04dcc",
+      "bytes": 9159
+    },
+    {
+      "path": "front/components/settings/agents/AgentProvidersSettingsPage.tsx",
+      "sha256": "0f1075e9f4ab0e916f4ea265a2a9346dbd509fc1aa9c54260c402938b4fc6de5",
+      "bytes": 25914
+    },
+    {
+      "path": "front/tests/chat-goal-budget.browser.mjs",
+      "sha256": "c3003b9c6e897a5bf0b8be2c2cbc6ce5438f9fceaab75e853ba11a86001daaad",
+      "bytes": 6329
+    },
+    {
+      "path": "front/tests/chat-goal.browser.mjs",
+      "sha256": "7fc0f0f6ddd45558b356d26ca919c2dacf76a5afa7c51992b60fd616bab4d278",
+      "bytes": 8004
+    },
+    {
+      "path": "front/tests/chat-composer-menu.browser.mjs",
+      "sha256": "033f1b8423dc6e7b0f3c7a9340f25afbe722906275e8ca08ae9cdb36004423cd",
+      "bytes": 11169
+    },
+    {
+      "path": "front/tests/codex-profile-images.browser.mjs",
+      "sha256": "a73a2c1ce3017800f6eaafdd69f6b6a56c27a848cbae6c8ccd58f4625f362696",
+      "bytes": 12844
+    },
+    {
+      "path": "docs/chat-goal-mode.md",
+      "sha256": "ef1a4425e58975cd69b98a0b0dadfc0aea23569fdde9044b493cd2fbd0f8cf57",
+      "bytes": 10934
+    }
+  ],
+  "fingerprint": "0b8dafd7fd86cccc116ddc6557ee73bd48fd1cf4d28e5fec02dc93603d9c3178",
+  "behavior": {
+    "settings": "goal_max_token_budget is stored in versioned codex_model_policy JSON. Legacy settings default to 10000000; missing update field preserves saved value. Only administrators can update; positive safe integer required. No new database columns.",
+    "newGoals": "Browser omits token_budget; server uses current configured maximum as default. Explicit lower positive budgets remain accepted, over-limit values are rejected.",
+    "resume": "Existing goal snapshot budget and usage remain unchanged after administrator policy changes."
+  },
+  "validation": {
+    "backend": "97 passed, 0 failed: ChatGoalTests, CodexModelPolicyTests, CodexProfileImageTests, SwaggerDocumentTests, ChatCommandTests, ChatSkillTests, CodexDiagnosticsTests. SDK 9.0.318 with temporary artifacts and default content disabled.",
+    "typescript": "node node_modules/typescript/bin/tsc --noEmit --incremental false passed.",
+    "browser": [
+      "chat-goal-budget.browser.mjs: administrator save/reload, invalid value, failed-save retry, limit above default, non-admin guard, desktop/mobile screenshots verified.",
+      "chat-goal.browser.mjs: server-budget omission, goal dialog, resume/end/version and legacy completed goal.",
+      "chat-composer-menu.browser.mjs: real Next.js page with synthetic APIs and WebSocket, optional goal and ordinary follow-up.",
+      "codex-profile-images.browser.mjs: existing model/image policy saves and upload permissions still pass."
+    ],
+    "whitespace": "git diff --check passed",
+    "environment": "Synthetic accounts, isolated SQLite and fake model/CLI protocols; no real credentials, user database or actual model calls; no real administrator settings changed."
+  },
+  "scope": "Preserved unrelated existing workspace changes. AGENTS.md and README.md already had separate edits; this task updates only goal budget text. No chat KnowledgeChatHome changes required for this feature.",
+  "delivery": "Local source changes only; no commit, push, service restart or deployment."
+}

@@ -53,7 +53,7 @@ try {
   await dialog.getByRole("textbox", { name: "目标与验收标准" }).fill("实现功能并验证测试");
   await page.screenshot({ path: path.join(output, "goal-setup-mobile.png") });
   await dialog.getByRole("button", { name: "启用目标" }).click();
-  await page.waitForFunction(() => window.draft?.action === "start" && window.draft.token_budget === 2000000);
+  await page.waitForFunction(() => window.draft?.action === "start" && window.draft.token_budget === undefined);
   assert.equal(await page.evaluate(() => window.draft.objective), "实现功能并验证测试");
   await page.getByRole("button", { name: "取消目标模式", exact: true }).click();
   await page.waitForFunction(() => window.draft === null);
@@ -106,7 +106,7 @@ try {
   assert.equal(await dialog.getByRole("button",{name:"继续目标",exact:true}).isDisabled(),true);
   await page.keyboard.press("Escape");
   assert.deepEqual(errors, []);
-  console.log(`Passed: goal dialog opt-in/cancel, required objective, hidden fixed two-million budget, session reset, one-shot consumption, hidden completed target, versioned resume/delete with error recovery, local draft delete, active delete guard, mobile rendering. Screenshot: ${output}`);
+  console.log(`Passed: goal dialog opt-in/cancel, required objective, server-configured budget, session reset, one-shot consumption, hidden completed target, versioned resume/delete with error recovery, local draft delete, active delete guard, mobile rendering. Screenshot: ${output}`);
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

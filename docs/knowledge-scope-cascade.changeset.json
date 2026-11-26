@@ -1,0 +1,34 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-13T08:32:12.007429+00:00",
+  "baseCommit": "d8c1edc4e918646789477b7a822bb8fc64c1f867",
+  "objective": "Cascade knowledge folder selection to descendants, preserve exclusions and show mixed ancestors.",
+  "files": [
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "f8fc90b1e9ac529f31be035d3403e37361ec571d07cb0fb5bdc23f4537c80375",
+      "bytes": 181035
+    },
+    {
+      "path": "front/tests/knowledge-scope-picker.browser.mjs",
+      "sha256": "1161983e04b8648bcf5066867785b29c0bf97b7f9d72f1612b5b348bc17e0e70",
+      "bytes": 11935
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "3fe6ac87fda94b0324f39e92b4dcf253948e796974467850354b75aa174a14d9",
+      "bytes": 3301
+    }
+  ],
+  "fingerprint": "2bbf498963e56f2d16733564432fe8f71cb9e0129fd1e0fe67cf6cf57b197d1c",
+  "validation": {
+    "browser": "Passed actual Next.js chat page with synthetic APIs/WebSocket on desktop 1440x1000 and mobile 390x844: parent selects descendants, restored parent selection checks collapsed descendants, filtered parent deselects hidden descendants, child exclusion shows mixed ancestors and submits only remaining child scopes; existing draft/confirm/cancel/Escape/outside/search and Codex agent assertions pass.",
+    "typescript": "Passed: node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "visual": "Desktop mixed-state and mobile screenshots inspected.",
+    "whitespace": "Passed: git diff --check",
+    "encoding": "Modified files remain strict UTF-8 without BOM; unmodified line endings preserved.",
+    "boundaries": "UI selection only. No backend, Codex parameters, code workspace, permissions or execution logic changed in this task."
+  },
+  "delivery": "Local changes only, no commit/push; existing login-cancellation backend changes remain separately recorded in chat-bootstrap-cancellation.changeset.json."
+}

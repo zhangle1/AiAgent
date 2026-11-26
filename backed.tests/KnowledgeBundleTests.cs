@@ -126,7 +126,7 @@ public sealed partial class KnowledgeWorkspaceTests
         var chapterDirectory = Assert.Single(resources.Tree(), node => node.Kind == "directory" && node.Name == "第一章" && node.SourceUri == doc.ResourceUri);
         Assert.Equal(layout.Files.Where(entry => entry.Path.StartsWith("第一章/")).Min(entry => entry.Order), chapterDirectory.SectionOrder);
         var index = (await resources.ReadAsync(doc.ResourceUri!, default)).ParsedIndex!;
-        Assert.True(index.IsNavigation);
+        Assert.True(index.IsNavigation); Assert.False(index.CanDelete);
         foreach (var node in resources.Tree().Where(n => n.IsNavigation))
         {
             var read = await resources.ReadAsync(node.Uri, default);

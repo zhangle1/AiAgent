@@ -64,7 +64,7 @@ export function KnowledgeCleanupDialog({ onClose, onCleaned }: { onClose: () => 
           <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">{preview.items.map(item => <label key={item.document_id} className="flex items-start gap-3 p-3 text-xs">
             <input type="checkbox" aria-label={`清理 ${item.name}`} checked={selected.has(item.document_id)} disabled={disabled || !item.can_cleanup || selected.size >= 500 && !selected.has(item.document_id)} onChange={event => { setSelected(current => { const next = new Set(current); event.target.checked ? next.add(item.document_id) : next.delete(item.document_id); return next; }); setConfirmed(false); }} className="mt-0.5 shrink-0" />
             <span className="min-w-0 flex-1"><span className="block break-words font-medium text-slate-800">{item.name}</span><span className="mt-1 block break-all text-[10px] text-slate-400">{readableUri(item.uri)}</span><span className="mt-1 block leading-5 text-slate-600">{item.message}</span>{item.blocked_reason && <span className="mt-1 block text-amber-700">{item.blocked_reason}</span>}</span>
-          </label>)}{!preview.items.length && <p className="py-12 text-center text-sm text-slate-500">没有需要清理的失效记录</p>}</div>
+          </label>)}{!preview.items.length && <div className="py-10 text-center text-sm text-slate-500"><p>没有需要清理的失效记录</p><p className="mt-2 px-4 text-xs leading-5 text-slate-400">正常文件请选中文件后，使用预览顶部的“删除文件”。</p></div>}</div>
         </>}
       </div>
       <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4 sm:p-5">

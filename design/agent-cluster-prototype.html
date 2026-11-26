@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AiAgent · Agent 运行画布</title>
+<style>
+  :root{color-scheme:light;--bg:#f3f6fa;--paper:#fff;--ink:#15213b;--muted:#5f6e86;--faint:#77869d;--line:#dee6f1;--blue:#2560e8;--blue-dark:#174bc9;--blue-bg:#eaf1ff;--green:#177452;--green-bg:#ebf7f0;--amber:#875719;--amber-bg:#fff5de;--red:#b24652;--red-bg:#fff0f2;--mono:Consolas,monospace}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,"Microsoft YaHei UI","PingFang SC",system-ui,sans-serif}h1,h2,h3,p,pre{margin:0}button,textarea,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:3px}[hidden]{display:none!important}code,pre,.mono{font-family:var(--mono)}.row{display:flex;align-items:center;gap:8px}.spread{display:flex;align-items:center;justify-content:space-between;gap:10px}.wrap{overflow-wrap:anywhere}.muted{color:var(--muted)}.small{font-size:12px}.actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .top{min-height:55px;background:#fff;border-bottom:1px solid var(--line);padding:0 clamp(14px,2.7vw,40px)}.logo{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;background:var(--blue);color:white;font-size:16px;line-height:1}.brand{font-size:16px;font-weight:780;letter-spacing:-.035em}.crumb{font-size:12px;color:var(--muted)}.crumb::before{content:'›';display:inline-block;margin:0 9px 0 4px;color:#9eacc0}.demo-label{color:var(--muted);font-size:12px;white-space:nowrap}.demo-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:#92a9d0;margin-right:6px;vertical-align:1px}
+  .button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:5px 10px;border:1px solid #d9e2ee;border-radius:7px;background:#fff;color:#293b57;font-weight:650;font-size:12px;white-space:nowrap}.button:hover:not(:disabled){background:#f0f5fc;border-color:#b9cbe5}.button.primary{background:var(--blue);border-color:var(--blue);color:#fff}.button.primary:hover:not(:disabled){background:var(--blue-dark)}.button.quiet{background:transparent;border-color:transparent;color:var(--muted)}.button.quiet:hover:not(:disabled){background:var(--blue-bg);border-color:transparent;color:var(--blue-dark)}
+  main{max-width:1640px;padding:23px clamp(13px,2.7vw,40px) 21px;margin:auto}.heading{align-items:flex-start;margin-bottom:16px}.heading h1{font-size:clamp(23px,2.4vw,34px);letter-spacing:-.055em;line-height:1.22;overflow-wrap:anywhere}.heading .task-title{flex-wrap:wrap;gap:7px 10px}.heading p{font-size:12px;color:var(--muted);margin-top:7px}.heading .actions{padding-top:8px;justify-content:flex-end}.task-code{color:var(--faint);font:11px var(--mono);margin-bottom:5px}.chip{display:inline-flex;align-items:center;gap:5px;color:#607089;background:#edf1f6;border-radius:6px;padding:3px 7px;font-size:11px;line-height:1.4;white-space:nowrap;vertical-align:middle}.chip.live{color:var(--blue-dark);background:var(--blue-bg)}.chip.good{color:var(--green);background:var(--green-bg)}.chip.warn{color:var(--amber);background:var(--amber-bg)}.chip.bad{color:var(--red);background:var(--red-bg)}.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+  .toolbar{flex-wrap:wrap;margin:0 0 10px;min-height:36px}.mode{display:inline-flex;background:#e9eef6;border:1px solid #e3eaf4;border-radius:9px;padding:3px;gap:2px}.mode button{min-height:29px;border:1px solid transparent;border-radius:6px;background:transparent;padding:4px 10px;color:#536580;font-weight:650;font-size:12px;white-space:nowrap}.mode button[aria-pressed=true]{background:#fff;color:#153c7e;border-color:#dce5f2;box-shadow:0 1px 2px #2939440a}.task-meta{color:var(--muted);font-size:12px;gap:8px 14px;flex-wrap:wrap}.task-meta b,.task-meta code{color:#36516f;font-weight:600}.task-meta .sep{color:#a6b3c6}
+  .workspace{display:grid;grid-template-columns:minmax(0,1fr) 306px;gap:13px;align-items:start}.stage,.inspector{min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden;box-shadow:0 2px 5px #263e6606}.stage-head{min-height:43px;padding:0 13px;border-bottom:1px solid #e3eaf5;background:#fff}.stage-head h2,.inspector h2{font-size:14px}.stage-head .small{color:var(--muted)}.canvas{position:relative;overflow:hidden;width:100%;height:clamp(370px,53.5vh,560px);background:#f7f9fd;background-image:radial-gradient(circle,#cbd7eb 1px,transparent 1px);background-size:19px 19px;touch-action:none;cursor:grab;isolation:isolate}.canvas[data-dragging]{cursor:grabbing}.world{position:absolute;inset:0 auto auto 0;width:1120px;height:440px;transform-origin:0 0;pointer-events:none;z-index:2}.edges{position:absolute;inset:0;pointer-events:none;z-index:1}.env-group{position:absolute;left:225px;top:42px;width:680px;height:385px;border:1px dashed #adbfdb;border-radius:17px;background:#eaf1fd42}.group-label{position:absolute;top:12px;left:15px;right:15px;color:#43618c;font-weight:720;font-size:13px}.group-label span:last-child{font-weight:500;color:#5f7595;font-size:11px}
+  .graph-node{display:block;text-align:left;position:absolute;width:166px;height:96px;padding:9px 10px;background:#fff;color:var(--ink);border:1px solid #cdd9ec;border-radius:10px;box-shadow:0 3px 10px #23426612;pointer-events:auto;cursor:grab;z-index:3;user-select:none;outline-offset:2px}.graph-node:hover{border-color:#92afe2;box-shadow:0 4px 12px #23426622}.graph-node[aria-pressed=true]{border:2px solid var(--blue);padding:8px 9px;box-shadow:0 0 0 4px #2560e820,0 4px 12px #27458019;z-index:4}.graph-node.live:not([aria-pressed=true]){border-color:#8cacf2}.graph-node.bad:not([aria-pressed=true]){border-color:#e3a1ac}.graph-node.warn:not([aria-pressed=true]){border-color:#e4c585}.graph-node:focus-visible{outline-offset:5px}.graph-node::before,.graph-node::after{position:absolute;content:'';top:calc(50% - 4px);width:7px;height:7px;background:#7089ad;border:1px solid #fff;border-radius:50%;z-index:1}.graph-node::before{left:-5px}.graph-node::after{right:-5px}.graph-node[data-node=server]::before,.graph-node[data-node=human]::after{display:none}.graph-node.live::before,.graph-node.live::after{background:var(--blue)}.node-head{align-items:flex-start;gap:7px}.node-text{min-width:0}.node-text strong,.node-text small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.node-text strong{font-size:13px;line-height:1.4}.node-text small{margin-top:2px;font-size:10px;color:var(--muted)}.node-state{margin-top:11px}.node-icon{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:#edf2f9;color:#38577b;font:700 11px var(--mono)}.node-icon.server,.node-icon.write{color:#194fb6;background:#e7efff}.node-icon.review{color:#6850a3;background:#f1ebfa}.node-icon.test{background:#e6f5ef;color:#177452}.node-icon.human{background:#fff2df;color:#865d28}
+  .viewport-controls{position:absolute;z-index:5;bottom:12px;left:12px;display:flex;gap:1px;align-items:center;padding:3px;border-radius:7px;border:1px solid #dce5f2;background:#fff;box-shadow:0 2px 5px #354d6712;cursor:auto}.viewport-controls button{display:grid;place-items:center;min-width:27px;height:26px;border:0;border-radius:4px;background:#fff;color:#315480;font-weight:700;font-size:16px}.viewport-controls button:hover{background:var(--blue-bg)}.viewport-controls button:last-child{font-size:12px;padding:0 7px}.zoom-label{font:10px var(--mono);color:var(--muted);text-align:center;min-width:34px}.minimap{position:absolute;right:12px;bottom:12px;border:1px solid #dce5f2;border-radius:7px;background:#ffffffeb;z-index:5;width:135px;height:66px;cursor:crosshair;box-shadow:0 2px 5px #354d6710}.canvas-select{display:none}
+  .composer-slot{background:#fff;border-top:1px solid var(--line);padding:10px 12px}.composer{border:1px solid #d9e4f4;border-radius:9px;padding:8px 10px;background:#fff;min-width:0}.recipient{display:flex;align-items:center;gap:6px;color:#2752a1;font-size:12px;font-weight:700}.composer textarea{width:100%;border:0;resize:vertical;min-height:36px;padding:6px 0;background:transparent;color:var(--ink);display:block;font-size:13px}.composer textarea::placeholder{color:#72829a}.composer textarea:focus{outline:none}.composer:focus-within{border-color:#9ab6f2;box-shadow:0 0 0 2px #2560e80c}.composer .spread{flex-wrap:wrap}.composer .button{min-height:28px;padding:4px 8px}.composer-hint{font-size:11px;color:var(--muted);overflow-wrap:anywhere}.composer-closed{padding:8px 1px;color:var(--muted);font-size:12px}.feedback{color:#2752a1;font-size:12px;margin-top:5px;overflow-wrap:anywhere}
+  .inspector{min-height:320px}.inspector-top{padding:12px 13px;border-bottom:1px solid var(--line)}.inspector-title{padding:13px 13px 9px}.inspector-title h3{font-size:15px}.inspector-title p{font-size:11px;color:var(--muted);margin-top:2px}.inspector-title .chip{margin-left:auto}.inspect-tabs{display:flex;gap:14px;padding:0 13px;border-bottom:1px solid var(--line)}.inspect-tabs button{border:0;border-bottom:2px solid transparent;background:transparent;padding:7px 1px 8px;font-size:12px;font-weight:650;color:var(--muted)}.inspect-tabs button[aria-pressed=true]{border-color:var(--blue);color:var(--blue-dark)}.inspect-body{padding:11px 13px 14px;min-height:182px;max-height:348px;overflow:auto}.info{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 13px;font-size:12px}.info dt{color:var(--muted)}.info dd{margin:0;overflow-wrap:anywhere}.goal{font-size:12px;margin-top:11px;border-top:1px solid #edf1f7;padding-top:9px}.goal b{display:block;margin-bottom:4px}.events{list-style:none;margin:0;padding:0}.events li{position:relative;padding:0 0 10px 11px;border-left:1px solid #dbe4f1;margin-left:3px}.events li:last-child{padding-bottom:0;border-left-color:transparent}.events li::before{content:'';position:absolute;width:6px;height:6px;border-radius:50%;background:#6287c6;left:-4px;top:6px}.events b{font-size:12px}.events time{color:var(--faint);font:10px var(--mono)}.events p,.empty{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere;white-space:pre-wrap}.inspect-foot{background:#fbfcff;border-top:1px solid var(--line);padding:9px 13px}.artifact-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:9px}.artifact-tabs button{border:1px solid #dce5f2;border-radius:5px;background:white;color:var(--muted);font-size:11px;padding:3px 6px}.artifact-tabs button[aria-pressed=true]{background:var(--blue-bg);color:var(--blue-dark);border-color:#c7d9fa}.version{padding:6px 8px;background:#eff4fb;border-radius:5px;font-size:11px;margin-bottom:9px;display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap}.artifact-list{padding:0 0 0 16px;margin:7px 0;font-size:12px;overflow-wrap:anywhere}.artifact-list li{margin:3px 0}.diff{font-size:10px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f7fb;border-radius:6px;padding:7px 8px}.diff span{display:block}.del{color:var(--red);background:var(--red-bg)}.add{color:var(--green);background:var(--green-bg)}
+  .chat-view{min-width:0;max-width:900px;margin:auto}.chat-feed{max-height:clamp(360px,59vh,680px);overflow:auto;padding:8px 13px 9px;scrollbar-color:#aebed5 transparent;scrollbar-width:thin}.chat-flow{display:grid;gap:13px}.chat-msg{max-width:94%;width:fit-content}.chat-msg.user{justify-self:end;max-width:83%}.chat-meta{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;margin-bottom:4px}.chat-msg.user .chat-meta{justify-content:flex-end}.chat-meta time{font:10px var(--mono);color:var(--faint)}.bubble{padding:10px 13px;border:1px solid #dde7f3;border-radius:11px;background:#fff;line-height:1.6;overflow-wrap:anywhere;white-space:pre-wrap;box-shadow:0 1px 2px #23375307}.bubble b{display:block;font-size:13px}.bubble p{font-size:13px}.user .bubble{background:var(--blue);color:white;border-color:var(--blue)}.chat-graph-link{margin-top:6px}.chat-dock{position:sticky;bottom:0;margin-top:6px;background:var(--bg);border-radius:11px;padding:6px 1px 4px}.chat-dock .composer{box-shadow:0 6px 20px #20395b12;padding:10px 12px}.chat-dock .composer textarea{min-height:47px}
+  .demo-bar{margin-top:12px;padding:7px 9px 7px 11px;border:1px solid #dfe7f3;border-radius:8px;background:#eaf0f9;font-size:11px;color:#4e6685;flex-wrap:wrap;min-height:42px}.demo-bar select{padding:4px 6px;border:1px solid #d6e2f2;border-radius:5px;color:#31527d;background:#fff;font-size:11px}.demo-bar .button{min-height:28px;padding:4px 7px;font-size:11px}.demo-title{font-weight:730;color:#334f73}
+  dialog{width:min(500px,calc(100vw - 28px));border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);padding:17px;box-shadow:0 18px 58px #183a6b38}dialog::backdrop{background:#1b33566b}dialog h2{font-size:18px}dialog form{display:grid;gap:10px;margin-top:11px}dialog label{display:grid;gap:4px;font-size:12px;font-weight:650}dialog input,dialog textarea{width:100%;padding:7px 8px;border:1px solid #d9e2ee;border-radius:6px;color:var(--ink);min-width:0}dialog textarea{resize:vertical;min-height:65px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}dialog .actions{justify-content:flex-end}.task-list{display:grid;gap:6px;margin-top:10px}.task-list button{display:flex;justify-content:space-between;align-items:center;gap:6px;background:#fff;text-align:left;border:1px solid var(--line);border-radius:7px;padding:8px 10px}.task-list button:hover{background:var(--blue-bg)}.task-list button b{overflow-wrap:anywhere}
+  @media(max-width:1070px){.workspace{grid-template-columns:minmax(0,1fr) 255px}.heading h1{font-size:25px}.minimap{width:110px;height:55px}}
+  @media(max-width:760px){.workspace{grid-template-columns:minmax(0,1fr)}.canvas{height:380px}.inspect-body{max-height:245px}.heading{flex-wrap:wrap;gap:6px}.heading .actions{padding-top:0}.canvas-select{display:block;min-width:0;max-width:112px;border:1px solid #d9e2ee;color:#345279;background:#fff;border-radius:6px;padding:3px 5px;font-size:11px}.stage-head .hint{display:none}}
+  @media(max-width:470px){.top{padding:0 11px;min-height:46px}.top .crumb,.top .demo-label{display:none}.top .actions{gap:3px}.top .button{min-height:28px;padding:4px 6px}.brand{font-size:15px}.logo{width:24px;height:24px}main{padding:12px 10px}.heading{margin-bottom:9px}.heading h1{font-size:23px}.task-meta{font-size:11px;gap:6px}.canvas{height:345px}.chat-feed{padding-left:4px;padding-right:4px}.minimap{width:90px;height:48px}}
+  canvas.edges{width:100%;height:100%}
+</style>
+</head>
+<body>
+<header class="top spread">
+  <div class="row"><span class="logo" aria-hidden="true">✣</span><strong class="brand">AiAgent</strong><span class="crumb">订单平台</span></div>
+  <div class="actions"><span class="demo-label">交互原型</span><button class="button quiet" id="show-tasks">全部任务</button><button class="button" id="new-task">＋ 新建任务</button></div>
+</header>
+<main>
+  <header class="heading spread"><div><div id="task-id" class="task-code"></div><div class="task-title row"><h1 id="task-title"></h1><span id="task-status"></span></div><p class="wrap" id="task-goal"></p></div><div class="actions"><button class="button" id="stop-task">停止任务</button></div></header>
+  <div class="toolbar spread">
+    <nav class="mode" aria-label="工作台视图"><button id="mode-canvas" data-mode="canvas" aria-pressed="true">运行画布</button><button id="mode-chat" data-mode="chat" aria-pressed="false">任务对话</button></nav>
+    <div class="task-meta row"><b id="repo" class="wrap"></b><code id="base" class="wrap"></code><span class="sep">·</span><span id="progress"></span></div>
+  </div>
+  <section id="canvas-view" class="workspace" aria-label="运行画布">
+    <div class="stage">
+      <div class="stage-head spread"><h2>运行拓扑</h2><div class="row"><span class="small hint">拖动节点或空白处 · 滚轮缩放</span><select id="canvas-select" class="canvas-select" aria-label="选择节点"></select></div></div>
+      <div id="canvas-area" class="canvas" aria-label="任务执行图">
+        <canvas id="edge-layer" class="edges" aria-hidden="true"></canvas>
+        <div id="world" class="world"><div class="env-group"><div class="group-label spread"><span>执行环境 · dev-worker-01</span><span>独立 Git 副本</span></div></div><div id="nodes"></div></div>
+        <div class="viewport-controls" data-no-drag><button id="zoom-out" title="缩小" aria-label="缩小">−</button><span class="zoom-label" id="zoom-label"></span><button id="zoom-in" title="放大" aria-label="放大">+</button><button id="fit" title="适应画布">适应</button></div>
+        <canvas class="minimap" id="minimap" data-no-drag aria-label="画布缩略图"></canvas>
+      </div>
+      <div id="canvas-dock" class="composer-slot"></div>
+    </div>
+    <aside class="inspector" aria-labelledby="inspector-heading">
+      <div class="inspector-top spread"><h2 id="inspector-heading">节点详情</h2><button class="button quiet" id="open-chat">打开对话 ↗</button></div>
+      <div id="inspector-title" class="inspector-title row"></div>
+      <div class="inspect-tabs" aria-label="节点详情分类"><button data-inspect="activity" aria-pressed="true">活动</button><button data-inspect="info" aria-pressed="false">信息</button><button data-inspect="artifact" aria-pressed="false">交付证据</button></div>
+      <div id="inspect-body" class="inspect-body"></div>
+      <div id="inspect-foot" class="inspect-foot" hidden></div>
+    </aside>
+  </section>
+  <section id="chat-view" class="chat-view" aria-label="任务对话" hidden>
+    <div id="chat-feed" class="chat-feed" tabindex="0" aria-label="任务消息"><div id="chat-flow" class="chat-flow"></div></div>
+    <div id="chat-dock" class="chat-dock"></div>
+  </section>
+  <div id="composer-box">
+    <form class="composer" id="composer">
+      <label for="prompt" class="recipient" id="composer-label"></label>
+      <textarea id="prompt" rows="1" maxlength="600" placeholder="保留原有排序，并加一条回归用例。"></textarea>
+      <div class="spread"><span id="delivery-hint" class="composer-hint"></span><div class="actions"><button class="button" type="submit" value="queue">排到下一轮</button><button class="button primary" id="steer" type="submit" value="steer">追加到当前轮 ↑</button></div></div>
+      <p id="feedback" class="feedback" aria-live="polite" hidden></p>
+    </form>
+    <div class="composer-closed spread" id="composer-closed" hidden><span id="closed-text"></span><button class="button" id="jump-active" hidden>跳到可介入节点</button></div>
+  </div>
+  <div class="demo-bar spread" aria-label="模拟运行控制">
+    <div class="row"><span class="demo-title">模拟运行</span><span id="demo-hint"></span></div>
+    <div class="actions"><label for="scenario">场景</label><select id="scenario"><option value="normal">正常交付</option><option value="failure">测试失败后修订</option><option value="stop">停止后恢复</option></select><button class="button" id="reset-demo">重置</button><button class="button primary" id="advance"></button></div>
+  </div>
+</main>
+<dialog id="tasks-dialog" aria-labelledby="tasks-title"><div class="spread"><h2 id="tasks-title">代码任务</h2><button class="button quiet" data-close="tasks-dialog" aria-label="关闭">×</button></div><div class="task-list" id="task-list"></div></dialog>
+<dialog id="create-dialog" aria-labelledby="create-title"><div class="spread"><h2 id="create-title">新建代码任务</h2><button class="button quiet" data-close="create-dialog" aria-label="关闭">×</button></div>
+  <form id="create-form"><label>任务标题<input name="title" required maxlength="66" placeholder="修复订单状态筛选" autofocus></label><div class="fields"><label>仓库<input name="repo" required maxlength="60" value="orders-service"></label><label>基线分支<input name="branch" required maxlength="60" value="main"></label></div><label>验收条件<textarea name="goal" required maxlength="240" placeholder="描述想要的结果和应保留的行为。"></textarea></label><div class="actions"><button type="button" class="button" data-close="create-dialog">取消</button><button class="button primary" type="submit">启动任务</button></div></form>
+</dialog>
+<script>
+const labels = {
+  writing: ['正在实现', 'live'], checking: ['正在验证与审查', 'live'],
+  needsFix: ['测试失败 · 待修订', 'bad'], review: ['等待人工审阅', 'warn'],
+  approved: ['已批准 · 待推送', 'good'], delivered: ['已推送任务分支', 'good'],
+  stopped: ['已停止', 'warn']
+};
+const scenarioHints = {
+  normal: '先追加一条指令，再推进到验证与审查。',
+  failure: '首轮验证会失败。进入修订后，比较两个候选版本。',
+  stop: '使用「停止任务」，再观察队列和恢复状态。'
+};
+const example = {
+  number: 24, title: '修复订单状态筛选', repo: 'orders-service', branch: 'main', base: '53d8a21',
+  goal: '修复订单状态筛选遗漏，保留原有列表排序，并增加回归用例。', example: true
+};
+const exampleFiles = [
+  { name: 'src/Orders/OrderQuery.cs', added: 8, removed: 2 },
+  { name: 'tests/Orders/OrderQueryTests.cs', added: 19, removed: 0 }
+];
+const genericFiles = [
+  { name: 'src/Feature.cs', added: 8, removed: 2 },
+  { name: 'tests/FeatureTests.cs', added: 19, removed: 0 }
+];
+
+function newTask(spec, scenario = 'normal') {
+  return { ...spec, scenario, phase: 'writing', previous: null, revision: 1, candidate: null,
+    tests: 'pending', reviewResult: 'pending', queue: [], pending: null, sequence: 0,
+    events: [
+      { step: 'prepare', who: 'Git', tone: 'good', title: '工作区已就绪', body: `已从 ${spec.branch} @ ${spec.base} 创建独立任务副本。`, time: '10:21' },
+      { step: 'write', who: 'CX', tone: 'live', title: 'Codex 开始实现', body: spec.example ? '正在检查订单状态过滤与排序逻辑。' : '正在分析任务目标和相关代码。', time: '10:22' },
+      { step: 'write', who: 'CX', tone: 'live', title: '工作区已出现改动', body: spec.example ? '已更新 OrderQuery.cs 的筛选条件，并添加缺省状态回归用例。' : '已生成两处模拟变更，等待封存和验证。', time: '10:23' }
+    ] };
+}
+
+// The simulated runtime advances only in response to actions. It has no DOM or network access.
+function transition(task, action) {
+  const updated = { ...task, events: [...task.events] };
+  const record = (step, who, tone, title, body) => {
+    const time = `10:${String(23 + Math.floor(updated.sequence / 3)).padStart(2, '0')}`;
+    updated.sequence++;
+    updated.events.push({ step, who, tone, title, body, time });
+  };
+  const takeQueued = (step, who) => {
+    for (const message of updated.queue.filter(entry => entry.step === step)) {
+      record(step, who, 'live', '已送达下一轮', message.body);
+    }
+    updated.queue = updated.queue.filter(entry => entry.step !== step);
+  };
+
+  switch (action.type) {
+    case 'queue':
+      if (!activeRecipient(task, action.step)) return task;
+      updated.queue = [...task.queue, { step: action.step, body: action.body }];
+      record(action.step, '林', 'live', '已排到下一轮', action.body);
+      return updated;
+    case 'steer':
+      if (task.phase !== 'writing' || action.step !== 'write' || task.pending) return task;
+      updated.pending = { id: action.id, body: action.body };
+      record('write', '林', 'live', '正在投递到当前轮', action.body);
+      return updated;
+    case 'ack':
+      if (task.pending?.id !== action.id) return task;
+      updated.pending = null;
+      record('write', 'CX', 'good', '已送达当前轮', 'Codex 已确认接收追加指令。');
+      return updated;
+    case 'stop':
+      if (!['writing', 'checking'].includes(task.phase)) return task;
+      updated.previous = task.phase;
+      updated.phase = 'stopped';
+      updated.pending = null;
+      record('human', '林', 'warn', '任务已停止', task.pending ? '追加指令待确认。后续步骤与排队消息已挂起。' : '保留当前改动与排队消息，后续步骤已挂起。');
+      return updated;
+    case 'resume':
+      if (task.phase !== 'stopped') return task;
+      updated.phase = task.previous;
+      updated.previous = null;
+      record('human', '林', 'live', '任务已继续', '从已知工作区或候选提交继续执行。');
+      return updated;
+    case 'revise':
+      if (!['review', 'needsFix'].includes(task.phase)) return task;
+      updated.phase = 'writing';
+      updated.revision++;
+      updated.candidate = null;
+      updated.tests = 'pending';
+      updated.reviewResult = 'pending';
+      record('write', task.phase === 'review' ? '林' : 'CX', 'live', `开始第 ${updated.revision} 次实现`, `参考候选 ${task.candidate} 的测试与审查记录。`);
+      return updated;
+    case 'approve':
+      if (task.phase !== 'review') return task;
+      updated.phase = 'approved';
+      record('human', '林', 'good', '已批准此版本', `审批绑定候选提交 ${task.candidate} 和本次验证。`);
+      return updated;
+    case 'push':
+      if (task.phase !== 'approved') return task;
+      updated.phase = 'delivered';
+      record('human', 'Git', 'good', '已推送独立分支', `模拟交付 agent/task-${task.number} @ ${task.candidate}。`);
+      return updated;
+    case 'advance':
+      if (task.phase === 'writing' && !task.pending) {
+        takeQueued('write', 'CX');
+        updated.candidate = (0x8cd7000 + task.number * 19 + task.revision * 199).toString(16);
+        updated.phase = 'checking';
+        record('write', 'Git', 'good', '候选提交已封存', `已固定候选 ${updated.candidate}，等待同版本验证。`);
+        record('test', 'CI', 'live', '测试开始', `从 ${updated.candidate} 创建验证副本。`);
+        record('review', 'CC', 'live', 'Claude 开始独立审查', `读取 ${updated.candidate} 的差异，工作区为只读。`);
+        return updated;
+      }
+      if (task.phase === 'checking') {
+        takeQueued('review', 'CC');
+        const fails = task.scenario === 'failure' && task.revision === 1;
+        updated.tests = fails ? 'failed' : 'passed';
+        updated.reviewResult = fails ? 'changes' : 'passed';
+        updated.phase = fails ? 'needsFix' : 'review';
+        record('test', 'CI', fails ? 'bad' : 'good', fails ? '回归测试失败' : '测试已通过', fails ? '18 项通过，1 项失败。缺省状态仍被过滤。' : '19 项通过，其中 1 项是本轮回归用例。');
+        record('review', 'CC', fails ? 'bad' : 'good', fails ? '审查建议修订' : '独立审查通过', fails ? '保留缺省状态，并对原有排序增加断言。' : '改动范围符合目标，未发现阻塞交付的问题。');
+        if (!fails) record('human', 'Git', 'good', '等待人工审阅', `测试、审查和 diff 都绑定到 ${task.candidate}。`);
+        return updated;
+      }
+  }
+  return task;
+}
+
+function activeRecipient(task, step) {
+  return (task.phase === 'writing' && step === 'write') || (task.phase === 'checking' && step === 'review');
+}
+const graph = [
+  { id:'server', title:'AiAgent Server', subtitle:'任务编排 · 持久化', icon:'AI', x:24, y:183 },
+  { id:'env', title:'执行环境', subtitle:'dev-worker-01 · Linux', icon:'ENV', x:249, y:183 },
+  { id:'write', title:'实现 Agent', subtitle:'Codex app-server', icon:'CX', x:469, y:183 },
+  { id:'test', title:'测试验证', subtitle:'dotnet test · 构建', icon:'CI', x:709, y:88 },
+  { id:'review', title:'审查 Agent', subtitle:'Claude Code · 只读', icon:'CC', x:709, y:278 },
+  { id:'human', title:'人工审阅', subtitle:'候选版本 · Git 交付', icon:'✓', x:930, y:183 }
+];
+const graphById = new Map(graph.map(node => [node.id, node]));
+const edges = [
+  ['server', 'env', '派发'], ['env', 'write', '工作区'], ['write', 'test', '候选'],
+  ['write', 'review', '候选'], ['test', 'human', '测试结果'], ['review', 'human', '审查意见']
+];
+const $ = id => document.getElementById(id);
+const html = value => String(value).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
+const badge = ([label, tone]) => `<span class="chip ${tone}"><i class="dot" aria-hidden="true"></i>${html(label)}</span>`;
+const tasks = new Map([[example.number, newTask(example)]]);
+const positions = new Map(graph.map(({id, x, y}) => [id, {x, y}]));
+const drafts = new Map();
+const camera = { x:0, y:0, zoom:1, fitted:true };
+const nodeWidth = 166;
+const nodeHeight = 96;
+const colors = { live:'#2560e8', good:'#439579', warn:'#bf8c35', bad:'#c65462', '':'#a2b4cf' };
+let mode = 'canvas';
+let selected = 'write';
+let panel = 'activity';
+let artifact = 'diff';
+let taskNumber = example.number;
+let deliveryId = 0;
+let visibleDraft = null;
+let drag = null;
+let suppressNodeClick = false;
+
+function statusOf(task, node) {
+  if (node === 'server') return labels[task.phase];
+  if (node === 'env') return ['工作区已就绪', 'good'];
+  if (task.phase === 'stopped') {
+    const state = statusOf({ ...task, phase:task.previous }, node);
+    return state[1] === 'live' ? ['已停止', 'warn'] : state;
+  }
+  if (node === 'write') return task.phase === 'writing' ? [`执行中 · 第 ${task.revision} 次`, 'live'] : ['候选已封存', 'good'];
+  if (node === 'test') {
+    if (task.tests === 'failed') return ['1 项失败', 'bad'];
+    if (task.tests === 'passed') return ['19 项通过', 'good'];
+    if (task.phase === 'checking') return ['正在运行', 'live'];
+  }
+  if (node === 'review') {
+    if (task.reviewResult === 'changes') return ['建议修订', 'warn'];
+    if (task.reviewResult === 'passed') return ['审查通过', 'good'];
+    if (task.phase === 'checking') return ['审查中', 'live'];
+  }
+  if (node === 'human' && ['review','approved','delivered'].includes(task.phase)) return labels[task.phase];
+  return ['等待上游', ''];
+}
+
+function nextRecipient(task) {
+  if (task.phase === 'writing') return 'write';
+  if (task.phase === 'checking') return 'review';
+  return null;
+}
+
+function activeNodeFor(task) {
+  return nextRecipient(task) || (task.phase === 'needsFix' ? 'test' : task.phase === 'stopped' ? (task.previous === 'checking' ? 'review' : 'write') : 'human');
+}
+
+function nodeEvents(task) {
+  if (selected === 'server') return task.events;
+  if (selected === 'env') return task.events.filter(event => event.step === 'prepare');
+  return task.events.filter(event => event.step === selected);
+}
+
+function renderNodes(task) {
+  $('nodes').innerHTML = graph.map(node => {
+    const state = statusOf(task, node.id);
+    const position = positions.get(node.id);
+    return `<button type="button" class="graph-node ${state[1]}" style="left:${position.x}px;top:${position.y}px" data-node="${node.id}" aria-pressed="${selected === node.id}"><span class="node-head row"><span class="node-icon ${node.id}" aria-hidden="true">${node.icon}</span><span class="node-text"><strong>${node.title}</strong><small>${node.subtitle}</small></span></span><span class="node-state">${badge(state)}</span></button>`;
+  }).join('');
+  $('canvas-select').innerHTML = graph.map(node => `<option value="${node.id}">${node.title}</option>`).join('');
+  $('canvas-select').value = selected;
+}
+
+function surface(canvas) {
+  const width = canvas.clientWidth || canvas.parentElement.clientWidth;
+  const height = canvas.classList.contains('edges') ? canvas.parentElement.clientHeight : canvas.clientHeight;
+  const pixelRatio = window.devicePixelRatio || 1;
+  const pixelsWide = Math.round(width * pixelRatio);
+  const pixelsHigh = Math.round(height * pixelRatio);
+  if (canvas.width !== pixelsWide || canvas.height !== pixelsHigh) {
+    canvas.width = pixelsWide;
+    canvas.height = pixelsHigh;
+  }
+  const context = canvas.getContext('2d');
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  return {context, width, height};
+}
+
+function drawGraph() {
+  if (mode !== 'canvas') return;
+  const task = tasks.get(taskNumber);
+  const {context:ctx} = surface($('edge-layer'));
+  ctx.translate(camera.x, camera.y);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.lineWidth = 1.75;
+  ctx.lineCap = 'round';
+  for (const [source, target, label] of edges) {
+    const start = positions.get(source);
+    const end = positions.get(target);
+    const x1 = start.x + nodeWidth;
+    const x2 = end.x;
+    const y1 = start.y + nodeHeight / 2;
+    const y2 = end.y + nodeHeight / 2;
+    const handle = Math.max(24, Math.abs(x2 - x1) * .56);
+    let tone = statusOf(task, target)[1];
+    if (target === 'human' && tone === '') tone = statusOf(task, source)[1] === 'bad' ? 'bad' : '';
+    ctx.strokeStyle = colors[tone];
+    ctx.fillStyle = colors[tone];
+    ctx.setLineDash(tone === 'live' ? [6, 4] : []);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.bezierCurveTo(x1 + handle, y1, x2 - handle, y2, x2 - 5, y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x2 - 3, y2);
+    ctx.lineTo(x2 - 10, y2 - 3.5);
+    ctx.lineTo(x2 - 10, y2 + 3.5);
+    ctx.fill();
+    if (x2 - x1 > 40) {
+      const x = (x1 + x2) / 2;
+      const y = (y1 + y2) / 2;
+      ctx.font = '11px "Microsoft YaHei UI", sans-serif';
+      ctx.textAlign = 'center';
+      const width = ctx.measureText(label).width + 10;
+      ctx.fillStyle = '#f7faff';
+      ctx.fillRect(x - width / 2, y - 10, width, 19);
+      ctx.fillStyle = tone === 'live' ? '#184db6' : '#536c8e';
+      ctx.fillText(label, x, y + 4);
+    }
+  }
+  if (task.phase === 'needsFix') {
+    const test = positions.get('test');
+    const write = positions.get('write');
+    const startX = test.x + nodeWidth / 2;
+    const endX = write.x + nodeWidth / 2;
+    ctx.strokeStyle = colors.bad;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(startX, test.y);
+    ctx.bezierCurveTo(startX, 13, endX, 66, endX, write.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = colors.bad;
+    ctx.font = '12px "Microsoft YaHei UI", sans-serif';
+    ctx.fillText('返回实现 · 修订', (startX + endX) / 2, 73);
+  }
+  drawMinimap(task);
+}
+
+function drawMinimap(task) {
+  const {context:ctx, width, height} = surface($('minimap'));
+  ctx.fillStyle = '#f2f6fd';
+  ctx.fillRect(width * .20, height * .09, width * .61, height * .87);
+  for (const node of graph) {
+    const position = positions.get(node.id);
+    ctx.fillStyle = node.id === selected ? '#2560e8' : colors[statusOf(task, node.id)[1]];
+    ctx.fillRect(position.x * width / 1120, position.y * height / 440, nodeWidth * width / 1120, nodeHeight * height / 440);
+  }
+  const canvas = $('canvas-area');
+  ctx.strokeStyle = '#6e96d4';
+  const visibleX = -camera.x / camera.zoom * width / 1120;
+  const visibleY = -camera.y / camera.zoom * height / 440;
+  ctx.strokeRect(visibleX, visibleY, canvas.clientWidth / camera.zoom * width / 1120, canvas.clientHeight / camera.zoom * height / 440);
+}
+
+function applyCamera() {
+  const canvas = $('canvas-area');
+  $('world').style.transform = `translate(${camera.x}px,${camera.y}px) scale(${camera.zoom})`;
+  canvas.style.backgroundPosition = `${camera.x}px ${camera.y}px`;
+  const grid = Math.max(12, 19 * camera.zoom);
+  canvas.style.backgroundSize = `${grid}px ${grid}px`;
+  $('zoom-label').textContent = `${Math.round(camera.zoom * 100)}%`;
+  drawGraph();
+}
+
+function fitCanvas() {
+  const canvas = $('canvas-area');
+  if (!canvas.clientWidth) return;
+  const locations = [...positions.values()];
+  const left = Math.min(0, ...locations.map(point => point.x - 14));
+  const top = Math.min(24, ...locations.map(point => point.y - 16));
+  const right = Math.max(1120, ...locations.map(point => point.x + nodeWidth + 14));
+  const bottom = Math.max(440, ...locations.map(point => point.y + nodeHeight + 16));
+  const width = right - left;
+  const height = bottom - top;
+  camera.zoom = Math.min(1.19, (canvas.clientWidth - 23) / width, (canvas.clientHeight - 66) / height);
+  camera.x = (canvas.clientWidth - width * camera.zoom) / 2 - left * camera.zoom;
+  camera.y = (canvas.clientHeight - 47 - height * camera.zoom) / 2 - top * camera.zoom;
+  camera.fitted = true;
+  applyCamera();
+}
+
+function zoomAt(factor, x, y) {
+  const zoom = Math.max(.25, Math.min(2.4, camera.zoom * factor));
+  camera.x = x - (x - camera.x) * zoom / camera.zoom;
+  camera.y = y - (y - camera.y) * zoom / camera.zoom;
+  camera.zoom = zoom;
+  camera.fitted = false;
+  applyCamera();
+}
+
+function renderArtifact(task) {
+  const buttons = [['diff','变更'],['tests','测试'],['review','审查'],['scope','验收']].map(([key, label]) => `<button data-artifact="${key}" aria-pressed="${artifact === key}">${label}</button>`).join('');
+  const header = `<div class="artifact-tabs" aria-label="证据类型">${buttons}</div><div class="version"><span>基线 <code>${html(task.base)}</code></span><span>候选 <code>${task.candidate ?? '等待封存'}</code></span></div>`;
+  const files = task.example ? exampleFiles : genericFiles;
+  if (artifact === 'scope') return `${header}<p class="small wrap">${html(task.goal)}</p>`;
+  if (artifact === 'tests') return `${header}${task.tests === 'pending' ? '<p class="empty">测试完成后会关联到候选提交。</p>' : `${badge(statusOf(task, 'test'))}<ul class="artifact-list"><li>dotnet test · 退出码 ${task.tests === 'passed' ? 0 : 1}</li><li>${task.tests === 'passed' ? '缺省状态与排序回归均通过。' : '缺省状态用例失败，等待修订。'}</li></ul>`}`;
+  if (artifact === 'review') return `${header}${task.reviewResult === 'pending' ? '<p class="empty">独立 Agent 尚未提交审查意见。</p>' : `${badge(statusOf(task, 'review'))}<p class="empty">${task.reviewResult === 'passed' ? '只读审查已完成，变更范围符合目标。' : '建议补全缺省输入的处理，并核对排序回归。'}</p>`}`;
+  const missingDefault = task.scenario === 'failure' && task.revision === 1;
+  const diff = task.example ? [ '- .Where(o => o.Status == status)', `+ .Where(o => status == ${missingDefault ? '""' : 'null'} || o.Status == status)` ] : [ '- return PreviousResult(input);', '+ return UpdatedResult(input);' ];
+  return `${header}<ul class="artifact-list">${files.map(file => `<li><code>${file.name}</code> <span class="add">+${file.added}</span></li>`).join('')}</ul><pre class="diff"><span class="del">${html(diff[0])}</span><span class="add">${html(diff[1])}</span></pre>`;
+}
+
+function renderInspector(task) {
+  const node = graphById.get(selected);
+  $('inspector-title').innerHTML = `<span class="node-icon ${selected}" aria-hidden="true">${node.icon}</span><div><h3>${node.title}</h3><p>${node.subtitle}</p></div>${badge(statusOf(task, selected))}`;
+  document.querySelectorAll('[data-inspect]').forEach(button => button.setAttribute('aria-pressed', button.dataset.inspect === panel));
+  if (panel === 'activity') {
+    const events = nodeEvents(task);
+    $('inspect-body').innerHTML = events.length ? `<ol class="events">${events.slice().reverse().map(event => `<li><div class="spread"><b>${html(event.title)}</b><time>${event.time}</time></div><p>${html(event.body)}</p></li>`).join('')}</ol>` : '<p class="empty">节点启动后，运行事件会显示在这里。</p>';
+  } else if (panel === 'info') {
+    const fields = { server:[['项目', '订单平台'],['任务', `TASK-${task.number}`],['调度', '持久化队列']], env:[['执行机','dev-worker-01'],['工作区','独立 Git 副本'],['基线',`${task.branch} @ ${task.base}`]], write:[['工作区','可写'],['投递','排队 / 当前轮追加'],['实现次数', task.revision]], test:[['命令','dotnet test'],['工作区','独立验证副本']], review:[['工作区','只读'],['投递','排队']], human:[['交付','独立任务分支'],['审批版本',task.candidate ?? '等待封存']] }[selected];
+    $('inspect-body').innerHTML = `<dl class="info">${fields.map(([label,value]) => `<dt>${label}</dt><dd>${html(value)}</dd>`).join('')}</dl><div class="goal"><b>任务验收条件</b><p class="wrap">${html(task.goal)}</p></div>`;
+  } else {
+    $('inspect-body').innerHTML = renderArtifact(task);
+  }
+  let footer = '';
+  if (selected === 'human' && task.phase === 'review') footer = '<div class="actions"><button class="button primary" data-command="approve">批准此版本</button><button class="button" data-command="revise">退回修改</button></div>';
+  if (selected === 'human' && task.phase === 'approved') footer = '<button class="button primary" data-command="push">推送任务分支</button>';
+  if (selected === 'human' && task.phase === 'delivered') footer = `<p class="small">已交付 <code>agent/task-${task.number}</code></p>`;
+  if (selected === 'test' && task.phase === 'needsFix') footer = '<button class="button" data-command="revise">交回实现 Agent 修订</button>';
+  $('inspect-foot').innerHTML = footer;
+  $('inspect-foot').hidden = !footer;
+}
+
+function renderChat(task) {
+  const names = { Git:'AiAgent · Git', CX:'Codex · 实现 Agent', CC:'Claude · 审查 Agent', CI:'构建执行器', 林:'林工' };
+  const intro = `<article class="chat-msg user"><div class="chat-meta">林工 <time>10:20</time></div><div class="bubble"><p>${html(task.goal)}</p></div></article>`;
+  const events = task.events.map(event => {
+    const user = event.who === '林';
+    return `<article class="chat-msg${user ? ' user' : ''}"><div class="chat-meta">${names[event.who]} <time>${event.time}</time></div><div class="bubble"><b>${html(event.title)}</b><p>${html(event.body)}</p></div></article>`;
+  }).join('');
+  const link = task.candidate ? '打开画布查看候选与验证结果' : '打开运行画布';
+  $('chat-flow').innerHTML = `${intro}${events}<article class="chat-msg"><div class="bubble"><b>${task.candidate ? `候选 ${task.candidate}` : '任务执行图'}</b><button class="button chat-graph-link" id="chat-graph" type="button">${link} ↗</button></div></article>`;
+  if (mode === 'chat') $('chat-feed').scrollTop = $('chat-feed').scrollHeight;
+}
+
+function renderComposer(task) {
+  const recipient = activeRecipient(task, selected);
+  const actor = graphById.get(selected);
+  const available = nextRecipient(task);
+  const draft = `${task.number}:${selected}`;
+  if (draft !== visibleDraft) {
+    visibleDraft = draft;
+    $('prompt').value = drafts.get(draft) || '';
+  }
+  $('composer').hidden = !recipient;
+  $('composer-closed').hidden = recipient;
+  $('jump-active').hidden = !available;
+  $('closed-text').textContent = available ? `${actor.title}当前无法接收指令。` : '当前没有可接收指令的运行中 Agent。';
+  $('composer-label').textContent = `发送给 ${actor.title} · ${selected === 'review' ? 'Claude Code' : 'Codex'}`;
+  const queued = task.queue.filter(entry => entry.step === selected).length;
+  $('delivery-hint').textContent = queued ? `${queued} 条指令已排队` : selected === 'review' ? '下一轮处理 · Claude Code' : '可追加到当前轮 · Codex';
+  $('steer').hidden = selected !== 'write';
+  $('steer').disabled = !!task.pending;
+}
+
+function render() {
+  const task = tasks.get(taskNumber);
+  $('task-id').textContent = `TASK-${String(task.number).padStart(3, '0')}`;
+  $('task-title').textContent = task.title;
+  $('task-status').innerHTML = badge(labels[task.phase]);
+  $('task-goal').textContent = task.goal;
+  $('repo').textContent = task.repo;
+  $('base').textContent = `${task.branch} @ ${task.base}`;
+  const stepIds = ['env','write','test','review','human'];
+  const finished = stepIds.filter(id => statusOf(task,id)[1] === 'good').length;
+  $('progress').textContent = `${finished} / 5 步完成`;
+  $('stop-task').hidden = !['writing','checking','stopped'].includes(task.phase);
+  $('stop-task').textContent = task.phase === 'stopped' ? '继续任务' : '停止任务';
+  $('canvas-view').hidden = mode !== 'canvas';
+  $('chat-view').hidden = mode !== 'chat';
+  $('mode-canvas').setAttribute('aria-pressed', mode === 'canvas');
+  $('mode-chat').setAttribute('aria-pressed', mode === 'chat');
+  const dock = $(mode === 'canvas' ? 'canvas-dock' : 'chat-dock');
+  if ($('composer-box').parentElement !== dock) dock.append($('composer-box'));
+  renderComposer(task);
+  if (mode === 'canvas') { renderNodes(task); renderInspector(task); applyCamera(); }
+  else renderChat(task);
+  $('demo-hint').textContent = scenarioHints[task.scenario];
+  $('scenario').value = task.scenario;
+  const next = { writing:'封存候选 →', checking:'收集验证结果 →', needsFix:'自动修订 →', stopped:'继续任务' }[task.phase];
+  $('advance').textContent = next || '';
+  $('advance').hidden = !next;
+  $('advance').disabled = !!task.pending;
+}
+
+function chooseNode(id, focus = false) {
+  if (selected !== id) $('feedback').hidden = true;
+  selected = id;
+  panel = id === 'human' && tasks.get(taskNumber).candidate ? 'artifact' : 'activity';
+  render();
+  if (focus) $('nodes').querySelector(`[data-node="${id}"]`)?.focus({preventScroll:true});
+}
+
+function setMode(next) {
+  mode = next;
+  render();
+  if (mode === 'canvas' && camera.fitted) fitCanvas();
+}
+
+function dispatch(action, target = taskNumber) {
+  const before = tasks.get(target);
+  const after = transition(before, action);
+  if (before === after) return;
+  tasks.set(target, after);
+  if (target === taskNumber && before.phase !== after.phase) {
+    selected = activeNodeFor(after);
+    artifact = after.phase === 'needsFix' ? 'tests' : 'diff';
+    panel = after.candidate && ['needsFix','review','approved','delivered'].includes(after.phase) ? 'artifact' : 'activity';
+    $('feedback').hidden = true;
+  }
+  render();
+}
+
+function openTask(number) {
+  taskNumber = number;
+  selected = activeNodeFor(tasks.get(number));
+  panel = 'activity';
+  artifact = 'diff';
+  visibleDraft = null;
+  $('feedback').hidden = true;
+  setMode(mode);
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  const {close, open, mode:next, node, inspect, artifact:tab, command} = button.dataset;
+  if (close) $(close).close();
+  if (open) { $('tasks-dialog').close(); openTask(Number(open)); }
+  if (next) setMode(next);
+  if (node && (!suppressNodeClick || event.detail === 0)) chooseNode(node, event.detail === 0);
+  if (node) suppressNodeClick = false;
+  if (inspect) { panel = inspect; renderInspector(tasks.get(taskNumber)); }
+  if (tab) { artifact = tab; renderInspector(tasks.get(taskNumber)); }
+  if (command) dispatch({type:command});
+  if (button.id === 'chat-graph') {
+    if (tasks.get(taskNumber).candidate) { panel = 'artifact'; artifact = 'diff'; }
+    setMode('canvas');
+  }
+});
+$('open-chat').addEventListener('click', () => setMode('chat'));
+$('jump-active').addEventListener('click', () => chooseNode(nextRecipient(tasks.get(taskNumber))));
+$('canvas-select').addEventListener('change', event => chooseNode(event.target.value));
+$('new-task').addEventListener('click', () => $('create-dialog').showModal());
+$('show-tasks').addEventListener('click', () => {
+  $('task-list').innerHTML = [...tasks.values()].reverse().map(task => `<button data-open="${task.number}"><b>${html(task.title)}</b>${badge(labels[task.phase])}</button>`).join('');
+  $('tasks-dialog').showModal();
+});
+$('create-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const fields = Object.fromEntries([...new FormData(event.target)].map(([key, value]) => [key, value.trim()]));
+  if (Object.values(fields).some(value => !value)) return;
+  const number = Math.max(...tasks.keys()) + 1;
+  tasks.set(number, newTask({...fields, number, base:'53d8a21', example:false}));
+  $('create-dialog').close();
+  event.target.reset();
+  openTask(number);
+});
+$('prompt').addEventListener('input', event => drafts.set(visibleDraft, event.target.value));
+$('composer').addEventListener('submit', event => {
+  event.preventDefault();
+  const task = tasks.get(taskNumber);
+  const body = $('prompt').value.trim();
+  const type = event.submitter?.value || 'queue';
+  if (!body) { $('prompt').focus(); return; }
+  if (!activeRecipient(task, selected) || (type === 'steer' && (selected !== 'write' || task.pending))) return;
+  const target = taskNumber;
+  const id = ++deliveryId;
+  dispatch({type, step:selected, body, id});
+  $('prompt').value = '';
+  drafts.delete(visibleDraft);
+  $('feedback').textContent = type === 'steer' ? '正在等待投递确认…' : '已保存，等待该 Agent 的下一轮。';
+  $('feedback').hidden = false;
+  if (type === 'steer') setTimeout(() => {
+    if (tasks.get(target).pending?.id !== id) return;
+    dispatch({type:'ack', id}, target);
+    if (target === taskNumber && selected === 'write') {
+      $('feedback').textContent = '已送达当前轮。';
+      $('feedback').hidden = false;
+    }
+  }, 450);
+});
+$('stop-task').addEventListener('click', () => dispatch({type:tasks.get(taskNumber).phase === 'stopped' ? 'resume' : 'stop'}));
+$('advance').addEventListener('click', () => {
+  const phase = tasks.get(taskNumber).phase;
+  dispatch({type:{needsFix:'revise', stopped:'resume'}[phase] || 'advance'});
+});
+function resetScenario(value) {
+  const task = tasks.get(taskNumber);
+  tasks.set(taskNumber, newTask(task, value ?? task.scenario));
+  for (const node of graph) {
+    positions.set(node.id, {x:node.x, y:node.y});
+    drafts.delete(`${taskNumber}:${node.id}`);
+  }
+  suppressNodeClick = false;
+  camera.fitted = true;
+  openTask(taskNumber);
+}
+$('scenario').addEventListener('change', event => resetScenario(event.target.value));
+$('reset-demo').addEventListener('click', () => resetScenario());
+
+const viewport = $('canvas-area');
+viewport.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || event.target.closest('[data-no-drag]')) return;
+  suppressNodeClick = false;
+  const button = event.target.closest('[data-node]');
+  const node = button?.dataset.node;
+  drag = {pointer:event.pointerId, node, button, x:event.clientX, y:event.clientY, origin:node ? {...positions.get(node)} : {x:camera.x,y:camera.y}, moved:false};
+});
+window.addEventListener('pointermove', event => {
+  if (!drag || event.pointerId !== drag.pointer) return;
+  const dx = event.clientX - drag.x;
+  const dy = event.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx,dy) < 4) return;
+  if (!drag.moved) { drag.moved = true; viewport.setPointerCapture(event.pointerId); viewport.dataset.dragging = ''; }
+  if (drag.node) {
+    const next = {x:drag.origin.x + dx / camera.zoom, y:drag.origin.y + dy / camera.zoom};
+    positions.set(drag.node, next);
+    drag.button.style.left = `${next.x}px`;
+    drag.button.style.top = `${next.y}px`;
+  } else {
+    camera.x = drag.origin.x + dx;
+    camera.y = drag.origin.y + dy;
+  }
+  camera.fitted = false;
+  applyCamera();
+});
+function endDrag(event) {
+  if (!drag || event.pointerId !== drag.pointer) return;
+  suppressNodeClick = drag.moved;
+  drag = null;
+  delete viewport.dataset.dragging;
+}
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+viewport.addEventListener('wheel', event => {
+  event.preventDefault();
+  const area = viewport.getBoundingClientRect();
+  zoomAt(Math.exp(-event.deltaY * .0015), event.clientX - area.left, event.clientY - area.top);
+}, {passive:false});
+$('zoom-in').addEventListener('click', () => zoomAt(1.22, viewport.clientWidth / 2, viewport.clientHeight / 2));
+$('zoom-out').addEventListener('click', () => zoomAt(1 / 1.22, viewport.clientWidth / 2, viewport.clientHeight / 2));
+$('fit').addEventListener('click', fitCanvas);
+$('minimap').addEventListener('click', event => {
+  const area = $('minimap').getBoundingClientRect();
+  camera.x = viewport.clientWidth / 2 - (event.clientX - area.left) / area.width * 1120 * camera.zoom;
+  camera.y = viewport.clientHeight / 2 - (event.clientY - area.top) / area.height * 440 * camera.zoom;
+  camera.fitted = false;
+  applyCamera();
+});
+new ResizeObserver(() => {
+  if (mode !== 'canvas') return;
+  if (camera.fitted) fitCanvas();
+  else applyCamera();
+}).observe(viewport);
+render();
+fitCanvas();
+</script>
+</body>
+</html>

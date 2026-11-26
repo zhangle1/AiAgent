@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'">
+<title>本体模型 · 坤伴交互原型</title>
+<style>
+:root{--ink:#182844;--muted:#566982;--line:#dce4ef;--blue:#2754d9;--pale:#edf2ff;--green:#176554;--amber:#8b5616;font:15px/1.55 "Inter","Microsoft YaHei UI","Microsoft YaHei",sans-serif;color:var(--ink);background:#edf1f7}
+*{box-sizing:border-box}body{margin:0}button,select,input,textarea{font:inherit;color:inherit}button,select{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #819cfc;outline-offset:2px}button{border:1px solid var(--line);background:white;border-radius:8px;padding:6px 12px;font-weight:600}button:hover{background:var(--pale)}button.primary{background:var(--blue);border-color:var(--blue);color:white}button:disabled{opacity:.5;cursor:default}h1,h2,h3,h4,p{margin:0}small,.muted{color:var(--muted)}code,.mono{font:12px/1.6 Consolas,monospace;overflow-wrap:anywhere}header{min-height:64px;display:flex;align-items:center;gap:16px;padding:10px 3vw;background:white;border-bottom:1px solid var(--line)}.logo{display:grid;place-items:center;width:33px;height:33px;border-radius:10px;background:var(--blue);color:white;font-size:23px;font-weight:800}.brand{font-weight:750}.sep{height:22px;border-left:1px solid var(--line)}select,input,textarea{background:white;border:1px solid #b9c8da;border-radius:7px;padding:7px 9px;max-width:100%}.demo{margin-left:auto;color:#425b80;font-size:13px}.shell{display:grid;grid-template-columns:minmax(0,1fr) minmax(490px,.95fr);height:calc(100dvh - 64px);min-height:480px}.chat,.panel{min-width:0;display:flex;flex-direction:column;overflow:hidden}.chat{background:#f6f8fc}.panel{background:white;border-left:1px solid #c7d4e4}.top{padding:20px clamp(16px,2.5vw,40px);border-bottom:1px solid var(--line)}.row,.bar,.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.bar{justify-content:space-between}.over{color:var(--blue);font-size:12px;font-weight:700;letter-spacing:.08em;margin-bottom:5px}h1{font-size:26px;letter-spacing:-.03em}h2{font-size:21px}h3{font-size:16px}.scroll{overflow:auto;min-height:0;flex:1}.chatbody{padding:clamp(22px,3vw,52px)}.hero{margin:4vh auto 0;max-width:600px}.hero h2{font-size:clamp(25px,2.6vw,40px);line-height:1.3;margin:10px 0 14px}.hero p{max-width:42em}.sample{display:block;text-align:left;margin-top:22px;padding:18px;width:100%;border-left:4px solid var(--blue);background:white}.sample small{display:block;margin-bottom:5px}.composer{margin:12px clamp(16px,2.4vw,40px) 22px;padding:14px;background:white;border:1px solid #cfdbeb;border-radius:14px;box-shadow:0 5px 22px #243b6210}textarea{width:100%;resize:vertical;min-height:55px;max-height:140px;border:0;padding:0}.scope{color:var(--blue);background:var(--pale);border-color:#d3defe}.tabs{display:flex;gap:16px;padding:0 clamp(16px,2.5vw,40px);border-bottom:1px solid var(--line)}.tabs button{background:none;border:0;border-radius:0;border-bottom:3px solid transparent;padding:12px 1px;color:var(--muted)}.tabs button[aria-pressed=true]{color:var(--blue);border-color:var(--blue)}.content{padding:22px clamp(16px,2.5vw,40px) 36px}.sub{margin:6px 0 16px;color:var(--muted);font-size:14px}.card,.note,.msg{border:1px solid var(--line);border-radius:12px;background:white;padding:15px;margin:12px 0;overflow-wrap:anywhere}.note{background:#f5f8fd}.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:#eef2f7;color:#506078;border-radius:20px;padding:3px 9px}.ok{color:var(--green);background:#e9f6ef}.warn{color:var(--amber);background:#fff2da}.glyph{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;font:700 14px Consolas,monospace;background:#edf2ff;color:#3554b3}.object{padding-top:13px}.nodehead{display:flex;align-items:center;gap:10px}.nodehead small{display:block}.nodehead button{margin-left:auto}.fields{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.fields span{border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-size:12px}.map{border-left:2px solid #a6baff;margin:9px 0;padding:4px 12px}.map code{display:block;color:var(--muted)}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.formgrid label,.field{display:grid;gap:4px;font-size:13px}.wide{grid-column:1/-1}.checks label{display:block;padding:6px 0}.checks input{margin-right:8px}.actions{margin-top:14px}.msg.user{margin-left:10%;background:#eaf0ff}.msg h3{margin-bottom:6px}.evidence{padding:10px 0;border-top:1px solid var(--line);margin-top:8px}.tools{background:none;border:none;color:var(--blue);font-size:13px}.hint{min-height:1em;color:var(--muted);font-size:13px}.steps{margin:12px 0;padding:12px;border:1px dashed #aebed7;border-radius:8px}.steps button{font-size:13px}.history{font-size:13px;color:var(--muted)}[hidden]{display:none!important}
+@media(max-width:860px){.shell{height:auto;min-height:0;grid-template-columns:1fr}.chat{min-height:400px;max-height:620px}.chatbody{min-height:150px}.hero{margin-top:0}.panel{border-left:0;border-top:1px solid var(--line)}.content{overflow:visible}.demo{font-size:11px}header{padding:8px 12px;gap:8px}.top{padding:13px 16px}.composer{margin-bottom:12px}}@media(max-width:480px){.brand,.sep{display:none}.formgrid{grid-template-columns:1fr}.tabs{gap:12px}.nodehead{flex-wrap:wrap}}
+.shell{grid-template-columns:clamp(270px,24vw,370px) minmax(0,1fr)}header{min-height:56px;padding:7px 22px}.shell{height:calc(100dvh - 56px)}.brand{letter-spacing:.04em}.logo{background:#172d37}.chat .top{padding:20px}.chatbody{padding:24px 18px}.hero{margin-top:5vh}.hero h2{font-size:27px}.hero p{font-size:14px}.composer{margin:12px}.panel{position:relative}.panel .top{padding:16px 22px;background:white}.panel h1{font-size:24px}.panel-title{display:flex;align-items:center;gap:12px}.model-controls{display:flex;gap:6px;align-items:center}.model-controls select{font-weight:650}.panel .over,.hero .over{color:#18766f}.tabs{padding:0 22px;gap:24px}.tabs button[aria-pressed=true]{color:#136d63;border-color:#218477}.flow-stage{flex:1;min-height:0;position:relative;isolation:isolate;overflow:hidden;background:#f7faf9}.flow-root{position:absolute;inset:0}.legend,.graph-tools,.drawer{position:absolute;z-index:5}.legend{left:17px;top:15px;display:flex;gap:12px;color:#546971;font-size:12px;pointer-events:none}.legend i{display:inline-block;width:19px;border-top:2px solid #5471d5;vertical-align:middle;margin-right:4px}.legend i.dashed{border-top:2px dashed #91a2b3}.graph-tools{top:12px;right:14px}.graph-tools button{box-shadow:0 2px 6px #243c4312;color:#136d63}.drawer{top:0;bottom:0;right:0;width:min(355px,96%);background:white;border-left:1px solid #d2dfdd;box-shadow:-8px 0 30px #162d3510;display:flex;flex-direction:column}.drawer-head,.flow-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line);font-size:12px;color:#4d6869}.drawer .content{padding:16px;overflow:auto;min-height:0}.drawer .card{padding:12px}.flow-footer{background:white;border-top:1px solid var(--line);border-bottom:0;min-height:35px;flex-wrap:wrap}.flow-footer b{font-weight:600;color:#345a53}.flow-stage .react-flow__controls,.flow-stage .react-flow__minimap{border:1px solid #d2dfdd;border-radius:8px;overflow:hidden;box-shadow:0 3px 12px #142e3710;background:white}.flow-stage .react-flow__minimap{width:120px;height:78px}.flow-stage .react-flow__minimap svg{width:100%;height:100%}.flow-stage .react-flow__controls-button{border-radius:0}
+.diagram-node{--t:#435fbc;--wash:#edf1ff;width:211px;color:#1a3540;background:white;border:1.5px solid #aabbd6;border-radius:12px;box-shadow:0 5px 14px #233e4910;padding:13px 15px 0;cursor:grab}.diagram-node.erp{--t:#8152ad;--wash:#f5eefa;border-color:#c9b5dc}.diagram-node.api{--t:#087969;--wash:#e4f5ef;border-color:#a2cbbe}.diagram-node.source{width:185px;border:1px solid #c6d1d5;border-radius:9px;padding:11px 13px;box-shadow:0 2px 7px #233e490c}.diagram-node.selected{outline:2px solid var(--t);outline-offset:3px}.diagram-cap{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:650;color:var(--t)}.diagram-icon{display:grid;place-items:center;width:30px;height:30px;background:var(--wash);border-radius:7px}.source .diagram-icon{width:23px;height:23px}.source .diagram-icon svg{width:16px}.diagram-node strong{display:block;font-size:19px;margin-top:7px}.diagram-node.source strong{font-size:15px}.diagram-meta{font:11px/1.7 Consolas,monospace;color:#5c7077;overflow-wrap:anywhere}.diagram-key{border-top:1px solid #e5ecef;margin:9px -15px 0;padding:7px 12px;font-size:12px;display:flex;gap:4px;align-items:center}.diagram-key b{font-size:15px;color:var(--t)}.diagram-key span{margin-left:auto;font-size:10px;color:#66767d}.health{width:7px;height:7px;border-radius:50%;background:#28866b;margin-left:auto}.health.down{background:#c58328}.diagram-node .react-flow__handle{width:9px;height:9px;background:white;border:2px solid var(--t)}.diagram-node .react-flow__handle[data-handleid=reads]{width:7px;height:7px;border-color:#899a9e}.flow-stage .react-flow__edge.relation-edge{cursor:pointer}.empty-flow{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);z-index:2;text-align:center;width:min(78%,320px)}.empty-flow h2{margin-bottom:10px}.chat .scope{font-size:13px}.chat .sample{border-left:3px solid #408a80}.formgrid select,.formgrid input{width:100%;min-width:0}.formgrid>*{min-width:0}
+@media(max-width:860px){.shell{height:auto;display:flex;flex-direction:column}.panel{order:-1}.flow-stage{min-height:460px;height:65dvh;flex:none}.chat{max-height:none}.chatbody{max-height:520px;overflow:auto}.hero{margin-top:0}.chat .top{padding:12px 18px}.panel .top{padding:10px 14px}.panel h1{font-size:20px}.legend{gap:7px;left:8px}.graph-tools{right:8px}.model-controls{flex-wrap:wrap}.flow-stage .react-flow__minimap{width:76px;height:48px}.flow-stage .react-flow__controls{margin:7px}.flow-stage .react-flow__minimap{margin:7px}.flow-footer{padding:6px 10px}.drawer{width:min(355px,100%)}}
+</style>
+<header><span class="logo" aria-hidden="true">K</span><span class="brand">坤伴工作台</span><span class="sep"></span><select id="project" aria-label="当前项目"><option value="mes">MES 标准库</option><option value="">未选择项目</option></select><span class="demo">交互原型 · 全部数据为模拟</span></header>
+<main class="shell"><section class="chat"><div class="top bar"><div><div class="over">项目聊天</div><h2>代码与业务数据</h2></div><span id="mode" class="pill"></span></div>
+<div class="scroll chatbody" id="chatBody"><div class="hero" id="hero"><div class="over">工单追溯</div><h2>这张工单为什么还没发料？</h2><p class="muted">试着给聊天挂载一个本体模型，看看代码里的工单号能查到哪些 MES、ERP 和库存记录。</p><button class="sample" id="sample"><small>使用示例问题 ↗</small>结合发料校验代码，查一下工单 WO-1024 的销售订单和可用库存。</button></div><div id="messages" aria-live="polite"></div></div>
+<div class="composer"><textarea id="question" aria-label="聊天问题" placeholder="输入排查问题，或点击上方示例…"></textarea><div class="bar"><div class="row"><button class="scope" id="pick"></button><button id="unbind" hidden>移除</button></div><button class="primary" id="send">发送 ↑</button></div><div class="hint" id="chatHint" role="status"></div></div></section>
+<aside class="panel" id="panel"><div class="top bar"><div><div class="over">项目工作区 / 本体模型</div><h1>业务关系画布</h1></div><div class="model-controls"><select id="model" aria-label="编辑的本体模型"></select><button id="newModel" class="tools">＋ 新建模型</button></div></div>
+<nav class="tabs" aria-label="模型配置"><button data-tab="objects">关系画布</button><button data-tab="sources">数据连接</button><button data-tab="scope">聊天挂载</button></nav>
+<div class="flow-stage"><div id="flowRoot" class="flow-root" aria-label="业务对象关系图"></div><div class="legend"><span><i></i>业务关联</span><span><i class="dashed"></i>数据来源</span></div><div class="graph-tools"><button id="graphAdd" data-act="addObject">＋ 定义对象</button></div><div id="flowEmpty" class="empty-flow" hidden></div>
+<section id="drawer" class="drawer" hidden><div class="drawer-head"><b id="drawerTitle">节点检查器</b><button class="tools" data-act="closeDrawer" aria-label="关闭检查器">关闭 ×</button></div><div class="scroll content" id="content"></div></section></div><div class="flow-footer"><b id="flowCount"></b><span>拖动节点布局 · 拖动端口连线 · 滚轮缩放</span></div></aside></main>
+<script>
+"use strict";
+const catalog = {
+  mes:{kind:"数据库",driver:"SQL Server",name:"MES 工单库",address:"sqlserver://mes.example.invalid:1433/DemoMes",entity:"dbo.WorkOrder",fields:[["工单号","OrderNo"],["销售单号","SalesNo"],["物料号","ItemCode"],["需求量","RequiredQty"]],row:["WO-1024","SO-2048","MAT-17",12]},
+  erp:{kind:"数据库",driver:"PostgreSQL",name:"ERP 订单库",address:"postgresql://erp.example.invalid:5432/demoerp",entity:"sales.order_header",fields:[["销售单号","order_no"],["订单状态","status"]],row:["SO-2048","已审核"]},
+  api:{kind:"接口组件",driver:"HTTPS · Bearer",name:"ERP 库存接口",address:"https://erp.example.invalid",entity:"GET /inventory/available",fields:[["物料号","itemCode"],["可用量","availableQty"]],row:["MAT-17",8]}
+};
+const example="结合发料校验代码，查一下工单 WO-1024 的销售订单和可用库存。";
+const sources=Object.entries(catalog).map(([type,v])=>({id:type,type,name:v.name,address:v.address,account:type==="api"?"":"demo_reader",status:"ok",hasSecret:true}));
+function object(id,name,source){return {id,name,source,fields:catalog[source].fields.map((_,i)=>i)}}
+const models=[{id:"fulfil",name:"生产履约",version:1,objects:[object("wo","生产工单","mes"),object("so","销售订单","erp"),object("stock","可用库存","api")]},{id:"orders",name:"销售订单核对",version:1,objects:[object("order","销售订单","erp")]}];
+const state={project:true,model:"fulfil",tab:"objects",chosen:new Set(["wo","so","stock"]),binding:null,form:null,notice:"",messages:[]};
+const $=id=>document.getElementById(id);
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const model=()=>models.find(m=>m.id===state.model);
+const src=id=>sources.find(s=>s.id===id);
+const action=(title,act,id="",cls="")=>'<button type="button" class="'+cls+'" data-act="'+act+'" data-id="'+esc(id)+'">'+esc(title)+'</button>';
+const opt=(v,label,selected)=>'<option value="'+esc(v)+'" '+(selected?"selected":"")+'>'+esc(label)+'</option>';
+const pill=(s)=>'<span class="pill '+(s.status==="ok"?"ok":"warn")+'">'+({ok:"已验证",fail:"验证失败",new:"待验证"}[s.status])+'</span>';
+function descriptor(o){const s=src(o.source), def=catalog[s.type];return {...o,sourceName:s.name,sourceVersion:s.version||1,entity:def.entity,type:s.type,labels:o.fields.map(i=>def.fields[i][0])}}
+function relations(objects){
+ const work=objects.find(o=>o.type==="mes"); if(!work)return [];
+ return [["erp","销售单号"],["api","物料号"]].flatMap(([type,key])=>{
+  const target=objects.find(o=>o.type===type&&o.labels.includes(key));
+  return target&&work.labels.includes(key)?[{from:work.id,to:target.id,key,label:work.name+" → "+target.name}]:[];
+ });
+}
+function snapshot(m,chosen){const objects=m.objects.filter(o=>chosen.has(o.id)).map(descriptor);return {name:m.name,id:m.id,version:m.version,objects,links:relations(objects)}}
+function reply(question,binding){
+ const code="示例代码 IssueService.CheckStock 的规则是可用量须达到需求量。";
+ if(!binding)return {text:code+" 本轮仅解释代码。",evidence:[]};
+ if(!/WO-1024|SO-2048|MAT-17/i.test(question))return {text:"演示数据支持按 WO-1024、SO-2048 或 MAT-17 追溯。请在问题中加入一个示例编号。",evidence:[]};
+ const ids={mes:"WO-1024",erp:"SO-2048",api:"MAT-17"},visited=new Set(),evidence=[],seen=new Set();
+ for(const o of binding.objects){
+  if(question.toUpperCase().includes(ids[o.type]))visited.add(o.id);
+ }
+ for(const o of [...binding.objects].sort((a,b)=>Number(b.type==="mes")-Number(a.type==="mes"))){
+  if(!visited.has(o.id))continue;
+  const s=src(o.source);if((s.version||1)!==o.sourceVersion){evidence.push({label:o.name+" · "+o.sourceName,value:"连接配置已变更，请在聊天挂载页核对后重新应用。"});continue;}
+  if(s.status!=="ok"){evidence.push({label:o.name+" · "+o.sourceName,value:"连接待验证或不可用，本次未取得记录。"});continue;}
+  const def=catalog[o.type];
+  evidence.push({label:o.name+" · "+o.sourceName+" · "+o.entity,value:o.fields.map(i=>def.fields[i][0]+" "+def.row[i]).join(" / ")});
+  o.labels.forEach(l=>seen.add(l));
+  binding.links.filter(l=>l.from===o.id).forEach(l=>visited.add(l.to));
+ }
+ const conclusion=seen.has("可用量")&&seen.has("需求量")?"需求 12 件，可用 8 件，缺 4 件。按示例代码，这条工单会被发料校验拦下。":evidence.length?"当前证据见下方。判断缺料还需要工单需求量和对应物料的可用量。":"所选对象中没有与这个编号对应的可查询入口。";
+ return {text:conclusion,evidence};
+}
+function render(){
+ $("model").innerHTML=models.map(m=>opt(m.id,m.name+" · v"+m.version,m.id===state.model)).join("");$("model").disabled=$("newModel").disabled=!state.project;
+ document.querySelectorAll("[data-tab]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.tab===state.tab);b.disabled=!state.project});
+ const b=state.binding;
+ $("pick").textContent=b?b.name+" · "+b.objects.length+" 个对象":"＋ 选择本体模型";$("unbind").hidden=!b;$("mode").textContent=b?"本轮可按需只读查询":"仅代码上下文";
+ $("hero").hidden=state.messages.length>0;
+ $("messages").innerHTML=state.messages.map(m=>'<article class="msg user">'+esc(m.q)+'</article><article class="msg"><h3>模拟回答</h3><div>'+esc(m.text)+'</div>'+m.evidence.map(e=>'<div class="evidence"><small>'+esc(e.label)+'</small><div>'+esc(e.value)+'</div></div>').join("")+'<div class="history">'+esc(m.scope)+'</div></article>').join("");
+ const c=$("content");if(!state.project){c.innerHTML='<h2>选择项目后配置本体</h2><p class="sub">模型和连接归属所选项目。</p>'+action("选择 MES 标准库","project");return;}
+ if(state.form){drawForm();return;}
+ const m=model();let html="";
+ if(state.tab==="objects"){
+ html='<div class="bar"><h2>业务对象 <small>('+m.objects.length+')</small></h2>'+action("＋ 定义对象","addObject")+'</div><p class="sub">将业务名称、查询键和字段映射到具体的数据源。</p>';
+ html+=m.objects.map(o=>{const d=descriptor(o);return '<article class="card object"><div class="nodehead"><span class="glyph">'+({mes:"WO",erp:"SO",api:"API"}[d.type])+'</span><div><h3>'+esc(o.name)+'</h3><small>'+esc(d.sourceName)+' · <code>'+esc(d.entity)+'</code></small></div>'+action("编辑","editObject",o.id,"tools")+'</div><div class="fields">'+d.labels.map((l,i)=>'<span>'+esc(l)+(i===0?" · 查询键":"")+'</span>').join("")+'</div></article>'}).join("");
+ const links=relations(m.objects.map(descriptor));html+='<h3>对象关系</h3>'+(links.map(l=>'<div class="map">'+esc(l.label)+'<code>按'+esc(l.key)+'关联</code></div>').join("")||'<p class="sub">配置具有匹配键的对象后，可预览示例关系。</p>');
+ }else if(state.tab==="sources"){
+ html='<div class="bar"><h2>项目数据连接</h2>'+action("＋ 新建连接","addSource")+'</div><p class="sub">一个连接可供本项目内多个对象复用。选择配置可模拟验证与故障。</p>'+sources.map(s=>'<article class="card"><div class="bar"><h3>'+esc(s.name)+'</h3>'+pill(s)+'</div><p class="sub">'+esc(catalog[s.type].driver)+' · '+esc(catalog[s.type].kind)+'</p>'+action("配置与测试","editSource",s.id)+'</article>').join("");
+ }else{
+ const snap=snapshot(m,state.chosen);
+ html='<h2>选择带入聊天的对象</h2><p class="sub">发送时附带所选对象、字段和可用关系。只在回答需要时读取业务记录。</p><div class="card checks">'+(m.objects.map(o=>'<label><input type="checkbox" data-check="'+esc(o.id)+'" '+(state.chosen.has(o.id)?"checked":"")+'>'+esc(o.name)+' <small> / '+esc(src(o.source).name)+'</small></label>').join("")||'先到「业务对象」定义一个对象。')+'</div><h3>下一轮上下文预览</h3><div class="note"><b>'+esc(m.name)+' · v'+m.version+'</b>'+snap.objects.map(o=>'<div class="evidence">'+esc(o.name)+' · '+esc(o.labels.join("、"))+'<br><small>'+esc(o.entity)+' · '+(src(o.source).status==="ok"?"可只读查询":"当前不可查询")+'</small></div>').join("")+snap.links.map(l=>'<div class="map">'+esc(l.label)+' · '+esc(l.key)+'</div>').join("")+'</div><button class="primary" data-act="bind" '+(!snap.objects.length?"disabled":"")+'>应用到聊天</button>';
+ if(state.binding)html+='<div class="sub">当前已挂载 '+esc(state.binding.name)+' · v'+state.binding.version+'，'+state.binding.objects.length+' 个对象。</div>';
+ }
+ c.innerHTML=html+'<div class="hint" role="status">'+esc(state.notice)+'</div>';
+}
+</script>
+<script>
+function formShell(title,body,save){
+ return '<form id="editor"><div class="bar"><h2>'+title+'</h2>'+action("返回","cancel","","tools")+'</div><div class="card">'+body+'</div><div class="actions"><button class="primary" type="submit">'+save+'</button></div><div id="formNote" class="sub" role="status"></div></form>';
+}
+function drawForm(){
+ const f=state.form,c=$("content");
+ if(f.kind==="model"){
+  c.innerHTML=formShell("新建本体模型",'<label class="field">模型名称<input name="name" required maxlength="60" placeholder="例如：采购入库"></label>',"创建模型");return;
+ }
+ if(f.kind==="object"){
+  const o=model().objects.find(o=>o.id===f.id);
+  c.innerHTML=formShell(o?"编辑业务对象":"定义业务对象",'<div class="formgrid"><label class="wide">对象名称<input name="name" required maxlength="60" value="'+esc(o?.name||"")+'" placeholder="例如：生产工单"></label><label class="wide">数据连接<select name="source">'+sources.map(s=>opt(s.id,s.name,s.id===(o?.source||sources[0].id))).join("")+'</select></label></div><div id="mapping"></div>',"保存对象");
+  const editor=$("editor");
+  function mapping(){const s=src(editor.elements.source.value),def=catalog[s.type];$("mapping").innerHTML='<p class="sub">示例映射 · <code>'+esc(def.entity)+'</code></p><div class="checks">'+def.fields.map(([label,physical],i)=>'<label><input type="checkbox" data-index="'+i+'" '+(i===0||s.id!==o?.source||o.fields.includes(i)?"checked":"")+' '+(i===0?"disabled":"")+'>'+esc(label)+' ← <code>'+esc(physical)+'</code>'+(i===0?" · 查询键":"")+'</label>').join("")+'</div>';}
+  mapping();editor.elements.source.onchange=mapping;return;
+ }
+ const s=src(f.id),type=s?.type||"mes";
+ c.innerHTML=formShell(s?"配置与测试":"新建数据连接",'<p class="sub">仅使用演示值。输入只用于此页面模拟。</p><div class="formgrid"><label>连接名称<input name="name" maxlength="60" required value="'+esc(s?.name||"")+'"></label><label>连接模板<select name="type">'+Object.entries(catalog).map(([id,d])=>opt(id,d.kind+" / "+d.driver,id===type)).join("")+'</select></label><label class="wide">连接 URL<input name="address" required autocomplete="off" value="'+esc(s?.address||catalog[type].address)+'"></label><label id="userLabel">数据库账号<input name="account" autocomplete="off" value="'+esc(s?.account??"demo_reader")+'"></label><label><span id="secretLabel"></span><input type="password" name="secret" autocomplete="off" placeholder="'+(s?.hasSecret?"已设置，留空沿用":"输入演示凭据")+'"></label></div><div class="steps"><label class="field">模拟执行结果<select id="outcome"><option value="ok">连接、认证和只读探测通过</option><option value="auth">认证失败</option><option value="offline">执行器离线</option></select></label><div class="actions">'+action("测试连接","test")+'<span id="testState" role="status"></span></div></div>',"保存连接");
+ const editor=$("editor"),el=editor.elements;
+ el.type.disabled=!!s;
+ function schema(){const api=el.type.value==="api";$("userLabel").hidden=api;el.account.required=!api;$("secretLabel").textContent=api?"访问令牌":"数据库密码";}
+ schema();el.type.onchange=()=>{schema();el.address.value=catalog[el.type.value].address};
+ f.status=s?.status||"new";const dirty=()=>{f.status="new";$("testState").textContent="配置已变更，待测试";};editor.oninput=dirty;editor.onchange=dirty;
+ $("testState").textContent=({new:"待测试",ok:"上次模拟验证通过",fail:"上次模拟验证失败"}[f.status]);
+}
+function switchModel(id){
+ state.model=id;state.chosen=new Set(model().objects.map(o=>o.id));state.form=null;state.notice="";
+}
+function changeProject(on){
+ state.project=on;state.binding=null;state.messages=[];state.tab="objects";switchModel(models[0].id);$("question").value="";$("chatHint").textContent="";$("project").value=on?"mes":"";render();
+}
+$("project").onchange=e=>changeProject(!!e.target.value);
+$("model").onchange=e=>{switchModel(e.target.value);render()};
+$("newModel").onclick=()=>{state.form={kind:"model"};render()};
+function openScope(){
+ state.form=null;state.tab="scope";state.notice="";render();
+ if(innerWidth<=860)$("panel").scrollIntoView({block:"start"});
+}
+$("pick").onclick=openScope;
+$("unbind").onclick=()=>{state.binding=null;$("chatHint").textContent="已移除，后续消息仅使用代码上下文。";render()};
+$("sample").onclick=()=>{$("question").value=example;openScope()};
+$("send").onclick=()=>{
+ const q=$("question").value.trim();if(!q){$("chatHint").textContent="先输入问题，或选择示例问题。";$("question").focus();return;}
+ const b=state.binding,r=reply(q,b);state.messages.push({q,...r,scope:b?b.name+" · v"+b.version+" · 模拟证据":"未挂载业务对象 · 示例代码"});
+ $("question").value="";$("chatHint").textContent="";render();$("chatBody").scrollTop=$("chatBody").scrollHeight;
+};
+document.addEventListener("click",e=>{
+ const b=e.target.closest("button");if(!b||b.disabled)return;
+ if(b.dataset.tab){state.tab=b.dataset.tab;state.form=null;state.notice="";render();return;}
+ const a=b.dataset.act,id=b.dataset.id;if(!a)return;
+ if(a==="project"){changeProject(true);return;}
+ if(a==="test"){
+  const el=$("editor").elements;
+  if(!$("editor").reportValidity())return;
+  let valid=false;try{const u=new URL(el.address.value);const proto={api:"https:",mes:"sqlserver:",erp:"postgresql:"}[el.type.value];valid=!!u.hostname&&u.protocol===proto&&!u.username&&!u.password&&!u.search&&!u.hash;}catch{}
+  const status=$("outcome").value,reason=!valid?"检查 URL 协议和主机，凭据单独填写。":!el.secret.value&&!src(id||state.form.id)?.hasSecret?"请输入演示凭据。":status==="auth"?"认证失败，请检查演示凭据。":status==="offline"?"执行器离线，请恢复后重试。":"";
+  state.form.status=reason?"fail":"ok";$("testState").textContent=reason||"模拟通过 · 可达、认证、只读探测";return;
+ }
+ if(a==="bind"){
+  state.binding=snapshot(model(),state.chosen);$("chatHint").textContent="已挂载，下次发送生效。";state.notice="已应用到聊天。";
+  if(innerWidth<=860)$("question").scrollIntoView({block:"center"});
+ }
+ if(a==="cancel")state.form=null;
+ if(a==="addSource"||a==="editSource")state.form={kind:"source",id};
+ if(a==="addObject"||a==="editObject")state.form={kind:"object",id};
+ render();
+});
+document.addEventListener("change",e=>{
+ if(e.target.dataset.check){const id=e.target.dataset.check;e.target.checked?state.chosen.add(id):state.chosen.delete(id);state.notice="";render();document.querySelector('[data-check="'+id+'"]').focus();}
+});
+let seq=0;
+document.addEventListener("submit",e=>{
+ if(e.target.id!=="editor")return;e.preventDefault();
+ const el=e.target.elements,f=state.form,name=el.name.value.trim();if(!name){$("formNote").textContent="请填写名称。";return;}
+ if(f.kind==="model"){
+  const m={id:"m"+(++seq),version:1,name,objects:[]};models.push(m);switchModel(m.id);state.tab="objects";
+ }else if(f.kind==="source"){
+  const old=src(f.id),record={id:f.id||"s"+(++seq),name,type:el.type.value,address:el.address.value.trim(),account:el.type.value==="api"?"":el.account.value,hasSecret:!!(old?.hasSecret||el.secret.value),status:f.status};
+  const changed=old&&(old.address!==record.address||old.account!==record.account||old.name!==record.name||!!el.secret.value);
+  record.version=(old?.version||1)+(changed?1:0);
+  if(old)Object.assign(old,record);else sources.push(record);el.secret.value="";state.tab="sources";state.form=null;
+ }else{
+  const m=model(),o={id:f.id||"o"+(++seq),name,source:el.source.value,fields:[...e.target.querySelectorAll("[data-index]:checked")].map(i=>Number(i.dataset.index))};
+  const i=m.objects.findIndex(x=>x.id===o.id);if(i>=0)m.objects[i]=o;else m.objects.push(o);
+  m.version++;state.chosen.add(o.id);state.form=null;state.tab="objects";
+ }
+ state.notice="已保存到本次演示。";render();
+});
+render();
+</script></html>

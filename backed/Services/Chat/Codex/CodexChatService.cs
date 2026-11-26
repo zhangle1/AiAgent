@@ -322,20 +322,7 @@ public sealed partial class CodexChatService : ICodexChatService, IDisposable
         return workspacePath;
     }
 
-    private string ResolveCodexCommand()
-    {
-        var configured = _configuration["Codex:Command"] ?? Environment.GetEnvironmentVariable("AIAGENT_CODEX_COMMAND");
-        if (!string.IsNullOrWhiteSpace(configured)) return configured.Trim();
-
-        // npm on Windows exposes a .cmd launcher. Prefer the known npm locations so a
-        // long-running IDE/backend process does not accidentally resolve an App Store alias.
-        var npmCommand = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "codex.cmd"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "codex.cmd")
-        }.FirstOrDefault(File.Exists);
-        return npmCommand ?? "codex";
-    }
+    private string ResolveCodexCommand() => CodexAgentProviderDriver.ResolveCommand(_configuration);
 
     private static string ResolveSandboxMode(string? requestedMode)
     {

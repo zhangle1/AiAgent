@@ -32,6 +32,7 @@ await page.route("**/api/**", async route => {
     const running = queue.findIndex(row => row.command_id === command && row.status === "running");
     if (running !== -1) queue.splice(running, 1);
     for (const row of queue) { row.queue_held = true; sockets.get(row.command_id)?.socket.send(JSON.stringify({ type: "delivery_held", content: "排队消息保留，等待恢复。" })); }
+    sockets.get(command)?.socket.send(JSON.stringify({ type: "cancelled", content: "任务已停止。" }));
     body = { accepted: true };
   }
   else if (name.endsWith("/sessions/list")) body = { sessions: [] };
@@ -60,7 +61,13 @@ function emit(socket, type, content) { socket.send(JSON.stringify({ type, conten
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw => {
   const request = JSON.parse(String(raw)); sent.push(request);
   sockets.set(request.command_id, { request, socket });
-  if (request.recover_only) { emit(socket, "delivery_held", "消息已保留，请明确恢复。"); return; }
+  if (request.recover_only) {
+    if (queue.some(row => row.command_id === request.command_id && row.status === "running")) {
+      emit(socket, "delivery_started");
+      emit(socket, "content", "重登后恢复的实时输出");
+    } else emit(socket, "delivery_held", "消息已保留，请明确恢复。");
+    return;
+  }
   if (request.resume_queued) {
     const row = queue.find(row => row.command_id === request.command_id); assert.ok(row);
     message("user", row.message); queue.splice(queue.indexOf(row), 1);
@@ -172,8 +179,11 @@ try {
   );
   await page.evaluate(() => sessionStorage.clear());
   await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?session=${d.session_id}`);
-  await queuePanel.getByText("另一个浏览器的任务", { exact: true }).waitFor();
-  await queuePanel.getByRole("button", { name: "停止当前任务", exact: true }).click();
+  await page.getByText("重登后恢复的实时输出", { exact: true }).waitFor();
+  const recovered = sent.filter(request => request.command_id === "previous-browser-run");
+  assert.equal(recovered.length, 1);
+  assert.equal(recovered[0].recover_only, true);
+  await page.getByRole("button", { name: /^(停止生成|Stop generating)$/ }).click();
   await queuePanel.getByRole("button", { name: "恢复执行", exact: true }).waitFor();
   assert.deepEqual(canceled, [d.command_id, "previous-browser-run"]);
   assert.equal(queue[0].command_id, "previous-browser-queued");

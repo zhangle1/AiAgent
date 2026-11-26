@@ -3,7 +3,7 @@
 import { readRecoveryPointers, saveRecoveryPointer, removeRecoveryPointer } from "@/lib/chat-command-recovery";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { cancelChatCommand, CHAT_STREAM_QUIET_AFTER_MS, getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
+import { cancelChatCommand, CHAT_STREAM_QUIET_AFTER_MS, getChatRuntimeId, heartbeatCodexRuntime, streamCompleteChat, type ChatCompleteRequest, type ChatDelivery, type ChatStreamEvent, type CodexSandboxMode } from "@/lib/chat-api";
 
 export type ChatStreamStatus = "streaming" | "done" | "stopped" | "error";
 export type ChatStreamHealth = "connecting" | "active" | "quiet";
@@ -13,6 +13,7 @@ export type ChatStreamRecord = {
   sessionId: string;
   deliveryState?: "queued" | "held" | "steered";
   goalMode?: boolean;
+  stopping?: boolean;
   status: ChatStreamStatus;
   events: ChatStreamEvent[];
   startedAt: number;
@@ -31,7 +32,8 @@ export type ChatStreamRecord = {
 type ChatStreamContextValue = {
   streams: Record<string, ChatStreamRecord>;
   startStream: (request: ChatCompleteRequest) => string;
-  cancelStream: (streamId: string) => void;
+  cancelStream: (streamId: string) => Promise<void>;
+  observeDelivery: (row: ChatDelivery) => void;
   retryStream: (streamId: string) => void;
   cancelRetry: (streamId: string) => void;
   markSessionViewed: (sessionId: string) => void;
@@ -95,7 +97,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     const activeSessions = new Set(Object.values(streamsRef.current).filter(stream => stream.status === "streaming").map(stream => stream.sessionId));
     if (activeSessions.size >= 10 && !activeSessions.has(sessionId)) throw new Error("A user can run at most 10 chat sessions at the same time.");
 
-    const streamId = retryId ?? createStreamId();
+    const streamId = retryId ?? request.command_id ?? createStreamId();
     if (controllersRef.current.has(streamId)) return streamId;
     request = request.goal ? request : { ...request, command_id: request.command_id ?? streamId };
     requestsRef.current.set(streamId, request);
@@ -137,14 +139,21 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       flushUpdates();
       update(streamId, (current) => ({
         ...current,
-        status: current.status === "error" ? "error" : "done",
+        status: current.lastEventType === "cancelled" ? "stopped" : current.status === "error" ? "error" : "done",
+        stopping: false,
         observedAt: Date.now(),
-        terminalReason: current.status === "error" ? current.terminalReason : current.events.some((event) => event.type === "completed") ? "completed" : "legacy_done",
+        terminalReason: current.lastEventType === "cancelled" ? "user_stopped" : current.status === "error" ? current.terminalReason : current.events.some((event) => event.type === "completed") ? "completed" : "legacy_done",
         unread: true,
         retryAt: current.status === "error" && !request.goal && !request.command_id ? Date.now() + 20_000 : undefined,
       }));
       flushUpdates();
       const completed = streamsRef.current[streamId];
+      if (completed?.status === "stopped") {
+        removeRecoveryPointer(request.command_id ?? streamId);
+        window.dispatchEvent(new Event("aiagent:sessions-updated"));
+        window.dispatchEvent(new Event("aiagent:chat-queue-updated"));
+        return;
+      }
       if (completed?.deliveryState === "held" || completed?.deliveryState === "steered") {
         if (completed.deliveryState === "steered") removeRecoveryPointer(request.command_id ?? streamId);
         window.dispatchEvent(new Event("aiagent:sessions-updated"));
@@ -211,6 +220,9 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
       if (stream.serverRejected && !request.recover_only) {
         if (!window.confirm("重新执行本轮消息？之前已完成的工具操作可能再次执行，请先核对执行结果。")) return;
         startStream({ ...request, command_id: createStreamId(), recover_only: false }, streamId);
+      } else if (request.delivery_intent && stream.events.some(event =>
+        event.type === "session_ready" || event.type === "delivery_started" || event.type === "delivery_queued")) {
+        startStream({ ...request, message: "", recover_only: true, resume_queued: false }, streamId);
       } else {
         startStream(request, streamId);
       }
@@ -229,12 +241,42 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [retryStream]);
 
-  const cancelStream = useCallback((streamId: string) => {
+  const observeDelivery = useCallback((row: ChatDelivery) => {
+    const entry = [...requestsRef.current].find(([, request]) =>
+      request.command_id === row.command_id && request.session_id === row.session_id);
+    const id = entry?.[0] ?? row.command_id;
+    if (controllersRef.current.has(id)) return;
+    const previous = streamsRef.current[id];
+    if (previous?.terminalReason === "completed" || previous?.status === "stopped" || previous?.serverRejected) return;
+    startStream({ session_id: row.session_id, command_id: row.command_id, agent: row.agent,
+      message: "", recover_only: true, delivery_intent: "queue" }, id);
+  }, [startStream]);
+
+  const cancelStream = useCallback(async (streamId: string) => {
     const request = requestsRef.current.get(streamId);
-    if (request?.command_id && request.session_id && !request.goal)
-      void cancelChatCommand(request.command_id, request.session_id).catch(() => {});
+    if (!request?.delivery_intent) {
+      if (request?.command_id && request.session_id && !request.goal)
+        void cancelChatCommand(request.command_id, request.session_id).catch(() => {});
+      controllersRef.current.get(streamId)?.abort();
+      return;
+    }
+    if (request.command_id && request.session_id) {
+      if (streamsRef.current[streamId]?.stopping) return;
+      update(streamId, current => ({ ...current, stopping: true }));
+      flushUpdates();
+      try {
+        const result = await cancelChatCommand(request.command_id, request.session_id);
+        if (!result.accepted) throw new Error("停止请求未受理，请核对任务状态后重试。");
+        // Keep listening for the authoritative terminal event, including a completion racing Stop.
+        return;
+      } catch (error) {
+        update(streamId, current => ({ ...current, stopping: false }));
+        flushUpdates();
+        throw error;
+      }
+    }
     controllersRef.current.get(streamId)?.abort();
-  }, []);
+  }, [flushUpdates, update]);
   const markSessionViewed = useCallback((sessionId: string) => {
     const current = streamsRef.current;
     const changed = Object.values(current).some((stream) => stream.sessionId === sessionId && stream.unread);
@@ -302,7 +344,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     controllersRef.current.forEach((controller) => controller.abort());
     if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
   }, []);
-  const value = useMemo(() => ({ streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
+  const value = useMemo(() => ({ streams, startStream, observeDelivery, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime }), [streams, startStream, observeDelivery, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime]);
   return <ChatStreamContext.Provider value={value}>{children}</ChatStreamContext.Provider>;
 }
 

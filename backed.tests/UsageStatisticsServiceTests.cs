@@ -15,8 +15,8 @@ public sealed class UsageStatisticsServiceTests
         var now = DateTime.UtcNow;
         db.Insertable(new[]
         {
-            Record("user-1", "openai", "gpt-5", 10, 20, false, now.AddHours(-1)),
-            Record("user-1", "openai", "gpt-5", 30, 40, true, now.AddDays(-1).Date.AddHours(23)),
+            Record("user-1", "openai", "gpt-5", 10, 20, false, now),
+            Record("user-1", "openai", "gpt-5-mini", 30, 40, true, now.AddDays(-1).Date.AddHours(23)),
             Record("user-2", "builtin", null, 5, 6, true, now.AddHours(-2))
         }).ExecuteCommand();
 
@@ -64,7 +64,11 @@ public sealed class UsageStatisticsServiceTests
             DbType = DbType.Sqlite,
             ConnectionString = "Data Source=:memory:",
             IsAutoCloseConnection = false,
-            InitKeyType = InitKeyType.Attribute
+            InitKeyType = InitKeyType.Attribute,
+            ConfigureExternalServices = new() { EntityService = (_, column) =>
+            {
+                if (column.IsIdentity) column.DataType = "INTEGER";
+            } }
         });
         db.CodeFirst.InitTables<AiUsageRecord>();
         return db;

@@ -1,0 +1,46 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-13T08:18:24.458832+00:00",
+  "baseCommit": "d8c1edc4e918646789477b7a822bb8fc64c1f867",
+  "objective": "Handle expected cancellation of read-only chat initialization requests after login without changing Codex editing flow.",
+  "diagnosis": "Action tests reproduced TaskCanceledException propagating through RequireUser for skills and quota requests cancelled before or during authentication. Screenshot request path unavailable; original live debugger session was not reproduced.",
+  "files": [
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "462a91b5fc1851c3207bcf1b8e78b56155bd8d6912959db03b3a351373edc711",
+      "bytes": 23898
+    },
+    {
+      "path": "backed.tests/ChatBootstrapCancellationTests.cs",
+      "sha256": "0d391e5f5d6fb9daf6833d0b9a17f2be728279c4ff042504ad32e605ec6f132e",
+      "bytes": 5355
+    },
+    {
+      "path": "docs/chat-explicit-skills.md",
+      "sha256": "8770aaab693eddc05d05253d19703f1e61c564b2764b636aa0a036edbcb56ba4",
+      "bytes": 11657
+    },
+    {
+      "path": "docs/codex-local-quota.md",
+      "sha256": "c910a7b0d33c0a4f0658a3ffb76562c2f53e203b6a4b91e33dbede774842d0b8",
+      "bytes": 3858
+    },
+    {
+      "path": "docs/chat-bootstrap-cancellation.md",
+      "sha256": "88f4d3a5f5e13b862e134d8fbc5c88328d144010a69dfad224998b838322328c",
+      "bytes": 2066
+    }
+  ],
+  "fingerprint": "dd53c91d03261685ad692ea44df756e703d88934dd939968132f2b73d83ed614",
+  "validation": {
+    "red": "Four cancellation scenarios reproduced the original RequireUser exception before the fix.",
+    "green": "44 passed, 0 failed: ChatBootstrapCancellationTests, AuthCancellationTests, RequestCancellationMiddlewareTests, ChatCommandTests, CodexQuotaTests and SwaggerDocumentTests.",
+    "build": "Compiled with dotnet test using isolated output, no restore and default content disabled; existing compiler warnings remain.",
+    "boundaries": "Current request cancellation returns 499; genuine auth failures, unrelated cancellation, missing authentication and successful skill catalog shape are covered.",
+    "whitespace": "git diff --check passed",
+    "environment": "Synthetic authentication and isolated test data; no real credentials, user database or Codex authentication accessed.",
+    "live_login": "Requires rebuilding and restarting the backend in the user debugger; not verified against the running user session."
+  },
+  "delivery": "Local changes only; no commit, push, deployment or restart of user services."
+}

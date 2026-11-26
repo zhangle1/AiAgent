@@ -1,0 +1,177 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "date": "2026-11-17",
+  "baseCommit": "1542ada179ae7df35478d9e73f751517d5e78119",
+  "objective": "Display imported resources in their folder and corresponding raw namespace; fix PDF preview and external-root parsing; locally extract Markdown sections and images.",
+  "diagnosis": [
+    "External KnowledgeStorage root was not in Python worker allowed roots; regression failed before fix.",
+    "Native PDF plugin inside sandbox iframe failed. Browser test also reproduced API 5.4.296 vs worker 5.7.284 mismatch due installed dependency drift.",
+    "PDF parser exported text only by default, and parsed Markdown renderer suppressed all images.",
+    "Logical resource folders did not map to physical raw subdirectories."
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "ea17ae6009c1fd70935c3e1862a2408f1bf6d1bb362ebc74ce8432bd46bb52cd",
+      "bytes": 35593
+    },
+    {
+      "path": "README.md",
+      "sha256": "fe21dce323a0326f5b157126350851dd6883cdb2800ea64c43c95d9d92403a4d",
+      "bytes": 41472
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "7dffb36e4b451db85e7e200083a505d01f7c497d63dc49200ce47fa61fd739fa",
+      "bytes": 4612
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgePathService.cs",
+      "sha256": "4a505fde064a71fbb2df7c57703e3d824ceb89562bd211640e43abf66bd041c9",
+      "bytes": 7432
+    },
+    {
+      "path": "backed/Services/PythonWorkers/PythonWorkerHost.cs",
+      "sha256": "5952f26955044f922061cdfe0248f93b58501acb38d7389db760e653330c8a76",
+      "bytes": 14475
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceRawStore.cs",
+      "sha256": "837b578a54d21e0893fe9c8149421a6a917959aa2ccd544945bdc37217334d24",
+      "bytes": 1784
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeBaseManager.cs",
+      "sha256": "0e2f146b3ebce8861be77ffa27bdc893c293c22c2861a173f6e028d989bc5d83",
+      "bytes": 27905
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingContracts.cs",
+      "sha256": "9a9f5e6156dbd2dbd2fb656c21303e03f8625096688cfcf1160cd3ce5c99b5cb",
+      "bytes": 3012
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingService.cs",
+      "sha256": "d1b850bd737976c8bb5df72b8bdbb59af520769611df74d1d3a4607a37bd4751",
+      "bytes": 7111
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/document_parser_worker.py",
+      "sha256": "f84f0dd951f8d0e6fee5a6bac05ab2753a2e17bfdec2a9131e1760774dc98817",
+      "bytes": 3625
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/pdf_layout.py",
+      "sha256": "b5e37af8e566a817c9038020d259c026c2a8829a956a2c4f33869d06e2f678be",
+      "bytes": 8778
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/requirements.txt",
+      "sha256": "d9d37b6863fe353b68c3fe6d853e0fb7e4233120db829ab1099070370a9ca823",
+      "bytes": 16
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "81ff2e6a3d3300f80f18837d9c663384d0d430340f60bf6f66352a484ce1ee2e",
+      "bytes": 25860
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeParsedDocumentStore.cs",
+      "sha256": "562d7d9334c95ee1a6a0e489fbd8ca5d2de2fb7b0da3c03608f2e0595e41c409",
+      "bytes": 11877
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "972e9b903953ac3936079f722c7ffcb7cc23db13c8c4f66b8d900f00740e0c51",
+      "bytes": 35560
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceAppService.cs",
+      "sha256": "5b213182f47fa03f63c673a427e1b908797d9ff13eb43c933f9b7b73dbb99e8d",
+      "bytes": 3154
+    },
+    {
+      "path": "backed.tests/KnowledgeWorkerPathTests.cs",
+      "sha256": "d29d84c104d6dbad811ba5e7f5310a848c92b00fc3364a0abb98748e46e70a73",
+      "bytes": 1643
+    },
+    {
+      "path": "backed.tests/KnowledgeBookUploadTests.cs",
+      "sha256": "c85766277e07fcca6159ce91133ea3659a1f1a2164f6305d5f8dbc169d2ba9c3",
+      "bytes": 5218
+    },
+    {
+      "path": "backed.tests/KnowledgeParsingTests.cs",
+      "sha256": "85bcb767b32c1cebc821f7a594dcd9e22bcdedf158aa78d85a2bebc8b2e5d00d",
+      "bytes": 26285
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/test_pdf_layout.py",
+      "sha256": "fc547a338f1f403f9e956c1a612ad0ebce035cfcbb3ff55fee8639c931a9b778",
+      "bytes": 3832
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "f2994d61dcc6a27f9a25e72d4f778d9608f9121052e152dc7d63fa5e019ef675",
+      "bytes": 33048
+    },
+    {
+      "path": "front/components/knowledge/KnowledgePdfPreview.tsx",
+      "sha256": "e42c1211bcb14bb9d77ee8acb970596f44bc6655baca5a7b51d63dc0272eba21",
+      "bytes": 2706
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "8d42a1c27a19581482aab8819d029e5cec9aa8c93bedfc40e315ba25ca553957",
+      "bytes": 14972
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "bf3542907f214293ea0b7811cf41372f788643988413e1efe6f0a263122d49d1",
+      "bytes": 8175
+    },
+    {
+      "path": "front/package.json",
+      "sha256": "777b0f6dbcd9837a8ded6ba1004e75f92425218505a3d0e378ba7ab8282bee43",
+      "bytes": 813
+    },
+    {
+      "path": "front/package-lock.json",
+      "sha256": "2662debec3b7bdb2a390b9ff3db8c805ba54f881b97165e529d61d778fc08b67",
+      "bytes": 188326
+    },
+    {
+      "path": "front/next-env.d.ts",
+      "sha256": "7b550dda9686c16f36a17bf9051d5dbf31e98555b30d114ac49fc49a1e712651",
+      "bytes": 247
+    },
+    {
+      "path": "front/tests/knowledge-pdf-resources.browser.mjs",
+      "sha256": "304419da6c200fb2dfe2531bf5b23241e0ddde7e72492e1179b7f8d2435514c5",
+      "bytes": 8058
+    },
+    {
+      "path": "docs/knowledge-document-parsing.md",
+      "sha256": "f8c4f264c626c93265e99831e5e541cc39d1c90bee7bf4db32ce1f2405e96b1c",
+      "bytes": 14009
+    }
+  ],
+  "fingerprint": "c72b1039abe50ac46c15dcb1acf9840ec360fb71decf43bfc578cce6c01caa5a",
+  "validation": {
+    "backend": "130 passed, 0 failed across KnowledgeWorkspaceTests (partial classes), KnowledgeWorkerPathTests, KnowledgeBookUploadTests, MarkdownDocumentPlannerTests and SwaggerDocumentTests.",
+    "python": "2 passed: synthetic real-PDF conversion and actual worker JSON invocation. Bookmarks, font headings, raster/vector regions, image-only pages, unchanged original PDF and relative links verified.",
+    "typescript": "next typegen followed by tsc --noEmit --incremental false passed after archiving stale .next/types output from a different installed Next version.",
+    "browser": [
+      "knowledge-pdf-resources.browser.mjs: nested upload refresh, raw relative path, actual PDF.js canvas and paging, full-body/chapter images, parsed version query, mobile bounds; synthetic inputs only.",
+      "knowledge-resource-upload.browser.mjs: 16.1 MiB upload, HTTP/item failure feedback, retry and saved raw visible before parse."
+    ],
+    "visual": "Desktop PDF, desktop parsed Markdown and mobile image screenshots inspected; no observed clipping or blocked PDF plugin.",
+    "whitespace": "git diff --check passed"
+  },
+  "compatibility": "Existing flat raw files remain readable and are not bulk moved. Existing manifests without Assets remain supported. No new database fields. Source PDF never modified. Images inherit source visibility, latest parse ID, source fingerprint, hash and path checks.",
+  "limits": "Scanned pages preserve pictures and explicitly state OCR is still needed; complex layouts and formulas are heuristic. Existing L0/L1 semantic phase still requires its configured model after L2 is published.",
+  "scope": "Preserved all earlier uncommitted chat, budget and knowledge changes. AGENTS.md, README.md, KnowledgeWorkspace.tsx and KnowledgeBookUploadTests.cs already had pending edits. next-env.d.ts is regenerated framework typing.",
+  "runtime": "Reinstalled frontend dependencies to lockfile and pinned compatible PDF packages. Restarted only the verified AiAgent Next dev process on port 3782, hidden, with temporary logs; frontend is running. Backend/debugger/database not restarted or changed. Stale generated type directory archived under TEMP rather than deleted.",
+  "delivery": "Local source changes only; no commit or push. Backend and complete parsing worker directory must be updated/restarted, then failed PDF tasks explicitly reparsed."
+}

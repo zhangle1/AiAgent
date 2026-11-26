@@ -68,13 +68,13 @@ public sealed class ChatCompleteRequest
     public List<string> KnowledgeBaseNames { get; set; } = [];
 
     /// <summary>
-    /// Optional folder URI inside the knowledge resource tree. Empty keeps the
+    /// Optional folder or source file URI inside the knowledge resource tree. Empty keeps the
     /// legacy whole-knowledge-base retrieval behavior.
     /// </summary>
     [JsonPropertyName("knowledge_scope_uri")]
     public string? KnowledgeScopeUri { get; set; }
 
-    /// <summary>Optional folder URI list. Retrieval uses the union of all selected folders.</summary>
+    /// <summary>Optional folder/file URI list. Retrieval uses the union of selected source documents.</summary>
     [JsonPropertyName("knowledge_scope_uris")]
     public List<string> KnowledgeScopeUris { get; set; } = [];
 

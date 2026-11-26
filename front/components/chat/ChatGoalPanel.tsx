@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Target, X } from "lucide-react";
 import { controlChatGoal, getChatGoal } from "@/lib/chat-goal-api";
-import { CHAT_GOAL_TOKEN_BUDGET, type ChatGoal, type ChatGoalRequest } from "@/lib/chat-goal-types";
+import { type ChatGoal, type ChatGoalRequest } from "@/lib/chat-goal-types";
 
 const labels: Record<string, string> = { active: "执行中", paused: "已暂停", blocked: "等待补充", complete: "已完成", ended: "已结束", budgetLimited: "预算耗尽", usageLimited: "用量受限" };
 
@@ -51,7 +51,7 @@ export function ChatGoalPanel({ sessionId, enabled, sending, onChange, activatio
     if (!selected || !enabled) { onChange(undefined); return; }
     if (loading || error) { onChange({ action: "start", objective: "", token_budget: 0 }); return; }
     onChange(current ? { action: "resume", expected_version: current.version }
-      : { action: "start", objective: objective.trim(), expected_version: goal?.version ?? 0, token_budget: CHAT_GOAL_TOKEN_BUDGET });
+      : { action: "start", objective: objective.trim(), expected_version: goal?.version ?? 0 });
   }, [selected, enabled, loading, error, current?.id, current?.version, goal?.version, objective, onChange]);
   async function control(action: "pause" | "end") {
     if (!sessionId || !goal || controlling.current) return;

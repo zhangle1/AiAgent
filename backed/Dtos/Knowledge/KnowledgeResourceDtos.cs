@@ -17,14 +17,23 @@ public sealed class KnowledgeResourceNodeDto
     [JsonPropertyName("size")] public long? Size { get; set; }
     [JsonPropertyName("raw_relative_path")] public string? RawRelativePath { get; set; }
     [JsonPropertyName("source_uri")] public string? SourceUri { get; set; }
-    [JsonPropertyName("is_navigation")] public bool IsNavigation { get; set; }
     [JsonPropertyName("parsed_document_id")] public long? ParsedDocumentId { get; set; }
     [JsonPropertyName("section_order")] public int? SectionOrder { get; set; }
     [JsonPropertyName("can_publish")] public bool CanPublish { get; set; }
+    [JsonPropertyName("can_delete")] public bool CanDelete { get; set; }
+    [JsonPropertyName("is_navigation")] public bool IsNavigation { get; set; }
+}
+
+public sealed class KnowledgeResourceDeleteResultDto
+{
+    [JsonPropertyName("deleted")] public bool Deleted { get; set; }
+    [JsonPropertyName("document_id")] public long DocumentId { get; set; }
+    [JsonPropertyName("uri")] public string Uri { get; set; } = "";
 }
 
 public sealed class KnowledgeResourceReadDto
 {
+    [JsonPropertyName("parsed_index")] public KnowledgeResourceNodeDto? ParsedIndex { get; set; }
     [JsonPropertyName("abstract_content")] public string? AbstractContent { get; set; }
     [JsonPropertyName("overview_content")] public string? OverviewContent { get; set; }
     [JsonPropertyName("semantic_generated_at")] public DateTime? SemanticGeneratedAt { get; set; }
@@ -37,7 +46,6 @@ public sealed class KnowledgeResourceReadDto
     [JsonPropertyName("model")] public string? Model { get; set; }
     [JsonPropertyName("children")] public List<KnowledgeResourceNodeDto> Children { get; set; } = [];
     [JsonPropertyName("compiled_outputs")] public List<KnowledgeResourceNodeDto> CompiledOutputs { get; set; } = [];
-    [JsonPropertyName("parsed_index")] public KnowledgeResourceNodeDto? ParsedIndex { get; set; }
     [JsonPropertyName("parsed_outputs")] public List<KnowledgeResourceNodeDto> ParsedOutputs { get; set; } = [];
 }
 

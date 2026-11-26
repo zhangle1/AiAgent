@@ -23,8 +23,8 @@ CodeBuddy 官方 CLI 页面说明其安装命令为 `npm install -g @tencent-ai/
 
 1. 新增 `IAgentProviderEnvironmentService`，只执行固定候选命令的 `--version` 探测，带超时且不使用 shell。
 2. `GET /api/v1/agent-providers/environments` 返回名称、CLI、版本、安装状态、协议和 `chat_supported`。
-3. Codex 候选路径复用现有 `Codex:Command` / `AIAGENT_CODEX_COMMAND` 与标准 npm 路径；CodeBuddy 使用 `CodeBuddy:Command` / `AIAGENT_CODEBUDDY_COMMAND` 与标准 npm 路径。
-4. 聊天编排器仅接受检测为 `chat_supported` 的代理。当前 `codex` 可接管；`codebuddy` 返回明确的“已检测但协议未适配”错误。
+3. Codex 的状态读取与实际聊天通过同一默认实例。设置页只运行服务端选定命令的 `--version`；显式配置的命令失效时，页面显示不可用。状态返回公开命令名和可识别的版本号。命令解析顺序为 `Codex:Command`、`AIAGENT_CODEX_COMMAND`、已知 npm 启动器及 `codex`。
+4. 流式和普通聊天都把 `agent = "codex"` 交给 `AgentProviderRegistry` 解析。注册表按驱动缓存成功创建的默认实例，实例创建失败后下一次解析可重试。`CodexAgentProviderDriver` 复用原有执行服务，执行阶段沿用其工作区、权限及会话绑定校验。DeepSeek Harness 沿用现有执行入口，CodeBuddy 继续显示协议待适配。
 
 ## 前端
 

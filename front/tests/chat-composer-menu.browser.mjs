@@ -50,7 +50,7 @@ await page.route("**/api/**", async route => {
 });
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(message => {
   const request=JSON.parse(String(message)); sent.push(request);
-  if(request.goal) goalState={id:"fixture-goal",objective:request.goal.objective,status:"complete",tokensUsed:19649,timeUsedSeconds:11,version:2,running:false,stopReason:null,tokenBudget:2000000};
+  if(request.goal) goalState={id:"fixture-goal",objective:request.goal.objective,status:"complete",tokensUsed:19649,timeUsedSeconds:11,version:2,running:false,stopReason:null,tokenBudget:10000000};
   socket.send(JSON.stringify({ type: "content", content: "合成响应" }));
   socket.send(JSON.stringify({ type: "completed" }));
 }));
@@ -97,7 +97,7 @@ try {
   await page.getByText("说明.md", { exact: true }).waitFor(); assert.equal(uploads, 1);
   await editor().fill("执行这个目标"); await editor().press("Enter");
   await page.waitForFunction(() => document.body.innerText.includes("合成响应"));
-  assert.equal(sent.length, 1); assert.equal(sent[0].goal.action, "start"); assert.equal(sent[0].goal.token_budget, 2_000_000); assert.equal(sent[0].goal.objective, "通过斜杠选择目标");
+  assert.equal(sent.length, 1); assert.equal(sent[0].goal.action, "start"); assert.equal(sent[0].goal.token_budget, undefined); assert.equal(sent[0].goal.objective, "通过斜杠选择目标");
   assert.deepEqual(sent[0].document_attachment_ids, ["fixture-document"]);
   await page.getByRole("button", {name:"取消目标模式",exact:true}).waitFor({state:"detached"});
   await page.waitForTimeout(2200);
@@ -164,6 +164,6 @@ try {
   assert.equal(await input.innerText(), "原草稿");
 
   assert.deepEqual(errors, []);
-  console.log(`Passed: Ctrl+V file routing, byte preservation and empty-file handling, compact plus menu, disabled goal explanation, Escape/focus, goal via plus and Chinese/English slash, hidden fixed budget in sent request, file chooser/upload, skill menu, visualization dialog, one-shot goal clearing, completed goal hidden and deleted in dialog, next ordinary request has no goal, no implicit sends, desktop/mobile layout. Screenshots: ${artifacts}`);
+  console.log(`Passed: Ctrl+V file routing, byte preservation and empty-file handling, compact plus menu, disabled goal explanation, Escape/focus, goal via plus and Chinese/English slash, server-configured budget omitted from sent request, file chooser/upload, skill menu, visualization dialog, one-shot goal clearing, completed goal hidden and deleted in dialog, next ordinary request has no goal, no implicit sends, desktop/mobile layout. Screenshots: ${artifacts}`);
 } catch (error) { await page.screenshot({ path: path.join(artifacts, "failure.png") }); throw error; }
 finally { await browser.close(); }

@@ -13,7 +13,7 @@ const profiles = [
   { display_name: "text-only", profile_name: "text", description: "Text fixture", supports_reasoning_effort: false, supports_image_input: false, supports_image_ocr: false },
 ];
 const projectModels = entries => entries.map(p => ({ id: `profile:${p.profile_name}`, name: p.display_name, description: p.description, profile_name: p.profile_name, supports_reasoning_effort: false, reasoning_efforts: [], is_builtin: false, image_input: p.supports_image_input ? "native" : p.supports_image_ocr ? "ocr" : "none" }));
-let policy = { models: projectModels(profiles), profile_models: profiles, allowed_model_ids: ["profile:deepseek", "profile:text"], default_model_id: "profile:deepseek", allow_chat_model_override: true, allowed_reasoning_efforts: ["medium"], default_reasoning_effort: "medium", allow_chat_reasoning_effort_override: true };
+let policy = { goal_max_token_budget: 10_000_000, models: projectModels(profiles), profile_models: profiles, allowed_model_ids: ["profile:deepseek", "profile:text"], default_model_id: "profile:deepseek", allow_chat_model_override: true, allowed_reasoning_efforts: ["medium"], default_reasoning_effort: "medium", allow_chat_reasoning_effort_override: true };
 let nativeEnabled = true;
 let dropNativeCapability = false;
 const imageSaves = [];
@@ -61,7 +61,7 @@ try {
   const firstSave = page.waitForResponse(r => r.url().endsWith("/codex-model-policy") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "保存高级配置", exact: true }).click();
   await firstSave;
-  await page.getByRole("status").filter({ hasText: "模型与图片上传配置已保存" }).waitFor();
+  await page.getByRole("status").filter({ hasText: "模型、图片上传和目标预算配置已保存" }).waitFor();
   assert.deepEqual(imageSaves.at(-1), { native_image_input_enabled: true }, "Saving image capability must not write hidden OCR settings");
   assert.equal(saves.at(-1).profile_models[0].supports_image_input, true);
   assert.equal(saves.at(-1).profile_models[1].supports_image_input, false);
@@ -77,19 +77,19 @@ try {
   const saved = page.waitForResponse(r => r.url().endsWith("/codex-model-policy") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "保存高级配置", exact: true }).click();
   await saved;
-  await page.getByRole("status").filter({ hasText: "模型与图片上传配置已保存" }).waitFor();
+  await page.getByRole("status").filter({ hasText: "模型、图片上传和目标预算配置已保存" }).waitFor();
   assert.equal(saves.at(-1).profile_models[2].supports_image_input, true);
   const globalToggle = page.getByRole("checkbox", { name: "允许聊天上传图片", exact: true });
   await globalToggle.uncheck();
   await page.getByRole("button", { name: "保存模型与图片配置", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: "模型与图片上传配置已保存" }).waitFor();
+  await page.getByRole("status").filter({ hasText: "模型、图片上传和目标预算配置已保存" }).waitFor();
   assert.deepEqual(imageSaves.at(-1), { native_image_input_enabled: false });
   await page.reload();
   await globalToggle.waitFor();
   assert.equal(await globalToggle.isChecked(), false);
   await globalToggle.check();
   await page.getByRole("button", { name: "保存模型与图片配置", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: "模型与图片上传配置已保存" }).waitFor();
+  await page.getByRole("status").filter({ hasText: "模型、图片上传和目标预算配置已保存" }).waitFor();
   assert.deepEqual(imageSaves.at(-1), { native_image_input_enabled: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.querySelector("main")?.getBoundingClientRect().left === 0);
@@ -146,12 +146,12 @@ try {
   const disableSave = page.waitForResponse(r => r.url().endsWith("/codex-model-policy") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "保存模型与图片配置", exact: true }).click();
   await disableSave;
-  await page.getByRole("status").filter({ hasText: "模型与图片上传配置已保存" }).waitFor();
+  await page.getByRole("status").filter({ hasText: "模型、图片上传和目标预算配置已保存" }).waitFor();
   await deepseek.check();
   dropNativeCapability = true;
   await page.getByRole("button", { name: "保存模型与图片配置", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "后端未保存原图能力" }).waitFor();
-  assert.equal(await page.getByRole("status").filter({ hasText: "模型与图片上传配置已保存" }).count(), 0);
+  assert.equal(await page.getByRole("status").filter({ hasText: "模型、图片上传和目标预算配置已保存" }).count(), 0);
   assert.deepEqual(errors, []);
   console.log("PASS: prominent model-card checkbox, OCR hidden/legacy URL redirect, unified save, new profiles, mobile width, focus/manual refresh, native upload, global gate and old-backend rejection");
 } finally { await browser.close(); }

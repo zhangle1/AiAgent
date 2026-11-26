@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>订单筛选修复 · AiAgent 团队工作台</title>
+<style>
+:root{color-scheme:light;--ink:#182d2a;--sub:#50655f;--line:#cedbd5;--bg:#f5f7f3;--green:#146451;--mono:"IBM Plex Mono",Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--bg);font:14px/1.6 Inter,"Segoe UI","Microsoft YaHei",sans-serif}button,input,select{font:inherit;color:inherit}button,select{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #298873;outline-offset:3px}button:disabled{cursor:default;opacity:.48}button{border:1px solid var(--line);background:white;border-radius:7px;padding:6px 11px}button:hover:enabled{border-color:#558f7e}.wrap{max-width:1540px;margin:auto;padding:0 clamp(14px,3.5vw,64px)}header{background:#102e28;color:#eef6ef}.bar{min-height:60px;display:flex;align-items:center;gap:12px}.brand{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:700}.mark{width:27px;height:27px;display:grid;grid-template-columns:repeat(2,9px);grid-template-rows:repeat(2,9px);gap:3px;align-content:center;justify-content:center;transform:rotate(-8deg)}.mark i{background:#a7e6c5;border-radius:2px}.mark i:last-child{border-radius:50%;background:#e7efd3}.crumb{color:#bdd0c7;font-size:13px}.sim{margin-left:auto;color:#cde9dc;font-size:12px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px}
+.hero{display:flex;align-items:end;justify-content:space-between;gap:20px;padding:30px 0 20px}.kicker,.mono{font:11px/1.5 var(--mono);letter-spacing:.11em;color:var(--sub)}h1,h2,h3,p{margin:0}h1{font-size:clamp(26px,3vw,40px);line-height:1.35;letter-spacing:-1px;margin:5px 0 6px}h2{font-size:17px;letter-spacing:.015em}h3{font-size:15px}.muted{color:var(--sub)}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.primary{color:white;background:var(--green);border-color:var(--green);font-weight:600}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(268px,29%);gap:16px;align-items:start}.panel{background:white;border:1px solid var(--line);border-radius:12px;overflow:hidden}.panelhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:15px 18px;border-bottom:1px solid var(--line)}.counter{font:12px var(--mono);color:var(--sub)}.board{padding:20px 18px 16px;background-color:#f9fbf8;background-image:radial-gradient(#cedbd3 .8px,transparent .85px);background-size:13px 13px}.lead{position:relative;display:flex;align-items:center;gap:14px;max-width:520px;margin:auto;padding:14px 16px;background:#173b33;color:white;border-radius:10px}.avatar{width:39px;height:39px;flex:none;display:grid;place-items:center;background:#c5e6ca;border-radius:9px;color:#184e40;font:700 18px var(--mono)}.lead small,.lead .mono{color:#c6dfd4}.lead .progress{margin-left:auto;font:13px var(--mono);color:#d2e9dd;white-space:nowrap}.stem{height:16px;border-left:1px solid #80a695;width:0;margin:auto}.channels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.channel{padding:6px 3px;background:#eff5f0;color:#315848;min-width:0;font-weight:600;font-size:13px}.channel small{display:block;font:10px var(--mono);letter-spacing:.03em;color:#50695f}.channel[aria-pressed=true]{background:#dbeddd;border-color:#4a866a}.branch{height:27px;position:relative;margin:0 calc(100% / 6)}.branch:before,.branch:after{content:"";position:absolute;left:0;right:0;top:12px;height:14px;border:1px solid #92af9e;border-bottom:0;border-radius:5px 5px 0 0}.branch:after{top:0;left:50%;right:auto;height:27px;border:0;border-left:1px solid #92af9e}.groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.group{padding:10px;border:1px solid var(--line);border-top:3px solid var(--color);border-radius:9px;background:#fff}.group:nth-child(1){--color:#46856f}.group:nth-child(2){--color:#9c732f}.group:nth-child(3){--color:#7975a3}.grouphead{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:8px}.grouphead small{font:11px var(--mono);color:var(--sub)}.node{display:block;text-align:left;border-radius:6px;width:100%;margin-top:6px;padding:8px;background:#fafbf9}.node[aria-pressed=true]{background:#eef6ee;border-color:#528674;box-shadow:inset 3px 0 #49806d}.node strong{font-size:13px;display:block}.meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1px 5px;color:var(--sub);font-size:11px}.badge{display:inline-flex;align-items:center;gap:4px;color:#4b5b55;font-size:11px;font-weight:600}.badge:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.badge.running{color:#177054}.badge.done{color:#466180}.badge.failed{color:#a73d2e}.badge.waiting{color:#65695c}.strip{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:15px;color:var(--sub);font-size:12px}.barline{height:4px;background:#ebf0ea}.barline i{display:block;height:100%;background:#66a88b}
+.below{margin:16px 0}.rows{padding:4px 18px 10px}.row{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid #e4ebe6;font-size:13px;overflow-wrap:anywhere}.row:last-child{border-bottom:0}.row .id{font:11px var(--mono);color:#517566;min-width:45px}.row span:last-child{margin-left:auto;color:var(--sub);font-size:12px}.row b{font-weight:600}.side{display:grid;gap:16px}.inside{padding:14px 17px}.detailname{font-size:21px;margin:3px 0 6px}.props{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 13px;margin:13px 0 0;font-size:13px}.props dt{color:var(--sub)}.props dd{margin:0;overflow-wrap:anywhere}.box{margin-top:12px;padding:9px 11px;border-left:3px solid #a6bda9;background:#f1f5ef;font-size:13px}.tools{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.tools button{font-size:12px}.tools:empty{display:none}.chat{display:grid;gap:10px}.speech small{display:block;color:var(--sub);font-size:11px;font-weight:600}.speech p{background:#f1f4ef;border-radius:0 9px 9px 9px;padding:8px 11px;margin-top:3px;font-size:13px}.speech.user p{background:#e7f1ea}.form{display:flex;gap:6px;margin-top:12px}.form input{width:0;flex:1;min-width:0;border:1px solid var(--line);border-radius:7px;padding:7px}.foot{padding:3px 0 25px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:12px;color:var(--sub)}select{border:1px solid var(--line);border-radius:6px;padding:4px 7px;background:white}.empty{padding:15px 0;color:var(--sub)}#notice{min-height:20px;margin:6px 0 0;font-size:12px;color:#346d54}.status{border:1px solid #bbd2c1;background:#ebf4ea;border-radius:20px;font-size:12px;padding:2px 10px;color:#30644c}
+@media(max-width:1000px){.layout{grid-template-columns:minmax(0,1fr) 264px}.wrap{padding:0 16px}.board{padding:15px 10px}.group{padding:6px}.hero{align-items:start}.node{padding:6px}.lead{max-width:90%}}
+@media(max-width:800px){.layout{display:block}.side{grid-template-columns:1fr 1fr;margin-bottom:15px}.hero{flex-wrap:wrap;gap:10px}.groups{gap:6px}}
+@media(max-width:580px){.wrap{padding:0 10px}.bar{gap:8px}.crumb{font-size:11px}.hero{padding:18px 3px 12px}.hero p{font-size:13px}.side{display:grid;grid-template-columns:1fr}.board{padding:12px 8px}.lead{max-width:none;padding:11px}.groups{grid-template-columns:1fr;gap:9px;border-left:1px solid #96b3a4;margin-left:6px;padding-left:10px}.group{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}.grouphead{grid-column:span 2;margin:0}.node{margin:0}.branch{margin:0 50% 0 6px;height:15px}.branch:after{display:none}.branch:before{top:0;height:14px;border-right:0}.channel small{font-size:9px}.channel{font-size:12px}.panelhead{padding:11px 13px}.rows{padding:3px 12px}.row{gap:7px}.row .id{min-width:32px}.lead .progress{font-size:11px}.counter{font-size:11px}}
+</style></head>
+<body><header><div class="wrap bar"><div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>AiAgent</div><span class="crumb">/　项目会话　/　Agent 团队</span><span class="sim"><i class="dot"></i>本地模拟</span></div></header>
+<main class="wrap"><section class="hero"><div><div class="kicker">TEAM RUN / ORD-024</div><h1>订单筛选修复</h1><p class="muted">从一条聊天需求出发，观察三个集群如何交接同一份候选改动。</p></div><div class="actions"><button id="pause">暂停派工</button><button class="primary" id="advance">推进一轮 →</button></div></section>
+<div class="layout"><div><section class="panel"><div class="panelhead"><h2>团队拓扑</h2><span id="status" class="status" role="status"></span></div><div class="board">
+<div class="lead"><div class="avatar">L</div><div><div class="mono">LEAD / LLM API</div><strong>任务协调员</strong><br><small id="leadWork"></small></div><span id="progress" class="progress"></span></div>
+<div class="stem"></div><nav class="channels" id="channels" aria-label="协作视图"></nav><div class="branch"></div><div class="groups" id="groups"></div><div class="strip"><span id="capacity"></span><span>选择成员可查看依赖与证据</span></div></div><div class="barline"><i id="bar"></i></div></section>
+<section class="panel below" id="boardView"><div class="panelhead"><h2 id="viewTitle"></h2><span class="counter" id="viewCount"></span></div><div class="rows" id="rows"></div></section></div>
+<aside class="side"><section class="panel"><div class="panelhead"><h2>成员详情</h2><span class="counter" id="memberId"></span></div><div class="inside"><div id="detail"></div><div class="tools" id="memberActions"></div></div></section>
+<section class="panel"><div class="panelhead"><h2>会话</h2><span class="counter">ROOT / 024</span></div><div class="inside"><div class="chat" id="chat"></div><form class="form" id="noteForm"><input id="noteInput" maxlength="240" required aria-label="团队留言" placeholder="给团队留言…"><button>留言</button></form></div></section></aside></div>
+<div class="foot"><label for="scenario">从场景开始</label><select id="scenario"><option value="active">并行实施</option><option value="start">从拆分开始</option><option value="failure">单个 Helper 失败</option></select><button id="reset">重置演示</button><span>内存演示 · 2 个执行槽位</span></div><div id="notice" role="status"></div>
+</main>
+<script>
+const teams=["需求勘察","修复实施","交付验证"];
+const tasks=[
+ {name:"定位筛选链路",provider:"Codex CLI",group:0,deps:[],job:"只读检查筛选参数从列表到翻页请求的传递。",artifact:"链路分析 · 基线 b104",evidence:"分页请求缺少已选择的状态参数。"},
+ {name:"提取验收条件",provider:"LLM API",group:0,deps:[],job:"从根消息提取用户可观察的验收条件。",artifact:"验收清单 · v1",evidence:"翻页保留筛选；清空后恢复全量列表。"},
+ {name:"修复参数传递",provider:"Codex CLI",group:1,deps:[0,1],job:"在隔离工作区修复列表查询，封存候选版本。",artifact:"候选改动 · c218",evidence:"候选 c218 已封存；翻页请求沿用筛选参数。"},
+ {name:"设计回归用例",provider:"LLM API",group:1,deps:[1],job:"把验收条目转成带输入与期望结果的用例。",artifact:"回归用例 · v1",evidence:"覆盖筛选后翻页、清空筛选、默认列表。"},
+ {name:"执行回归验证",provider:"Codex CLI",group:2,deps:[2,3],job:"在候选副本执行用例，保留退出码与版本。",artifact:"测试报告 · c218",evidence:"模拟报告：3 项通过，退出码 0，候选 c218。"},
+ {name:"复核候选改动",provider:"LLM API",group:2,deps:[2,3],job:"读取候选 diff、验收清单与用例，独立复核。",artifact:"复核意见 · c218",evidence:"模拟复核：变更范围与验收清单一致，候选 c218。"}
+];
+const channels=[["公告","Announce"],["分工","Assign"],["留言板","Notes"],["任务池","Subtasks"],["成果记录","Landed"]];
+const labels={running:"执行中",done:"已完成",waiting:"待领取",failed:"失败"};
+const hid=i=>"H-"+String(i+1).padStart(2,"0");
+const ready=(s,i)=>tasks[i].deps.every(d=>s.items[d].status==="done");
+function dispatch(s){
+ if(s.paused||s.finished)return;
+ let slots=2-s.items.filter(x=>x.status==="running").length;
+ s.items.forEach((x,i)=>{if(slots>0&&x.status==="waiting"&&ready(s,i)){x.status="running";x.attempt++;slots--;}});
+}
+function initial(mode){
+ const s={items:tasks.map(()=>({status:"waiting",attempt:0})),notes:[],paused:false,finished:false};
+ dispatch(s);
+ if(mode!=="start"){
+  s.items[0].status=s.items[1].status="done";dispatch(s);
+  if(mode==="failure")s.items[2].status="failed";
+ }
+ return s;
+}
+function nextState(current,action,i,value){
+ const s=structuredClone(current), item=s.items[i];
+ if(action==="note"&&value)s.notes.push(value);
+ if(s.finished)return s;
+ if(action==="pause"){s.paused=!s.paused;dispatch(s);}
+ if(action==="fail"&&item?.status==="running"){item.status="failed";dispatch(s);}
+ if(action==="retry"&&item?.status==="failed"){item.status="waiting";dispatch(s);}
+ if(action==="advance"){
+  const running=s.items.filter(x=>x.status==="running");
+  if(running.length){running.forEach(x=>x.status="done");dispatch(s);}
+  else if(!s.paused&&s.items.every(x=>x.status==="done"))s.finished=true;
+ }
+ return s;
+}
+const $=id=>document.getElementById(id);
+const esc=v=>String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+let state=initial("active"), member=2, view=3;
+function act(type,value){state=nextState(state,type,member,value);render();}
+function makeButton(text,handler,className){
+ const b=document.createElement("button");b.type="button";b.textContent=text;b.onclick=handler;if(className)b.className=className;return b;
+}
+function itemLabel(i){const x=state.items[i];return x.status==="waiting"&&!ready(state,i)?"等待依赖":labels[x.status];}
+function render(){
+ const done=state.items.filter(x=>x.status==="done").length, running=state.items.filter(x=>x.status==="running").length;
+ const failed=state.items.some(x=>x.status==="failed");
+ const phase=state.finished?"已交付":state.paused?"派工已暂停":done===6?"待 Lead 汇总":failed?"需要处理":"协同执行中";
+ $("status").textContent=phase;$("progress").textContent=done+" / 6 完成";$("bar").style.width=done/6*100+"%";
+ $("capacity").textContent="3 个集群　·　6 位 Helper　·　"+running+" / 2 槽位占用";
+ $("leadWork").textContent=state.finished?"已将成果汇总到根会话":state.paused?"暂缓新任务，已领取的步骤可完成":failed?"等待修复失败步骤，其余分支独立推进":done===6?"核对两份候选证据，准备回复用户":done>=4?"等待候选版本验证与复核":done>=2?"协调候选改动与回归用例":"分派勘察任务，等待基线与验收条件";
+ $("pause").textContent=state.paused?"恢复派工":"暂停派工";$("pause").disabled=state.finished;
+ $("advance").textContent=done===6&&!state.finished?"汇总到聊天 →":"推进一轮 →";$("advance").disabled=state.finished||(!running&&(state.paused||done!==6));
+ $("groups").replaceChildren();teams.forEach((name,g)=>{
+  const section=document.createElement("section");section.className="group";section.innerHTML='<div class="grouphead"><h3>'+name+'</h3><small>× 2</small></div>';
+  tasks.forEach((t,i)=>{if(t.group!==g)return;const b=makeButton("",()=>{member=i;render();if(matchMedia("(max-width:800px)").matches)$("detail").scrollIntoView({block:"center"});},"node");b.dataset.member=i;b.setAttribute("aria-pressed",String(member===i));b.innerHTML='<strong>'+t.name+'</strong><span class="meta"><span>'+t.provider+'</span><span class="badge '+state.items[i].status+'">'+itemLabel(i)+'</span></span>';section.append(b);});
+  $("groups").append(section);
+ });
+ $("channels").replaceChildren();channels.forEach(([name,en],i)=>{const b=makeButton("",()=>{view=i;render();},"channel");b.innerHTML=name+"<small>"+en+"</small>";b.setAttribute("aria-controls","boardView");b.setAttribute("aria-pressed",String(i===view));$("channels").append(b);});
+ const t=tasks[member],x=state.items[member];
+ $("memberId").textContent=hid(member);$("detail").innerHTML='<span class="badge '+x.status+'">'+itemLabel(member)+'</span><h3 class="detailname">'+t.name+'</h3><p class="muted">'+t.job+'</p><dl class="props"><dt>所属集群</dt><dd>'+teams[t.group]+'</dd><dt>执行器</dt><dd>'+t.provider+'</dd><dt>执行尝试</dt><dd>'+x.attempt+'</dd><dt>前置任务</dt><dd>'+(t.deps.map(j=>hid(j)+" "+tasks[j].name).join("、")||"无")+'</dd></dl><div class="box">'+(x.status==="done"?t.evidence:x.status==="failed"?"本次尝试已确认失败，未发布成果。可单独重试。":"预期成果　"+t.artifact)+'</div>';
+ $("memberActions").replaceChildren();if(x.status==="running")$("memberActions").append(makeButton("模拟本次失败",()=>act("fail")));if(x.status==="failed")$("memberActions").append(makeButton("重试此任务",()=>act("retry"),"primary"));
+ let rows=[];
+ if(view===0)rows=[["LEAD","翻页保留订单状态筛选，清空后恢复全量列表。","目标 v1"],["LEAD","候选改动通过回归与独立复核后汇总。","验收关卡"]];
+ if(view===1)rows=tasks.map((t,i)=>[hid(i),teams[t.group]+" · "+t.name,t.provider]);
+ if(view===2)rows=state.notes.map((n,i)=>["N-"+(i+1),n,"用户 → 团队"]);
+ if(view===3)rows=tasks.map((t,i)=>[hid(i),t.name,itemLabel(i)]);
+ if(view===4)rows=tasks.flatMap((t,i)=>state.items[i].status==="done"?[[hid(i),t.artifact,"尝试 "+state.items[i].attempt]]:[]);
+ $("viewTitle").textContent=channels[view][0];$("viewCount").textContent=String(rows.length).padStart(2,"0")+" 条";
+ $("rows").innerHTML=rows.length?rows.map(([id,body,tail])=>'<div class="row"><span class="id">'+esc(id)+'</span><b>'+esc(body)+'</b><span>'+esc(tail)+'</span></div>').join(""):'<p class="empty">'+(view===2?"还没有留言。可在会话面板给团队留言。":"当前还没有封存的成果。")+'</p>';
+ const reply=state.finished?"候选 c218 已修复翻页筛选。三项回归用例通过，独立复核已完成。证据见成果记录。":"我会先定位参数丢失的位置，再让实施和验证成员交接同一份候选改动。";
+ $("chat").innerHTML='<div class="speech user"><small>你 · 根消息</small><p>修复订单列表筛选，翻页后也要保留选中的状态。</p></div><div class="speech"><small>Lead · '+(state.finished?"最终答复":"任务计划")+'</small><p>'+reply+'</p></div>';
+ $("noteInput").disabled=state.finished;$("noteForm").querySelector("button").disabled=state.finished;
+}
+$("advance").onclick=()=>act("advance");$("pause").onclick=()=>act("pause");
+$("noteForm").onsubmit=e=>{e.preventDefault();const input=$("noteInput"),v=input.value.trim();if(!v||state.finished)return;view=2;act("note",v);input.value="";$("notice").textContent="留言已进入团队留言板。";};
+function restart(){const mode=$("scenario").value;state=initial(mode);member=mode==="start"?0:2;view=3;$("notice").textContent="";$("noteInput").value="";render();}
+$("scenario").onchange=restart;$("reset").onclick=restart;render();
+</script></body></html>

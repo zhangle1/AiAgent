@@ -209,7 +209,7 @@ export async function getChatUploadText(attachmentId: string, adminUserId?: stri
 }
 
 export type ChatStreamEvent = {
-  type: "delivery_queued" | "delivery_started" | "delivery_held" | "delivery_steered" | "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "error";
+  type: "delivery_queued" | "delivery_started" | "delivery_held" | "delivery_steered" | "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "cancelled" | "error";
   debug_trace?: ChatDebugTraceEvent | null;
   label?: string | null;
   content?: string;
@@ -308,7 +308,7 @@ async function streamCompleteChatWs(
       if (idleTimer !== null) window.clearTimeout(idleTimer);
       idleTimer = window.setTimeout(() => {
         idleTimer = null;
-        fail(chatStreamError("连接已连续 6 分钟没有收到服务端事件，已停止本次执行。请查看运行日志后重试。"));
+        fail(chatStreamError("连接已连续 6 分钟没有收到服务端事件，请重新连接以确认任务状态。"));
       }, CHAT_STREAM_IDLE_TIMEOUT_MS);
     };
 
@@ -357,21 +357,21 @@ async function streamCompleteChatWs(
           return;
         }
         onEvent(event);
-        if (event.type === "completed" || event.type === "delivery_held" || event.type === "delivery_steered") {
+        if (event.type === "completed" || event.type === "cancelled" || event.type === "delivery_held" || event.type === "delivery_steered") {
           completed = true;
           finish();
           return;
         }
         if (event.type === "done" && !payload.command_id) scheduleLegacyDoneCompletion();
       } catch (ex) {
-        fail(chatStreamError(ex instanceof SyntaxError ? "聊天服务返回了无法识别的流事件，本次执行已停止。" : "聊天流事件处理失败，本次执行已停止。"));
+        fail(chatStreamError(ex instanceof SyntaxError ? "聊天服务返回了无法识别的流事件，请重新连接查看任务状态。" : "聊天流事件处理失败，请重新连接查看任务状态。"));
       }
     };
 
     socket.onerror = () => {
       if (legacyDoneTimer !== null) return;
       fail(opened
-        ? chatStreamError("聊天连接在执行过程中断开，任务已停止。请查看运行日志后重试。")
+        ? chatStreamError("聊天连接已断开，重新连接可查看任务状态。")
         : new Error("Chat WebSocket connection failed."));
     };
 
@@ -382,7 +382,7 @@ async function streamCompleteChatWs(
       }
       if (!completed) {
         if (legacyDoneTimer !== null) return;
-        fail(chatStreamError("聊天连接在收到完成状态前关闭，任务可能已中断。请查看运行日志后重试。"));
+        fail(chatStreamError("连接在收到完成状态前关闭，请重新连接查看任务状态。"));
         return;
       }
       finish();
@@ -424,7 +424,7 @@ async function readSseEvents(
   let sawDone = false;
   const handleEvent = (event: ChatStreamEvent) => {
     onEvent(event);
-    if (event.type === "completed" || event.type === "delivery_held" || event.type === "delivery_steered") completed = true;
+    if (event.type === "completed" || event.type === "cancelled" || event.type === "delivery_held" || event.type === "delivery_steered") completed = true;
     if (event.type === "done") sawDone = true;
   };
 
@@ -482,7 +482,7 @@ async function readSseChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Pr
       new Promise<never>((_, reject) => {
         idleTimer = window.setTimeout(() => {
           void reader.cancel("chat_stream_idle_timeout");
-          reject(chatStreamError("连接已连续 6 分钟没有收到服务端事件，已停止本次执行。请查看运行日志后重试。"));
+          reject(chatStreamError("连接已连续 6 分钟没有收到服务端事件，请重新连接以确认任务状态。"));
         }, CHAT_STREAM_IDLE_TIMEOUT_MS);
       }),
     ]);
@@ -504,7 +504,11 @@ function parseSseFrame(frame: string): ChatStreamEvent | null {
   }
 }
 
-export type ChatDelivery = { command_id: string; session_id: string; message: string; status: string; queue_held: boolean; position: number };
+export type ChatDelivery = { agent?: ChatCompleteRequest["agent"]; command_id: string; session_id: string; message: string; status: string; queue_held: boolean; position: number };
+export async function getActiveChatSessions(signal: AbortSignal): Promise<string[]> {
+  return parseJson(await fetch("/api/v1/chat/active-sessions", { cache: "no-store", signal }));
+}
+
 export async function getChatDeliveries(sessionId: string, signal?: AbortSignal): Promise<ChatDelivery[]> {
   return parseJson(await fetch(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/deliveries`, { cache: "no-store", signal }));
 }

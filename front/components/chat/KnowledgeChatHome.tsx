@@ -345,7 +345,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const wasSendingRef = useRef(false);
   const attachmentPreviewUrlsRef = useRef(new Set<string>());
-  const { streams, startStream, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
+  const { streams, startStream, observeDelivery, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
 
   useEffect(() => {
     if (embedded && embeddedProjectId !== undefined) setSelectedProjectId(embeddedProjectId ?? null);
@@ -1327,8 +1327,11 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
     openInspector("uploads");
   }
 
-  function stopGenerating() {
-    sessionStreams.filter((stream) => stream.status === "streaming" && !stream.deliveryState).forEach((stream) => cancelStream(stream.id));
+  const stopping = sessionStreams.some(stream => stream.status === "streaming" && stream.stopping);
+  async function stopGenerating() {
+    try {
+      await Promise.all(sessionStreams.filter(stream => stream.status === "streaming" && !stream.deliveryState).map(stream => cancelStream(stream.id)));
+    } catch (error) { setError(error instanceof Error ? error.message : "无法确认停止请求。"); }
   }
 
   function openInspector(tab: InspectorTab) {
@@ -1496,7 +1499,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
             {failedStream && <ChatRetryNotice stream={failedStream} onRetry={() => retryStream(failedStream.id)} onCancel={() => cancelRetry(failedStream.id)} />}
 
             {!embedded && activeSessionId && (
-              <ChatDeliveryQueue key={activeSessionId} sessionId={activeSessionId} sending={sending}
+              <ChatDeliveryQueue key={activeSessionId} sessionId={activeSessionId} sending={sending} onRunning={observeDelivery}
                 onResume={commandId => { startStream({ session_id: activeSessionId, command_id: commandId, message: "", resume_queued: true, delivery_intent: "queue" }); }} />
             )}
 
@@ -1589,7 +1592,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 <div className="min-w-0 flex-1" />
                 <button type="button" onClick={() => setMobilePicker("model")} className="flex h-9 min-w-0 max-w-[140px] items-center gap-1 rounded-xl px-1.5 text-[12px] text-slate-600 hover:bg-slate-100" aria-label="选择模型"><span className="truncate">{mobileModelLabel}</span><ChevronDown size={13} className="shrink-0" /></button>
                 <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-blue-700 hover:bg-blue-50" aria-label={t("chat.voiceInput")}><Mic size={18} /></button>
-                {sending ? <button type="button" onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label="停止生成"><Square size={14} fill="currentColor" /></button>
+                {sending ? <button type="button" disabled={stopping} onClick={stopGenerating} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white" aria-label={stopping ? "正在停止" : "停止生成"}>{stopping ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} fill="currentColor" />}</button>
                   : <button type="submit" disabled={!canSubmitComposer} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white disabled:bg-slate-300" aria-label={t("chat.send")}><ArrowUp size={17} /></button>}
               </div>
               {composerExpanded && (
@@ -1725,8 +1728,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     <Mic size={16} />
                   </button>
                   {sending ? (
-                    <button type="button" onClick={stopGenerating} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm shadow-rose-200 transition hover:bg-rose-700" aria-label="Stop generating" title="Stop generating">
-                      <Square size={15} fill="currentColor" />
+                    <button type="button" disabled={stopping} onClick={stopGenerating} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm shadow-rose-200 transition hover:bg-rose-700" aria-label={stopping ? "正在停止" : "Stop generating"} title={stopping ? "正在停止" : "Stop generating"}>
+                      {stopping ? <Loader2 size={15} className="animate-spin" /> : <Square size={15} fill="currentColor" />}
                     </button>
                   ) : (
                     <button type="submit" disabled={!canSubmitComposer} className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300" aria-label={t("chat.send")}>

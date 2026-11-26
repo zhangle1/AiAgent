@@ -94,9 +94,10 @@ export type KnowledgeContextNode = {
 export type KnowledgeResourceNode = {
   raw_relative_path?: string | null;
   can_publish?: boolean;
+  can_delete?: boolean;
+  is_navigation?: boolean;
   source_status?: "available" | "missing" | "outside_root" | "invalid_path" | "unsafe_path" | "unreadable" | null;
   source_message?: string | null;
-  is_navigation?: boolean;
   source_uri?: string | null;
   parsed_document_id?: number | null;
   section_order?: number | null;
@@ -110,6 +111,7 @@ export type KnowledgeResourceNode = {
   extension?: string | null;
   size?: number | null;
 };
+export type KnowledgeResourceDeleteResult = { deleted: boolean; document_id: number; uri: string };
 export type KnowledgeResourceProcessing = {
   node: KnowledgeResourceNode;
   task_id?: number | null;
@@ -121,6 +123,7 @@ export type KnowledgeResourceProcessing = {
   updated_at?: string | null;
 };
 export type KnowledgeResourceRead = {
+  parsed_index?: KnowledgeResourceNode | null;
   abstract_content?: string | null;
   overview_content?: string | null;
   semantic_generated_at?: string | null;
@@ -133,7 +136,6 @@ export type KnowledgeResourceRead = {
   model?: string | null;
   children: KnowledgeResourceNode[];
   compiled_outputs?: KnowledgeResourceNode[];
-  parsed_index?: KnowledgeResourceNode | null;
   parsed_outputs?: KnowledgeResourceNode[];
 };
 export type KnowledgeResourceImport = {

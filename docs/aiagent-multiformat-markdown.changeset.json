@@ -1,0 +1,297 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "date": "2026-11-17",
+  "baseCommit": "1542ada179ae7df35478d9e73f751517d5e78119",
+  "objective": "借鉴 ElBruno.MarkItDotNet 实现 C# 统一多格式转 Markdown，保留自有 PDF 章节与图片／矢量裁切。",
+  "supersedes": "docs/knowledge-pdf-csharp.changeset.json",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "893d70365cdf5972f332b83c887dcc0a9f821d1f58f664d5d93873431f5c4ee6",
+      "bytes": 36025
+    },
+    {
+      "path": "README.md",
+      "sha256": "bbcaacba07e6c44b3d4f19088d50ba8a2ce029d915fe23285519c0eddad9c03d",
+      "bytes": 42101
+    },
+    {
+      "path": "backed.tests/CSharpPdfParsingTests.cs",
+      "sha256": "3d12a11b552f40a877834c01c2bf4eef5c3c834f0d36d37040a8879ebb2663bc",
+      "bytes": 15888
+    },
+    {
+      "path": "backed.tests/DocumentConversionTests.cs",
+      "sha256": "f99060dba86a08d1dbd7c1dd50e852a8eaf8e5b1570b29b2bec94b799fdb43ad",
+      "bytes": 17572
+    },
+    {
+      "path": "backed.tests/KnowledgeBookUploadTests.cs",
+      "sha256": "c85766277e07fcca6159ce91133ea3659a1f1a2164f6305d5f8dbc169d2ba9c3",
+      "bytes": 5218
+    },
+    {
+      "path": "backed.tests/KnowledgeParsingTests.cs",
+      "sha256": "2323d637f424c69201d0b75288251ae131a127e45c6db5d9bb8532ca46f64965",
+      "bytes": 30972
+    },
+    {
+      "path": "backed.tests/KnowledgeWorkerPathTests.cs",
+      "sha256": "d29d84c104d6dbad811ba5e7f5310a848c92b00fc3364a0abb98748e46e70a73",
+      "bytes": 1643
+    },
+    {
+      "path": "backed.tests/ProjectPackageDocumentTests.cs",
+      "sha256": "63edd8afd7463eaf499cfc09bffe36f36b4f3b621d4b22a87cb12e0537d0073b",
+      "bytes": 7527
+    },
+    {
+      "path": "backed/AiAgent.Backend.csproj",
+      "sha256": "cb8cd83e85c023240215a448f9d5bf441cee494c6d7edb6a5f3213eeacd03e35",
+      "bytes": 3031
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "7dffb36e4b451db85e7e200083a505d01f7c497d63dc49200ce47fa61fd739fa",
+      "bytes": 4612
+    },
+    {
+      "path": "backed/Program.cs",
+      "sha256": "7fd9553681fb0ff5c4f385a093a71225525bde12132997424d5cdf9970024d0d",
+      "bytes": 17259
+    },
+    {
+      "path": "backed/PythonWorkers/README.md",
+      "sha256": "3b56b2500ef265bbb7ec37950f6f24aa8a6e14066b9316502f715a1f3cb0fba9",
+      "bytes": 1312
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/document_parser_worker.py",
+      "sha256": "f84f0dd951f8d0e6fee5a6bac05ab2753a2e17bfdec2a9131e1760774dc98817",
+      "bytes": 3625
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/pdf_layout.py",
+      "sha256": "b5e37af8e566a817c9038020d259c026c2a8829a956a2c4f33869d06e2f678be",
+      "bytes": 8778
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/requirements.txt",
+      "sha256": "d9d37b6863fe353b68c3fe6d853e0fb7e4233120db829ab1099070370a9ca823",
+      "bytes": 16
+    },
+    {
+      "path": "backed/PythonWorkers/parsing/test_pdf_layout.py",
+      "sha256": "fc547a338f1f403f9e956c1a612ad0ebce035cfcbb3ff55fee8639c931a9b778",
+      "bytes": 3832
+    },
+    {
+      "path": "backed/Services/Chat/ChatFileAttachmentService.cs",
+      "sha256": "2d0bf05e48b6145f412e1530d886eaea0f384b8276b6109f1c59e0de7c335fa5",
+      "bytes": 27347
+    },
+    {
+      "path": "backed/Services/CodeRepository/CodeRepositoryManager.cs",
+      "sha256": "b6bd7fb7114e911236b11ecd44c1b7a7f5b9d8e6d853e13c66ca12a631541b98",
+      "bytes": 116286
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeAppService.cs",
+      "sha256": "b57fe154fc3a4c74dce9a5613e3e7d6f5bdc1b8fa01d5a1de34128ce8d3bff8e",
+      "bytes": 25969
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeBaseManager.cs",
+      "sha256": "4f22d020dceb49d6bb47d6600126f795da18049c1d6215bb732fd151d8bca7c9",
+      "bytes": 27966
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeIngestionService.cs",
+      "sha256": "f8292b5792eecc5b139dae9c13718b384d6c90754c294c167b834f69e94a4a07",
+      "bytes": 20051
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeParsedDocumentStore.cs",
+      "sha256": "562d7d9334c95ee1a6a0e489fbd8ca5d2de2fb7b0da3c03608f2e0595e41c409",
+      "bytes": 11877
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgePathService.cs",
+      "sha256": "4a505fde064a71fbb2df7c57703e3d824ceb89562bd211640e43abf66bd041c9",
+      "bytes": 7432
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceAppService.cs",
+      "sha256": "5b213182f47fa03f63c673a427e1b908797d9ff13eb43c933f9b7b73dbb99e8d",
+      "bytes": 3154
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceRawStore.cs",
+      "sha256": "837b578a54d21e0893fe9c8149421a6a917959aa2ccd544945bdc37217334d24",
+      "bytes": 1784
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "02ac2896aa6d88a29a60486cd912acfd2f34f1ed85a64631fc3e748092754658",
+      "bytes": 35570
+    },
+    {
+      "path": "backed/Services/Parsing/CSharpPdfLayoutConverter.cs",
+      "sha256": "0dcd160cc4d725434659cf2829dc5b16265c2b22f624ff915c5b54b1ff64011c",
+      "bytes": 18376
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentConversionAssets.cs",
+      "sha256": "6c887fc7ed1d2a79e5d231fe74cab216117030001e1ab88c2d3a0da5513237bd",
+      "bytes": 3389
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentConversionPaths.cs",
+      "sha256": "a39d71632e311adb8f702523eff5af5f69f84e322781c2a769beda8c32f58869",
+      "bytes": 2041
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentConversionService.cs",
+      "sha256": "91a863214bb39ec32a9b8b68d2aa4f10dbda3b3cf2605258a6d28af5ff48a992",
+      "bytes": 10540
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentHtmlConverter.cs",
+      "sha256": "b8968368c072e04d06cc70ad639ac53da3949caa78c26c33f253ab70d7e5f972",
+      "bytes": 5950
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentPackage.cs",
+      "sha256": "f9c3cdf93f41deef1696615358a9a9ee108c81c9cded5db1f08f1de683e05764",
+      "bytes": 3806
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingContracts.cs",
+      "sha256": "366e44d42f2802dfff29ae0d81f2610315aaabb8f6b7d3219854a163855e8deb",
+      "bytes": 3219
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentParsingService.cs",
+      "sha256": "d917dc94db25c103bbf6e29b388ab0c09cb5ff65e9fd99e2945cf857f750e606",
+      "bytes": 5456
+    },
+    {
+      "path": "backed/Services/Parsing/DocumentTextConverters.cs",
+      "sha256": "c30d17014cef40cbfb68d2e6a1a367d75705bdb667476e6748274f687b1facf9",
+      "bytes": 5543
+    },
+    {
+      "path": "backed/Services/Parsing/OfficeMarkdownConverter.cs",
+      "sha256": "8c61bdf73e3d7b7dda7612baef29c036c2d4701abef852d62c85af1d1d947b8e",
+      "bytes": 11818
+    },
+    {
+      "path": "backed/Services/PythonWorkers/PythonWorkerHost.cs",
+      "sha256": "5952f26955044f922061cdfe0248f93b58501acb38d7389db760e653330c8a76",
+      "bytes": 14475
+    },
+    {
+      "path": "backed/appsettings.dev.example.json",
+      "sha256": "ac3524769fec21bd8298f7d5af5d1238a78224d5c6b46fac027e745d418df4d5",
+      "bytes": 2232
+    },
+    {
+      "path": "docs/aiagent-multiformat-markdown-plan.md",
+      "sha256": "b1e98b74f9a5c8c01c9480c8a8f2cf5926008e5ad80164598b83b4ed81183fc3",
+      "bytes": 29531
+    },
+    {
+      "path": "docs/knowledge-document-parsing.md",
+      "sha256": "fdd85dc997218f44c568959f30a7fb3ebf8c877201a8144724159580c5eb7a74",
+      "bytes": 20512
+    },
+    {
+      "path": "front/components/chat/ChatInspectorPanel.tsx",
+      "sha256": "0195248c1b0bba66886c5df674cc48fab2a6d120cf01cd5a687da5e18ea5f7f1",
+      "bytes": 53981
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "4e5eb8681d2076face195dcc4321c8d8fe999896942175f03ebbd009337a2e30",
+      "bytes": 180994
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeHome.tsx",
+      "sha256": "7a5ec636ade8ee062219fa249785fc57239a7cf06632fe12937f811a811c1e44",
+      "bytes": 58907
+    },
+    {
+      "path": "front/components/knowledge/KnowledgePdfPreview.tsx",
+      "sha256": "e42c1211bcb14bb9d77ee8acb970596f44bc6655baca5a7b51d63dc0272eba21",
+      "bytes": 2706
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "f2994d61dcc6a27f9a25e72d4f778d9608f9121052e152dc7d63fa5e019ef675",
+      "bytes": 33048
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "8d42a1c27a19581482aab8819d029e5cec9aa8c93bedfc40e315ba25ca553957",
+      "bytes": 14972
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "bf3542907f214293ea0b7811cf41372f788643988413e1efe6f0a263122d49d1",
+      "bytes": 8175
+    },
+    {
+      "path": "front/next-env.d.ts",
+      "sha256": "7b550dda9686c16f36a17bf9051d5dbf31e98555b30d114ac49fc49a1e712651",
+      "bytes": 247
+    },
+    {
+      "path": "front/package-lock.json",
+      "sha256": "2662debec3b7bdb2a390b9ff3db8c805ba54f881b97165e529d61d778fc08b67",
+      "bytes": 188326
+    },
+    {
+      "path": "front/package.json",
+      "sha256": "777b0f6dbcd9837a8ded6ba1004e75f92425218505a3d0e378ba7ab8282bee43",
+      "bytes": 813
+    },
+    {
+      "path": "front/tests/knowledge-pdf-resources.browser.mjs",
+      "sha256": "76da2690c7a811c9a3547384c8047090cfb4a75d66a6acb942b0e28b6ccbd772",
+      "bytes": 9546
+    }
+  ],
+  "fingerprint": "2778227d1ffc864a4f2944e6eef6eb481a1373bb1274c0d09e4e56c9e13744c1",
+  "fingerprintAlgorithm": "SHA256(UTF8(join(sorted(path + : + sha256 + : + bytes), LF)))",
+  "implementation": [
+    "Shared IDocumentConversionService and format registry; legacy IDocumentParsingService remains PDF-specific. Knowledge, chat attachments and project imports/previews use the shared converter.",
+    "Retains PDF engine and ExcelDataReader compatibility; adds robust CSV/TSV, DOM HTML, RTF stream/code-page parsing, EPUB spine, referenced DOCX/PPTX/EPUB PNG assets and PPT notes.",
+    "Existing atomic knowledge generation/manifest and controlled image URIs preserved. Chat/project text mode emits no transient image references; project keeps original source and reports image limitation.",
+    "New allowed-root helper includes authoritative knowledge and exact configured attachment files roots. Project conversions copy authorized source bytes into controlled knowledge temporary storage; no broad project-drive grant.",
+    "Bounded packages/actual part reads, DTD rejection, safe package relationships, decoded PNG budgets, conversion concurrency and cancellation, CSV cell and sparse workbook area limits."
+  ],
+  "validation": {
+    "backend": "219 passed, 0 failed across DocumentConversionTests, CSharpPdfParsingTests, KnowledgeWorkspaceTests partials, KnowledgeWorkerPathTests, KnowledgeBookUploadTests, MarkdownDocumentPlannerTests, KnowledgeStaleResourceTests, KnowledgeCleanupHttpTests, KnowledgeResourceProcessingTests, OfficeMarkdownConverterTests, ChatFileAttachmentServiceTests, SwaggerDocumentTests, ProjectPackageDocumentTests.",
+    "integration": "Real synthetic DOCX/PPTX/EPUB/RTF/CSV/PDF fixtures; knowledge asset publication/resource read; project DOCX/EPUB/PDF/RTF import, original bytes preserved, no dangling PNG links; chat legacy Excel and HTML regression.",
+    "bounds": "Sparse XLSX last-cell expansion rejected, external XML entities rejected, malformed formats and ZIP traversal rejected, input/output scopes and cancellation preserved.",
+    "typescript": "tsc --noEmit --incremental false passed after final frontend upload-format and hint updates.",
+    "browser": [
+      "knowledge-pdf-resources.browser.mjs passed: actual PDF.js canvas/paging, raw nested folder, controlled images, chapter navigation, mobile.",
+      "knowledge-resource-upload.browser.mjs passed: 16.1 MiB multipart, HTTP/item failure feedback, retry and raw visible before processing."
+    ],
+    "publish": "Isolated dotnet publish succeeded; ReverseMarkdown, AngleSharp, RtfPipe and win-x64 PDFium/SkiaSharp assets present. Actual appsettings.json/data and old Python parsing folder absent.",
+    "documentation": "Balanced Markdown fences, 20 defined primary-source references and existing absolute local links verified.",
+    "whitespace": "git diff --check passed"
+  },
+  "dependencies": {
+    "ReverseMarkdown": "6.3.0",
+    "RtfPipe": "2.0.7677.4303",
+    "approach": "Independent implementation informed by upstream architecture; no full ElBruno package or copied converter code."
+  },
+  "compatibility": "No database schema change; old PDF API and generated versions preserved. Existing raw folders, source visibility/hash and asset verification remain. Existing legacy Office import policies retained; chat XLS/XLSB variants retained.",
+  "limitations": "Project output is Markdown text plus original document, not a new project-image publishing protocol. Scan PDF OCR, audio/video and remote URL fetching are not enabled. Unsupported vectors/oversize images warn. Native/single-call parser cancellation remains cooperative. Linux/macOS not runtime-tested.",
+  "scope": "Rehashes prior PDF/raw sources plus current migration. Earlier pending chat/goal/scope changes preserved; mixed files are captured as full source bytes for review. Snapshot is not approval.",
+  "runtime": "Did not restart backend/debugger or touch real configuration/database/user documents. Frontend browser checks used synthetic intercepted APIs. Build/publish artifacts reside in TEMP.",
+  "delivery": "Local implementation only; no commit/push. Publish backend with dependencies and restart, then explicitly reparse old documents to get new conversion output."
+}

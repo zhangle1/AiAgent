@@ -1,3 +1,4 @@
+using AiAgent.Backend.Services.Chat.Orchestration;
 using AiAgent.Backend.Services.TaskQueue;
 using AiAgent.Backend.Services.Chat;
 using AiAgent.Backend.Services.Chat.Agentic;
@@ -177,9 +178,11 @@ builder.Services.AddSingleton<INativeTurnRunner, NativeTurnRunner>();
 builder.Services.AddSingleton<IRuntimeEngine, NativeAgentRuntime>();
 builder.Services.AddSingleton<IRuntimeRequestFactory, RuntimeRequestFactory>();
 builder.Services.AddSingleton<IAgentRunStore, AgentRunStore>();
-builder.Services.AddSingleton<ChatCommandStore>();
-builder.Services.AddSingleton<ChatDeliveryService>();
+builder.Services.AddChatOrchestration();
 builder.Services.AddSingleton<IRunCoordinator, RunCoordinator>();
+builder.Services.AddSingleton<IAgentProviderDriver>(services => new CodexAgentProviderDriver(
+    services.GetRequiredService<IConfiguration>(), () => services.GetRequiredService<ICodexChatService>()));
+builder.Services.AddSingleton<AgentProviderRegistry>();
 builder.Services.AddSingleton<IAgentProviderEnvironmentService, AgentProviderEnvironmentService>();
 builder.Services.AddSingleton<ICodexModelPolicyService, CodexModelPolicyService>();
 builder.Services.AddSingleton<IImageOcrPolicyService, ImageOcrPolicyService>();
@@ -194,7 +197,6 @@ builder.Services.AddSingleton<CodexChatService>();
 builder.Services.AddSingleton<ICodexChatService>(services => services.GetRequiredService<CodexChatService>());
 builder.Services.AddSingleton<IChatGoalControl>(services => services.GetRequiredService<CodexChatService>());
 builder.Services.AddSingleton<IDshChatService, DshChatService>();
-builder.Services.AddSingleton<IChatOrchestrator, ChatOrchestrator>();
 builder.Services.AddSingleton<IUsageStatisticsService, UsageStatisticsService>();
 builder.Services.AddSingleton<ChatWebSocketHandler>();
 builder.Services.AddSingleton<ICodeRepositoryManager, CodeRepositoryManager>();

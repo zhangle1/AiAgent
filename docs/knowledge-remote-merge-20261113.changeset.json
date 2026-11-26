@@ -1,0 +1,162 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-13T09:17:19.467052+00:00",
+  "baseCommit": "ba033663aebac3de6138f67359a57c7a3541b58e",
+  "objective": "Fetch and merge remote ontology workspace change, retaining pending login cancellation, PDF upload and file-scope fixes.",
+  "merge": {
+    "before": "d8c1edc4",
+    "after": "ba033663",
+    "mode": "fast-forward",
+    "conflicts": false,
+    "github": "No additional commits beyond the original local HEAD",
+    "localFilesPreservedByteForByte": 18,
+    "mergedLocalFiles": [
+      "AGENTS.md",
+      "README.md",
+      "front/components/chat/KnowledgeChatHome.tsx"
+    ]
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "eadc9b2921ca958dd75f3e9264335eea67cc6afca293fa3ae5501ae38e4982a9",
+      "bytes": 35118
+    },
+    {
+      "path": "README.md",
+      "sha256": "91ccca98c01ddbe287063329ebd9e397711d189fb6c4629ecc1751912b3b04c5",
+      "bytes": 40978
+    },
+    {
+      "path": "backed.tests/ChatBootstrapCancellationTests.cs",
+      "sha256": "0d391e5f5d6fb9daf6833d0b9a17f2be728279c4ff042504ad32e605ec6f132e",
+      "bytes": 5355
+    },
+    {
+      "path": "backed.tests/KnowledgeBookUploadTests.cs",
+      "sha256": "cf2f434be2d3cc464d869d3c9634435f48fe136fe02a88e4ac6400f6d56345d4",
+      "bytes": 4721
+    },
+    {
+      "path": "backed.tests/KnowledgeFileScopeTests.cs",
+      "sha256": "26321a9282fe892f99fb70609bdde060fd148ba81f3b6c8a6b7745927934cf3c",
+      "bytes": 2447
+    },
+    {
+      "path": "backed/Dtos/Chat/ChatDtos.cs",
+      "sha256": "b2866330ff5364928b15f5bf987b809ed6b2984f62a10b5a3591fc11f51a1c13",
+      "bytes": 16866
+    },
+    {
+      "path": "backed/Services/Chat/ChatAppService.cs",
+      "sha256": "462a91b5fc1851c3207bcf1b8e78b56155bd8d6912959db03b3a351373edc711",
+      "bytes": 23898
+    },
+    {
+      "path": "backed/Services/Chat/Retrieval/KnowledgeRetrievalService.cs",
+      "sha256": "458ab939b2d0190f1aa3381e899cfded192399323dede33a195998faaea611b4",
+      "bytes": 13904
+    },
+    {
+      "path": "design/customer-ontology/phase-1.md",
+      "sha256": "23f5c930ca4b4e954ee27d9a91e396c13f6a4aa31c6c8380fbe8f58f8476a83e",
+      "bytes": 1842
+    },
+    {
+      "path": "docs/chat-bootstrap-cancellation.changeset.json",
+      "sha256": "24c03e3fa18b0dac8ebe45ff4c37f5f466ea243a679231e41585ada969d17af3",
+      "bytes": 2629
+    },
+    {
+      "path": "docs/chat-bootstrap-cancellation.md",
+      "sha256": "88f4d3a5f5e13b862e134d8fbc5c88328d144010a69dfad224998b838322328c",
+      "bytes": 2066
+    },
+    {
+      "path": "docs/chat-explicit-skills.md",
+      "sha256": "8770aaab693eddc05d05253d19703f1e61c564b2764b636aa0a036edbcb56ba4",
+      "bytes": 11657
+    },
+    {
+      "path": "docs/codex-local-quota.md",
+      "sha256": "c910a7b0d33c0a4f0658a3ffb76562c2f53e203b6a4b91e33dbede774842d0b8",
+      "bytes": 3858
+    },
+    {
+      "path": "docs/knowledge-book-resources.changeset.json",
+      "sha256": "2bbe1aa79cd9cba6e3c558f65dc50a06bd66640cf940c72ab871dc0ee99208b3",
+      "bytes": 5188
+    },
+    {
+      "path": "docs/knowledge-chat-scope.md",
+      "sha256": "7b92e8aab598e8ebbd71907ab17469b25e066c3b5e86355660eac5c2923340f7",
+      "bytes": 5408
+    },
+    {
+      "path": "docs/knowledge-scope-cascade.changeset.json",
+      "sha256": "e1af474783725e7fa5ba9abaf8d853796a3b16d06fa857e7d37a7df19765f23e",
+      "bytes": 2022
+    },
+    {
+      "path": "docs/ontology-right-workspace.changeset.json",
+      "sha256": "ec7e15ad0c13f506fe9a3a2094dbb468af8129083590b873e7fd78c311954638",
+      "bytes": 1695
+    },
+    {
+      "path": "front/components/chat/ChatInspectorPanel.tsx",
+      "sha256": "4b8720b4bf2ef53ab7ad04529de5cce1073688b0ec004fc9b1c1ae75b624995e",
+      "bytes": 53952
+    },
+    {
+      "path": "front/components/chat/KnowledgeChatHome.tsx",
+      "sha256": "1ad445141a038ad8c9537b367f3682ce7d28c13fd89993ff05e22ee7ad98ceea",
+      "bytes": 180949
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "050b9809314c2cd369bac9e2cb87a3fcf5d167633ad2d9baadb6c543dd5900aa",
+      "bytes": 32565
+    },
+    {
+      "path": "front/components/ontology/OntologyWorkbench.tsx",
+      "sha256": "ae10a45b53eed0855014344b2f1ec49b06ed139967c4be005ac9d92d3be8f308",
+      "bytes": 10413
+    },
+    {
+      "path": "front/next.config.js",
+      "sha256": "914f050c113545c70ea9573c6168155b0570e2487b547e18a1a0a61344fec7d6",
+      "bytes": 1192
+    },
+    {
+      "path": "front/tests/knowledge-resource-upload.browser.mjs",
+      "sha256": "b8bd66524d3e309543d6bf485b3bcdef7e58c2b1fe33463f310684f17e0b275c",
+      "bytes": 5064
+    },
+    {
+      "path": "front/tests/knowledge-scope-picker.browser.mjs",
+      "sha256": "9079e4eb8b8951f295b7ec99b3cf08c7568191f4f25938c23872643be2c0652b",
+      "bytes": 13339
+    },
+    {
+      "path": "front/tests/knowledge-upload-proxy.mjs",
+      "sha256": "8d2942efb8cd653261a2ad0e272699415772b0cb5e9db8f0d161f815bd02c5e0",
+      "bytes": 1261
+    },
+    {
+      "path": "front/tests/ontology.browser.mjs",
+      "sha256": "8f70a79c57fcc4e9a768c02370f9ad24d5de77b9dafbece403b6c95ae8586467",
+      "bytes": 4963
+    }
+  ],
+  "fingerprint": "729077c3b6f7c19c06860ed0f553e96e8bfbc206fe035468e524341ca65f3b6b",
+  "validation": {
+    "typescript": "Passed: tsc --noEmit --incremental false",
+    "browser": "Passed: actual chat page with synthetic APIs on desktop/mobile, folder/file selection, cascade/exclusions, confirm/cancel/search and Codex request compatibility.",
+    "retention": "18 local files byte-for-byte match the Git backup. The other three contain the automatically merged remote changes; chat diff against the backup was reviewed.",
+    "backend": "Not rerun: backend code and backend tests match the pre-merge backup byte-for-byte; previous 127-case regression and 2 focused cases remain applicable.",
+    "whitespace": "git diff --check passed",
+    "runtime": "No actual user database, book, model, or production service accessed."
+  },
+  "delivery": "Fetch and local merge only. Pending fixes remain uncommitted; no remote push. Earlier changeset fingerprints are historical; this snapshot records the merged files."
+}

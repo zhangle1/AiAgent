@@ -1,9 +1,9 @@
+using AiAgent.Backend.Services.Chat.Orchestration;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -154,20 +154,17 @@ public sealed class CodexDiagnosticsTests
     }
 
     [Fact]
-    public void DiagnosticDefaultsAndBothStreamClientMappingsAreSafe()
+    public void DiagnosticDefaultsAndSharedStreamClientMappingAreSafe()
     {
         var request = JsonSerializer.Deserialize<ChatCompleteRequest>("{\"agent\":\"codex\",\"codex_model_id\":\"profile:fixture\",\"CodexDiagnosticId\":\"forged\"}")!;
         var trace = ChatDebugTrace.Create(request);
         Assert.NotNull(trace);
         Assert.Equal(32, request.CodexDiagnosticId!.Length);
         var failure = CodexDiagnosticException.ForRequest(new InvalidOperationException(Question + Secret), request);
-        foreach (var type in new[] { typeof(ChatAppService), typeof(ChatWebSocketHandler) })
-        {
-            var message = (string)type.GetMethod("ToClientError", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [failure, request])!;
-            Assert.Contains(failure.DiagnosticId, message);
-            Assert.DoesNotContain(Secret, message);
-            Assert.DoesNotContain(Question, message);
-        }
+        var message = ChatExecutionErrors.ToClientError(failure, request);
+        Assert.Contains(failure.DiagnosticId, message);
+        Assert.DoesNotContain(Secret, message);
+        Assert.DoesNotContain(Question, message);
         trace!.ReportCodexFailure(failure);
         trace.ReportCodexFailure(failure);
         Assert.Single(trace.Events);

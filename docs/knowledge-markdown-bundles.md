@@ -2,7 +2,7 @@
 
 ## 目标与使用
 
-参考本地 OpenViking 的 PDF、Word、TXT 转 Markdown 解析说明 及其 MarkdownParser 源码，把格式提取与目录发布分开。实现完全位于 AiAgent C# 服务中，PDF、DOCX、TXT 的解析不依赖 Python，也不调用模型决定章节结构。原有 L0/L1 语义任务继续使用完整正文。
+参考本地 [OpenViking 解析说明](E:/项目/know-why/OpenViking-PDF-Word-TXT转Markdown逻辑解析.md) 及其 MarkdownParser 源码，把格式提取与目录发布分开。实现完全位于 AiAgent C# 服务中，PDF、DOCX、TXT 的解析不依赖 Python，也不调用模型决定章节结构。原有 L0/L1 语义任务继续使用完整正文。
 
 重新解析文件后，进入「解析正文」展开章节列表，点击「打开目录索引」。索引可逐级进入章节，也可返回上级目录；资料树中的「目录索引.md」对应只读 `_index.md`。原文、解析章节和图片均保留各自身份，删除与权限规则继续跟随原始资料。
 

@@ -1,3 +1,6 @@
+using AiAgent.Backend.Services.Chat.Orchestration;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Entities.Chat;
 using AiAgent.Backend.Services.Auth;
@@ -214,30 +217,27 @@ public sealed partial class ChatCommandTests : IDisposable
     {
         db.Deleteable<AiChatSession>().ExecuteCommand();
         db.CodeFirst.InitTables<AiChatMessage>();
-        using var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
-        var context = new DefaultHttpContext { RequestServices = services };
         var sessions = Sessions();
         var historyCalls = 0;
-        T Stub<T>() where T : class
+        object? Invoke(MethodInfo method, object?[]? args)
         {
-            var value = DispatchProxy.Create<T, Collaborator>();
-            ((Collaborator)(object)value).InvokeMethod = (method, args) => {
-                if (method.Name == "TryGetCurrentUserAsync") return Task.FromResult<AuthenticatedUser?>(user);
-                if (method.Name == "PrepareCommandSession") return method.Invoke(sessions, args);
-                if (method.Name == "RecordUserMessageAsync")
-                {
-                    Assert.True(db.Queryable<AiChatSession>().Any(x => x.Id == "session" && x.UserId == user.Id));
-                    historyCalls++;
-                    db.Insertable(new AiChatMessage { SessionId = "session", Role = "user", Content = "hello" }).ExecuteCommand();
-                }
-                if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
-                if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
-                    return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(method.ReturnType.GenericTypeArguments[0]).Invoke(null, [null]);
-                return null;
-            };
-            return value;
+            if (method.Name == "TryGetCurrentUserAsync") return Task.FromResult<AuthenticatedUser?>(user);
+            if (method.Name == "PrepareCommandSession") return method.Invoke(sessions, args);
+            if (method.Name == "RecordUserMessageAsync")
+            {
+                Assert.True(db.Queryable<AiChatSession>().Any(x => x.Id == "session" && x.UserId == user.Id));
+                historyCalls++;
+                db.Insertable(new AiChatMessage { SessionId = "session", Role = "user", Content = "hello" }).ExecuteCommand();
+            }
+            if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
+            if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
+                return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(method.ReturnType.GenericTypeArguments[0]).Invoke(null, [null]);
+            return null;
         }
         var engine = new ChatEngine();
+        using var services = TransportServices(engine, Invoke);
+        var dispatcher = services.GetRequiredService<IChatDispatcher>();
+        var context = new DefaultHttpContext { RequestServices = services };
         for (var attempt = 0; attempt < 2; attempt++)
         {
             string output;
@@ -245,22 +245,14 @@ public sealed partial class ChatCommandTests : IDisposable
             {
                 using var socket = new FixtureSocket(JsonSerializer.Serialize(Request()));
                 context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
-                var handler = new ChatWebSocketHandler(engine, Stub<IAuthService>(), Stub<IChatSessionService>(),
-                    Stub<IChatImageAttachmentService>(), Stub<IChatFileAttachmentService>(), Stub<IUsageStatisticsService>(),
-                    Stub<IMemoryService>(), Stub<IProjectReferenceContextService>(), Stub<IMarkdownDocumentReferenceContextService>(),
-                    Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(),
-                    Stub<IChatDebugTraceStore>(), NullLogger<ChatWebSocketHandler>.Instance);
+                var handler = new ChatWebSocketHandler(services.GetRequiredService<IAuthService>(), dispatcher);
                 await handler.HandleClientAsync(context);
                 output = string.Join("\n", socket.Sent);
             }
             else
             {
                 context.Response.Body = new MemoryStream();
-                var app = new ChatAppService(new HttpContextAccessor { HttpContext = context }, engine,
-                    Stub<IAuthService>(), Stub<IChatSessionService>(), Stub<IChatImageAttachmentService>(), Stub<IChatFileAttachmentService>(),
-                    Stub<IChatUploadLibraryService>(), Stub<IUsageStatisticsService>(), Stub<IMemoryService>(), Stub<IProjectReferenceContextService>(),
-                    Stub<IMarkdownDocumentReferenceContextService>(), Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexChatService>(),
-                    Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(), Stub<IChatDebugTraceStore>());
+                var app = CreateHttpApp(services, context, dispatcher);
                 await app.CompleteStream(Request(), default);
                 context.Response.Body.Position = 0;
                 output = await new StreamReader(context.Response.Body).ReadToEndAsync();
@@ -277,29 +269,22 @@ public sealed partial class ChatCommandTests : IDisposable
     [Fact]
     public async Task SseDuplicateDoesNotRepeatHistoryUsageOrModelExecution()
     {
-        using var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
-        var context = new DefaultHttpContext { RequestServices = services };
-        context.Response.Body = new MemoryStream();
         var calls = new List<string>();
-        T Stub<T>() where T : class
+        object? Invoke(MethodInfo method, object?[]? _)
         {
-            var value = DispatchProxy.Create<T, Collaborator>();
-            ((Collaborator)(object)value).InvokeMethod = (method, _) => {
-                calls.Add(method.Name);
-                if (method.Name == "TryGetCurrentUserAsync") return Task.FromResult<AuthenticatedUser?>(user);
-                if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
-                if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
-                    return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(method.ReturnType.GenericTypeArguments[0]).Invoke(null, [null]);
-                return null;
-            };
-            return value;
+            calls.Add(method.Name);
+            if (method.Name == "TryGetCurrentUserAsync") return Task.FromResult<AuthenticatedUser?>(user);
+            if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
+            if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
+                return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(method.ReturnType.GenericTypeArguments[0]).Invoke(null, [null]);
+            return null;
         }
         var engine = new ChatEngine();
-        var app = new ChatAppService(new HttpContextAccessor { HttpContext = context }, engine,
-            Stub<IAuthService>(), Stub<IChatSessionService>(), Stub<IChatImageAttachmentService>(), Stub<IChatFileAttachmentService>(),
-            Stub<IChatUploadLibraryService>(), Stub<IUsageStatisticsService>(), Stub<IMemoryService>(), Stub<IProjectReferenceContextService>(),
-            Stub<IMarkdownDocumentReferenceContextService>(), Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexChatService>(),
-            Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(), Stub<IChatDebugTraceStore>());
+        using var services = TransportServices(engine, Invoke);
+        var dispatcher = services.GetRequiredService<IChatDispatcher>();
+        var context = new DefaultHttpContext { RequestServices = services };
+        context.Response.Body = new MemoryStream();
+        var app = CreateHttpApp(services, context, dispatcher);
         await app.CompleteStream(Request(), default);
         context.Response.Body = new MemoryStream();
         await app.CompleteStream(Request(), default);
@@ -314,11 +299,7 @@ public sealed partial class ChatCommandTests : IDisposable
 
         using var socket = new FixtureSocket(JsonSerializer.Serialize(Request()));
         context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
-        var handler = new ChatWebSocketHandler(engine, Stub<IAuthService>(), Stub<IChatSessionService>(),
-            Stub<IChatImageAttachmentService>(), Stub<IChatFileAttachmentService>(), Stub<IUsageStatisticsService>(),
-            Stub<IMemoryService>(), Stub<IProjectReferenceContextService>(), Stub<IMarkdownDocumentReferenceContextService>(),
-            Stub<IProjectAgentMarkdownIndexContextService>(), Stub<ICodexModelPolicyService>(), Stub<IImageOcrPolicyService>(),
-            Stub<IChatDebugTraceStore>(), NullLogger<ChatWebSocketHandler>.Instance);
+        var handler = new ChatWebSocketHandler(services.GetRequiredService<IAuthService>(), dispatcher);
         await handler.HandleClientAsync(context);
         Assert.Equal(1, engine.Calls);
         Assert.Equal(1, calls.Count(x => x == "RecordUserMessageAsync"));
@@ -326,12 +307,122 @@ public sealed partial class ChatCommandTests : IDisposable
         Assert.Contains(socket.Sent, value => value.Contains("completed"));
     }
 
+    [Fact]
+    public async Task CompleteUsesSharedPreparationAndFinalizesHistoryBeforeAccounting()
+    {
+        var calls = new List<string>();
+        object? Invoke(MethodInfo method, object?[]? args)
+        {
+            calls.Add(method.Name);
+            if (method.Name == "RecordAssistantMessageAsync")
+            {
+                Assert.Equal("answer", args![2]);
+                Assert.Null(args[3]);
+            }
+            if (method.Name == "TryGetCurrentUserAsync") return Task.FromResult<AuthenticatedUser?>(user);
+            if (method.Name == "BuildPromptContextAsync") return Task.FromResult("context");
+            return Task.CompletedTask;
+        }
+
+        var engine = new ChatEngine();
+        using var services = TransportServices(engine, Invoke);
+        var app = CreateHttpApp(services, new DefaultHttpContext { RequestServices = services },
+            services.GetRequiredService<IChatDispatcher>());
+        var request = new ChatCompleteRequest { SessionId = "session", Message = "hello" };
+        var result = await app.Complete(request, default);
+
+        Assert.Equal("answer", result.Content);
+        Assert.Equal(1, engine.Calls);
+        Assert.Equal(user.Id, request.RuntimeUserId);
+        Assert.Equal("context", request.ServerMemoryContext);
+        Assert.Equal(["RecordUserMessageAsync", "BuildPromptContextAsync", "RecordAssistantMessageAsync", "RecordAsync"],
+            calls.Where(name => name is "RecordUserMessageAsync" or "BuildPromptContextAsync" or "RecordAssistantMessageAsync" or "RecordAsync"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BothStreamTransportsSendSanitizedCodexErrors(bool websocket)
+    {
+        var request = Request();
+        request.Agent = "codex";
+        var failure = CodexDiagnosticException.ForRequest(new InvalidOperationException("private fixture detail"), request);
+        object? Invoke(MethodInfo method, object?[]? _) => method.Name == "TryGetCurrentUserAsync"
+            ? Task.FromException<AuthenticatedUser?>(failure) : throw new InvalidOperationException(method.Name);
+        using var services = TransportServices(new ChatEngine(), Invoke);
+        var dispatcher = services.GetRequiredService<IChatDispatcher>();
+        var context = new DefaultHttpContext { RequestServices = services };
+        string output;
+        if (websocket)
+        {
+            using var socket = new FixtureSocket(JsonSerializer.Serialize(request));
+            context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
+            await new ChatWebSocketHandler(services.GetRequiredService<IAuthService>(), dispatcher).HandleClientAsync(context);
+            output = string.Join("\n", socket.Sent);
+        }
+        else
+        {
+            context.Response.Body = new MemoryStream();
+            await CreateHttpApp(services, context, dispatcher).CompleteStream(request, default);
+            context.Response.Body.Position = 0;
+            output = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        }
+        Assert.Contains("\"type\":\"error\"", output);
+        Assert.Contains(failure.DiagnosticId, output);
+        Assert.DoesNotContain("private fixture detail", output);
+    }
+
+    private static T Stub<T>(Func<MethodInfo, object?[]?, object?> invoke) where T : class
+    {
+        var value = DispatchProxy.Create<T, Collaborator>();
+        ((Collaborator)(object)value).InvokeMethod = invoke;
+        return value;
+    }
+
+    private ServiceProvider TransportServices(IChatOrchestrator engine, Func<MethodInfo, object?[]?, object?> invoke,
+        IChatSessionService? sessions = null, IChatImageAttachmentService? images = null,
+        IChatFileAttachmentService? files = null, ChatDeliveryService? deliveries = null, bool hosted = false)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddChatOrchestration();
+        services.AddSingleton(engine);
+        services.AddSingleton(store);
+        services.AddSingleton(sessions ?? Stub<IChatSessionService>(invoke));
+        services.AddSingleton(images ?? Stub<IChatImageAttachmentService>(invoke));
+        services.AddSingleton(files ?? Stub<IChatFileAttachmentService>(invoke));
+        services.AddSingleton(Stub<IAuthService>(invoke));
+        services.AddSingleton(Stub<IUsageStatisticsService>(invoke));
+        services.AddSingleton(Stub<IMemoryService>(invoke));
+        services.AddSingleton(Stub<IProjectReferenceContextService>(invoke));
+        services.AddSingleton(Stub<IMarkdownDocumentReferenceContextService>(invoke));
+        services.AddSingleton(Stub<IProjectAgentMarkdownIndexContextService>(invoke));
+        services.AddSingleton(Stub<ICodexModelPolicyService>(invoke));
+        services.AddSingleton(Stub<IImageOcrPolicyService>(invoke));
+        services.AddSingleton(Stub<IChatDebugTraceStore>(invoke));
+        services.AddSingleton(Stub<ICodexChatService>(invoke));
+        services.AddSingleton(Stub<IChatUploadLibraryService>(invoke));
+        if (deliveries is null) services.RemoveAll<ChatDeliveryService>();
+        else services.AddSingleton(deliveries);
+        if (!hosted)
+        {
+            services.RemoveAll<ChatDeliveryWorker>();
+            services.RemoveAll<IHostedService>();
+        }
+        return services.BuildServiceProvider();
+    }
+
+    private static ChatAppService CreateHttpApp(IServiceProvider services, HttpContext context, IChatDispatcher dispatcher) =>
+        new(new HttpContextAccessor { HttpContext = context }, services.GetRequiredService<IAuthService>(), dispatcher,
+            services.GetRequiredService<IChatImageAttachmentService>(), services.GetRequiredService<IChatFileAttachmentService>(),
+            services.GetRequiredService<IChatUploadLibraryService>(), services.GetRequiredService<ICodexChatService>());
+
     private sealed class SocketFeature(WebSocket socket) : IHttpWebSocketFeature
     {
         public bool IsWebSocketRequest => true;
         public Task<WebSocket> AcceptAsync(WebSocketAcceptContext context) => Task.FromResult(socket);
     }
-    private sealed class FixtureSocket(string request, bool waitForPeer = false) : WebSocket
+    private sealed class FixtureSocket(string request, bool waitForPeer = false, Action<string>? observe = null) : WebSocket
     {
         private WebSocketState state = WebSocketState.Open;
         private bool received;
@@ -358,7 +449,10 @@ public sealed partial class ChatCommandTests : IDisposable
         }
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType type, bool end, CancellationToken token)
         {
-            Sent.Add(Encoding.UTF8.GetString(buffer)); return Task.CompletedTask;
+            var message = Encoding.UTF8.GetString(buffer);
+            Sent.Add(message);
+            observe?.Invoke(message);
+            return Task.CompletedTask;
         }
         public override async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken token)
         {
@@ -383,7 +477,11 @@ public sealed partial class ChatCommandTests : IDisposable
     private sealed class ChatEngine : IChatOrchestrator
     {
         public int Calls { get; private set; }
-        public Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, CancellationToken token) => throw new NotSupportedException();
+        public Task<ChatCompleteResponse> CompleteAsync(ChatCompleteRequest request, CancellationToken token)
+        {
+            Calls++;
+            return Task.FromResult(new ChatCompleteResponse { Answer = "answer", Content = "answer" });
+        }
         public async Task<ChatCompleteResponse> CompleteStreamingAsync(ChatCompleteRequest request, AgentStreamEventHandler? emit, CancellationToken token)
         {
             Calls++;

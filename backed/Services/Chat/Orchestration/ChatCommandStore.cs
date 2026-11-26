@@ -17,7 +17,22 @@ public sealed class ChatCommandStore(ISqlSugarClient database)
     private readonly ISqlSugarClient _database = database;
     private static readonly string InstanceId = Guid.NewGuid().ToString("N");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly ConcurrentDictionary<string, CancellationTokenSource> Active = new();
+    private static readonly ConcurrentDictionary<string, LiveCommand> Active = new();
+
+    private sealed class LiveCommand(CancellationTokenSource cancellation)
+    {
+        public CancellationTokenSource Cancellation => cancellation;
+        private readonly object gate = new();
+        private TaskCompletionSource? next;
+        public Task WaitForChange()
+        {
+            lock (gate) return (next ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+        public void Notify()
+        {
+            lock (gate) { next?.TrySetResult(); next = null; }
+        }
+    }
 
     public static string Fingerprint(ChatCompleteRequest request)
     {
@@ -80,13 +95,13 @@ public sealed class ChatCommandStore(ISqlSugarClient database)
         {
             if (!owner) return token;
             execution = CancellationTokenSource.CreateLinkedTokenSource(token);
-            if (!Active.TryAdd(row.Id, execution)) throw new InvalidOperationException("Command is already active.");
+            if (!Active.TryAdd(row.Id, new LiveCommand(execution))) throw new InvalidOperationException("Command is already active.");
             return execution.Token;
         }
         public bool Cancel()
         {
             if (!Active.TryGetValue(row.Id, out var source)) return false;
-            try { source.Cancel(); return true; } catch (ObjectDisposedException) { return false; }
+            try { source.Cancellation.Cancel(); return true; } catch (ObjectDisposedException) { return false; }
         }
         public void Append(AgentStreamEvent value)
         {
@@ -94,7 +109,9 @@ public sealed class ChatCommandStore(ISqlSugarClient database)
             using var db = store._database.CopyNew();
             db.Insertable(new AiChatCommandEvent { CommandId = row.Id, PayloadJson = JsonSerializer.Serialize(value, JsonOptions) }).ExecuteCommand();
             if (value.Type == "completed") Finish("completed");
+            else if (value.Type == "cancelled") Finish("cancelled");
             else if (value.Type == "error") Finish("unknown");
+            if (Active.TryGetValue(row.Id, out var live)) live.Notify();
         }
         private void Finish(string status)
         {
@@ -108,15 +125,21 @@ public sealed class ChatCommandStore(ISqlSugarClient database)
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                using var db = store._database.CopyNew();
-                var current = db.Queryable<AiChatCommand>().InSingle(row.Id);
-                var events = db.Queryable<AiChatCommandEvent>().Where(x => x.CommandId == row.Id && x.Id > cursor).OrderBy(x => x.Id).Take(256).ToList();
+                // Capture the wake-up before reading the durable cursor so a commit cannot fall in between.
+                var changed = Active.TryGetValue(row.Id, out var live) ? live.WaitForChange() : null;
+                AiChatCommand? current;
+                List<AiChatCommandEvent> events;
+                using (var db = store._database.CopyNew())
+                {
+                    current = db.Queryable<AiChatCommand>().InSingle(row.Id);
+                    events = db.Queryable<AiChatCommandEvent>().Where(x => x.CommandId == row.Id && x.Id > cursor).OrderBy(x => x.Id).Take(256).ToList();
+                }
                 foreach (var item in events)
                 {
                     var value = JsonSerializer.Deserialize<AgentStreamEvent>(item.PayloadJson!, JsonOptions)!;
                     await emit(value, token);
                     cursor = item.Id;
-                    if (value.Type is "completed" or "error") return;
+                    if (value.Type is "completed" or "error" or "cancelled") return;
                 }
                 if (events.Count > 0) continue;
                 if (current == null || current.Status != "running" || current.InstanceId != InstanceId)
@@ -124,14 +147,15 @@ public sealed class ChatCommandStore(ISqlSugarClient database)
                     await emit(new AgentStreamEvent { Type = "error", Content = "运行已中断或结果待确认，已停止自动重放。请检查已有结果后发起新操作。" }, token);
                     return;
                 }
-                await Task.Delay(250, token);
+                if (changed is null) await Task.Delay(250, token);
+                else await changed.WaitAsync(token);
             }
         }
         public void Dispose()
         {
             if (!owner) return;
             try { if (!terminal) Finish("unknown"); }
-            finally { Active.TryRemove(row.Id, out _); execution?.Dispose(); }
+            finally { if (Active.TryRemove(row.Id, out var live)) live.Notify(); execution?.Dispose(); }
         }
     }
 }

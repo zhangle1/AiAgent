@@ -57,6 +57,16 @@ Scope URI 列表与知识库选择一起写入会话 preferences，重新打开�
 
 浏览器回归：`front/tests/knowledge-scope-picker.browser.mjs`，使用合成 API 和 WebSocket 驱动真实聊天页面，覆盖根目录与目录内文件勾选、父子联动、半选与取消子项后的实际提交范围、连续多选、目录展开、草稿保留、取消及桌面/移动端；不调用真实模型或读取知识资料。
 
+## PDF 上传与可见性
+
+Next.js 的 `/api` rewrite 使用请求正文克隆，当前安装版本默认最多保留 10 MB。16.1 MB 合成书籍在旧配置下只剩 10,485,760 字节，后端无法获得完整 multipart。`front/next.config.js` 将 `experimental.proxyClientMaxBodySize` 对齐后端默认 200 MB 请求上限；知识导入的单文件 25 MB、数量、格式和路径校验保持。修改配置后需要重启前端服务／重新构建生产包，后端文件 Scope 改动需编译并重启后端。
+
+上传界面在弹窗内显示 HTTP 和文件级错误，保留文件供重试。零个文件导入不报告成功；部分成功显示实际保存数、解析任务数和逐项失败／跳过原因。原始文件保存后立即刷新目录，解析未入队的警告与原文保存状态分别展示，不等待 PDF 转换或模型调用成功才显示资源。
+
+验证入口：`front/tests/knowledge-upload-proxy.mjs` 使用已安装 Next.js 的相同正文克隆函数对比完整字节数与 SHA-256；`knowledge-resource-upload.browser.mjs` 驱动真实页面的合成 HTTP／文件级失败及重试。`KnowledgeBookUploadTests` 对真实 Dynamic API 发送同名 16.1 MB 合成 multipart PDF，确认原文逐字节保留、根目录文件可见且任务入队。`KnowledgeFileScopeTests` 验证单文件、目录／文件混选、同名前缀不串入及不可见资源拒绝。
+
+这些验证不读取真实书籍，不表示已经验证该书的 PDF 转换或 OCR；转换能力及扫描件限制继续见 [文档转换与结构解析](knowledge-document-parsing.md)。
+
 ## 后续扩展
 
 - 增加多个目录的 Scope 保存和 Playbook 默认范围。

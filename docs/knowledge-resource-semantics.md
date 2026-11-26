@@ -1,6 +1,6 @@
 # 目录资源 L0/L1 语义生成
 
-知识工作区的资源上传（启用解析）及文件「重新解析」复用 `wiki_compile` 有界后台队列。任务先保存解析正文，再生成语义内容；不要求部署 OpenViking，不创建向量索引，不改变活动索引版本。
+知识工作区的资源上传与手动编译共用 `wiki_compile` 有界后台队列。上传启用解析时，发布 Markdown 正文和章节后任务完成。使用「编译资料 /compiler」或文件「重新解析」可继续生成语义内容。
 
 ## 数据流
 
@@ -50,11 +50,11 @@ node tests/knowledge-semantic.browser.mjs
 
 ## 队列与任务中心阶段
 
-队列调度、去重、取消、重启中断处理和终态补写集中在 `Services/TaskQueue/KnowledgeCompilationWorker.cs`；`KnowledgeCompilationHandler` 保留正文解析和语义生成的领域顺序。继续复用 `wiki_compile`，目录资料作为一个串行任务执行，只有语义文件发布完成才成功，不增加 RAG 索引任务。
+队列调度、去重、取消、重启中断处理和终态补写集中在 `Services/TaskQueue/KnowledgeCompilationWorker.cs`；`KnowledgeCompilationHandler` 保留正文解析和语义生成的领域顺序。导入任务发布 Markdown 后完成，手动语义任务发布 L0/L1 后完成。
 
 `AiKnowledgeJob.Stage` 为可空列，值包括 queued、validating、parsing、semantic、compiling、completed。失败保留阶段，并记录错误原因；语义依赖缺失也必须报错。任务中心读取时补写内存终态，数据库仍不可写时使用内存状态和错误覆盖；筛选不改变摘要统计（统计范围仍为最近 limit 条）。取消或重试旧任务按 ID 回读，不依赖列表窗口。
 
-上传 Process 默认 true；显式取消解析只保存原文。旧任务不会被自动重跑，任务中心允许已完成任务重新处理，重复点击复用同一活动任务。部署需要更新前后端，启动时按实体初始化可空 Stage 列。测试覆盖语义失败后正文可读、失败阶段与错误展示、重试成功、缺失语义服务报错及终态写库失败时的任务中心结果。
+上传的 `Process` 默认为 `true`，传 `false` 时只保存原文。导入解析任务保存 `MarkdownOnly=true`，任务中心重试沿用该模式。列为空的历史任务沿用原模式。部署需更新前后端，后端启动时按实体初始化可空 `MarkdownOnly` 列。
 
 ## 工作区面板与文件处理弹窗（2026-10-10）
 

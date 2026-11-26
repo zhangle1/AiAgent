@@ -12,7 +12,6 @@ using SqlSugar;
 
 namespace AiAgent.Backend.Services.Chat;
 
-/// <summary>Durable pending input, online execution and native steering. Execution still belongs to the existing transports.</summary>
 public sealed class ChatDeliveryException(string message) : InvalidOperationException(message);
 
 public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionService sessions, ICodexModelPolicyService? codexPolicy = null)
@@ -93,10 +92,11 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             {
                 if (row.SessionId != request.SessionId || !request.RecoverOnly && row.Fingerprint != Fingerprint(request)) throw new ChatDeliveryException("同一命令编号不能更换消息、配置或会话。");
                 if (row.Status == "steered") return new("steered", true);
-                if (row.Status == "cancelled") return new("cancelled", true);
+                if (row.Status == "cancelled") return new(db.Queryable<AiChatCommand>().Any(c => c.Id == row.Id) ? "execute" : "cancelled", true);
                 if (row.Status is "completed" or "failed") return new(db.Queryable<AiChatCommand>().Any(c => c.Id == row.Id) ? "execute" : "uncertain", true);
-                if (request.RecoverOnly && row.Status != "running") return new("held", true);
                 if (row.Status == "uncertain") return new("uncertain", true);
+                if (request.RecoverOnly && row.Status != "running" &&
+                    (row.Status != "queued" || row.Held || !state.Attached.ContainsKey(id))) return new("held", true);
                 if (row.Held && !request.ResumeQueued) return new("held", true);
                 if (request.ResumeQueued && state.Attached.TryGetValue(id, out var ended) && ended.Ready.Task.IsCompletedSuccessfully && ended.Ready.Task.Result != "execute") state.Attached.Remove(id);
                 if (state.Attached.TryGetValue(id, out waiting)) { /* A duplicate joins admission; it never starts another turn. */ }
@@ -249,7 +249,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             var row = db.Queryable<AiChatDelivery>().InSingle(waiting.Row.Id);
             if (row is not null && row.Status != "cancelled")
             {
-                row.Status = active ? success ? "completed" : "failed" : "queued";
+                row.Status = active ? success ? "completed" : waiting.Cancel.IsCancellationRequested ? "cancelled" : "failed" : "queued";
                 row.Held = !success; row.UpdatedAt = DateTime.UtcNow; db.Updateable(row).ExecuteCommand();
             }
             if (active)
@@ -277,6 +277,15 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         next.Row = first; state.Active = next; next.Ready.TrySetResult("execute");
     }
 
+    public List<string> ActiveSessions(AuthenticatedUser user)
+    {
+        using var db = database.CopyNew();
+        return db.Queryable<AiChatDelivery, AiChatSession>((delivery, session) => delivery.SessionId == session.Id)
+            .Where((delivery, session) => delivery.UserId == user.Id && session.UserId == user.Id &&
+                !session.IsArchived && !session.IsDeleted && delivery.InstanceId == _instance && delivery.Status == "running")
+            .Select((delivery, session) => delivery.SessionId).Distinct().ToList();
+    }
+
     public async Task<List<ChatDeliveryDto>> ListAsync(AuthenticatedUser user, string sessionId, CancellationToken ct)
     {
         using (var probe = database.CopyNew())
@@ -290,7 +299,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
                 .OrderBy(d => d.Position).Take(102).ToList().Select(row => {
                     var request = JsonSerializer.Deserialize<ChatCompleteRequest>(row.RequestJson, Json)!;
                     return new ChatDeliveryDto { CommandId = row.CommandId, SessionId = row.SessionId, Position = row.Position, Status = row.Status, QueueHeld = row.Held,
-                        Message = request.Message[..Math.Min(600, request.Message.Length)] };
+                        Agent = request.Agent, Message = request.Message[..Math.Min(600, request.Message.Length)] };
                 }).ToList();
         }
         finally { state.Gate.Release(); }
@@ -308,7 +317,8 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             if (row is null || row.SessionId != sessionId) return false;
             if (row.Status == "running")
             {
-                if (state.Active?.Row.Id == row.Id) stop = state.Active.Cancel;
+                if (state.Active?.Row.Id != row.Id) return false;
+                stop = state.Active.Cancel;
             }
             else if (row.Status is "queued" or "uncertain")
             {
@@ -332,7 +342,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             .Where(d => d.UserId == userId && d.SessionId == sessionId && d.InstanceId != _instance && d.Status == "queued").ExecuteCommand();
     }
 
-    private void Authorize(AuthenticatedUser user, ChatCompleteRequest request, bool allowActiveGoal = false)
+    internal AuthenticatedUser Authorize(AuthenticatedUser user, ChatCompleteRequest request, bool allowActiveGoal = false)
     {
         using var db = database.CopyNew();
         var current = db.Queryable<AiUser>().First(u => u.Id == user.Id && !u.IsDisabled);
@@ -347,6 +357,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             using var goal = JsonDocument.Parse(session.GoalJson);
             if (goal.RootElement.TryGetProperty("status", out var status) && status.GetString() == "active") throw new ChatDeliveryException("请先暂停当前目标，再投递普通消息。");
         }
+        return actor;
     }
 
     private static string Fingerprint(ChatCompleteRequest request)

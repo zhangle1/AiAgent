@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, Check, CheckSquare, ChevronDown, Code2, Edit3, Ellipsis, FolderGit2, GitBranch, LayoutDashboard, Library, ListTodo, LogOut, MessageSquare, Palette, PanelLeftClose, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { getActiveChatSessions } from "@/lib/chat-api";
 import { logout } from "@/lib/auth-api";
 import type { AuthStatus } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
@@ -55,6 +56,23 @@ export function AppSidebar({ compact = false, authStatus, resizeHandle }: { comp
   const searchParams = useSearchParams();
   const { t } = useI18n();
   const { streams } = useChatStreams();
+  const [runningSessions, setRunningSessions] = useState<string[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    setRunningSessions([]);
+    async function refresh() {
+      let delay = 30000;
+      try {
+        const ids = await getActiveChatSessions(controller.signal);
+        if (!controller.signal.aborted) setRunningSessions(ids);
+        if (ids.length) delay = 5000;
+      } catch { /* The local stream indicators remain available while offline. */ }
+      if (!controller.signal.aborted) timer = setTimeout(refresh, delay);
+    }
+    void refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [authStatus?.username]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<CodeProject[]>([]);
   const [projectPreferences, setProjectPreferences] = useState<ProjectSessionPreference[]>([]);
@@ -152,12 +170,13 @@ export function AppSidebar({ compact = false, authStatus, resizeHandle }: { comp
   }, [projectPreferences, projects]);
   const sessionActivity = useMemo(() => {
     const next: Record<string, ChatStreamStatus | "unread"> = {};
+    runningSessions.forEach(id => { next[id] = "streaming"; });
     Object.values(streams).forEach((stream) => {
       if (stream.status === "streaming") next[stream.sessionId] = "streaming";
       else if (stream.unread && next[stream.sessionId] !== "streaming") next[stream.sessionId] = stream.status === "error" ? "error" : "unread";
     });
     return next;
-  }, [streams]);
+  }, [streams, runningSessions]);
   const workbenchActive = workbenchItems.some((item) => isActive(pathname, item.href));
   const userDisplayName = authStatus?.alias?.trim() || authStatus?.username || "当前用户";
   const userSubtitle = `${authStatus?.username ? `@${authStatus.username} · ` : ""}${authStatus?.is_admin ? "管理员" : "普通用户"}`;

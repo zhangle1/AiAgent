@@ -1,0 +1,108 @@
+{
+  "kind": "local-review-snapshot",
+  "status": "validated-local-only",
+  "createdAt": "2026-11-17T05:50:12.879858+00:00",
+  "baseCommit": "1542ada179ae7df35478d9e73f751517d5e78119",
+  "objective": "Add explicit source-resource deletion; preserve stale-record cleanup and raw bytes/history.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "15bda26b597d5e85e4f3ddc784834f9a10ae648e1c8d2370208357e0cb580b02",
+      "bytes": 36299
+    },
+    {
+      "path": "README.md",
+      "sha256": "6ddf94ac8ca3ddb7fa3c4c2aa97956edc93840af05c691cb7ff3b8df51bfc17e",
+      "bytes": 42536
+    },
+    {
+      "path": "backed.tests/KnowledgeResourceDeletionHttpTests.cs",
+      "sha256": "88e3ed3327a176df11422c40b4008b4e007ea8be9e990d023c416f80fc3c219c",
+      "bytes": 7124
+    },
+    {
+      "path": "backed.tests/KnowledgeResourceDeletionTests.cs",
+      "sha256": "fbf155f2cab6fba197753203446bb30ffec524d0d68f03f52a1e68a5b4fc0d83",
+      "bytes": 7415
+    },
+    {
+      "path": "backed/Dtos/Knowledge/KnowledgeResourceDtos.cs",
+      "sha256": "377273c3624c89c7f66530e3c3ffe3c82e4f332e6ab156453b2df2de9837202d",
+      "bytes": 4954
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceAppService.cs",
+      "sha256": "dd55e47f63ca20da718ae79cd3d4dc2f021447d3321c90c47224dec7d446f817",
+      "bytes": 4134
+    },
+    {
+      "path": "backed/Services/Knowledge/KnowledgeResourceService.cs",
+      "sha256": "483a6dd633e4ee42fad409eae84792eb550c18763fec272c3da467f2c74adb08",
+      "bytes": 39389
+    },
+    {
+      "path": "docs/knowledge-resource-deletion.md",
+      "sha256": "c0a67be6c295712dd5cc3d71361b1bc03b84a6a5723af108d55072e6b26e2a83",
+      "bytes": 3440
+    },
+    {
+      "path": "docs/knowledge-stale-record-cleanup.md",
+      "sha256": "51b35070d21b34abf5ace9784e4759e1d58cdd554ad43a88d3f3262b4d06ecf3",
+      "bytes": 5930
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeCleanupDialog.tsx",
+      "sha256": "9f66e48cf5cb58ecddc0a5041253cb1d6934742353f6ff7f9d8445382346ea88",
+      "bytes": 7224
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeResourceDeleteDialog.tsx",
+      "sha256": "f4a3f233757cb39f9855d4b938456556c62a6aafc73f12bca5558e7ae885fac9",
+      "bytes": 3199
+    },
+    {
+      "path": "front/components/knowledge/KnowledgeWorkspace.tsx",
+      "sha256": "8753be523e6eac120a20c44267eecba21b008ff11a6168aa4311406a522441f4",
+      "bytes": 34513
+    },
+    {
+      "path": "front/lib/knowledge-api.ts",
+      "sha256": "0eaecb2af1e6cc4069668036c4431afb34d776c4939cf61f23ba28ade4ce18ca",
+      "bytes": 15463
+    },
+    {
+      "path": "front/lib/knowledge-types.ts",
+      "sha256": "d5095a4e08ec3705e4d4e0761c576b36583184dbdd657ba5791a863ecbe36d8c",
+      "bytes": 8299
+    },
+    {
+      "path": "front/tests/knowledge-resource-delete.browser.mjs",
+      "sha256": "b20a43308007600eade65c77daf5dfd6c14331c8f50454e866c01c75744d0965",
+      "bytes": 8918
+    }
+  ],
+  "fingerprintSha256": "7ea2f72246dcaa8fdccce39f66ff1c35fe1951ca2278f9f2acc27ed103ec6a9b",
+  "diagnosis": "Healthy PDFs correctly do not appear in stale cleanup; DELETE on the resource file route returned 405 before implementation.",
+  "behavior": [
+    "Source file preview exposes deletion only with server can_delete; separate Eraser cleanup icon and empty-state guidance.",
+    "Authenticated owner or shared administrator; project access checked; other users sessions remain read-only.",
+    "Independent database client and transaction; source URI/ID and row state validated; active jobs blocked; cancellation rolls back.",
+    "Soft deletion hides source and generated projections; physical raw files, parsed rows, original chats and task history preserved.",
+    "Accessible modal cancellation/focus, pending guard, error retry, response identity check and refreshed parent directory."
+  ],
+  "validation": {
+    "backend": "139 passed, 0 failed: KnowledgeWorkspaceTests partials (including deletion/stale/processing), KnowledgeResourceDeletionHttpTests, KnowledgeCleanupCancellationTests, KnowledgeCleanupHttpTests and SwaggerDocumentTests.",
+    "http": "Real isolated Furion HTTP route: 405 before fix; 200 after fix; 401, 403, 404 and 409 checked; unchanged synthetic PDF source bytes.",
+    "browser": [
+      "knowledge-resource-delete.browser.mjs passed with synthetic PDF, cancel/Escape/focus, rights/busy/generated states, conflict/retry, pending protection, refreshed source/derived nodes, 390px modal.",
+      "knowledge-cleanup.browser.mjs passed."
+    ],
+    "visual": "Desktop and mobile screenshots inspected; modal content and controls fit.",
+    "typescript": "npx tsc --noEmit --incremental false passed after final dialog focus change.",
+    "whitespace": "git diff --check passed."
+  },
+  "scope": "Full-file hashes include existing uncommitted PDF/raw/multiformat changes in shared files. Earlier changes preserved; this snapshot is not approval.",
+  "limitations": "Does not physically purge source files or rebuild/purge legacy RAG active indexes. Update and restart backend to expose can_delete and DELETE route.",
+  "runtime": "Used only temporary SQLite, generated documents and intercepted browser APIs. No real configuration/database/user documents read or deleted; existing dev server left running.",
+  "delivery": "Local implementation and review snapshot only; no commit or push."
+}

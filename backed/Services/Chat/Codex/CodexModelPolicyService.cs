@@ -140,8 +140,13 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
         var defaultEffort = request.DefaultReasoningEffort?.Trim() ?? current.DefaultReasoningEffort;
         if (!efforts.Contains(defaultEffort, StringComparer.Ordinal)) throw new InvalidOperationException("The default Codex reasoning effort must be enabled.");
 
+        var goalMaxTokenBudget = request.GoalMaxTokenBudget ?? current.GoalMaxTokenBudget;
+        if (goalMaxTokenBudget <= 0 || goalMaxTokenBudget > ChatGoalRequest.LargestTokenBudget)
+            throw new InvalidOperationException("目标 Token 上限须为正整数且不能超过 9007199254740991。");
+
         var policy = new StoredPolicy
         {
+            GoalMaxTokenBudget = goalMaxTokenBudget,
             BuiltinModelsVersion = BuiltinModelsVersion,
             ProfileModels = profiles,
             AllowedModelIds = allowed,
@@ -218,6 +223,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
             var defaultEffort = efforts.Contains(raw.DefaultReasoningEffort, StringComparer.Ordinal) ? raw.DefaultReasoningEffort : efforts[0];
             return new StoredPolicy
             {
+                GoalMaxTokenBudget = raw.GoalMaxTokenBudget is > 0 and <= ChatGoalRequest.LargestTokenBudget ? raw.GoalMaxTokenBudget : ChatGoalRequest.DefaultTokenBudget,
                 BuiltinModelsVersion = builtinModelsVersion,
                 ProfileModels = profiles,
                 AllowedModelIds = allowed,
@@ -331,6 +337,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
 
     private static CodexModelPolicyDto ToDto(StoredPolicy policy) => new()
     {
+        GoalMaxTokenBudget = policy.GoalMaxTokenBudget,
         Models = GetAllModels(policy.ProfileModels).Select(item => new CodexModelOptionDto
         {
             Id = item.Id,
@@ -363,6 +370,7 @@ public sealed class CodexModelPolicyService : ICodexModelPolicyService
 
     private sealed class StoredPolicy
     {
+        public long GoalMaxTokenBudget { get; set; } = ChatGoalRequest.DefaultTokenBudget;
         public int BuiltinModelsVersion { get; set; }
         public List<StoredProfileModel> ProfileModels { get; set; } = [];
         public List<string> AllowedModelIds { get; set; } = [];

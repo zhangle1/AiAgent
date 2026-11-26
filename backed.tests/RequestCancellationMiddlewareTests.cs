@@ -69,6 +69,40 @@ public sealed class RequestCancellationMiddlewareTests
     }
 
     [Fact]
+    public async Task DisconnectWhileReadingPostBodyEndsWithoutAnErrorResponse()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var context = Context("/api/v1/projects/1/change-atlas/snapshots", cancellation.Token);
+
+        await Invoke(context, _ =>
+        {
+            cancellation.Cancel();
+            throw new BadHttpRequestException("Unexpected end of request content.", StatusCodes.Status400BadRequest);
+        });
+
+        Assert.Equal(499, context.Response.StatusCode);
+        Assert.Equal(0, context.Response.Body.Length);
+    }
+
+    [Theory]
+    [InlineData(false, "Unexpected end of request content.")]
+    [InlineData(true, "Invalid request content.")]
+    public async Task OtherBadRequestsKeepTheirStatus(bool disconnected, string message)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var context = Context("/api/v1/projects/1/change-atlas/snapshots", cancellation.Token);
+        var failure = new BadHttpRequestException(message, StatusCodes.Status400BadRequest);
+
+        var error = await Assert.ThrowsAsync<BadHttpRequestException>(() => Invoke(context, _ =>
+        {
+            if (disconnected) cancellation.Cancel();
+            throw failure;
+        }));
+
+        Assert.Same(failure, error);
+    }
+
+    [Fact]
     public async Task UnrelatedTimeoutStillPropagates()
     {
         var context = Context("/api/v1/knowledge-resources/read");
