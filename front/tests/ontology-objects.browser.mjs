@@ -25,6 +25,7 @@ const bundle = await build({
 const model = { id: "f".repeat(32), name: "项目对象模型", version: 1, sources: [] };
 let deleted = false;
 let lookupUnavailable = false;
+let testedConnection;
 const server = http.createServer(async (req, res) => {
   const asset = bundle.outputFiles.find((file) => req.url === "/" + path.basename(file.path));
   if (asset) {
@@ -41,7 +42,14 @@ const server = http.createServer(async (req, res) => {
   if (req.url.endsWith("/models")) return res.end(JSON.stringify(deleted ? [] : [model]));
   let raw = "";
   for await (const part of req) raw += part;
-  if (req.url.endsWith("/test")) return res.end(JSON.stringify({ checkedAt: new Date().toISOString() }));
+  if (req.url.endsWith("/test")) {
+    testedConnection = JSON.parse(raw).source.connection;
+    if (testedConnection.type === "sqlserver" && !testedConnection.trustServerCertificate) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ message: "SQL Server TLS 校验失败" }));
+    }
+    return res.end(JSON.stringify({ checkedAt: new Date().toISOString() }));
+  }
   if (req.url.endsWith("/name")) {
     model.name = JSON.parse(raw).name;
     model.version++;
@@ -116,9 +124,25 @@ try {
   await button("添加组件").click();
   await dragDivider("调整组件配置宽度", -40);
   await page.getByRole("separator", { name: "调整组件配置宽度" }).press("Home");
+  const certificateOption = page.getByRole("checkbox", { name: /^信任服务器证书/ });
+  assert.equal(await certificateOption.isChecked(), false);
+  await button("测试连接").click();
+  await page.getByText("SQL Server TLS 校验失败", { exact: true }).waitFor();
+  assert.equal(await button("保存组件").isEnabled(), false);
+  await certificateOption.check();
+  await button("测试连接").click();
+  await page.getByText("数据库连接成功，可以保存组件。", { exact: true }).waitFor();
+  assert.equal(testedConnection.trustServerCertificate, true);
+  await button("保存组件").click();
+  await page.getByText("组件已保存，可勾选带入聊天。", { exact: true }).waitFor();
+  assert.equal(model.sources[0].definition.connection.trustServerCertificate, true);
+  await button("刷新本体模型").click();
+  await certificateOption.waitFor();
+  assert.equal(await certificateOption.isChecked(), true);
   await page.getByLabel("数据库驱动").selectOption("oracle");
   assert.equal(await page.getByLabel("端口").inputValue(), "2484");
   await page.getByLabel("服务名（Service Name）").waitFor();
+  assert.equal(await certificateOption.count(), 0);
   await page.getByLabel("数据库账号").waitFor();
   const modelNav = await tab("对象模型").boundingBox();
   const componentNav = await tab("组件树").boundingBox();

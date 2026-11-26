@@ -875,7 +875,12 @@ function ModelProject({
                         const type = e.target.value;
                         change({
                           ...source,
-                          connection: { ...source.connection, type, port: drivers[type][1] },
+                          connection: {
+                            ...source.connection,
+                            type,
+                            port: drivers[type][1],
+                            trustServerCertificate: false,
+                          },
                         });
                       }}
                     >
@@ -940,6 +945,25 @@ function ModelProject({
                       />
                     </label>
                   </>
+                )}
+                {source.connection.type === "sqlserver" && (
+                  <label className={styles.certificateOption}>
+                    <input
+                      type="checkbox"
+                      checked={source.connection.trustServerCertificate ?? false}
+                      onChange={(event) =>
+                        change({
+                          ...source,
+                          connection: {
+                            ...source.connection,
+                            trustServerCertificate: event.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    信任服务器证书
+                    <small>启用后连接仍加密，服务器证书将跳过校验。</small>
+                  </label>
                 )}
                 {source.connection.type === "http" && (
                   <>

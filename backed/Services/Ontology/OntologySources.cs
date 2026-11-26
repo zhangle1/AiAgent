@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Data.Common;
+using System.Security.Authentication;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -79,7 +81,7 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
         }
         return c.Type switch
         {
-            "sqlserver" => new SqlConnection(new SqlConnectionStringBuilder { DataSource = $"tcp:{c.Host},{c.Port}", InitialCatalog = c.Database, UserID = c.Username, Password = password, Encrypt = true, TrustServerCertificate = false, ConnectTimeout = 5, Pooling = false }.ConnectionString),
+            "sqlserver" => new SqlConnection(new SqlConnectionStringBuilder { DataSource = $"tcp:{c.Host},{c.Port}", InitialCatalog = c.Database, UserID = c.Username, Password = password, Encrypt = true, TrustServerCertificate = c.TrustServerCertificate, ConnectTimeout = 5, Pooling = false }.ConnectionString),
             "mysql" => new MySqlConnection(new MySqlConnectionStringBuilder { Server = c.Host, Port = (uint)c.Port, Database = c.Database, UserID = c.Username, Password = password, SslMode = MySqlSslMode.VerifyFull, ConnectionTimeout = 5, Pooling = false }.ConnectionString),
             "postgresql" => new NpgsqlConnection(new NpgsqlConnectionStringBuilder { Host = c.Host, Port = c.Port, Database = c.Database, Username = c.Username, Password = password, SslMode = SslMode.Require, TrustServerCertificate = false, Timeout = 5, Pooling = false }.ConnectionString),
             _ => throw new ArgumentException("不支持此数据库驱动。")
@@ -117,10 +119,12 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
         var driver = source.Connection!.Type;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        var opened = false;
         try
         {
             await using var db = OpenTarget(project, source.Connection, password);
             await db.OpenAsync(deadline.Token);
+            opened = true;
             await using var cmd = db.CreateCommand();
             cmd.CommandTimeout = 5;
             if (connectionOnly)
@@ -158,10 +162,35 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             if (await reader.ReadAsync(deadline.Token)) return "查询键匹配多条记录，请配置唯一查询键";
             return JsonSerializer.Serialize(new Dictionary<string,string> { [source.ValueColumn] = text.Length > 1500 ? text[..1500] + "…" : text });
         }
-        catch (DbException) when (connectionOnly) { throw new ArgumentException("数据库连接失败，请核对地址、端口、库名、账号密码和 TLS 配置。"); }
+        catch (SqlException e) when (!opened)
+        {
+            throw new ArgumentException(SqlServerConnectionError(e));
+        }
+        catch (DbException) when (connectionOnly || !opened)
+        {
+            throw new ArgumentException("数据库连接失败，请核对地址、端口、库名、账号密码和 TLS 配置。");
+        }
         catch (TimeoutException) { throw new ArgumentException("数据库请求超时。"); }
         catch (DbException) { throw new ArgumentException("数据库读取失败，请检查查询配置及账号的读取权限。"); }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new ArgumentException("数据库请求超时。"); }
+    }
+
+    private static string SqlServerConnectionError(SqlException exception)
+    {
+        for (Exception? cause = exception; cause != null; cause = cause.InnerException)
+        {
+            if (cause is AuthenticationException ||
+                cause is SqlException { Number: -2146893019 or -2146893022 or -2146762487 or -2146762481 } ||
+                cause is Win32Exception { NativeErrorCode: -2146893019 or -2146893022 or -2146762487 or -2146762481 })
+                return "SQL Server TLS 校验失败。请检查证书链和主机名。确认服务器身份后，可勾选「信任服务器证书」再测试。";
+        }
+        return exception.Number switch
+        {
+            18456 or 18452 or 18470 => "SQL Server 拒绝登录，请核对数据库账号、密码和登录权限。",
+            4060 => "SQL Server 无法打开指定数据库，请检查库名和该账号的访问权限。",
+            -2 => "SQL Server 连接超时，请检查后端到数据库的网络和端口。",
+            _ => "SQL Server 连接失败，请检查后端到数据库的网络、端口和 TLS 配置。"
+        };
     }
 
     private async Task<string?> ReadHttp(long project, OntologySource source, string secret, string? key, CancellationToken token)
@@ -212,7 +241,11 @@ public sealed class OntologySources(OntologyStore store, IConfiguration config, 
             return save ? store.SaveSource(user, project, id, request.Version, note, "", DateTimeOffset.UtcNow) : new { checkedAt = DateTimeOffset.UtcNow };
         }
         var password = request.Password;
-        if (string.IsNullOrEmpty(password) && previous?.Definition.Connection == source.Connection &&
+        // A TLS preference edit can reuse the credential for the same endpoint and account.
+        var previousConnection = previous?.Definition.Connection;
+        if (previousConnection?.Type == "sqlserver")
+            previousConnection = previousConnection with { TrustServerCertificate = source.Connection.TrustServerCertificate };
+        if (string.IsNullOrEmpty(password) && previous != null && previousConnection == source.Connection &&
             (source.Connection.Type != "http" || previous.Definition.Relation == source.Relation))
             password = store.ReadPassword(previous);
         var connectionOnly = source.Connection.Type != "http" && (!save || !HasMapping(source));

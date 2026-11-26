@@ -10,6 +10,23 @@ namespace AiAgent.Backend.Tests;
 public sealed class OntologyTests
 {
     [Theory]
+    [InlineData("""{"type":"sqlserver","host":"93.184.216.34","port":1888,"database":"sample","username":"tester"}""", false)]
+    [InlineData("""{"type":"sqlserver","host":"93.184.216.34","port":1888,"database":"sample","username":"tester","trustServerCertificate":true}""", true)]
+    public void SqlServerUsesComponentCertificatePreferenceWithoutDisablingEncryption(string json, bool trusted)
+    {
+        var connection = JsonSerializer.Deserialize<OntologyConnection>(json)!;
+        var serialized = JsonSerializer.Serialize(connection);
+        var stored = JsonSerializer.Deserialize<OntologyConnection>(serialized)!;
+        var config = new Microsoft.Extensions.Configuration.ConfigurationManager();
+        var store = new OntologyStore(new TestEnvironment(Path.GetTempPath()), new EphemeralDataProtectionProvider());
+        var sources = new OntologySources(store, config);
+        using var target = sources.OpenTarget(7, stored, "fixture");
+        var settings = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(target.ConnectionString);
+        Assert.Equal(trusted, settings.TrustServerCertificate);
+        Assert.Equal(Microsoft.Data.SqlClient.SqlConnectionEncryptOption.Mandatory, settings.Encrypt);
+    }
+
+    [Theory]
     [InlineData("sqlserver", 1888)]
     [InlineData("mysql", 3306)]
     [InlineData("postgresql", 5432)]

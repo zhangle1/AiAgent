@@ -353,6 +353,18 @@
 .node:last-child::after {
   bottom: 50%;
 }
+.inspector .certificateOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 6px;
+}
+.certificateOption input {
+  margin: 0;
+}
+.certificateOption small {
+  grid-column: 2;
+}
 .mapping summary {
   cursor: pointer;
   color: #465b73;

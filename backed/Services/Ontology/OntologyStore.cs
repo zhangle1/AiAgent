@@ -20,7 +20,8 @@ public sealed record OntologyConnection(
     [property: JsonPropertyName("host")] string Host = "",
     [property: JsonPropertyName("port")] int Port = 1433,
     [property: JsonPropertyName("database")] string Database = "",
-    [property: JsonPropertyName("username")] string Username = "");
+    [property: JsonPropertyName("username")] string Username = "",
+    [property: JsonPropertyName("trustServerCertificate")] bool TrustServerCertificate = false);
 public sealed class OntologyModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
