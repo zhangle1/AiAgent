@@ -89,11 +89,11 @@ public sealed class CodeRepositoryAppService : IDynamicApiController
     }
 
     [HttpGet("projects/{projectId:long}/markdown-documents")]
-    public async Task<IActionResult> ListMarkdownDocuments([FromRoute] long projectId, [FromQuery] string? query, CancellationToken cancellationToken)
+    public async Task<IActionResult> ListMarkdownDocuments([FromRoute] long projectId, [FromQuery] string? query, [FromQuery(Name = "reference_path")] string? referencePath, CancellationToken cancellationToken)
     {
         var user = await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
         if (!_projectAccess.CanAccess(user, projectId)) return new ForbidResult();
-        return new OkObjectResult(_manager.ListProjectMarkdownDocuments(projectId, query));
+        return new OkObjectResult(_manager.ListProjectMarkdownDocuments(projectId, query, referencePath));
     }
 
     [HttpGet("projects/{projectId:long}/markdown-documents/content")]

@@ -58,7 +58,7 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryFileReferenceDto? ResolveProjectFileReference(long projectId, string reference);
 
-    List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query);
+    List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query, string? referencePath = null);
 
     CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path);
 
@@ -545,7 +545,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         };
     }
 
-    public List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query)
+    public List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query, string? referencePath = null)
     {
         var project = FindProject(projectId);
         var term = query?.Trim();
@@ -555,29 +555,54 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         repositories.Add(new AiCodeRepository { Name = "__project_root__", RootPath = project.RootPath });
         var documents = new List<CodeProjectMarkdownDocumentDto>();
         var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var repository in repositories)
+        void AddFile(AiCodeRepository repository, string file)
         {
-            foreach (var file in EnumerateProjectDocumentFiles(repository.RootPath))
+            if (!seenFiles.Add(file)) return;
+            var path = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(repository.RootPath)), file).Replace('\\', '/');
+            if (!string.IsNullOrWhiteSpace(term)
+                && !path.Contains(term, StringComparison.OrdinalIgnoreCase)
+                && !Path.GetFileName(path).Contains(term, StringComparison.OrdinalIgnoreCase)) return;
+            documents.Add(new CodeProjectMarkdownDocumentDto
             {
-                if (!seenFiles.Add(file)) continue;
-                var path = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(repository.RootPath)), file).Replace('\\', '/');
-                if (!string.IsNullOrWhiteSpace(term)
-                    && !path.Contains(term, StringComparison.OrdinalIgnoreCase)
-                    && !Path.GetFileName(path).Contains(term, StringComparison.OrdinalIgnoreCase)) continue;
-                documents.Add(new CodeProjectMarkdownDocumentDto
+                RepositoryName = repository.Name,
+                Path = path,
+                Name = Path.GetFileName(path),
+                Source = "repository",
+                UpdatedAt = new FileInfo(file).LastWriteTimeUtc,
+                Extension = Path.GetExtension(file).ToLowerInvariant(),
+                PreviewKind = GetProjectDocumentPreviewKind(file),
+                HasOriginal = true
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(referencePath))
+        {
+            var separator = referencePath.IndexOf('/');
+            var named = separator < 0 ? null : repositories.FirstOrDefault(repo =>
+                repo.Name.Equals(referencePath[..separator], StringComparison.OrdinalIgnoreCase));
+            var relative = named is null ? referencePath : referencePath[(separator + 1)..];
+            if (IsSafeDocumentReference(relative))
+            {
+                foreach (var repository in repositories)
                 {
-                    RepositoryName = repository.Name,
-                    Path = path,
-                    Name = Path.GetFileName(path),
-                    Source = "repository",
-                    UpdatedAt = new FileInfo(file).LastWriteTimeUtc,
-                    Extension = Path.GetExtension(file).ToLowerInvariant(),
-                    PreviewKind = GetProjectDocumentPreviewKind(file),
-                    HasOriginal = true
-                });
+                    if (named is not null && named != repository) continue;
+                    var file = ResolveDocumentFile(project.RootPath, repository.RootPath, relative);
+                    if (file is not null) AddFile(repository, file);
+                }
+            }
+        }
+
+        if (documents.Count == 0)
+        {
+            foreach (var repository in repositories)
+            {
+                foreach (var file in EnumerateProjectDocumentFiles(repository.RootPath))
+                {
+                    AddFile(repository, file);
+                    if (documents.Count >= MaxMarkdownDocumentCount) break;
+                }
                 if (documents.Count >= MaxMarkdownDocumentCount) break;
             }
-            if (documents.Count >= MaxMarkdownDocumentCount) break;
         }
         var uploaded = _db.Queryable<AiProjectMarkdownDocument>()
             .Where(item => item.ProjectId == projectId)
@@ -998,21 +1023,9 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
             ? projectRoot
             : (_db.Queryable<AiCodeRepository>().Where(item => item.ProjectId == projectId && item.Name == NormalizeName(repositoryName, string.Empty) && !item.IsDeleted).First()
                 ?? throw new FileNotFoundException("The referenced project document is unavailable.")).RootPath;
-        var root = GetResolvedPath(new DirectoryInfo(rootPath));
-        if (!IsPathWithin(GetResolvedPath(new DirectoryInfo(projectRoot)), root)) throw new InvalidOperationException("The referenced project document is unavailable.");
         var normalizedPath = NormalizeProjectDocumentPath(path);
-        if (Path.GetExtension(normalizedPath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            var current = root;
-            foreach (var segment in normalizedPath.Split('/'))
-            {
-                current = Path.Combine(current, segment);
-                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidOperationException("Package links are not allowed.");
-            }
-        }
-        var candidate = GetResolvedPath(new FileInfo(Path.GetFullPath(Path.Combine(root, normalizedPath.Replace('/', Path.DirectorySeparatorChar)))));
-        if (!File.Exists(candidate) || !IsPathWithin(root, candidate) || !IsProjectDocumentFile(candidate)) throw new FileNotFoundException("The referenced project document is unavailable.");
+        var candidate = ResolveDocumentFile(projectRoot, rootPath, normalizedPath)
+            ?? throw new FileNotFoundException("The referenced project document is unavailable.");
         return (candidate, Path.GetFileName(candidate), GetProjectDocumentContentType(candidate));
     }
 
@@ -1524,6 +1537,26 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         _ => "application/octet-stream"
     };
+
+    private static bool IsSafeDocumentReference(string path)
+        => IsProjectDocumentFile(path) && !Path.IsPathRooted(path)
+            && path.Split('/').All(part => part.Length > 0 && part is not ("." or "..")
+                && !ExcludedMarkdownDirectories.Contains(part) && part.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+                && !part.Contains(':') && !part.Contains('\\'));
+
+    private static string? ResolveDocumentFile(string projectPath, string repositoryPath, string relative)
+    {
+        if (!IsSafeDocumentReference(relative) || !IsPathWithin(projectPath, repositoryPath)) return null;
+        var candidate = Path.GetFullPath(Path.Combine(repositoryPath, relative));
+        if (!File.Exists(candidate)) return null;
+        var current = projectPath;
+        foreach (var part in Path.GetRelativePath(projectPath, candidate).Split(Path.DirectorySeparatorChar))
+        {
+            current = Path.Combine(current, part);
+            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) return null;
+        }
+        return candidate;
+    }
 
     private static string NormalizeProjectDocumentPath(string path)
     {

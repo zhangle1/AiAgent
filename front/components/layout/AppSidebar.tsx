@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Archive, Check, CheckSquare, ChevronDown, Code2, Edit3, Ellipsis, FolderGit2, GitBranch, LayoutDashboard, Library, ListTodo, LogOut, MessageSquare, Palette, PanelLeftClose, Pin, PinOff, Plus, Search, Settings, Wrench, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -11,6 +11,7 @@ import type { AuthStatus } from "@/lib/auth-api";
 import { getCodeProjects } from "@/lib/code-repository-api";
 import type { CodeProject } from "@/lib/code-repository-types";
 import { archiveSession, getChatSidebarPreference, listProjectSessionPreferences, listSessions, renameSession, updateChatSidebarPreference, updateProjectSessionPreference, updateSessionMetadata, type ChatSidebarPreference, type ProjectListSortMode, type ProjectSessionPreference, type ProjectSessionSortMode, type SessionSummary } from "@/lib/session-api";
+import { SidebarSessionLink } from "./SidebarSessionLink";
 import { CodexQuotaButton } from "@/components/layout/CodexQuotaButton";
 import { EnterpriseIssuePicker } from "@/components/tasks/EnterpriseIssuePicker";
 import { createProjectTaskChatHandoff } from "@/lib/project-task-api";
@@ -48,7 +49,7 @@ function newChatPath(projectId?: number) {
   return `/chat?${params.toString()}`;
 }
 
-export function AppSidebar({ compact = false, authStatus }: { compact?: boolean; authStatus: AuthStatus | null }) {
+export function AppSidebar({ compact = false, authStatus, resizeHandle }: { compact?: boolean; authStatus: AuthStatus | null; resizeHandle?: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -256,7 +257,7 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
 
   return <>
     {mobileOpen && <button type="button" aria-label="关闭工作台抽屉" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-slate-950/35 lg:hidden" />}
-    <aside onClickCapture={(event) => { if ((event.target as HTMLElement).closest("a")) setMobileOpen(false); }} className={`fixed inset-y-0 left-0 z-50 flex w-[min(90vw,296px)] -translate-x-full border-r border-slate-200 bg-[#fbfcff] transition-[transform,width] duration-200 ${mobileOpen ? "translate-x-0" : ""} lg:z-30 lg:translate-x-0 ${compact ? "lg:w-14" : "lg:w-[296px]"}`}>
+    <aside onClickCapture={(event) => { if ((event.target as HTMLElement).closest("a")) setMobileOpen(false); }} className={`fixed inset-y-0 left-0 z-50 flex w-[min(90vw,296px)] -translate-x-full border-r border-slate-200 bg-[#fbfcff] transition-transform duration-200 motion-reduce:transition-none ${mobileOpen ? "translate-x-0" : ""} lg:z-30 lg:translate-x-0 ${compact ? "lg:w-14" : "lg:w-[var(--workspace-sidebar-width)]"}`}>
       <div className="flex min-h-0 w-14 shrink-0 flex-col items-center border-r border-slate-200/80 bg-slate-100/70 px-2 py-3">
         <button type="button" onClick={() => window.dispatchEvent(new Event("aiagent:sidebar-toggle"))} className="mb-3 hidden h-10 w-10 place-items-center rounded-xl transition hover:bg-white lg:grid" aria-label={compact ? "展开侧边栏" : "收起侧边栏"} title={compact ? "展开侧边栏" : "收起侧边栏"}><img src="/kunbuddy-mark.png" alt="" className="h-7 w-7 object-contain"/></button>
         <button type="button" onClick={() => setMobileOpen(false)} className="mb-3 grid h-10 w-10 place-items-center rounded-xl text-slate-500 hover:bg-white lg:hidden" aria-label="关闭工作台抽屉"><X size={18}/></button>
@@ -274,7 +275,7 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
           <button type="button" onClick={() => void logout().finally(() => window.location.assign("/login"))} className="grid h-9 w-full place-items-center rounded-xl text-slate-500 transition hover:bg-red-50 hover:text-red-600" title="退出登录" aria-label="退出登录"><LogOut size={16}/></button>
         </div>
       </div>
-      <div className={`min-h-0 min-w-0 flex-1 flex-col ${compact ? "flex lg:hidden" : "flex"}`}>
+      <div id="workspace-sidebar-panel" className={`min-h-0 min-w-0 flex-1 flex-col ${compact ? "flex lg:hidden" : "flex"}`}>
         <header className="flex h-14 shrink-0 items-center gap-2 px-3">
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{panelTitle}</h2>
           <button type="button" onClick={() => setSearchOpen(true)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" title="搜索项目和会话（Ctrl / ⌘ + K）" aria-label="搜索项目和会话"><Search size={16}/></button>
@@ -313,6 +314,7 @@ export function AppSidebar({ compact = false, authStatus }: { compact?: boolean;
     {projectListMenu && <ProjectListMenu position={projectListMenu} menuRef={projectListMenuRef} sortMode={sidebarPreference.project_sort_mode} archivedProjects={archivedProjects} onClose={() => { projectListMenuAnchorRef.current = null; setProjectListMenu(null); }} onSortMode={(sortMode) => void updateProjectListSortMode(sortMode)} onRestore={(project) => void updateProjectPreference(project, { is_archived: false })}/>}
     {sessionMenu && <SessionMenu position={sessionMenu} menuRef={sessionMenuRef} onClose={() => { sessionMenuAnchorRef.current = null; setSessionMenu(null); }} onTogglePin={() => void toggleSessionPin(sessionMenu.session)} onRename={() => { setRenameTarget(sessionMenu.session); setSessionMenu(null); }} onArchive={() => { void archiveSessionItem(sessionMenu.session); setSessionMenu(null); }} />}
     {renameTarget && <RenameSessionDialog session={renameTarget} onClose={() => setRenameTarget(null)} onSave={async (title) => { await renameSession(renameTarget.id, title); setSessions((items) => items.map((item) => item.id === renameTarget.id ? { ...item, title } : item)); setRenameTarget(null); }} />}
+      {resizeHandle}
     </aside>
   </>;
 }
@@ -358,7 +360,7 @@ function SidebarLink({ item, active, compact }: { item: NavItem; active: boolean
 }
 
 function PinnedProjectList({ groups, activeSessionId, sessionActivity, onUnpin }: { groups: SessionGroup[]; activeSessionId: string | null; sessionActivity: Record<string, ChatStreamStatus | "unread">; onUnpin: (group: SessionGroup) => void }) {
-  return <section><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.12em] text-amber-600">置顶项目</p><div className="space-y-1 rounded-xl border border-amber-100 bg-amber-50/50 p-1.5">{groups.map((group) => <div key={group.key}><div className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-semibold text-slate-700"><Pin size={12} className="text-amber-600"/><span className="min-w-0 flex-1 truncate">{group.label}</span><button type="button" onClick={() => onUnpin(group)} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-amber-600 transition hover:bg-amber-100" aria-label={`取消置顶项目：${group.label}`} title="取消置顶项目"><PinOff size={13}/></button></div>{group.sessions.map((session) => <Link key={session.id} href={`/chat?session=${encodeURIComponent(session.id)}`} className={`ml-3 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs ${activeSessionId === session.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white/80"}`}><MessageSquare size={11}/><span className="truncate">{session.title}</span><SessionActivityIndicator status={sessionActivity[session.id]} hidden={activeSessionId === session.id && sessionActivity[session.id] !== "streaming"}/></Link>)}</div>)}</div></section>;
+  return <section><p className="px-2 pb-1 text-[10px] font-semibold tracking-[.12em] text-amber-600">置顶项目</p><div className="space-y-1 rounded-xl border border-amber-100 bg-amber-50/50 p-1.5">{groups.map((group) => <div key={group.key}><div className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-semibold text-slate-700"><Pin size={12} className="text-amber-600"/><span className="min-w-0 flex-1 truncate">{group.label}</span><button type="button" onClick={() => onUnpin(group)} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-amber-600 transition hover:bg-amber-100" aria-label={`取消置顶项目：${group.label}`} title="取消置顶项目"><PinOff size={13}/></button></div>{group.sessions.map((session) => <SidebarSessionLink key={session.id} session={session} projectName={group.label} active={activeSessionId === session.id} className={`ml-3 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs ${activeSessionId === session.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white/80"}`}><MessageSquare size={11}/><span className="truncate">{session.title}</span><SessionActivityIndicator status={sessionActivity[session.id]} hidden={activeSessionId === session.id && sessionActivity[session.id] !== "streaming"}/></SidebarSessionLink>)}</div>)}</div></section>;
 }
 
 function SessionGroupList({ group, isCollapsed, activeSessionId, sessionActivity, projectMenuOpen, sessionMenuId, onToggleCollapsed, onNewSession, onOpenProjectMenu, onOpenSessionMenu }: { group: SessionGroup; isCollapsed: boolean; activeSessionId: string | null; sessionActivity: Record<string, ChatStreamStatus | "unread">; projectMenuOpen: boolean; sessionMenuId: string | null; onToggleCollapsed: () => void; onNewSession: (project: CodeProject) => void; onOpenProjectMenu: (anchor: HTMLElement) => void; onOpenSessionMenu: (session: SessionSummary, anchor: HTMLElement) => void }) {
@@ -369,7 +371,7 @@ function SessionGroupList({ group, isCollapsed, activeSessionId, sessionActivity
       {group.project && <button type="button" onClick={() => onNewSession(group.project!)} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600" aria-label={`以项目“${group.label}”新建会话`} title="以当前项目新建会话"><Plus size={14}/></button>}
       {group.project && <button type="button" onClick={(event) => onOpenProjectMenu(event.currentTarget)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md transition ${projectMenuOpen ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"}`} aria-label="项目菜单" aria-expanded={projectMenuOpen}><Ellipsis size={14}/></button>}
     </div>
-    {!isCollapsed && <div className="ml-2">{group.sessions.map((session) => <div key={session.id} className={`group flex items-center gap-0.5 rounded-lg py-0.5 ${activeSessionId === session.id ? "bg-blue-50" : "hover:bg-slate-100"}`}><Link href={`/chat?session=${encodeURIComponent(session.id)}`} className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${activeSessionId === session.id ? "text-blue-700" : "text-slate-600"}`}><MessageSquare size={12} className="shrink-0"/><span className="truncate">{session.title}</span><SessionActivityIndicator status={sessionActivity[session.id]} hidden={activeSessionId === session.id && sessionActivity[session.id] !== "streaming"}/></Link><button type="button" onClick={(event) => onOpenSessionMenu(session, event.currentTarget)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md transition ${sessionMenuId === session.id ? "bg-white text-slate-700 shadow-sm" : "text-slate-300 hover:bg-white hover:text-slate-600"}`} aria-label={`会话菜单：${session.title}`} aria-expanded={sessionMenuId === session.id}><Ellipsis size={14}/></button></div>)}</div>}
+    {!isCollapsed && <div className="ml-2">{group.sessions.map((session) => <div key={session.id} className={`group flex items-center gap-0.5 rounded-lg py-0.5 ${activeSessionId === session.id ? "bg-blue-50" : "hover:bg-slate-100"}`}><SidebarSessionLink session={session} projectName={group.label} active={activeSessionId === session.id} className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${activeSessionId === session.id ? "text-blue-700" : "text-slate-600"}`}><MessageSquare size={12} className="shrink-0"/><span className="truncate">{session.title}</span><SessionActivityIndicator status={sessionActivity[session.id]} hidden={activeSessionId === session.id && sessionActivity[session.id] !== "streaming"}/></SidebarSessionLink><button type="button" onClick={(event) => onOpenSessionMenu(session, event.currentTarget)} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md transition ${sessionMenuId === session.id ? "bg-white text-slate-700 shadow-sm" : "text-slate-300 hover:bg-white hover:text-slate-600"}`} aria-label={`会话菜单：${session.title}`} aria-expanded={sessionMenuId === session.id}><Ellipsis size={14}/></button></div>)}</div>}
   </div>;
 }
 

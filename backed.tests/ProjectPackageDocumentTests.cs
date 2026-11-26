@@ -43,6 +43,24 @@ public sealed class ProjectPackageDocumentTests
             Assert.Null(manager.ResolveProjectFileReference(1, Path.Combine(Path.GetTempPath(), "outside.zip")));
             db.Insertable(new AiAgent.Backend.Entities.CodeRepository.AiCodeRepository { ProjectId = 1, Name = "repo", RootPath = root }).ExecuteCommand();
             Assert.Equal("repo", Assert.Single(manager.ListProjectMarkdownDocuments(1, null)).RepositoryName);
+
+            var checkout = Directory.CreateDirectory(Path.Combine(root, "repo")).FullName;
+            db.Updateable<AiAgent.Backend.Entities.CodeRepository.AiCodeRepository>()
+                .SetColumns(repo => repo.RootPath == checkout).Where(repo => repo.ProjectId == 1).ExecuteCommand();
+            for (var index = 0; index < 601; index++)
+                File.WriteAllText(Path.Combine(checkout, $"{index}.md"), "");
+            foreach (var extension in new[] { "doc", "docx", "ppt", "pptx", "xls", "xlsx" })
+            {
+                var name = $"人天方案.{extension}";
+                byte[] bytes = [0x50, 0x4B, 0x03, 0x04, 0xff];
+                File.WriteAllBytes(Path.Combine(root, name), bytes);
+                Assert.DoesNotContain(manager.ListProjectMarkdownDocuments(1, null), doc => doc.Name == name);
+                var document = Assert.Single(manager.ListProjectMarkdownDocuments(1, null, name));
+                Assert.Equal("__project_root__", document.RepositoryName);
+                var download = manager.GetProjectDocumentFile(1, document.RepositoryName, document.Path);
+                Assert.Equal(name, download.FileName);
+                Assert.Equal(bytes, File.ReadAllBytes(download.FilePath));
+            }
         }
         finally { Directory.Delete(root, recursive: true); }
     }
