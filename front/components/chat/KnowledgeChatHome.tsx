@@ -242,7 +242,12 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
     if (index >= 0) next[index] = { ...next[index], ...candidate };
     else {
       const alreadyPersisted = stream.status === "done" && candidate.content.trim().length > 0 && next.some((item) => item.role === "assistant" && item.status === "done" && item.content.trim() === candidate.content.trim());
-      if (!alreadyPersisted) next.push(candidate);
+      if (alreadyPersisted) continue;
+      const laterQuestion = stream.status === "error"
+        ? next.findIndex(item => item.role === "user" && item.timestamp !== undefined && item.timestamp > stream.observedAt)
+        : -1;
+      if (laterQuestion >= 0) next.splice(laterQuestion, 0, candidate);
+      else next.push(candidate);
     }
   }
   return next;
@@ -345,7 +350,7 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const wasSendingRef = useRef(false);
   const attachmentPreviewUrlsRef = useRef(new Set<string>());
-  const { streams, startStream, observeDelivery, cancelStream, retryStream, cancelRetry, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
+  const { streams, startStream, observeDelivery, cancelStream, retryStream, dismissFailedStream, markSessionViewed, clearFinishedStreams, activateCodexRuntime } = useChatStreams();
 
   useEffect(() => {
     if (embedded && embeddedProjectId !== undefined) setSelectedProjectId(embeddedProjectId ?? null);
@@ -447,7 +452,6 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   useEffect(() => setDeliveryIntent("queue"), [activeSessionId]);
   const canFollowUp = !embedded && !goalRequest && !sessionStreams.some(stream => stream.status === "streaming" && stream.goalMode);
   const latestSessionStream = sessionStreams.reduce<ChatStreamRecord | undefined>((latest, stream) => !latest || stream.startedAt >= latest.startedAt ? stream : latest, undefined);
-  const failedStream = !sending && latestSessionStream?.status === "error" ? latestSessionStream : undefined;
   const prototypeReferenceOptions = useMemo(
     () => embeddedPrototypeFiles.filter((file) => file.name.toLocaleLowerCase().includes((slashProjectCommand?.query ?? "").toLocaleLowerCase())),
     [embeddedPrototypeFiles, slashProjectCommand?.query],
@@ -1448,15 +1452,22 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                 if (activeSessionIdRef.current) scrollPositionsRef.current.set(activeSessionIdRef.current, container.scrollTop);
                 shouldStickToBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 96;
               }} className="workspace-scroll min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto pb-6 pl-10 pt-4">
-                {displayMessages.map((message, index) => (
+                {displayMessages.map((message, index) => {
+                  const failed = message.status === "error" && message.id.startsWith("stream:") ? streams[message.id.slice("stream:".length)] : undefined;
+                  const dismissFailure = () => {
+                    if (failed && !dismissFailedStream(failed.id)) return;
+                    if (!failed) setError(null);
+                    setMessages(items => items.filter(item => item.id !== message.id));
+                  };
+                  return (
                   <div key={message.id} data-chat-question={message.role === "user" ? message.id : undefined}>
                   <MessageBubble
                     message={message}
+                    onDismissFailure={message.status === "error" ? dismissFailure : undefined}
                     onPreviewImage={setPreviewingImage}
                     onRetry={
                       message.role === "assistant"
                         ? () => {
-                            const failed = sessionStreams.find((stream) => `stream:${stream.id}` === message.id && stream.status === "error");
                             if (failed) {
                               retryStream(failed.id);
                               return;
@@ -1483,8 +1494,10 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
                     onOpenPrototype={(output) => { setRequestedPrototypeDocument(null); setRequestedPrototypeOutput(output); openInspector("prototype"); }}
                     onOpenDiagnostics={openDiagnostics}
                   />
+                  {failed && <ChatRetryNotice stream={failed} onRetry={() => retryStream(failed.id)} onCancel={dismissFailure} />}
                   </div>
-                ))}
+                  );
+                })}
                 {sending && (
                   <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
                     <Loader2 size={14} className="animate-spin" />
@@ -1495,8 +1508,6 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
               <ChatMessageNavigation key={activeSessionId ?? "new"} messages={displayMessages} scrollRef={messagesScrollRef} />
               </div>
             )}
-
-            {failedStream && <ChatRetryNotice stream={failedStream} onRetry={() => retryStream(failedStream.id)} onCancel={() => cancelRetry(failedStream.id)} />}
 
             {!embedded && activeSessionId && (
               <ChatDeliveryQueue key={activeSessionId} sessionId={activeSessionId} sending={sending} onRunning={observeDelivery}
@@ -2754,7 +2765,7 @@ function copyPlainText(value: string) {
   return navigator.clipboard?.writeText(plainText);
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCodeFile, onOpenProjectMarkdownDocument, onOpenKnowledgeChapter, scopedKnowledgeChapters, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics, onOpenPrototype }: { onOpenPrototype: (output: ChatPrototypeOutput) => void; message: ChatMessage; onRetry?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onOpenKnowledgeChapter: (chapter: KnowledgeChapterReference) => void; scopedKnowledgeChapters?: ReadonlyMap<string, KnowledgeChapterReference | null>; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
+const MessageBubble = memo(function MessageBubble({ message, onRetry, onDismissFailure, onOpenCodeFile, onOpenProjectMarkdownDocument, onOpenKnowledgeChapter, scopedKnowledgeChapters, onPreviewImage, projectId, showDebugTrace, onOpenDiagnostics, onOpenPrototype }: { onOpenPrototype: (output: ChatPrototypeOutput) => void; message: ChatMessage; onRetry?: () => void; onDismissFailure?: () => void; onOpenCodeFile: (reference: ChatCodeFileReference) => void; onOpenProjectMarkdownDocument: (fileName: string) => void; onOpenKnowledgeChapter: (chapter: KnowledgeChapterReference) => void; scopedKnowledgeChapters?: ReadonlyMap<string, KnowledgeChapterReference | null>; onPreviewImage: (attachment: ChatImagePreview) => void; projectId: number | null; showDebugTrace: boolean; onOpenDiagnostics: () => void }) {
   const { t } = useI18n();
   const isUser = message.role === "user";
   const prototypeOutputs = useMemo(() => !isUser && (!message.status || message.status === "done") ? chatPrototypeOutputs([message]) : [], [isUser, message.content, message.status, message.id]);
@@ -2764,8 +2775,6 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
   const selectionRangeRef = useRef<Range | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<{ text: string; top: number; left: number } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [dismissedError, setDismissedError] = useState<string | null>(null);
-  const errorAttempt = `${message.id}:${message.startedAt}:${message.observedAt}`;
   const timestamp = message.status !== "streaming" && message.timestamp !== undefined && Number.isFinite(message.timestamp) ? new Date(message.timestamp) : null;
   const runState = !isUser ? chatRunState(message) : null;
   const quietSeconds = message.streamHealth === "quiet" && message.lastEventAt && message.observedAt
@@ -2821,7 +2830,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onOpenCode
       <div className={`${isUser ? "max-w-[82%] rounded-2xl bg-blue-600 px-4 py-3 text-[13px] leading-6 text-white" : "w-full max-w-[860px] text-zinc-900"}`}>
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
-            {runState && !(message.status === "error" && dismissedError === errorAttempt) && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{runState.label}{message.status === "error" && <button type="button" onClick={() => setDismissedError(errorAttempt)} className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-rose-100 focus-visible:outline focus-visible:outline-2" aria-label="关闭失败标签" title="隐藏失败标签，保留诊断记录"><X size={12} aria-hidden="true" /></button>}</span>}
+            {runState && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{onDismissFailure && <button type="button" onClick={onDismissFailure} className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-rose-100 focus-visible:outline focus-visible:outline-2" aria-label="移除失败回复" title="移除失败回复并取消自动查询"><X size={12} aria-hidden="true" /></button>}</span>}
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}
             {message.totalTokens ? <span>- {formatCompactNumber(message.totalTokens)} tokens</span> : null}

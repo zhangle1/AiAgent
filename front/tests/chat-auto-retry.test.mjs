@@ -164,15 +164,17 @@ test("immediate retry consumes the pending timer and double clicks send once", a
   assert.equal(h.calls.length, 2);
 });
 
-test("cancelled automatic retry remains manually retryable", async (t) => {
+test("dismissing a failed turn removes the attempt and its refresh recovery pointer", async (t) => {
   const h = mount(t);
   const id = h.context.startStream({ session_id: "session", message: "hello" });
   await h.fail();
-  h.context.cancelRetry(id);
+  h.context.dismissFailedStream(id);
+  assert.equal(h.records()[id], undefined);
+  assert.deepEqual(h.removedPointers, [id]);
   await h.advance(21000);
   assert.equal(h.calls.length, 1);
   h.context.retryStream(id);
-  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls.length, 1);
 });
 
 test("user stop does not schedule automatic retry", async (t) => {
@@ -247,7 +249,7 @@ test("explicit retry after server failure creates a new command and preserves th
   h.calls[1].emit({ type: "completed", content: "done" });
   h.calls[1].resolve();
   await h.settle();
-  assert.deepEqual(h.removedPointers, [h.calls[1].request.command_id]);
+  assert.deepEqual(h.removedPointers, [id, h.calls[1].request.command_id]);
 });
 
 test("declining reexecution never submits a new operation", async (t) => {
