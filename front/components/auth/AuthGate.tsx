@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
 import { getAuthStatus, type AuthStatus } from "@/lib/auth-api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+
+const DEFAULT_SIDEBAR_WIDTH = 296;
+const MIN_SIDEBAR_WIDTH = 240;
+const MAX_SIDEBAR_WIDTH = 520;
+const SIDEBAR_WIDTH_KEY = "aiagent:workspace-sidebar-width";
+
+function clampSidebarWidth(width: number) {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(width)));
+}
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -16,6 +25,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(isAuthPage || isPublicPrototypePage);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [sidebarCompact, setSidebarCompact] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
   useEffect(() => {
     if (isAuthPage || isPublicPrototypePage) { setReady(true); return; }
@@ -32,11 +42,70 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("aiagent:sidebar-toggle", toggleSidebar);
   }, []);
 
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+      if (Number.isFinite(saved) && saved > 0) setSidebarWidth(clampSidebarWidth(saved));
+    } catch {
+      // Resizing still works when browser storage is unavailable.
+    }
+  }, []);
+
   if (isAuthPage || isPublicPrototypePage) return <>{children}</>;
   if (!ready) return <main className="flex min-h-screen items-center justify-center text-sm text-zinc-500">正在验证登录状态…</main>;
   if (isDashboardWorkspace || pathname === "/runtime-test") return <>{children}</>;
   const contentHeight = pathname === "/chat" ? "chat-viewport" : "min-h-screen";
-  return <><AppSidebar compact={sidebarCompact} authStatus={authStatus} />{pathname !== "/chat" && <MobileWorkspaceLauncher />}<div className={`${contentHeight} pl-0 transition-[padding] duration-200 ${sidebarCompact ? "lg:pl-14" : "lg:pl-[296px]"}`}>{children}</div></>;
+  const layoutStyle = { "--workspace-sidebar-width": `${sidebarWidth}px` } as CSSProperties;
+  return <div className="contents" style={layoutStyle}>
+    <AppSidebar compact={sidebarCompact} authStatus={authStatus}
+      resizeHandle={!sidebarCompact && <SidebarResizeHandle width={sidebarWidth} onResize={setSidebarWidth} />} />
+    {pathname !== "/chat" && <MobileWorkspaceLauncher />}
+    <div className={`${contentHeight} pl-0 ${sidebarCompact ? "lg:pl-14" : "lg:pl-[var(--workspace-sidebar-width)]"}`}>{children}</div>
+  </div>;
+}
+
+function SidebarResizeHandle({ width, onResize }: { width: number; onResize: (width: number) => void }) {
+  const drag = useRef<{ pointerId: number; startX: number; startWidth: number; width: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  function save(next: number) {
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next)); } catch { /* Browser storage is optional. */ }
+  }
+
+  return <div role="separator" aria-orientation="vertical" aria-label="调整侧边栏宽度" aria-controls="workspace-sidebar-panel"
+    aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={MAX_SIDEBAR_WIDTH} aria-valuenow={width} tabIndex={0}
+    className={`absolute inset-y-0 -right-1 z-10 hidden w-2 touch-none cursor-col-resize select-none outline-none focus-visible:bg-blue-300/50 hover:bg-blue-300/40 lg:block ${dragging ? "bg-blue-300/50" : ""}`}
+    onPointerDown={(event) => {
+      if (event.button !== 0 || drag.current) return;
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      drag.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: width, width };
+      setDragging(true);
+    }}
+    onPointerMove={(event) => {
+      const current = drag.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      current.width = clampSidebarWidth(current.startWidth + event.clientX - current.startX);
+      onResize(current.width);
+    }}
+    onLostPointerCapture={(event) => {
+      const current = drag.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      drag.current = null;
+      setDragging(false);
+      save(current.width);
+    }}
+    onKeyDown={(event) => {
+      const step = event.shiftKey ? 48 : 16;
+      const widths: Partial<Record<string, number>> = { ArrowLeft: width - step, ArrowRight: width + step, Home: MIN_SIDEBAR_WIDTH, End: MAX_SIDEBAR_WIDTH };
+      const target = widths[event.key];
+      if (target === undefined) return;
+      event.preventDefault();
+      const next = clampSidebarWidth(target);
+      onResize(next);
+      save(next);
+    }}
+  />;
 }
 
 function MobileWorkspaceLauncher() {

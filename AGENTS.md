@@ -162,7 +162,7 @@ front (Next.js) → /api rewrite → backed (.NET 9 API)
 - 聊天可视化第一版是发送前的显式文本组合，位于 `front/lib/chat-visualization.ts` 与独立工具栏；只在普通聊天提交时应用，重试直接使用已保存消息，不重复包装或改变 `ChatStreamProvider` 协议。嵌入式编辑器不启用。Mermaid 使用现有 strict 渲染，Markdown 的 pre 组件身份须稳定。此模式的只读描述是模型提示，不是额外权限隔离。
 - 图形及 Git 来源在独立弹窗确认后生效；切换项目或会话清空提交选择。Git 历史接口先验证项目访问权及仓库归属，仅分页读取本地 HEAD（每页 50 条），不 fetch、不切换分支；最多 20 条提交元数据作为不可信来源文本随消息保存，不表示已审阅代码差异。
 
-- AppSidebar 使用 56px 图标栏与独立模块内容面板，展开总宽 296px；AuthGate 的桌面内容缩进须同步。收起仅隐藏桌面内容面板，移动端抽屉保留完整内容；保留全局 Ctrl / ⌘ + K、sidebar-toggle 与 mobile-drawer 事件及项目/会话操作。
+- AppSidebar 使用 56px 图标栏与独立模块内容面板。桌面展开默认 296px，可拖动右边缘或用键盘调整至 240–520px，偏好保存在当前浏览器。AuthGate 与侧栏通过同一 CSS 变量同步宽度和内容缩进。收起仅隐藏桌面内容面板，移动端抽屉保留完整内容；保留全局 Ctrl / ⌘ + K、sidebar-toggle 与 mobile-drawer 事件及项目/会话操作。桌面置顶与常规会话行共用标题浮窗，通过 Portal 显示完整标题、所属项目和更新时间。
 
 - 聊天失败的 20 秒自动重试由 `ChatStreamProvider` 管理，复用同一 stream ID 和原始请求快照；底部 `ChatRetryNotice` 仅显示倒计时及立即重试／取消入口。重试必须先结束旧请求，取消倒计时与手动重试须互斥，停止与成功不能安排重试；错误事件不能广播成功完成事件。
 - 原型 PSD 导出逻辑位于 `front/lib/prototype-psd.ts`。导出 iframe 禁止脚本，仅允许同源 DOM 读取，不得同时开启 `allow-scripts`；PSD 缓存必须随 HTML 变化失效。图层为区域像素图层，不得标为原生可编辑文字。
