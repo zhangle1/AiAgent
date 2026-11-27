@@ -3,6 +3,54 @@ import test from "node:test";
 import fs from "node:fs";
 import ts from "typescript";
 
+test("shows first text immediately and flushes the whole burst when Codex finishes", async t => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "s", message: "run", agent: "codex", delivery_intent: "queue" });
+  const { emit, resolve } = h.calls[0];
+  assert.equal(h.records()[id].health, "connecting");
+  emit({ type: "content", content: "首" });
+  assert.equal(h.records()[id].events[0].content, "首");
+  for (let i = 0; i < 512; i++) emit({ type: "content", content: String(i) });
+  emit({ type: "done", content: "最终正文" });
+  assert.equal(h.records()[id].events.length, 514);
+  assert.equal(h.records()[id].status, "streaming");
+  emit({ type: "completed" });
+  resolve();
+  await h.settle();
+  assert.equal(h.records()[id].terminalReason, "completed");
+});
+
+test("a committed receipt is immediately visible and transport recovery reuses the command", async t => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "s", message: "run", delivery_intent: "queue" });
+  h.calls[0].emit({ type: "delivery_accepted", metadata: { command_id: id, position: 1 } });
+  assert.equal(h.records()[id].lastEventType, "delivery_accepted");
+  assert.equal(h.records()[id].status, "streaming");
+  h.calls[0].reject(new Error("connection lost"));
+  await h.settle();
+  await h.advance(61);
+  h.context.retryStream(id);
+  assert.equal(h.calls[1].request.command_id, id);
+  assert.equal(h.calls[1].request.recover_only, true);
+  assert.equal(h.calls[1].request.message, "");
+  h.calls[1].emit({ type: "completed" }); h.calls[1].resolve(); await h.settle();
+});
+
+test("Debug records browser milestones once and keeps completed last", async t => {
+  const h = mount(t);
+  const id = h.context.startStream({ session_id: "s", message: "run", debug_trace: true, trace_id: "fixture" });
+  const { emit, resolve } = h.calls[0];
+  emit({ type: "delivery_accepted" });
+  emit({ type: "content", content: "" });
+  emit({ type: "done", content: "最终正文" });
+  emit({ type: "completed" });
+  resolve(); await h.settle();
+  const record = h.records()[id];
+  assert.deepEqual(record.events.filter(item => item.debug_trace).map(item => item.debug_trace.stage),
+    ["browser_submit", "browser_delivery_accepted", "browser_first_content", "browser_done", "browser_completed"]);
+  assert.equal(record.lastEventType, "completed");
+});
+
 test("queued and steered input do not complete the active task or schedule retries", async (t) => {
   const h = mount(t);
   h.context.startStream({ session_id: "session", message: "A", delivery_intent: "queue" });

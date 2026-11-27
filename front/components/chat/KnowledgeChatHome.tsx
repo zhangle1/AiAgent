@@ -188,7 +188,8 @@ function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key:
   if (event.type === "sources" || event.type === "done")
     return {
       ...message,
-      content: message.content || event.content || "",
+      content: event.type === "done" && event.content && (event.metadata?.agent === "codex" || message.agent === "codex")
+        ? event.content : message.content || event.content || "",
       citations: event.citations ?? message.citations,
       model: event.model ?? message.model,
       modificationStatus: stringifyMeta(event.metadata?.modification_status) || message.modificationStatus,
@@ -206,7 +207,9 @@ function applyStreamEvent(message: ChatMessage, event: ChatStreamEvent, t: (key:
   return message;
 }
 
-function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], t: (key: TranslationKey) => string): ChatMessage[] {
+type StreamProjection = { count: number; last: ChatStreamEvent; message: ChatMessage };
+
+function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], t: (key: TranslationKey) => string, projections: WeakMap<ChatStreamEvent, StreamProjection>): ChatMessage[] {
   const hidden = new Set(streams.filter(stream => stream.deliveryState).map(stream => `stream:${stream.id}`));
   const next = items.filter(item => !hidden.has(item.id));
   for (const stream of streams) {
@@ -223,10 +226,16 @@ function mergeStreamMessages(items: ChatMessage[], streams: ChatStreamRecord[], 
       startedAt: stream.startedAt,
       agent: stream.agent,
     };
-    const message = stream.events.reduce((current, event) => applyStreamEvent(current, event, t), initial);
+    const first = stream.events[0];
+    const cached = first && projections.get(first);
+    const prefix = cached && stream.events[cached.count - 1] === cached.last ? cached : undefined;
+    let message = prefix?.message ?? initial;
+    for (let i = prefix?.count ?? 0; i < stream.events.length; i++) message = applyStreamEvent(message, stream.events[i], t);
+    if (first && prefix?.count !== stream.events.length)
+      projections.set(first, { count: stream.events.length, last: stream.events[stream.events.length - 1], message });
     const candidate = {
       ...message,
-      status: stream.status === "streaming" ? message.status : stream.status,
+      status: stream.status,
       lastEventAt: stream.lastEventAt,
       timestamp: stream.status === "streaming" ? undefined : stream.observedAt,
       observedAt: stream.observedAt,
@@ -446,7 +455,8 @@ export function KnowledgeChatHome({ embeddedSessionId, embedded = false, embedde
   const mobileModelLabel = selectedAgentId === "codex" ? `${currentCodexModel?.name ?? "Auto"}${currentCodexModel?.supports_reasoning_effort && selectedCodexReasoningEffort ? ` · ${codexReasoningEffortLabel(selectedCodexReasoningEffort)}` : ""}` : currentModel?.name || currentModel?.model || "Auto";
   const selectedAgentProvider = agentProviders.find((provider) => provider.id === selectedAgentId) ?? null;
   const sessionStreams = useMemo(() => Object.values(streams).filter((stream) => stream.sessionId === activeSessionId), [activeSessionId, streams]);
-  const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t), [messages, sessionStreams, t]);
+  const projections = useMemo(() => new WeakMap<ChatStreamEvent, StreamProjection>(), [t]);
+  const displayMessages = useMemo(() => mergeStreamMessages(messages, sessionStreams, t, projections), [messages, sessionStreams, t, projections]);
   const sending = sessionStreams.some((stream) => stream.status === "streaming" && !stream.deliveryState);
   const [deliveryIntent, setDeliveryIntent] = useState<"queue" | "steer" | "auto">("queue");
   useEffect(() => setDeliveryIntent("queue"), [activeSessionId]);
@@ -2830,7 +2840,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onDismissF
       <div className={`${isUser ? "max-w-[82%] rounded-2xl bg-blue-600 px-4 py-3 text-[13px] leading-6 text-white" : "w-full max-w-[860px] text-zinc-900"}`}>
         {!isUser && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
-            {runState && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{onDismissFailure && <button type="button" onClick={onDismissFailure} className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-rose-100 focus-visible:outline focus-visible:outline-2" aria-label="移除失败回复" title="移除失败回复并取消自动查询"><X size={12} aria-hidden="true" /></button>}</span>}
+            {runState && <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 font-semibold ${runState.tone}`}><span className={`h-1.5 w-1.5 rounded-full ${runState.dot}`} />{runState.label}{onDismissFailure && <button type="button" onClick={onDismissFailure} className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-rose-100 focus-visible:outline focus-visible:outline-2" aria-label="移除失败回复" title="移除失败回复并取消自动查询"><X size={12} aria-hidden="true" /></button>}</span>}
             {message.elapsedSeconds ? <span>- {message.elapsedSeconds}s</span> : null}
             {message.iteration ? <span>- round {message.iteration}</span> : null}
             {message.totalTokens ? <span>- {formatCompactNumber(message.totalTokens)} tokens</span> : null}
@@ -2949,6 +2959,8 @@ const MessageBubble = memo(function MessageBubble({ message, onRetry, onDismissF
 function chatRunState(message: ChatMessage): { label: string; tone: string; dot: string } {
   if (message.status === "streaming") {
     if (message.streamHealth === "quiet") return { label: "执行中 · 等待新事件", tone: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500 animate-pulse" };
+    if (message.lastEventType === "delivery_accepted") return { label: "已接收 · 等待执行", tone: "border-blue-200 bg-blue-50 text-blue-700", dot: "bg-blue-500" };
+    if (message.lastEventType === "delivery_started") return { label: "已开始 · 正在准备上下文", tone: "border-blue-200 bg-blue-50 text-blue-700", dot: "bg-blue-500 animate-pulse" };
     if (message.streamHealth === "connecting") return { label: message.agent === "codex" ? "正在连接 Codex" : "正在连接模型", tone: "border-blue-200 bg-blue-50 text-blue-700", dot: "bg-blue-500 animate-pulse" };
     if (message.lastEventType === "tool_result") return { label: "步骤已完成 · 正在继续处理", tone: "border-violet-200 bg-violet-50 text-violet-700", dot: "bg-violet-500 animate-pulse" };
     return { label: message.agent === "codex" ? "Codex 正在执行" : "模型正在执行", tone: "border-blue-200 bg-blue-50 text-blue-700", dot: "bg-blue-500 animate-pulse" };
@@ -3030,6 +3042,14 @@ function debugStageLabel(stage: string) {
     codex_completed: "Codex 执行完成",
     codex_cancelled: "Codex 执行取消",
     browser_submit: "浏览器提交",
+    browser_delivery_accepted: "浏览器收到回执",
+    browser_first_content: "浏览器收到首段正文",
+    browser_done: "浏览器收到模型最终输出",
+    browser_completed: "浏览器收到保存完成确认",
+    delivery_probe_accepted: "投递已落库",
+    delivery_probe_started: "任务已开始",
+    delivery_probe_first_content: "首段正文已落库",
+    delivery_probe_provider_done: "模型最终输出已落库",
     backend_received: "后端接收",
     auth_session_context: "鉴权与上下文",
     request_started: "请求开始",

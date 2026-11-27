@@ -290,11 +290,14 @@ app.Use(async (context, next) =>
         var auth = context.RequestServices.GetRequiredService<IAuthService>();
         var isDeepSeekPluginRequest = context.Request.Path.StartsWithSegments("/api/v1/deepseek-plugin");
         var isKunBuddyRequest = context.Request.Path.StartsWithSegments("/api/v1/kunbuddy");
-        var user = isKunBuddyRequest
-            ? await auth.TryGetKunBuddyUserAsync(context, context.RequestAborted)
-            : isDeepSeekPluginRequest
-            ? await auth.TryGetPluginUserAsync(context, context.RequestAborted)
-            : await auth.TryGetCurrentUserAsync(context, context.RequestAborted);
+        var request = new WebRequestAuthentication(context, context.RequestAborted);
+        var user = await request.LookupAsync(isKunBuddyRequest ? auth.TryGetKunBuddyUserAsync
+            : isDeepSeekPluginRequest ? auth.TryGetPluginUserAsync : auth.TryGetCurrentUserAsync);
+        if (request.Disconnected)
+        {
+            context.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            return;
+        }
         if (user == null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;

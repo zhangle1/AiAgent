@@ -58,6 +58,7 @@ public interface ICodeRepositoryManager
 
     CodeRepositoryFileReferenceDto? ResolveProjectFileReference(long projectId, string reference);
 
+    List<CodeProjectMarkdownDocumentDto> ListProjectAgentDocuments(long projectId);
     List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query, string? referencePath = null);
 
     CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path);
@@ -545,7 +546,13 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         };
     }
 
-    public List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query, string? referencePath = null)
+    public List<CodeProjectMarkdownDocumentDto> ListProjectAgentDocuments(long projectId) =>
+        ListProjectDocuments(projectId, null, null, agentGuidesOnly: true);
+
+    public List<CodeProjectMarkdownDocumentDto> ListProjectMarkdownDocuments(long projectId, string? query, string? referencePath = null) =>
+        ListProjectDocuments(projectId, query, referencePath, agentGuidesOnly: false);
+
+    private List<CodeProjectMarkdownDocumentDto> ListProjectDocuments(long projectId, string? query, string? referencePath, bool agentGuidesOnly)
     {
         var project = FindProject(projectId);
         var term = query?.Trim();
@@ -558,6 +565,7 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
         void AddFile(AiCodeRepository repository, string file)
         {
             if (!seenFiles.Add(file)) return;
+            if (agentGuidesOnly && !AgentGuideNames.Contains(Path.GetFileName(file))) return;
             var path = Path.GetRelativePath(GetResolvedPath(new DirectoryInfo(repository.RootPath)), file).Replace('\\', '/');
             if (!string.IsNullOrWhiteSpace(term)
                 && !path.Contains(term, StringComparison.OrdinalIgnoreCase)
@@ -599,11 +607,12 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
                 foreach (var file in EnumerateProjectDocumentFiles(repository.RootPath))
                 {
                     AddFile(repository, file);
-                    if (documents.Count >= MaxMarkdownDocumentCount) break;
+                    if ((agentGuidesOnly ? seenFiles.Count : documents.Count) >= MaxMarkdownDocumentCount) break;
                 }
-                if (documents.Count >= MaxMarkdownDocumentCount) break;
+                if ((agentGuidesOnly ? seenFiles.Count : documents.Count) >= MaxMarkdownDocumentCount) break;
             }
         }
+        if (agentGuidesOnly) return SortDocuments(documents).Take(8).ToList();
         var uploaded = _db.Queryable<AiProjectMarkdownDocument>()
             .Where(item => item.ProjectId == projectId)
             .OrderByDescending(item => item.UpdatedAt)
@@ -627,12 +636,16 @@ public sealed class CodeRepositoryManager : ICodeRepositoryManager
                 HasOriginal = !string.IsNullOrWhiteSpace(document.OriginalStorageName)
             });
         }
-        return documents
-            .OrderByDescending(item => item.UpdatedAt)
-            .ThenBy(item => item.RepositoryName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return SortDocuments(documents).ToList();
     }
+
+    private static readonly HashSet<string> AgentGuideNames = new(StringComparer.OrdinalIgnoreCase)
+        { "AGENT.md", "AGENTS.md", "ai-project-map.md" };
+
+    private static IOrderedEnumerable<CodeProjectMarkdownDocumentDto> SortDocuments(IEnumerable<CodeProjectMarkdownDocumentDto> documents) =>
+        documents.OrderByDescending(item => item.UpdatedAt)
+            .ThenBy(item => item.RepositoryName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase);
 
     public CodeProjectMarkdownDocumentContentDto ReadProjectMarkdownDocument(long projectId, string repositoryName, string path)
     {

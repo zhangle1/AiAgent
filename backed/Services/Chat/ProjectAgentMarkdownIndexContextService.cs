@@ -35,10 +35,7 @@ public sealed class ProjectAgentMarkdownIndexContextService : IProjectAgentMarkd
         if (!request.CodeProjectId.HasValue || !IsCodeQuestion(request.Message)) return Task.CompletedTask;
         if (!_projectAccess.CanAccess(user, request.CodeProjectId.Value)) throw new UnauthorizedAccessException("The selected project is unavailable for this account.");
 
-        var documents = _repositories.ListProjectMarkdownDocuments(request.CodeProjectId.Value, null)
-            .Where(item => item.Source == "repository" && IsAgentMarkdownDocument(item.Name))
-            .Take(8)
-            .ToList();
+        var documents = _repositories.ListProjectAgentDocuments(request.CodeProjectId.Value);
         if (documents.Count == 0)
         {
             request.ServerProjectAgentMarkdownIndexContext = "Project AGENT.md documents are unavailable. Tell the user to use the project document panel's Generate Agent Document action before claiming module, entrypoint, or directory structure.";
@@ -64,11 +61,6 @@ public sealed class ProjectAgentMarkdownIndexContextService : IProjectAgentMarkd
         request.ServerProjectAgentMarkdownIndexContext = builder.ToString().TrimEnd();
         return Task.CompletedTask;
     }
-
-    private static bool IsAgentMarkdownDocument(string name)
-        => name.Equals("AGENT.md", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("AGENTS.md", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("ai-project-map.md", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsCodeQuestion(string? message) => !string.IsNullOrWhiteSpace(message) && CodeQuestionRegex.IsMatch(message);
 }

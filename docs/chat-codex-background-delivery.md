@@ -1,6 +1,20 @@
 # Codex 已投递消息的后台顺序执行
 
-## 当前实现（2026-11-26）
+## 普通 Web 投递回执与探针
+
+提交时先校验登录用户、会话、项目、输入指纹和队列策略。服务端把完整输入及队列位置写入 `ai_chat_delivery`。同一行同时提供待执行请求和稳定回执，只需一次插入。SSE 和 WebSocket 的 `delivery_accepted` 带原 `command_id`、`session_id` 和 `position`。位置表示本会话的投递顺序，正文重放沿用 `ai_chat_command_event.Id`。历史投递也能从现有字段得到回执。
+
+Worker 领取已登记的队首任务后发送 `delivery_started`。从收到回执起，浏览器可以断开，重登按原编号订阅或取消。宿主重启后，已保存且尚未领取的请求保留在队列，用户可显式恢复。执行结果不确定的轮次继续走核对流程。当前队列协调范围为单个 API 宿主。
+
+打开聊天 Debug 后，服务端诊断记录投递落库、执行开始、首段正文和模型最终输出。当前页面的时间线记录浏览器收到回执、首段、最终输出和保存确认的耗时。两端分别使用单调时钟。服务端 `AiAgent.Chat.Orchestration` Meter 的 `aiagent.chat.delivery.elapsed` 直方图以毫秒记录从进入 Worker 提交入口至各阶段的时间，唯一标签为 `stage`。关闭 Debug 且没有指标订阅者时不创建探针；正文继续使用有界批量写入。开启 Debug 或指标监听均无需为每段文字增加数据库写入。
+
+从仓库根目录运行以下探针，可以在本机复测提交到各事件的中位耗时。它使用临时 SQLite 和合成模型，先预热一轮，再统计八轮，不依赖模型账号。
+
+```powershell
+dotnet test backed.tests -c Release --filter FullyQualifiedName~HostedDeliveryMilestoneProbe --logger "console;verbosity=detailed"
+```
+
+## 后台执行流程
 
 Web 聊天发送带 `delivery_intent` 的普通消息时，SSE 和 WebSocket 都把输入交给随 API 启动的 [ChatDeliveryWorker](../backed/Services/Chat/Orchestration/ChatDeliveryWorker.cs)。浏览器订阅即时输出。任务的生命周期由宿主和显式停止控制。Worker 调用与原传输共用的 [ChatTurnExecutor](../backed/Services/Chat/Orchestration/ChatTurnExecutor.cs)，现有投递表分配顺序，命令日志保存展示事件，模型调用、历史与用量各走原有路径。在线首个订阅使用有界事件通道；恢复订阅按数据库事件 ID 顺序读取，写入后唤醒等待读者。
 

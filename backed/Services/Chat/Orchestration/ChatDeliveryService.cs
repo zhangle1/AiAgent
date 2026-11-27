@@ -25,8 +25,10 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         public Dictionary<string, Waiting> Attached { get; } = new();
         public Waiting? Active;
     }
-    private sealed class Waiting(AiChatDelivery row, ChatCompleteRequest request)
+    internal sealed class Waiting(AiChatDelivery row, ChatCompleteRequest request)
     {
+        public bool Claimable;
+        public bool WasFirstInQueue { get; init; }
         public AiChatDelivery Row = row;
         public ChatCompleteRequest Request = request;
         public CodexTurnControl Control { get; } = new();
@@ -42,6 +44,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         private int _disposed;
         internal Admission(string kind, bool replay = false, Func<bool, Task>? finish = null, Action? registered = null, CancellationToken stop = default)
         { Kind = kind; IsReplay = replay; _finish = finish; _registered = registered; Stop = stop; }
+        internal AuthenticatedUser? ExecutionUser { get; init; }
         public string Kind { get; }
         public bool IsReplay { get; }
         public bool Succeeded { get; set; }
@@ -66,8 +69,25 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         return saved;
     }
 
+    // The stable acknowledgement is a projection of the same insert that stores the work.
+    // This also gives older delivery rows an identical receipt without a backfill.
+    internal sealed record Reservation(AiChatDelivery Row, Waiting? Pending = null, bool Owner = false,
+        bool Steer = false, Admission? Outcome = null)
+    {
+        public AgentStreamEvent Receipt() => new() { Type = "delivery_accepted", Metadata = new()
+            { ["command_id"] = Row.CommandId, ["session_id"] = Row.SessionId, ["position"] = Row.Position } };
+    }
+
     public async Task<Admission?> EnterAsync(AuthenticatedUser user, ChatCompleteRequest request, AgentStreamEventHandler emit, CancellationToken ct,
         Func<AuthenticatedUser, ChatCompleteRequest, CancellationToken, Task>? prepareInput = null)
+    {
+        var reserved = await ReserveAsync(user, request, prepareInput != null, ct);
+        if (reserved == null) return null;
+        if (request.RecoverOnly) await emit(reserved.Receipt(), ct);
+        return await ClaimAsync(reserved, user, request, emit, ct, prepareInput);
+    }
+
+    internal async Task<Reservation?> ReserveAsync(AuthenticatedUser user, ChatCompleteRequest request, bool canPrepare, CancellationToken ct)
     {
         if (request.DeliveryIntent is null && !request.ResumeQueued)
         {
@@ -91,16 +111,16 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             if (row is not null)
             {
                 if (row.SessionId != request.SessionId || !request.RecoverOnly && row.Fingerprint != Fingerprint(request)) throw new ChatDeliveryException("同一命令编号不能更换消息、配置或会话。");
-                if (row.Status == "steered") return new("steered", true);
-                if (row.Status == "cancelled") return new(db.Queryable<AiChatCommand>().Any(c => c.Id == row.Id) ? "execute" : "cancelled", true);
-                if (row.Status is "completed" or "failed") return new(db.Queryable<AiChatCommand>().Any(c => c.Id == row.Id) ? "execute" : "uncertain", true);
-                if (row.Status == "uncertain") return new("uncertain", true);
+                if (row.Status == "steered") return new(row, Outcome: new("steered", true));
+                if (row.Status == "cancelled") return new(row, Outcome: new(db.Queryable<AiChatCommand>().Any(c => c.Id == row.Id) ? "execute" : "cancelled", true));
+                if (row.Status is "completed" or "failed") return new(row, Outcome: new(db.Queryable<AiChatCommand>().Any(c => c.Id == row.Id) ? "execute" : "uncertain", true));
+                if (row.Status == "uncertain") return new(row, Outcome: new("uncertain", true));
                 if (request.RecoverOnly && row.Status != "running" &&
-                    (row.Status != "queued" || row.Held || !state.Attached.ContainsKey(id))) return new("held", true);
-                if (row.Held && !request.ResumeQueued) return new("held", true);
+                    (row.Status != "queued" || row.Held || !state.Attached.ContainsKey(id))) return new(row, Outcome: new("held", true));
+                if (row.Held && !request.ResumeQueued) return new(row, Outcome: new("held", true));
                 if (request.ResumeQueued && state.Attached.TryGetValue(id, out var ended) && ended.Ready.Task.IsCompletedSuccessfully && ended.Ready.Task.Result != "execute") state.Attached.Remove(id);
                 if (state.Attached.TryGetValue(id, out waiting)) { /* A duplicate joins admission; it never starts another turn. */ }
-                else if (row.Status == "running") return new("uncertain", true);
+                else if (row.Status == "running") return new(row, Outcome: new("uncertain", true));
                 else
                 {
                     row.Held = false; row.InstanceId = _instance; row.UpdatedAt = DateTime.UtcNow; db.Updateable(row).ExecuteCommand();
@@ -110,34 +130,49 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
             else
             {
                 if (request.RecoverOnly || request.ResumeQueued) throw new ChatDeliveryException("排队记录不存在，未重新执行。");
-                var pending = db.Queryable<AiChatDelivery>().Where(d => d.UserId == user.Id && d.SessionId == request.SessionId && d.Status == "queued").ToList();
-                if (pending.Count >= 100) throw new ChatDeliveryException("本会话最多保留 100 条待执行消息。");
+                var queue = db.Queryable<AiChatDelivery>().Where(d => d.UserId == user.Id && d.SessionId == request.SessionId)
+                    .GroupBy(d => d.SessionId).Select(d => new {
+                        LastPosition = SqlFunc.AggregateMax(d.Position),
+                        Pending = SqlFunc.AggregateSum(SqlFunc.IIF(d.Status == "queued", 1, 0)),
+                        Blocked = SqlFunc.AggregateMax(SqlFunc.IIF(d.Status == "uncertain" || (d.Status == "queued" && d.Held), 1, 0))
+                    }).First();
+                if (queue?.Pending >= 100) throw new ChatDeliveryException("本会话最多保留 100 条待执行消息。");
                 var active = state.Active;
-                var native = active?.Control.Ready == true && (!needsPreparation || prepareInput is not null) && CanSteer(active.Request, request);
+                var native = active?.Control.Ready == true && (!needsPreparation || canPrepare) && CanSteer(active.Request, request);
                 if (native && codexPolicy is not null) _ = codexPolicy.ResolveModel(request.CodexModelId, request.CodexReasoningEffort);
-                if (active is not null && request.DeliveryIntent == "steer" && !native) throw new ChatDeliveryException("当前引擎、轮次或输入内容不支持原生追加，请选择排队继续。");
+                if ((active is not null || queue?.Pending > 0) && request.DeliveryIntent == "steer" && !native) throw new ChatDeliveryException("当前引擎、轮次或输入内容不支持原生追加，请选择排队继续。");
                 steer = active is not null && native && request.DeliveryIntent is "auto" or "steer";
                 var payload = JsonSerializer.Serialize(request, Json);
                 if (payload.Length > 2_000_000 || request.Message.Length > 200_000) throw new ChatDeliveryException("投递消息超过长度上限。");
-                var position = db.Queryable<AiChatDelivery>().Where(d => d.UserId == user.Id && d.SessionId == request.SessionId).Max(d => d.Position) + 1;
+                var position = (queue?.LastPosition ?? 0) + 1;
                 row = new() { Id = id, UserId = user.Id, SessionId = request.SessionId, CommandId = request.CommandId, Fingerprint = Fingerprint(request), RequestJson = payload,
-                    Position = position, InstanceId = _instance, Status = steer ? "steering" : "queued", Held = !steer && (pending.Any(p => p.Held) || db.Queryable<AiChatDelivery>().Any(d => d.UserId == user.Id && d.SessionId == request.SessionId && d.Status == "uncertain")) };
+                    Position = position, InstanceId = _instance, Status = steer ? "steering" : "queued", Held = !steer && queue?.Blocked == 1 };
                 db.Insertable(row).ExecuteCommand();
-                waiting = new(row, request); state.Attached.Add(id, waiting); owner = true;
+                waiting = new(row, request) { WasFirstInQueue = queue is null || queue.Pending == 0 }; state.Attached.Add(id, waiting); owner = true;
                 if (steer) waiting.Control.Bind(() => active!.Control.Ready, active!.Control.SteerAsync);
             }
             if (!steer && waiting!.Row.Held)
             {
                 if (owner) { state.Attached.Remove(waiting.Row.Id); waiting.Cancel.Dispose(); }
-                return new("held", true);
+                return new(waiting.Row, Owner: owner, Outcome: new("held", true));
             }
-            if (!steer) StartNext(db, state, user.Id, request.SessionId);
+            return new(waiting!.Row, waiting, owner, steer);
         }
         finally { state.Gate.Release(); }
 
-        if (steer)
+    }
+
+    internal async Task<Admission> ClaimAsync(Reservation reserved, AuthenticatedUser user, ChatCompleteRequest request,
+        AgentStreamEventHandler emit, CancellationToken ct, Func<AuthenticatedUser, ChatCompleteRequest, CancellationToken, Task>? prepareInput)
+    {
+        if (reserved.Outcome != null) return reserved.Outcome;
+        var waiting = reserved.Pending!;
+        var state = State(user.Id, reserved.Row.SessionId);
+        var owner = reserved.Owner;
+
+        if (reserved.Steer)
         {
-            if (needsPreparation)
+            if (request.HasBookSelection || request.AttachmentIds.Count > 0 || request.DocumentAttachmentIds.Count > 0)
             {
                 try
                 {
@@ -167,7 +202,21 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         }
         try
         {
-            if (!waiting!.Ready.Task.IsCompleted) await emit(new() { Type = "delivery_queued", Content = "消息已保存，等待前一轮完成。" }, ct);
+            if (owner)
+            {
+                await state.Gate.WaitAsync(ct);
+                try
+                {
+                    waiting.Claimable = true;
+                    if (state.Active == null && !waiting.Ready.Task.IsCompleted)
+                    {
+                        using var db = database.CopyNew();
+                        StartNext(db, state, user.Id, reserved.Row.SessionId, waiting.WasFirstInQueue ? waiting : null);
+                    }
+                }
+                finally { state.Gate.Release(); }
+            }
+            if (!waiting.Ready.Task.IsCompleted) await emit(new() { Type = "delivery_queued", Content = "消息已保存，等待前一轮完成。" }, ct);
             while (!waiting.Ready.Task.IsCompleted)
             {
                 ct.ThrowIfCancellationRequested();
@@ -188,7 +237,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
                 return new(kind, true);
             }
             if (!owner) { await waiting.Registered.Task.WaitAsync(ct); return new("execute", true); }
-            Authorize(user, request);
+            var executionUser = Authorize(user, request);
             request.TurnControl = waiting.Control;
             request.ConversationContext = new()
             {
@@ -204,7 +253,7 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
                         throw new ChatDeliveryException("会话绑定保存失败，未启动新轮次。");
                 }
             };
-            return new("execute", false, success => LeaveAsync(state, waiting, success), () => waiting.Registered.TrySetResult(), waiting.Cancel.Token);
+            return new("execute", false, success => LeaveAsync(state, waiting, success), () => waiting.Registered.TrySetResult(), waiting.Cancel.Token) { ExecutionUser = executionUser };
         }
         catch
         {
@@ -268,13 +317,25 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
         finally { state.Gate.Release(); }
     }
 
-    private void StartNext(ISqlSugarClient db, SessionState state, string userId, string sessionId)
+    private void StartNext(ISqlSugarClient db, SessionState state, string userId, string sessionId, Waiting? next = null)
     {
         if (state.Active is not null) return;
-        var first = db.Queryable<AiChatDelivery>().Where(d => d.UserId == userId && d.SessionId == sessionId && d.Status == "queued").OrderBy(d => d.Position).First();
-        if (first is null || first.Held || !state.Attached.TryGetValue(first.Id, out var next)) return;
-        first.Status = "running"; first.UpdatedAt = DateTime.UtcNow; db.Updateable(first).ExecuteCommand();
-        next.Row = first; state.Active = next; next.Ready.TrySetResult("execute");
+        // Under the session gate a new row inserted into an empty queue already has
+        // the earliest position. Later inserts cannot overtake it.
+        if (next == null)
+        {
+            var first = db.Queryable<AiChatDelivery>().Where(d => d.UserId == userId && d.SessionId == sessionId && d.Status == "queued")
+                .OrderBy(d => d.Position).Select(d => new { d.Id, d.Held }).First();
+            if (first == null || first.Held || !state.Attached.TryGetValue(first.Id, out next) || !next.Claimable) return;
+        }
+        var id = next.Row.Id;
+        var now = DateTime.UtcNow;
+        var claimed = db.Updateable<AiChatDelivery>().SetColumns(d => new AiChatDelivery { Status = "running", UpdatedAt = now })
+            .Where(d => d.Id == id && d.Status == "queued" && !d.Held && d.InstanceId == _instance).ExecuteCommand();
+        if (claimed != 1) { next.Ready.TrySetResult("uncertain"); return; }
+        next.Row.Status = "running";
+        state.Active = next;
+        next.Ready.TrySetResult("execute");
     }
 
     public List<string> ActiveSessions(AuthenticatedUser user)
@@ -336,25 +397,28 @@ public sealed class ChatDeliveryService(ISqlSugarClient database, IChatSessionSe
     private void Reconcile(ISqlSugarClient db, string userId, string sessionId)
     {
         // A fresh process never adopts an ambiguous execution, and never automatically runs disconnected pending input.
-        db.Updateable<AiChatDelivery>().SetColumns(d => new AiChatDelivery { Status = "uncertain", Held = true })
-            .Where(d => d.UserId == userId && d.SessionId == sessionId && d.InstanceId != _instance && (d.Status == "running" || d.Status == "steering")).ExecuteCommand();
-        db.Updateable<AiChatDelivery>().SetColumns(d => new AiChatDelivery { Held = true, InstanceId = _instance })
-            .Where(d => d.UserId == userId && d.SessionId == sessionId && d.InstanceId != _instance && d.Status == "queued").ExecuteCommand();
+        db.Updateable<AiChatDelivery>().SetColumns(d => new AiChatDelivery {
+            Held = true,
+            InstanceId = SqlFunc.IIF(d.Status == "queued", _instance, d.InstanceId),
+            Status = SqlFunc.IIF(d.Status == "queued", "queued", "uncertain")
+        }).Where(d => d.UserId == userId && d.SessionId == sessionId && d.InstanceId != _instance &&
+            (d.Status == "running" || d.Status == "steering" || d.Status == "queued")).ExecuteCommand();
     }
 
     internal AuthenticatedUser Authorize(AuthenticatedUser user, ChatCompleteRequest request, bool allowActiveGoal = false)
     {
         using var db = database.CopyNew();
-        var current = db.Queryable<AiUser>().First(u => u.Id == user.Id && !u.IsDisabled);
-        var session = db.Queryable<AiChatSession>().First(s => s.Id == request.SessionId && s.UserId == user.Id && !s.IsDeleted && !s.IsArchived);
-        if (current is null || session is null) throw new UnauthorizedAccessException("会话已不可访问。");
+        var current = db.Queryable<AiUser, AiChatSession>((u, session) => u.Id == session.UserId)
+            .Where((u, session) => u.Id == user.Id && !u.IsDisabled && session.Id == request.SessionId && !session.IsDeleted && !session.IsArchived)
+            .Select((u, session) => new { u.Id, u.Username, u.Role, u.CanCommitCode, u.Alias, session.CodeProjectId, session.GoalJson }).First();
+        if (current is null) throw new UnauthorizedAccessException("会话已不可访问。");
         var actor = new AuthenticatedUser(current.Id, current.Username, current.Role, current.CanCommitCode, current.Alias);
         var access = new ProjectAccessService(db);
-        var ids = request.ProjectReferences.Select(p => p.ProjectId).Concat(new[] { request.CodeProjectId, session.CodeProjectId }.OfType<long>()).Distinct();
+        var ids = request.ProjectReferences.Select(p => p.ProjectId).Concat(new[] { request.CodeProjectId, current.CodeProjectId }.OfType<long>()).Distinct();
         if (ids.Any(id => !access.CanAccess(actor, id))) throw new UnauthorizedAccessException("项目权限已变化。");
-        if (!allowActiveGoal && !string.IsNullOrWhiteSpace(session.GoalJson))
+        if (!allowActiveGoal && !string.IsNullOrWhiteSpace(current.GoalJson))
         {
-            using var goal = JsonDocument.Parse(session.GoalJson);
+            using var goal = JsonDocument.Parse(current.GoalJson);
             if (goal.RootElement.TryGetProperty("status", out var status) && status.GetString() == "active") throw new ChatDeliveryException("请先暂停当前目标，再投递普通消息。");
         }
         return actor;

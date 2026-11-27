@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
 import { getAuthStatus, type AuthStatus } from "@/lib/auth-api";
 import { buildLoginRedirect } from "@/lib/auth-redirect";
+import { ChatStreamProvider } from "@/components/chat/ChatStreamProvider";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 
 const DEFAULT_SIDEBAR_WIDTH = 296;
@@ -22,18 +23,27 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const isPublicPrototypePage = pathname === "/prototype-share";
   const isDashboardWorkspace = /^\/dashboard-applications\/[^/]+$/.test(pathname);
-  const [ready, setReady] = useState(isAuthPage || isPublicPrototypePage);
+  const [ready, setReady] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [sidebarCompact, setSidebarCompact] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
   useEffect(() => {
-    if (isAuthPage || isPublicPrototypePage) { setReady(true); return; }
     setReady(false);
+    if (isAuthPage || isPublicPrototypePage) { setAuthStatus(null); return; }
+    let current = true;
+    const requireLogin = () => {
+      if (!current) return;
+      setAuthStatus(null);
+      router.replace(buildLoginRedirect(pathname));
+    };
     void getAuthStatus().then((status) => {
-      if (!status.authenticated) router.replace(buildLoginRedirect(pathname));
-      else { setAuthStatus(status); setReady(true); }
-    }).catch(() => router.replace(buildLoginRedirect(pathname)));
+      if (!current) return;
+      if (!status.authenticated) { requireLogin(); return; }
+      setAuthStatus(status);
+      setReady(true);
+    }).catch(requireLogin);
+    return () => { current = false; };
   }, [isAuthPage, isPublicPrototypePage, pathname, router]);
 
   useEffect(() => {
@@ -52,16 +62,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (isAuthPage || isPublicPrototypePage) return <>{children}</>;
-  if (!ready) return <main className="flex min-h-screen items-center justify-center text-sm text-zinc-500">正在验证登录状态…</main>;
-  if (isDashboardWorkspace || pathname === "/runtime-test") return <>{children}</>;
+  const loading = <main className="flex min-h-screen items-center justify-center text-sm text-zinc-500">正在验证登录状态…</main>;
+  if (!authStatus?.authenticated) return loading;
   const contentHeight = pathname === "/chat" ? "chat-viewport" : "min-h-screen";
   const layoutStyle = { "--workspace-sidebar-width": `${sidebarWidth}px` } as CSSProperties;
-  return <div className="contents" style={layoutStyle}>
-    <AppSidebar compact={sidebarCompact} authStatus={authStatus}
-      resizeHandle={!sidebarCompact && <SidebarResizeHandle width={sidebarWidth} onResize={setSidebarWidth} />} />
-    {pathname !== "/chat" && <MobileWorkspaceLauncher />}
-    <div className={`${contentHeight} pl-0 ${sidebarCompact ? "lg:pl-14" : "lg:pl-[var(--workspace-sidebar-width)]"}`}>{children}</div>
-  </div>;
+  // Keep active streams mounted during protected-page navigation and begin recovery only after login.
+  let content: ReactNode = loading;
+  if (ready) {
+    content = isDashboardWorkspace || pathname === "/runtime-test" ? children : <div className="contents" style={layoutStyle}>
+      <AppSidebar compact={sidebarCompact} authStatus={authStatus}
+        resizeHandle={!sidebarCompact && <SidebarResizeHandle width={sidebarWidth} onResize={setSidebarWidth} />} />
+      {pathname !== "/chat" && <MobileWorkspaceLauncher />}
+      <div className={`${contentHeight} pl-0 ${sidebarCompact ? "lg:pl-14" : "lg:pl-[var(--workspace-sidebar-width)]"}`}>{children}</div>
+    </div>;
+  }
+  return <ChatStreamProvider key={authStatus.user_id ?? authStatus.username}>{content}</ChatStreamProvider>;
 }
 
 function SidebarResizeHandle({ width, onResize }: { width: number; onResize: (width: number) => void }) {

@@ -44,12 +44,92 @@ public sealed partial class ChatCommandTests : IDisposable
     private ChatCompleteRequest Request(string id = "command") => new() { CommandId = id, SessionId = "session", RuntimeUserId = user.Id, Message = "hello" };
 
     [Fact]
+    public async Task BurstOutputPreservesFirstTextBoundariesAndDurableReplay()
+    {
+        using var lease = store.Begin(Request(), user)!;
+        var live = new List<(string Type, string Text)>();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var output = new ChatProviderOutput(null, (item, _) => {
+            lease.Append(item);
+            live.Add((item.Type, item.Content));
+            return Task.CompletedTask;
+        });
+        Task Send(string type, string text) => output.ReceiveAsync(new() { Type = type, Content = text }, default);
+        await Send("content", "首");
+        Assert.Equal(("content", "首"), Assert.Single(live));
+        var first = clock.ElapsedMilliseconds;
+        for (var i = 0; i < 512; i++) await Send("content", i.ToString() + ",");
+        await Send("tool", "检查");
+        await Send("content", "尾");
+        await output.CompleteProviderAsync(default);
+        lease.Append(new() { Type = "completed" });
+        var elapsed = clock.ElapsedMilliseconds;
+        var expected = "首" + string.Concat(Enumerable.Range(0, 512).Select(i => i + ",")) + "尾";
+        Assert.Equal(expected, output.Content);
+        Assert.Equal(("tool", "检查"), live[^2]);
+        Assert.Equal(("content", "尾"), live[^1]);
+        using var reader = store.Begin(Request(), user)!;
+        var replay = new List<(string, string)>();
+        await reader.ReplayAsync((item, _) => { replay.Add((item.Type, item.Content)); return Task.CompletedTask; }, default);
+        Assert.Equal(live.Append(("completed", "")), replay);
+        Assert.True(replay.Count < 514, "A burst should require fewer durable writes than text fragments.");
+        Assert.Equal(expected, string.Concat(live.Where(x => x.Type == "content").Select(x => x.Text)));
+        Console.WriteLine($"SQLite / 514 text fragments: first={first} ms, through completion={elapsed} ms, durable events={replay.Count}");
+    }
+
+    [Fact]
+    public async Task SparseTextIsPublishedWhileProviderIsIdleAndMetadataChangesStaySeparate()
+    {
+        var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sent = new List<(string, string?)>();
+        var output = new ChatProviderOutput(null, (item, _) => {
+            sent.Add((item.Content, item.Model));
+            if (item.Content == "二") second.TrySetResult();
+            return Task.CompletedTask;
+        });
+        Task Text(string text, string model) => output.ReceiveAsync(new() { Type = "content", Content = text, Model = model }, default);
+        await Text("一", "A");
+        await Text("二", "A");
+        await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Text("三", "A");
+        await Text("四", "B");
+        await output.CompleteProviderAsync(default);
+        Assert.Equal(new[] { ("一", "A"), ("二", "A"), ("三", "A"), ("四", "B") }, sent);
+    }
+
+    [Fact]
+    public async Task CodexFinalSnapshotDrainsTextAndMatchesSavedAnswer()
+    {
+        var sent = new List<string>();
+        var output = new ChatProviderOutput(null, (item, _) => { sent.Add(item.Type + ":" + item.Content); return Task.CompletedTask; });
+        await output.ReceiveAsync(new() { Type = "content", Content = "草" }, default);
+        await output.ReceiveAsync(new() { Type = "content", Content = "稿" }, default);
+        await output.ReceiveAsync(new() { Type = "done", Content = "最终正文及文件链接", Metadata = new() { ["agent"] = "codex" } }, default);
+        Assert.Equal(new[] { "content:草", "content:稿", "done:最终正文及文件链接" }, sent);
+        Assert.Equal("最终正文及文件链接", output.Content);
+    }
+
+    [Fact]
     public async Task ParallelAdmissionHasOneOwnerAndOneDurableCommand()
     {
         var leases = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => store.Begin(Request(), user)!)));
         Assert.Single(leases, lease => lease.IsOwner);
         Assert.Equal(1, db.Queryable<AiChatCommand>().Count());
         foreach (var lease in leases) lease.Dispose();
+    }
+
+    [Fact]
+    public void TerminalEventAndCommandOutcomeRollBackTogether()
+    {
+        using var command = store.Begin(Request(), user)!;
+        db.Ado.ExecuteCommand("CREATE TRIGGER fail_completion BEFORE UPDATE ON ai_chat_command WHEN NEW.Status = 'completed' BEGIN SELECT RAISE(ABORT, 'fixture'); END;");
+        Assert.ThrowsAny<Exception>(() => command.Append(new() { Type = "completed" }));
+        Assert.Equal(0, db.Queryable<AiChatCommandEvent>().Count());
+        Assert.Equal("running", db.Queryable<AiChatCommand>().Single().Status);
+        db.Ado.ExecuteCommand("DROP TRIGGER fail_completion");
+        command.Append(new() { Type = "completed" });
+        Assert.Equal(1, db.Queryable<AiChatCommandEvent>().Count());
+        Assert.Equal("completed", db.Queryable<AiChatCommand>().Single().Status);
     }
 
     [Fact]

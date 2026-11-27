@@ -4,12 +4,7 @@ using AiAgent.Backend.Services.CodeRepository;
 
 public sealed class ProjectPackageDocumentTests
 {
-    [Fact]
-    public void ProjectRootPackageWorksWithoutRegisteredRepository()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "aiagent-root-package-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(root, "download"));
-        using var db = new SqlSugar.SqlSugarScope(new SqlSugar.ConnectionConfig
+    private static SqlSugar.SqlSugarScope DocumentDatabase() => new(new SqlSugar.ConnectionConfig
         {
             DbType = SqlSugar.DbType.Sqlite, ConnectionString = "Data Source=:memory:",
             IsAutoCloseConnection = false, InitKeyType = SqlSugar.InitKeyType.Attribute,
@@ -21,6 +16,12 @@ public sealed class ProjectPackageDocumentTests
                 }
             }
         });
+    [Fact]
+    public void ProjectRootPackageWorksWithoutRegisteredRepository()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "aiagent-root-package-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "download"));
+        using var db = DocumentDatabase();
         try
         {
             db.CodeFirst.InitTables<AiAgent.Backend.Entities.CodeRepository.AiCodeProject,
@@ -67,6 +68,33 @@ public sealed class ProjectPackageDocumentTests
 
     private static object Invoke(string method, string path) => typeof(CodeRepositoryManager)
         .GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [path])!;
+
+    [Fact]
+    public void ChatGuideLookupMatchesCatalogueWithoutLoadingUploadedDocuments()
+    {
+        var root = Directory.CreateTempSubdirectory("guide-probe-");
+        using var db = DocumentDatabase();
+        try
+        {
+            db.CodeFirst.InitTables(typeof(AiAgent.Backend.Entities.CodeRepository.AiCodeProject),
+                typeof(AiAgent.Backend.Entities.CodeRepository.AiCodeRepository), typeof(AiAgent.Backend.Entities.CodeRepository.AiProjectMarkdownDocument));
+            db.Insertable(new AiAgent.Backend.Entities.CodeRepository.AiCodeProject { Id = 1, Name = "guides", RootPath = root.FullName }).ExecuteCommand();
+            for (var i = 0; i < 500; i++) File.WriteAllText(Path.Combine(root.FullName, $"{i}.md"), "");
+            File.WriteAllText(Path.Combine(root.FullName, "AGENTS.md"), "guide");
+            var manager = new CodeRepositoryManager(db, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<CodeRepositoryManager>.Instance, null!);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var catalogue = manager.ListProjectMarkdownDocuments(1, null);
+            var before = clock.ElapsedMilliseconds;
+            clock.Restart();
+            var guide = Assert.Single(manager.ListProjectAgentDocuments(1));
+            Console.WriteLine($"501 repository documents / guide lookup: catalogue={before} ms, filtered={clock.ElapsedMilliseconds} ms");
+            Assert.Equal(catalogue.Single(doc => doc.Name == "AGENTS.md").Path, guide.Path);
+            db.DbMaintenance.DropTable<AiAgent.Backend.Entities.CodeRepository.AiProjectMarkdownDocument>();
+            Assert.Equal(guide.Path, Assert.Single(manager.ListProjectAgentDocuments(1)).Path);
+        }
+        finally { root.Delete(true); }
+    }
 
     [Theory]
     [InlineData("download/app.zip")]

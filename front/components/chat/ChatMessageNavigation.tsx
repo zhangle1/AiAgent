@@ -1,9 +1,8 @@
 "use client";
 
-import { type RefObject, useEffect, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 
 type NavigationMessage = { id: string; role: string; content: string };
-const MAX_MARKERS = 8;
 
 export function ChatMessageNavigation({ messages, scrollRef }: {
   messages: NavigationMessage[];
@@ -12,6 +11,7 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
   const questions = messages.filter(message => message.role === "user");
   const [activeId, setActiveId] = useState("");
   const [dismissed, setDismissed] = useState(false);
+  const railRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -43,22 +43,25 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
     };
   }, [messages, scrollRef]);
 
+  const activeIndex = questions.findIndex(question => question.id === activeId);
+  useEffect(() => {
+    const rail = railRef.current;
+    const marker = rail?.children.item(activeIndex);
+    if (!rail || !marker) return;
+    const bounds = rail.getBoundingClientRect();
+    const item = marker.getBoundingClientRect();
+    if (item.top < bounds.top) rail.scrollTop += item.top - bounds.top;
+    else if (item.bottom > bounds.bottom) rail.scrollTop += item.bottom - bounds.bottom;
+  }, [activeIndex, questions.length]);
+
   if (!questions.length) return null;
 
-  const markerCount = Math.min(questions.length, MAX_MARKERS);
-  const markerIndexes = Array.from({ length: markerCount }, (_, slot) =>
-    Math.round(slot * (questions.length - 1) / Math.max(1, markerCount - 1)),
-  );
-  const activeIndex = questions.findIndex(question => question.id === activeId);
-
-  return <nav aria-label="会话导航" className="pointer-events-none absolute inset-y-3 left-0 z-20 flex w-8 flex-col justify-center">
-    <div className="workspace-scroll pointer-events-auto flex max-h-full flex-col gap-1 overflow-y-auto py-1">
-      {markerIndexes.map((index, slot) => {
-        const question = questions[index];
-        const nextIndex = markerIndexes[slot + 1] ?? questions.length;
-        const active = activeIndex >= index && activeIndex < nextIndex;
+  return <nav aria-label="会话导航" className="pointer-events-none absolute inset-y-3 -left-1 z-20 flex w-8 flex-col justify-center sm:-left-3">
+    <div ref={railRef} className="pointer-events-auto flex max-h-[min(100%,18rem)] snap-y snap-mandatory flex-col overflow-y-auto overscroll-contain [scrollbar-width:none]">
+      {questions.map((question, index) => {
+        const active = index === activeIndex;
         const preview = question.content.trim().replace(/\s+/g, " ") || "附件消息";
-        return <div key={question.id} className="group shrink-0" onMouseEnter={() => setDismissed(false)}>
+        return <div key={question.id} className="group shrink-0 snap-start" onMouseEnter={() => setDismissed(false)}>
           <button type="button" aria-label={`跳转到第 ${index + 1} 条提问：${preview.slice(0, 80)}`} aria-current={active ? "step" : undefined}
             onKeyDown={event => { if (event.key === "Escape") setDismissed(true); }}
             onFocus={() => setDismissed(false)}
@@ -70,7 +73,7 @@ export function ChatMessageNavigation({ messages, scrollRef }: {
               setActiveId(question.id);
               setDismissed(true);
             }}
-            className="flex h-7 w-8 items-center justify-start rounded-md px-1 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-blue-500">
+            className="flex h-9 w-8 items-center justify-start rounded-md px-1 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-blue-500">
             <span aria-hidden="true" className={`h-[3px] rounded-full motion-safe:transition-all group-hover:w-6 group-hover:bg-blue-500 group-focus-within:bg-blue-500 ${active ? "w-6 bg-slate-700" : "w-3 bg-slate-300"}`} />
           </button>
           {!dismissed && <div className="pointer-events-none absolute left-10 top-1/2 hidden w-64 max-w-[65vw] -translate-y-1/2 rounded-xl border border-slate-200 bg-white/95 p-3 text-xs leading-5 text-slate-600 shadow-lg backdrop-blur group-hover:block group-focus-within:block">

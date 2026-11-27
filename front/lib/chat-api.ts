@@ -209,7 +209,7 @@ export async function getChatUploadText(attachmentId: string, adminUserId?: stri
 }
 
 export type ChatStreamEvent = {
-  type: "delivery_queued" | "delivery_started" | "delivery_held" | "delivery_steered" | "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "cancelled" | "error";
+  type: "delivery_accepted" | "delivery_queued" | "delivery_started" | "delivery_held" | "delivery_steered" | "goal_updated" | "debug_trace" | "session_ready" | "label" | "loop" | "thinking" | "content" | "tool" | "tool_request" | "tool_result" | "sources" | "done" | "completed" | "cancelled" | "error";
   debug_trace?: ChatDebugTraceEvent | null;
   label?: string | null;
   content?: string;
@@ -227,7 +227,7 @@ export type ChatDebugTraceEvent = {
   elapsed_ms: number;
   duration_ms?: number | null;
   provider: "codex" | "openai_compatible" | "unknown";
-  transport: "codex_app_server" | "codex_exec" | "http_stream" | "websocket" | "sse" | "unknown";
+  transport: "browser" | "codex_app_server" | "codex_exec" | "http_stream" | "websocket" | "sse" | "unknown";
   error_code?: "cancelled" | "request_failed" | string | null;
   diagnostic_id?: string | null;
   message?: string | null;

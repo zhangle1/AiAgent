@@ -1,5 +1,7 @@
 using System.IO;
 using System.Reflection;
+using System.Diagnostics.Metrics;
+using AiAgent.Backend.Services.Chat.Orchestration;
 using AiAgent.Backend.Dtos.Chat;
 using AiAgent.Backend.Entities.Auth;
 using AiAgent.Backend.Entities.Chat;
@@ -33,6 +35,79 @@ public sealed class ChatDeliveryTests : IDisposable
     private static Task Ignore(AgentStreamEvent value, CancellationToken ct) => Task.CompletedTask;
     private static TaskCompletionSource QueuedSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task<ChatDeliveryService.Admission?> Enter(ChatCompleteRequest request, CancellationToken ct = default) => _service.EnterAsync(_user, request, Ignore, ct);
+
+    [Fact]
+    public void DeliveryProbeRecordsOneFirstTextAndSkipsReplays()
+    {
+        var request = Request("probe"); request.DebugTrace = true;
+        var trace = ChatDebugTrace.Create(request)!;
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+        Assert.Null(ChatDeliveryProbe.Create(start, false, trace));
+        using var listener = new MeterListener();
+        var stages = new List<string>();
+        var threadId = Environment.CurrentManagedThreadId;
+        listener.InstrumentPublished = (instrument, subscribed) => {
+            if (instrument.Meter.Name == "AiAgent.Chat.Orchestration" && instrument.Name == "aiagent.chat.delivery.elapsed")
+                subscribed.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<double>((_, value, tags, _) => {
+            if (threadId != Environment.CurrentManagedThreadId) return;
+            Assert.True(value >= 0);
+            Assert.Equal(1, tags.Length);
+            Assert.Equal("stage", tags[0].Key);
+            stages.Add((string)tags[0].Value!);
+        });
+        listener.Start();
+        var probe = ChatDeliveryProbe.Create(start, true, trace)!;
+        foreach (var type in new[] { "delivery_accepted", "delivery_queued", "delivery_started", "content", "content", "done", "completed" })
+            probe.Observe(type, hasText: type is "content" or "done");
+        Assert.Equal(new[] { "accepted", "started", "first_content", "provider_done", "completed" }, stages);
+        Assert.Equal(new[] { "delivery_probe_accepted", "delivery_probe_started", "delivery_probe_first_content", "delivery_probe_provider_done" },
+            trace.Events.Select(item => item.Stage));
+    }
+
+    [Fact]
+    public async Task ReceiptIsDurableBeforeClaimAndDuplicateGetsSamePosition()
+    {
+        var request = Request("reserved");
+        var owned = (await _service.ReserveAsync(_user, request, true, default))!;
+        var receipt = owned.Receipt();
+        Assert.Equal("delivery_accepted", receipt.Type);
+        Assert.Equal("queued", Assert.Single(_db.Queryable<AiChatDelivery>().ToList()).Status);
+        Assert.Empty(_db.Queryable<AiChatCommand>().ToList());
+        var duplicate = (await _service.ReserveAsync(_user, Request("reserved"), true, default))!;
+        Assert.Equal(receipt.Metadata, duplicate.Receipt().Metadata);
+        Assert.False(duplicate.Owner);
+        var altered = Request("reserved"); altered.Message = "different";
+        await Assert.ThrowsAsync<ChatDeliveryException>(() => _service.ReserveAsync(_user, altered, true, default));
+
+        // A later worker waking first must not mark an unclaimed earlier submission running.
+        var later = (await _service.ReserveAsync(_user, Request("later"), true, default))!;
+        var next = _service.ClaimAsync(later, _user, Request("later"), Ignore, default, null);
+        Assert.All(_db.Queryable<AiChatDelivery>().ToList(), row => Assert.Equal("queued", row.Status));
+        Assert.True(await _service.CancelAsync(_user, "session", "reserved", default));
+        var cancelled = await _service.ClaimAsync(owned, _user, request, Ignore, default, null);
+        Assert.Equal("cancelled", cancelled.Kind);
+        await using var advanced = await next.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal("execute", advanced.Kind);
+        advanced.Registered(); advanced.Succeeded = true;
+    }
+
+    [Fact]
+    public async Task RestartCanRecoverReceiptFromBeforeClaimWithoutExecuting()
+    {
+        var reserved = (await _service.ReserveAsync(_user, Request("pending"), true, default))!;
+        var restarted = new ChatDeliveryService(_db, _sessions);
+        var lookup = Request("pending"); lookup.RecoverOnly = true; lookup.Message = "";
+        var events = new List<AgentStreamEvent>();
+        await using var admission = await restarted.EnterAsync(_user, lookup, (item, _) => {
+            events.Add(item); return Task.CompletedTask;
+        }, default);
+        Assert.Equal("held", admission!.Kind);
+        Assert.Equal(reserved.Receipt().Metadata, Assert.Single(events).Metadata);
+        Assert.True(Assert.Single(await restarted.ListAsync(_user, "session", default)).QueueHeld);
+        Assert.Empty(_messages);
+    }
 
     [Fact]
     public async Task QueueIsDurableOrderedAndAdvancesOnlyAfterSuccessfulRelease()

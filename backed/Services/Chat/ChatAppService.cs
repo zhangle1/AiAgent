@@ -46,7 +46,7 @@ public sealed class ChatAppService : IDynamicApiController
     /// </summary>
     [HttpGet("skills")]
     public Task<ActionResult<IReadOnlyList<JsonElement>>> Skills(CancellationToken cancellationToken)
-        => ReadBootstrapAsync(_ => Task.FromResult(ChatSkillCatalog.All), cancellationToken);
+        => ReadBootstrapAsync((_, _) => Task.FromResult(ChatSkillCatalog.All), cancellationToken);
 
     [HttpPost("complete")]
     public Task<ChatCompleteResponse> Complete([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
@@ -58,17 +58,21 @@ public sealed class ChatAppService : IDynamicApiController
     [HttpPost("complete/stream")]
     public async Task CompleteStream([FromBody] ChatCompleteRequest request, CancellationToken cancellationToken)
     {
-        var response = _httpContextAccessor.HttpContext?.Response
-            ?? throw new InvalidOperationException("HttpContext is not available.");
+        var context = _httpContextAccessor.HttpContext ?? throw new InvalidOperationException("HttpContext is not available.");
+        var connection = new WebRequestAuthentication(context, cancellationToken);
+        if (connection.Disconnected) return;
+        var response = context.Response;
         response.ContentType = "text/event-stream; charset=utf-8";
         response.Headers["Cache-Control"] = "no-cache";
         response.Headers["Connection"] = "keep-alive";
         var trace = ChatDebugTrace.Create(request);
-        await WriteTraceAsync(response, trace?.Complete("backend_received"), cancellationToken);
-        await WriteTraceAsync(response, trace?.Start("auth_session_context"), cancellationToken);
         try
         {
-            var user = await RequireUser(cancellationToken);
+            await WriteTraceAsync(response, trace?.Complete("backend_received"), cancellationToken);
+            await WriteTraceAsync(response, trace?.Start("auth_session_context"), cancellationToken);
+            var user = await connection.LookupAsync(_authService.TryGetCurrentUserAsync);
+            if (connection.Disconnected) return;
+            if (user == null) throw new UnauthorizedAccessException();
             await _dispatcher.DispatchStreamAsync(user, request, trace,
                 (value, token) => WriteSseAsync(response, value, token), RequireUser, cancellationToken);
         }
@@ -87,18 +91,20 @@ public sealed class ChatAppService : IDynamicApiController
     }
 
     [HttpGet("active-sessions")]
-    public async Task<List<string>> ActiveSessions(CancellationToken cancellationToken)
-    {
-        var user = await RequireUser(cancellationToken);
-        return _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatDeliveryService>().ActiveSessions(user);
-    }
+    public Task<ActionResult<List<string>>> ActiveSessions(CancellationToken cancellationToken)
+        => ReadBootstrapAsync((user, _) => Task.FromResult(
+            _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatDeliveryService>().ActiveSessions(user)), cancellationToken);
 
     [HttpGet("sessions/{sessionId}/deliveries")]
-    public async Task<IActionResult> Deliveries([FromRoute] string sessionId, CancellationToken cancellationToken)
+    public Task<ActionResult<List<ChatDeliveryDto>>> Deliveries([FromRoute] string sessionId, CancellationToken cancellationToken)
     {
-        var user = await RequireUser(cancellationToken);
-        try { return new OkObjectResult(await _httpContextAccessor.HttpContext!.RequestServices.GetRequiredService<ChatDeliveryService>().ListAsync(user, sessionId, cancellationToken)); }
-        catch (UnauthorizedAccessException) { return new StatusCodeResult(403); }
+        var context = _httpContextAccessor.HttpContext!;
+        return new WebRequestAuthentication(context, cancellationToken).ReadAsync<List<ChatDeliveryDto>>(_authService, async (user, token) =>
+        {
+            var deliveries = context.RequestServices.GetRequiredService<ChatDeliveryService>();
+            try { return await deliveries.ListAsync(user, sessionId, token); }
+            catch (UnauthorizedAccessException) { return new StatusCodeResult(StatusCodes.Status403Forbidden); }
+        });
     }
 
     [HttpPost("attachments/images")]
@@ -172,12 +178,12 @@ public sealed class ChatAppService : IDynamicApiController
     }
 
     [HttpPost("codex/heartbeat")]
-    public async Task<object> CodexHeartbeat([FromBody] CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken)
-    {
-        var user = await RequireUser(cancellationToken);
-        await _codex.HeartbeatAsync(user, request, cancellationToken);
-        return new { ok = true };
-    }
+    public Task<ActionResult<object>> CodexHeartbeat([FromBody] CodexRuntimeHeartbeatRequest request, CancellationToken cancellationToken)
+        => ReadBootstrapAsync<object>(async (user, token) =>
+        {
+            await _codex.HeartbeatAsync(user, request, token);
+            return new { ok = true };
+        }, cancellationToken);
 
     [HttpGet("attachments/{sessionId}/{attachmentId}")]
     public async Task<IActionResult> GetPersistedImage([FromRoute] string sessionId, [FromRoute] string attachmentId, CancellationToken cancellationToken)
@@ -190,31 +196,11 @@ public sealed class ChatAppService : IDynamicApiController
 
     [HttpGet("codex/quota")]
     public Task<ActionResult<CodexQuotaResponse>> GetCodexQuota(CancellationToken cancellationToken)
-        => ReadBootstrapAsync(token => _codex.ReadQuotaAsync(token), cancellationToken);
+        => ReadBootstrapAsync((_, token) => _codex.ReadQuotaAsync(token), cancellationToken);
 
-    private async Task<ActionResult<T>> ReadBootstrapAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken cancellationToken)
-    {
-        var context = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("HttpContext is not available.");
-        bool Cancelled() => cancellationToken.IsCancellationRequested || context.RequestAborted.IsCancellationRequested;
-
-        // Navigation/Strict Mode can abort these read-only requests before auth starts.
-        // End at the action boundary instead of awaiting an already-cancelled lookup.
-        if (Cancelled()) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
-        try
-        {
-            var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken);
-            if (Cancelled()) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
-            if (user is null) throw new UnauthorizedAccessException();
-            var result = await read(cancellationToken);
-            if (Cancelled()) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
-            return new ActionResult<T>(result);
-        }
-        catch (OperationCanceledException) when (Cancelled())
-        {
-            return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
-        }
-    }
+    private Task<ActionResult<T>> ReadBootstrapAsync<T>(Func<AuthenticatedUser, CancellationToken, Task<T>> read, CancellationToken cancellationToken)
+        => new WebRequestAuthentication(_httpContextAccessor.HttpContext!, cancellationToken)
+            .ReadAsync<T>(_authService, async (user, token) => new ActionResult<T>(await read(user, token)));
 
     private async Task<AuthenticatedUser> RequireUser(CancellationToken cancellationToken) => await _authService.TryGetCurrentUserAsync(_httpContextAccessor.HttpContext!, cancellationToken) ?? throw new UnauthorizedAccessException();
 

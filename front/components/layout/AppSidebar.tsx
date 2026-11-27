@@ -70,7 +70,7 @@ export function AppSidebar({ compact = false, authStatus, resizeHandle }: { comp
       } catch { /* The local stream indicators remain available while offline. */ }
       if (!controller.signal.aborted) timer = setTimeout(refresh, delay);
     }
-    void refresh();
+    timer = setTimeout(refresh, 0);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [authStatus?.username]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);

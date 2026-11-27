@@ -24,7 +24,8 @@ export function ChatDeliveryQueue({ sessionId, sending, onResume, onRunning }: {
       catch (ex) { if (!disposed && !request.signal.aborted) setError(ex instanceof Error ? ex.message : "队列读取失败"); }
       finally { if (!disposed) timer = setTimeout(load, 2000); }
     }
-    void load();
+    // A Strict Mode remount or an immediate session switch can discard this effect before its first poll.
+    timer = setTimeout(load, 0);
     return () => { disposed = true; clearTimeout(timer); request?.abort(); };
   }, [sessionId, revision, onRunning]);
   async function remove(row: ChatDelivery) {

@@ -58,7 +58,6 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
   const codexModelIdRef = useRef<string | undefined>(undefined);
   const codexReasoningEffortRef = useRef<string | undefined>(undefined);
   const codexSandboxModeRef = useRef<CodexSandboxMode>("full-access");
-  useEffect(() => { streamsRef.current = streams; }, [streams]);
 
   // WebSocket frames often arrive faster than the browser can comfortably render
   // Markdown. Commit a short batch together so typing remains stable.
@@ -83,7 +82,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     const pending = pendingUpdatesRef.current.get(streamId) ?? [];
     pending.push(transform);
     pendingUpdatesRef.current.set(streamId, pending);
-    if (flushTimerRef.current === null) flushTimerRef.current = window.setTimeout(flushUpdates, 60);
+    if (flushTimerRef.current === null) flushTimerRef.current = window.setTimeout(flushUpdates, 24);
   }, [flushUpdates]);
 
   const startStream = useCallback((request: ChatCompleteRequest, retryId?: string) => {
@@ -108,7 +107,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     controllersRef.current.set(streamId, controller);
     const streamRequest = { ...request, client_runtime_id: getChatRuntimeId() };
     const initialEvents: ChatStreamEvent[] = streamRequest.debug_trace && streamRequest.trace_id
-      ? [{ type: "debug_trace", debug_trace: { trace_id: streamRequest.trace_id, stage: "browser_submit", status: "completed", elapsed_ms: 0, duration_ms: 0, provider: streamRequest.agent === "codex" ? "codex" : "openai_compatible", transport: "websocket" } }]
+      ? [{ type: "debug_trace", debug_trace: { trace_id: streamRequest.trace_id, stage: "browser_submit", status: "completed", elapsed_ms: 0, duration_ms: 0, provider: streamRequest.agent === "codex" ? "codex" : "openai_compatible", transport: "browser" } }]
       : [];
     const startedAt = Date.now();
     const record: ChatStreamRecord = { id: streamId, sessionId, status: "streaming", deliveryState: active.length && request.delivery_intent ? "queued" : undefined, goalMode: !!request.goal, events: initialEvents, startedAt, lastEventAt: startedAt, observedAt: startedAt, health: "connecting", unread: false, agent: request.agent };
@@ -118,24 +117,59 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
     streamsRef.current = next;
     setStreams(next);
 
+    const browserTrace = initialEvents[0]?.debug_trace;
+    const traceStart = browserTrace ? performance.now() : 0;
+    let firstContent = true;
+    let firstThinking = true;
+    let pendingEvents: ChatStreamEvent[] = [];
+    let receivedAt = startedAt;
+    const mark = (stage: string) => {
+      if (browserTrace) pendingEvents.push({ type: "debug_trace", debug_trace: {
+        ...browserTrace, stage: `browser_${stage}`, elapsed_ms: Math.round(performance.now() - traceStart), duration_ms: null,
+      } });
+    };
     void streamCompleteChat(streamRequest, (event) => {
-      // The server emits this only after the first user message is persisted. Refreshing here
-      // makes a brand-new conversation appear in the sidebar while the answer is still streaming.
       if (event.type === "session_ready") window.dispatchEvent(new Event("aiagent:sessions-updated"));
-      const receivedAt = Date.now();
-      update(streamId, (current) => ({
-        ...current,
-        status: event.type === "error" ? "error" : current.status,
-        deliveryState: event.type === "delivery_queued" ? "queued" : event.type === "delivery_held" ? "held" : event.type === "delivery_steered" ? "steered" : event.type === "delivery_started" ? undefined : current.deliveryState,
-        serverRejected: event.type === "error" ? !request.recover_only : current.serverRejected,
-        health: "active",
-        lastEventAt: receivedAt,
-        observedAt: receivedAt,
-        lastEventType: event.type,
-        terminalReason: event.type === "error" ? "transport_error" : current.terminalReason,
-        errorMessage: event.type === "error" ? event.content || "Chat stream failed." : current.errorMessage,
-        events: [...current.events, event],
-      }));
+      receivedAt = Date.now();
+      const needsUpdate = pendingEvents.length === 0;
+      const firstText = firstContent && !!event.content && (event.type === "content" || event.type === "done");
+      if (browserTrace) {
+        if (firstText) mark("first_content");
+        if (event.type === "delivery_accepted" || event.type === "done" || event.type === "completed") mark(event.type);
+      }
+      pendingEvents.push(event);
+      if (needsUpdate) {
+        update(streamId, current => {
+          const batch = pendingEvents;
+          pendingEvents = [];
+          let deliveryState = current.deliveryState;
+          let failure: ChatStreamEvent | undefined;
+          for (const item of batch) {
+            switch (item.type) {
+              case "delivery_queued": deliveryState = "queued"; break;
+              case "delivery_held": deliveryState = "held"; break;
+              case "delivery_steered": deliveryState = "steered"; break;
+              case "delivery_started": deliveryState = undefined; break;
+              case "error": failure = item; break;
+            }
+          }
+          return {
+            ...current, deliveryState, health: "active", lastEventAt: receivedAt, observedAt: receivedAt,
+            lastEventType: batch[batch.length - 1].type,
+            events: current.events.concat(batch),
+            ...(failure ? {
+              status: "error" as const, serverRejected: !request.recover_only, terminalReason: "transport_error" as const,
+              errorMessage: failure.content || "Chat stream failed.",
+            } : {}),
+          };
+        });
+      }
+      const immediate = firstText || (event.type === "thinking" && firstThinking)
+        || event.type === "delivery_accepted" || event.type === "delivery_started" || event.type === "delivery_queued" || event.type === "done"
+        || event.type === "completed" || event.type === "cancelled" || event.type === "error";
+      if (firstText) firstContent = false;
+      if (event.type === "thinking") firstThinking = false;
+      if (immediate) flushUpdates();
     }, controller.signal).then(() => {
       if (controller.signal.aborted) return;
       flushUpdates();
@@ -239,7 +273,7 @@ export function ChatStreamProvider({ children }: { children: ReactNode }) {
         if (!window.confirm("重新执行本轮消息？之前已完成的工具操作可能再次执行，请先核对执行结果。")) return;
         startStream({ ...request, command_id: createStreamId(), recover_only: false }, streamId);
       } else if (request.delivery_intent && stream.events.some(event =>
-        event.type === "session_ready" || event.type === "delivery_started" || event.type === "delivery_queued")) {
+        event.type === "delivery_accepted" || event.type === "session_ready" || event.type === "delivery_started" || event.type === "delivery_queued")) {
         startStream({ ...request, message: "", recover_only: true, resume_queued: false }, streamId);
       } else {
         startStream(request, streamId);

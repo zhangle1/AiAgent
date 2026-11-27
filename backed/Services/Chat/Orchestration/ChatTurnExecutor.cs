@@ -54,7 +54,8 @@ internal sealed class ChatTurnExecutor(IChatOrchestrator orchestrator, ChatTurnP
 
     internal async Task RunAsync(AuthenticatedUser user, ChatCompleteRequest request, ChatDebugTrace? trace,
         AgentStreamEventHandler send,
-        Func<CancellationToken, Task<AuthenticatedUser>> refreshUser, CancellationToken cancellationToken)
+        Func<CancellationToken, Task<AuthenticatedUser>>? refreshUser, CancellationToken cancellationToken,
+        ChatDeliveryService.Reservation? reservation = null)
     {
         Task TraceAsync(AgentStreamEvent? value, CancellationToken token) =>
             value is null ? Task.CompletedTask : send(value, token);
@@ -67,13 +68,16 @@ internal sealed class ChatTurnExecutor(IChatOrchestrator orchestrator, ChatTurnP
             await send(value, token);
         }
 
-        var output = new ChatProviderOutput(trace, Emit);
+        var output = new ChatProviderOutput(trace, Emit, batchText: request.Goal is null && !string.IsNullOrWhiteSpace(request.CommandId));
         try
         {
-            delivery = deliveries is null ? null : await deliveries.EnterAsync(user, request, Emit, cancellationToken, preparation.ResolveAttachmentsAsync);
+            if (deliveries is not null)
+                delivery = reservation is null
+                    ? await deliveries.EnterAsync(user, request, Emit, cancellationToken, preparation.ResolveAttachmentsAsync)
+                    : await deliveries.ClaimAsync(reservation, user, request, Emit, cancellationToken, preparation.ResolveAttachmentsAsync);
             if (delivery is not null && delivery.Kind != "execute")
             {
-                await Emit(new AgentStreamEvent { Type = delivery.Kind == "steered" ? "delivery_steered" : "delivery_held",
+                await Emit(new AgentStreamEvent { Type = delivery.Kind switch { "steered" => "delivery_steered", "cancelled" => "cancelled", _ => "delivery_held" },
                     Content = delivery.Kind == "steered" ? "追加指令已投递给当前任务，等待 Agent 处理。" : delivery.Kind == "cancelled" ? "排队消息已取消，未执行。" : delivery.Kind == "uncertain" ? "本次投递结果待确认，请核对已有结果；不会自动重新执行。" : "排队消息已保留，等待显式恢复。" }, cancellationToken);
                 return;
             }
@@ -90,19 +94,22 @@ internal sealed class ChatTurnExecutor(IChatOrchestrator orchestrator, ChatTurnP
             {
                 deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, delivery.Stop);
                 cancellationToken = deliveryCancellation.Token;
-                user = await refreshUser(cancellationToken);
+                if (refreshUser is not null) user = await refreshUser(cancellationToken);
+                else user = delivery.ExecutionUser ?? throw new UnauthorizedAccessException();
                 request.RuntimeUsername = user.Username;
             }
             cancellationToken = command?.Link(cancellationToken) ?? cancellationToken;
             await Task.Yield(); // Release the dispatcher after the queue position and execution lease are known.
+            if (delivery is not null) await Emit(new AgentStreamEvent { Type = "delivery_started" }, cancellationToken);
             await preparation.PrepareAndRecordUserMessageAsync(user, request, cancellationToken);
             await Emit(new AgentStreamEvent { Type = "session_ready" }, cancellationToken);
-            if (delivery is not null) await Emit(new AgentStreamEvent { Type = "delivery_started" }, cancellationToken);
             request.ServerMemoryContext = await memory.BuildPromptContextAsync(user, request, cancellationToken);
             await TraceAsync(trace?.Complete("auth_session_context"), cancellationToken);
             await TraceAsync(trace?.Start("request_started"), cancellationToken);
             await TraceAsync(trace?.Complete("request_started"), cancellationToken);
-            var result = await orchestrator.CompleteStreamingAsync(request, output.ReceiveAsync, cancellationToken);
+            ChatCompleteResponse result;
+            try { result = await orchestrator.CompleteStreamingAsync(request, output.ReceiveAsync, cancellationToken); }
+            catch { await output.FlushAsync(); throw; }
             await output.CompleteProviderAsync(cancellationToken);
             await TraceAsync(trace?.Start("persistence"), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();

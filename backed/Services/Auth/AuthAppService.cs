@@ -19,10 +19,11 @@ public sealed class AuthAppService : IDynamicApiController
     }
 
     [HttpGet("status")]
-    public async Task<AuthStatusResponse> Status(CancellationToken cancellationToken)
+    public async Task<ActionResult<AuthStatusResponse>> Status(CancellationToken cancellationToken)
     {
-        var context = _httpContextAccessor.HttpContext!;
-        var user = await _authService.TryGetCurrentUserAsync(context, cancellationToken);
+        var request = new WebRequestAuthentication(_httpContextAccessor.HttpContext!, cancellationToken);
+        var user = await request.LookupAsync(_authService.TryGetCurrentUserAsync);
+        if (request.Disconnected) return new StatusCodeResult(StatusCodes.Status499ClientClosedRequest);
         return new AuthStatusResponse { Authenticated = user != null, UserId = user?.Id, Username = user?.Username, Alias = user?.Alias, IsAdmin = user?.IsAdministrator == true, RegistrationEnabled = false };
     }
 

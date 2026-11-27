@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AuthGate } from "@/components/auth/AuthGate";
-import { ChatStreamProvider } from "@/components/chat/ChatStreamProvider";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import "./globals.css";
 
@@ -18,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN" suppressHydrationWarning>
       <body>
         <I18nProvider>
-          <ChatStreamProvider><AuthGate>{children}</AuthGate></ChatStreamProvider>
+          <AuthGate>{children}</AuthGate>
         </I18nProvider>
       </body>
     </html>

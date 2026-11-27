@@ -17,11 +17,10 @@ public sealed class ChatSessionAppService : IDynamicApiController
     public ChatSessionAppService(IHttpContextAccessor httpContextAccessor, IAuthService authService, IChatSessionService sessions, IChatDebugTraceStore debugTraceStore) => (_httpContextAccessor, _authService, _sessions, _debugTraceStore) = (httpContextAccessor, authService, sessions, debugTraceStore);
 
     [HttpGet("list")]
-    public async Task<object> List([FromQuery] int limit = 50, CancellationToken cancellationToken = default)
-    {
-        var user = await RequireUser(cancellationToken);
-        return new { sessions = await _sessions.ListAsync(user, Math.Clamp(limit, 1, 100), cancellationToken) };
-    }
+    public Task<ActionResult<object>> List([FromQuery] int limit = 50, CancellationToken cancellationToken = default)
+        => new WebRequestAuthentication(_httpContextAccessor.HttpContext!, cancellationToken)
+            .ReadAsync<object>(_authService, async (user, token) =>
+                new OkObjectResult(new { sessions = await _sessions.ListAsync(user, Math.Clamp(limit, 1, 100), token) }));
 
     [HttpPost("create")]
     public async Task<IActionResult> Create([FromBody] CreateChatSessionRequest request, CancellationToken cancellationToken)
@@ -32,11 +31,14 @@ public sealed class ChatSessionAppService : IDynamicApiController
     }
 
     [HttpGet("{sessionId}")]
-    public async Task<IActionResult> Get(string sessionId, CancellationToken cancellationToken)
-    {
-        var detail = await _sessions.GetAsync(await RequireUser(cancellationToken), sessionId, cancellationToken);
-        return detail == null ? new NotFoundObjectResult(new { message = "会话不存在。" }) : new OkObjectResult(detail);
-    }
+    public Task<ActionResult<ChatSessionDetailDto>> Get(string sessionId, CancellationToken cancellationToken)
+        => new WebRequestAuthentication(_httpContextAccessor.HttpContext!, cancellationToken)
+            .ReadAsync<ChatSessionDetailDto>(_authService, async (user, token) =>
+            {
+                var detail = await _sessions.GetAsync(user, sessionId, token);
+                if (detail == null) return new NotFoundObjectResult(new { message = "会话不存在。" });
+                return detail;
+            });
 
     [HttpGet("{sessionId}/diagnostics")]
     public async Task<object> Diagnostics(string sessionId, CancellationToken cancellationToken)

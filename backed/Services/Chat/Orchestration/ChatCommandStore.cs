@@ -107,10 +107,22 @@ public sealed class ChatCommandStore(ISqlSugarClient database)
         {
             if (!owner || terminal || value.Type == "debug_trace") return;
             using var db = store._database.CopyNew();
-            db.Insertable(new AiChatCommandEvent { CommandId = row.Id, PayloadJson = JsonSerializer.Serialize(value, JsonOptions) }).ExecuteCommand();
-            if (value.Type == "completed") Finish("completed");
-            else if (value.Type == "cancelled") Finish("cancelled");
-            else if (value.Type == "error") Finish("unknown");
+            var entry = new AiChatCommandEvent { CommandId = row.Id, PayloadJson = JsonSerializer.Serialize(value, JsonOptions) };
+            var outcome = value.Type switch { "completed" => "completed", "cancelled" => "cancelled", "error" => "unknown", _ => null };
+            if (outcome == null) db.Insertable(entry).ExecuteCommand();
+            else
+            {
+                // A reader observing a terminal command must also be able to read its final event.
+                db.Ado.BeginTran();
+                try
+                {
+                    db.Insertable(entry).ExecuteCommand();
+                    db.Updateable<AiChatCommand>().SetColumns(x => x.Status == outcome).Where(x => x.Id == row.Id).ExecuteCommand();
+                    db.Ado.CommitTran();
+                    terminal = true;
+                }
+                catch { db.Ado.RollbackTran(); throw; }
+            }
             if (Active.TryGetValue(row.Id, out var live)) live.Notify();
         }
         private void Finish(string status)

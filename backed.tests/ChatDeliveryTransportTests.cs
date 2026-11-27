@@ -22,6 +22,74 @@ namespace AiAgent.Backend.Tests;
 
 public sealed partial class ChatCommandTests
 {
+    [Fact]
+    public async Task HostedDeliveryMilestoneProbe()
+    {
+        db.CodeFirst.InitTables(typeof(AiUser), typeof(AiChatDelivery));
+        db.Insertable(new AiUser { Id = user.Id, Username = user.Username }).ExecuteCommand();
+        object? Invoke(MethodInfo method, object?[]? args)
+        {
+            if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
+            if (method.ReturnType == typeof(Task<string>)) return Task.FromResult("");
+            return null;
+        }
+        var sessions = Stub<IChatSessionService>(Invoke);
+        var deliveries = new ChatDeliveryService(db, sessions);
+        using var services = TransportServices(new DeliveryEngine(), Invoke, sessions, deliveries: deliveries, hosted: true);
+        var worker = services.GetRequiredService<ChatDeliveryWorker>();
+        var dispatcher = services.GetRequiredService<IChatDispatcher>();
+        var samples = new Dictionary<string, List<double>>();
+        // Hold the worker at startup, wait for the committed receipt, then close the browser.
+        var pending = Request("before-worker"); pending.DeliveryIntent = "queue";
+        using var connection = new CancellationTokenSource();
+        var receipt = new TaskCompletionSource<AgentStreamEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var detached = dispatcher.DispatchStreamAsync(user, pending, null, (item, _) => {
+            receipt.TrySetResult(item); return Task.CompletedTask;
+        }, _ => Task.FromResult(user), connection.Token);
+        Assert.Equal("delivery_accepted", (await receipt.Task.WaitAsync(TimeSpan.FromSeconds(3))).Type);
+        Assert.Equal("queued", db.Queryable<AiChatDelivery>().Single().Status);
+        connection.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => detached);
+        await worker.StartAsync(default);
+        try
+        {
+            var lookup = Request("before-worker"); lookup.Message = ""; lookup.RecoverOnly = true;
+            var recovered = new List<string>();
+            await dispatcher.DispatchStreamAsync(user, lookup, null, (item, _) => {
+                recovered.Add(item.Type); return Task.CompletedTask;
+            }, _ => Task.FromResult(user), default).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal("delivery_accepted", recovered.First());
+            Assert.Contains("content", recovered);
+            Assert.Equal("completed", recovered.Last());
+            for (var i = 0; i < 9; i++)
+            {
+                var request = Request("probe-" + i);
+                request.DeliveryIntent = "queue";
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var events = new List<string>();
+                await dispatcher.DispatchStreamAsync(user, request, null, (item, _) => {
+                    events.Add(item.Type);
+                    if (i > 0)
+                    {
+                        if (!samples.TryGetValue(item.Type, out var values)) samples[item.Type] = values = [];
+                        values.Add(clock.Elapsed.TotalMilliseconds);
+                    }
+                    return Task.CompletedTask;
+                }, _ => Task.FromResult(user), default);
+                Assert.Equal("delivery_accepted", events.First());
+                Assert.True(events.IndexOf("delivery_started") < events.IndexOf("content"));
+                Assert.Contains("content", events);
+                Assert.Equal("completed", events.Last());
+            }
+        }
+        finally { await worker.StopAsync(default); }
+        foreach (var (stage, values) in samples)
+        {
+            values.Sort();
+            Console.WriteLine($"hosted / {stage} median={(values[3] + values[4]) / 2:F1} ms (8 warm turns)");
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -38,6 +106,8 @@ public sealed partial class ChatCommandTests
         {
             db.CodeFirst.InitTables(typeof(AiUser), typeof(AiChatDelivery));
             db.Insertable(new AiUser { Id = user.Id, Username = user.Username }).ExecuteCommand();
+            var hostClient = db.ScopedContext;
+            var recordingClient = new TaskCompletionSource<SqlSugar.SqlSugarClient>(TaskCreationOptions.RunContinuationsAsynchronously);
             var calls = new List<string>();
             object? Invoke(MethodInfo method, object?[]? args)
             {
@@ -45,6 +115,8 @@ public sealed partial class ChatCommandTests
                 if (method.DeclaringType == typeof(ICodexModelPolicyService) && method.Name == "ResolveModel")
                     return new CodexResolvedModel(new("fixture", "Fixture", "", "fixture", null, true, true), "medium");
                 if (method.DeclaringType == typeof(IImageOcrPolicyService) && method.Name == "GetPolicy") return new ImageOcrPolicyDto { NativeImageInputEnabled = true };
+                if (hosted && method.Name == "RecordUserMessageAsync")
+                    recordingClient.TrySetResult(db.ScopedContext);
                 if (method.Name is "RecordUserMessageAsync" or "RecordAssistantMessageAsync") calls.Add(method.Name + ":" + ((ChatCompleteRequest)args![1]!).Message);
                 if (method.ReturnType == typeof(Task)) return Task.CompletedTask;
                 if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
@@ -114,8 +186,14 @@ public sealed partial class ChatCommandTests
                 await app.CompleteStream(request, context.RequestAborted); context.Response.Body.Position = 0; return await new StreamReader(context.Response.Body).ReadToEndAsync();
             }
             var first = Run("A");
-            await firstChunk.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var observed = await Task.WhenAny(firstChunk.Task, first).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Same(firstChunk.Task, observed);
             Assert.False(first.IsCompleted);
+            if (hosted)
+            {
+                Assert.True(recordingClient.Task.IsCompletedSuccessfully);
+                Assert.NotSame(hostClient, await recordingClient.Task);
+            }
             var second = Run("B"); var duplicate = Run("B");
             Assert.False(second.IsCompleted); Assert.Equal(new[] { "A" }, engine.Calls);
             var steering = await Run("C");

@@ -14,12 +14,15 @@ const browser = await chromium.launch(executablePath ? { executablePath } : { ch
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, timezoneId: "America/Los_Angeles" });
 const errors = []; const sent = []; let uploads = 0; let goalState = null;
 let deliveriesUnavailable = true;
+let signedIn = false;
+const prematureRecovery = [];
 const queue = []; const canceled = []; const sockets = new Map(); const history = []; let sequence = 0;
 page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => localStorage.setItem("aiagent.frontend-onboarding.completed", "true"));
 await page.route("**/api/**", async route => {
   const url = new URL(route.request().url()); const name = url.pathname; let body = [];
-  if (name.endsWith("/auth/status")) body = { authenticated: true, user_id: "fixture", username: "fixture", role: "admin" };
+  if (name.endsWith("/auth/login")) { signedIn = true; body = { ok: true }; }
+  else if (name.endsWith("/auth/status")) body = { authenticated: signedIn, user_id: "fixture", username: "fixture", role: "admin" };
   else if (name === "/api/v1/settings") body = { ui: { theme: "light", language: "zh-CN", preferred_agent: "codex" }, catalog: { version: 1, services: { llm: { active_profile_id: "fixture", active_model_id: "fixture", profiles: [{ id: "fixture", name: "Fixture", models: [{ id: "fixture", name: "Fixture", model: "fixture" }] }] } } } };
   else if (name === "/api/v1/settings/ui") body = { theme: "light", language: "zh-CN" };
   else if (name.endsWith("/chat/skills")) body = skills;
@@ -60,7 +63,17 @@ function message(role, content, created_at, metadata) { history.push({ id: ++seq
 function emit(socket, type, content) { socket.send(JSON.stringify({ type, content })); }
 await page.routeWebSocket("**/api/v1/chat/ws", socket => socket.onMessage(raw => {
   const request = JSON.parse(String(raw)); sent.push(request);
+  if (request.command_id === "pending-before-login") {
+    if (!signedIn) prematureRecovery.push(request);
+    emit(socket, "completed");
+    return;
+  }
   sockets.set(request.command_id, { request, socket });
+  emit(socket, "delivery_accepted");
+  if (request.message === "执行 A") {
+    message("user", request.message);
+    return; // The test releases the worker after the visible receipt.
+  }
   if (request.recover_only) {
     if (queue.some(row => row.command_id === request.command_id && row.status === "running")) {
       emit(socket, "delivery_started");
@@ -92,13 +105,56 @@ async function requestFor(text) {
 }
 try {
   await page.addInitScript(() => { window.__deliveryCompletions = 0; window.addEventListener("aiagent:chat-stream-complete", () => window.__deliveryCompletions++); });
-  await page.goto(`${process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat"}?project=11&new=delivery`);
+  const loginUrl = new URL("/login", process.env.CHAT_TEST_URL ?? "http://127.0.0.1:3782/chat");
+  loginUrl.searchParams.set("next", "/chat?project=11&new=delivery");
+  await page.addInitScript(() => {
+    if (location.pathname === "/login")
+      sessionStorage.setItem("aiagent:pending-chat-commands:v1", JSON.stringify([{
+        command_id: "pending-before-login", session_id: "owned-session", saved_at: Date.now()
+      }]));
+  });
+  await page.goto(loginUrl.href, { waitUntil: "networkidle" });
+  await page.locator('input[autocomplete="username"]').fill("fixture");
+  await page.locator('input[type="password"]').fill("fixture-password");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   await editor().waitFor({ timeout: 60000 });
+  await page.waitForFunction(() => {
+    const pointers = JSON.parse(sessionStorage.getItem("aiagent:pending-chat-commands:v1") ?? "[]");
+    return !pointers.some(pointer => pointer.command_id === "pending-before-login");
+  });
+  assert.deepEqual(prematureRecovery, [], "Recovery must wait for authenticated navigation");
+  assert.equal(sent.filter(request => request.command_id === "pending-before-login" && request.recover_only).length, 1);
+  // The following assertions count completions for the new delivery scenario.
+  await page.evaluate(() => { window.__deliveryCompletions = 0; });
   const queuePanel = page.getByRole("region", { name: "消息投递队列", exact: true });
   const failedPoll = () => page.waitForResponse(response => response.url().endsWith("/deliveries") && response.status() === 500);
   const firstPoll = failedPoll();
+  await page.evaluate(() => {
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Enter") return;
+      const start = performance.now();
+      const timings = window.__chatTimings = {};
+      const observer = new MutationObserver(() => {
+        const text = Array.from(document.querySelectorAll("article"), item => item.textContent);
+        if (timings.userMs === undefined && text.some(item => item.includes("执行 A")))
+          timings.userMs = Math.round(performance.now() - start);
+        if (text.some(item => item.includes("正在处理 执行 A"))) {
+          timings.firstTextMs = Math.round(performance.now() - start);
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+    }, { once: true, capture: true });
+  });
   await send("执行 A");
   const a = await requestFor("执行 A"); assert.equal(a.delivery_intent, "queue");
+  await page.getByText("已接收 · 等待执行", { exact: true }).waitFor();
+  emit(sockets.get(a.command_id).socket, "delivery_started");
+  await page.getByText("已开始 · 正在准备上下文", { exact: true }).waitFor();
+  emit(sockets.get(a.command_id).socket, "session_ready");
+  emit(sockets.get(a.command_id).socket, "content", "正在处理 执行 A");
+  await page.waitForFunction(() => window.__chatTimings?.firstTextMs !== undefined);
+  console.log("Local mocked WebSocket / Enter to DOM incl. test-controlled claim (ms)", await page.evaluate(() => window.__chatTimings));
   await firstPoll;
   await failedPoll();
   assert.equal(await queuePanel.count(), 0, "An empty queue must stay hidden during polling errors");
@@ -118,7 +174,8 @@ try {
   const assertNavigationOnLeft = async () => {
     const rail = await navigation.boundingBox();
     const conversation = await page.locator("[data-chat-question]").first().boundingBox();
-    assert.ok(rail && conversation && rail.x + rail.width <= conversation.x, "Message navigation should sit in the left gutter");
+    const minimumGap = (await page.viewportSize()).width >= 640 ? 20 : 12;
+    assert.ok(rail && conversation && rail.x >= 0 && rail.x + rail.width + minimumGap <= conversation.x + 1, "Message navigation should sit clear of the conversation");
     await firstQuestion.focus();
     const preview = navigation.getByText("第 1 条提问", { exact: true });
     await preview.waitFor();
@@ -148,9 +205,18 @@ try {
   assert.equal(await page.evaluate(() => window.__deliveryCompletions), 0);
   await page.screenshot({ path: path.join(artifacts, "queue-and-steer-desktop.png"), fullPage: true });
   message("assistant", "A 已完成"); emit(sockets.get(a.command_id).socket, "completed");
-  queue.splice(0, queue.length); message("user", "排队 B"); message("assistant", "B 已完成");
-  emit(sockets.get(b.command_id).socket, "session_ready"); emit(sockets.get(b.command_id).socket, "delivery_started"); emit(sockets.get(b.command_id).socket, "content", "B 已完成"); emit(sockets.get(b.command_id).socket, "completed");
-  await page.getByText("B 已完成", { exact: true }).waitFor();
+  queue.splice(0, queue.length); message("user", "排队 B");
+  const bSocket = sockets.get(b.command_id).socket;
+  emit(bSocket, "delivery_started"); emit(bSocket, "session_ready"); emit(bSocket, "content", "B 首段");
+  const answer = page.locator("article").filter({ hasText: "B 首段" });
+  await answer.getByText("B 首段", { exact: true }).waitFor();
+  for (let i = 0; i < 128; i++) emit(bSocket, "content", "片段");
+  bSocket.send(JSON.stringify({ type: "done", content: "B 已完成", metadata: { agent: "codex" } }));
+  const finalAnswer = page.locator("article").filter({ hasText: "B 已完成" });
+  await finalAnswer.getByText("B 已完成", { exact: true }).waitFor();
+  assert.equal(await finalAnswer.getByText("正常完成", { exact: true }).count(), 0);
+  message("assistant", "B 已完成"); emit(bSocket, "completed");
+  await finalAnswer.getByText("正常完成", { exact: true }).waitFor();
   await page.waitForFunction(() => window.__deliveryCompletions === 2);
   await send("执行 D"); const d = await requestFor("执行 D"); await mode.waitFor(); await mode.selectOption("queue");
   await send("保留 E"); const e = await requestFor("保留 E");
@@ -215,17 +281,39 @@ try {
   const gap = timeBox.x - (modelBox.x + modelBox.width);
   assert.ok(Math.abs(modelBox.y - timeBox.y) <= 1 && gap >= 0 && gap <= 12,
     "The timestamp should sit beside the model name on a narrow screen");
-  assert.equal(await markers.count(), 8);
+  const railWindow = navigation.locator(":scope > div");
+  assert.equal(await markers.count(), 22);
   const markerPositions = await markers.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top));
-  assert.ok(markerPositions.slice(1).every((top, index) => top - markerPositions[index] >= 30), "Markers should be spaced apart");
+  const step = markerPositions[1] - markerPositions[0];
+  assert.ok(step >= 32 && markerPositions.slice(1).every((top, index) => Math.abs(top - markerPositions[index] - step) < 1));
+  assert.equal(await railWindow.evaluate(element => element.clientHeight), 8 * step);
+  await railWindow.evaluate(element => { element.scrollTop = 0; });
+  await railWindow.hover();
+  const chatScrollTop = () => page.locator("[data-chat-question]").first().evaluate(question => question.parentElement.scrollTop);
+  const beforeWheel = await chatScrollTop();
+  await page.mouse.wheel(0, step);
+  await page.waitForFunction(() => {
+    const rail = document.querySelector('nav[aria-label="会话导航"] > div');
+    return rail.scrollTop > 0 && rail.scrollTop % rail.firstElementChild.clientHeight === 0;
+  });
+  assert.equal(await chatScrollTop(), beforeWheel);
   await firstQuestion.click();
   await navigation.locator('button[aria-current="step"]').and(firstQuestion).waitFor();
   await page.locator("[data-chat-question]").nth(4).evaluate(question => {
     const container = question.parentElement;
     container.scrollTop += question.getBoundingClientRect().top - container.getBoundingClientRect().top - 16;
   });
-  const fourthQuestion = navigation.getByRole("button", { name: /^跳转到第 4 条提问/ });
-  await navigation.locator('button[aria-current="step"]').and(fourthQuestion).waitFor();
+  const fifthQuestion = navigation.getByRole("button", { name: /^跳转到第 5 条提问/ });
+  await navigation.locator('button[aria-current="step"]').and(fifthQuestion).waitFor();
+  await page.locator("[data-chat-question]").nth(8).evaluate(question => {
+    const container = question.parentElement;
+    container.scrollTop += question.getBoundingClientRect().top - container.getBoundingClientRect().top - 16;
+  });
+  await navigation.getByRole("button", { name: /^跳转到第 9 条提问/, current: "step" }).waitFor();
+  await page.waitForFunction(() => {
+    const rail = document.querySelector('nav[aria-label="会话导航"] > div');
+    return rail.scrollTop === rail.firstElementChild.clientHeight;
+  });
   await lastQuestion.click();
   await navigation.locator('button[aria-current="step"]').and(lastQuestion).waitFor();
   await page.waitForFunction(() => {
